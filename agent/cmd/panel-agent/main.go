@@ -31,6 +31,7 @@ func main() {
 	probeBind := flag.String("probe-bind", "", "internal: try to bind addr, print bound/denied (socket-bind enforcement probe)")
 	backup := flag.String("backup", "", "run a scheduled backup of engine/name and exit (used by backup timers)")
 	keep := flag.Int("keep", 7, "with -backup: number of backups to keep")
+	siteBackup := flag.String("site-backup", "", "run a scheduled backup of the site <domain> and exit (used by site backup timers)")
 	fileopHome := flag.String("fileop", "", "internal: serve one file-manager request inside this site home (run as the site user)")
 	flag.Parse()
 	if *showVersion {
@@ -66,6 +67,13 @@ func main() {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if *siteBackup != "" {
+		if err := runSiteBackupMode(*cfgPath, *siteBackup, log); err != nil {
+			log.Error("site backup failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *backup != "" {
 		if err := runBackupMode(*cfgPath, *backup, *keep, log); err != nil {
 			log.Error("backup failed", "err", err)
@@ -149,6 +157,30 @@ func runBackupMode(cfgPath, spec string, keep int, log *slog.Logger) error {
 	}
 	_ = a.Write(entry)
 	log.Info("scheduled backup", "spec", spec, "result", out)
+	return err
+}
+
+// runSiteBackupMode runs one scheduled whole-site backup (from its timer).
+func runSiteBackupMode(cfgPath, domain string, log *slog.Logger) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	a, err := audit.Open(cfg.AuditLog)
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	env := &ops.Env{Cfg: cfg, Exec: executor.NewReal(binaries(cfg), []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}), FS: &fsx.FS{DryRun: cfg.DryRun}}
+	start := time.Now()
+	out, err := ops.RunScheduledSiteBackup(context.Background(), env, domain)
+	params, _ := json.Marshal(map[string]any{"domain": domain})
+	entry := audit.Entry{Time: start.UTC(), Op: "site.backup.scheduled", Params: params, PeerUID: 0, OK: err == nil, DurationMS: time.Since(start).Milliseconds()}
+	if err != nil {
+		entry.Error = err.Error()
+	}
+	_ = a.Write(entry)
+	log.Info("scheduled site backup", "domain", domain, "result", out)
 	return err
 }
 

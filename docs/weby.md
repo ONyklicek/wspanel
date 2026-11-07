@@ -76,6 +76,38 @@ Aplikace běží ze složky `current` (odkaz na aktuální release). Ruční úp
 `current` přepíše příští deploy; trvalé změny patří do Gitu, data a `.env` do
 `shared`.
 
+## Zálohy webu
+
+Detail webu → záložka **Zálohy**. Záloha celého webu je jeden archiv
+`<doména>-<čas>.tar.gz` v `/var/backups/wspanel/sites/<doména>/` a obsahuje:
+
+- aktuální release (kód tak, jak právě běží),
+- složku `shared` (`.env`, nahrané soubory, `storage`),
+- dumpy databází webu (MariaDB i PostgreSQL),
+- `manifest.json` s tím, co v archivu je.
+
+Soubory čte agent jako systémový uživatel webu, root je neotevírá.
+
+- **Zálohovat nyní**, s databázemi nebo bez nich. Velký web doběhne na pozadí
+  a v seznamu se objeví sám.
+- **Plán záloh:** denně nebo týdně (kolem 2:30), kolik posledních záloh
+  uchovat a zda s databázemi. Starší zálohy se po každé automatické záloze
+  smažou.
+- **Stáhnout** archiv (běžný `tar.gz`, jde rozbalit i ručně).
+- **Obnovit:** zvolte soubory, databáze nebo obojí a pro potvrzení napište
+  doménu. Obnova nic nezničí:
+  - nejdřív se uloží záloha současného stavu (*Před obnovou*);
+  - soubory se obnoví jako **nový release** a web se na něj přepne;
+    původní release zůstává a vrátíte se na něj přes Deploy → Rollback;
+  - současná složka `shared` zůstane vedle jako
+    `shared.before-restore-<čas>` (smažete ji ve Správci souborů, až ji
+    nebudete potřebovat);
+  - databáze se přepíšou obsahem zálohy. Databáze, které už na serveru
+    nejsou, se vynechají.
+
+Zálohy zůstávají i po smazání webu, maže se jen jejich plán. Ukládají se na
+stejný disk jako web; pro ochranu před ztrátou serveru si je stahujte jinam.
+
 ## Domény a přístup
 
 Detail webu → **Další → Domény a přístup**. Vše zpracuje proxy ještě před
@@ -264,4 +296,5 @@ Detail → Další → **Smazat**, pro potvrzení napište doménu. Odstraní se
 - systémový uživatel a SMTP přihlášení.
 
 Soubory se nesmažou, přesunou se do `/srv/sites/.trash/` (jen pro roota).
-Databáze zůstávají, smažte je zvlášť.
+Databáze zůstávají, smažte je zvlášť. Zálohy webu také zůstávají, smaže se
+jen jejich plán.

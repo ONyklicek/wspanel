@@ -39,6 +39,8 @@ type siteState struct {
 	PHPSettings map[string]string `json:"php_settings,omitempty"`
 	// Edge: more domains, redirects, password/IP protection, headers.
 	Edge *edgeSettings `json:"edge,omitempty"`
+	// Backup: the whole-site backup schedule.
+	Backup *siteBackupConfig `json:"backup,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

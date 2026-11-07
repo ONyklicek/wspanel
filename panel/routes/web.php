@@ -2,6 +2,7 @@
 
 use App\Actions\Sites\ManageTls;
 use App\Http\Controllers\DownloadBackupController;
+use App\Http\Controllers\DownloadSiteBackupController;
 use App\Http\Controllers\DownloadSiteFileController;
 use App\Http\Controllers\ForwardAuthController;
 use App\Http\Controllers\OpenDatabaseServerToolController;
@@ -13,6 +14,9 @@ Route::get('/auth/check', ForwardAuthController::class)->name('auth.check');
 
 Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');
+    Route::get('/sites/{site}/backups/{file}', DownloadSiteBackupController::class)
+        ->where('file', '[A-Za-z0-9._-]+\\.tar\\.gz')
+        ->name('site-backups.download');
     Route::get('/sites/{site}/files/download', DownloadSiteFileController::class)->middleware('throttle:60,1')->name('site-files.download');
     Route::get('/db-open/{database}/{tool}', OpenDatabaseToolController::class)
         ->whereIn('tool', ['phpmyadmin', 'adminer'])

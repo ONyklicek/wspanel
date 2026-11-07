@@ -256,7 +256,8 @@ tar -czf "$W/build.tar.gz" -C "$W/artifact" .
 out=$(pc -X POST -H "Authorization: Bearer $ci_token" -F "artifact=@$W/build.tar.gz" -F ref=v4 -F commit=abcdef1 "$api/artifact")
 expect "CI artifact deploy succeeds" "$(ci_wait "$out")" "success"
 contains "artifact is live (no build on the server)" "$(https app.localhost /build/manifest.json)" "in-ci"
-check "artifact file removed after the deploy" bash -c '[ -z "$(ls -A /var/lib/wspanel-artifacts)" ]'
+# (file-manager transfers dl-*/up-* share the directory and expire on their own)
+check "artifact file removed after the deploy" bash -c '[ -z "$(ls -A /var/lib/wspanel-artifacts | grep -vE "^(dl|up)-")" ]'
 
 # ----------------------------------------------------------------------------
 section "SSH / SFTP"
@@ -497,6 +498,34 @@ expect "a download is handed to the panel user only" "$(stat -c '%U %a' "$dl" 2>
 rm -f "$dl"
 fm "delete($fsite, 'current/public/fmx')" >/dev/null; fm "delete($fsite, 'current/public/fm.zip')" >/dev/null; fm "delete($fsite, 'current/public/fm.txt')" >/dev/null
 check "deleted again" test ! -e /srv/sites/other.localhost/current/public/fm.txt
+
+# ----------------------------------------------------------------------------
+section "Whole-site backups (files + databases)"
+sb() { php "\$s = App\\Models\\Site::where('domain','shop.localhost')->sole(); \$m = app(App\\Actions\\Sites\\ManageSiteBackups::class); $1" | tail -1; }
+sbdir=/var/backups/wspanel/sites/shop.localhost
+expect "site backup with its database" "$(sb 'echo json_encode($m->backupNow($s));')" "true"
+sbfile=$(ls -t "$sbdir" | grep -v pre-restore | head -1)
+expect "backup is root:panel 0640" "$(stat -c '%U:%G %a' "$sbdir/$sbfile")" "root:panel 640"
+check "archive holds the release, shared and the dump" bash -c "tar -tzf '$sbdir/$sbfile' | grep -q '^files/shared/.env$' && tar -tzf '$sbdir/$sbfile' | grep -q '^db/mariadb-shop_db.sql.gz$' && tar -tzf '$sbdir/$sbfile' | grep -q '^files/releases/.*/public/index.php$'"
+# Change files and data after the backup.
+runuser -u web_shop_localhost -- bash -c 'echo after > /srv/sites/shop.localhost/shared/after-backup.txt'
+expect "data deleted after the backup" "$(dbq delete)" "0"
+sbout=$(sb "echo json_encode(\$m->restore(\$s, '$sbfile', true, true));")
+contains "restore reports a healthy new release" "$sbout" '"healthy":true'
+expect "restore brings the database back" "$(dbq count)" "1"
+check "files from after the backup are gone from shared" test ! -e /srv/sites/shop.localhost/shared/after-backup.txt
+check "previous shared kept beside it" bash -c 'ls -d /srv/sites/shop.localhost/shared.before-restore-*/after-backup.txt'
+expect "restored files belong to the site user" "$(stat -c %U /srv/sites/shop.localhost/shared/.env)" "web_shop_localhost"
+contains "current points to the restored release" "$(readlink /srv/sites/shop.localhost/current)" "$(echo "$sbout" | sed -n 's/.*"release":"\([^"]*\)".*/\1/p')"
+expect "site still answers" "$(code shop.localhost /)" "200"
+check "pre-restore backup taken" bash -c "ls $sbdir | grep -q pre-restore"
+check "no staging folder left" bash -c '! ls -d /srv/sites/shop.localhost/.wspanel-restore-* 2>/dev/null'
+sb '$m->schedule($s, "daily", 3, true);' >/dev/null
+check "backup timer active" systemctl is-active --quiet wspanel-sitebackup-web_shop_localhost.timer
+check "scheduled backup runs" bash -c 'systemctl start wspanel-sitebackup-web_shop_localhost.service && systemctl show -p Result --value wspanel-sitebackup-web_shop_localhost.service | grep -q success'
+sb '$m->schedule($s, "off", 3, true);' >/dev/null
+check "backup timer removed" test ! -e /etc/systemd/system/wspanel-sitebackup-web_shop_localhost.timer
+rm -rf /srv/sites/shop.localhost/shared.before-restore-*
 
 # ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"

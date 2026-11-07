@@ -1,6 +1,7 @@
 package fileop
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bufio"
 	"bytes"
@@ -9,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func run(t *testing.T, home string, req Request, payload []byte) (Response, []byte) {
@@ -183,5 +186,79 @@ func TestZipRoundTripAndZipSlip(t *testing.T) {
 	}
 	if strings.Contains(r.Error, "evil") {
 		t.Fatal(r.Error)
+	}
+}
+
+func TestAFifoNeverBlocks(t *testing.T) {
+	home := site(t)
+	fifo := filepath.Join(home, "trap.zip")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skip("no mkfifo here")
+	}
+	done := make(chan Response, 3)
+	go func() {
+		for _, req := range []Request{{Action: "extract", Path: "trap.zip", To: "x"}, {Action: "read", Path: "trap.zip"}, {Action: "download", Path: "trap.zip"}} {
+			r, _ := run(t, home, req, nil)
+			done <- r
+		}
+	}()
+	for i := 0; i < 3; i++ {
+		select {
+		case r := <-done:
+			if r.OK {
+				t.Fatal("a FIFO was read")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("blocked on a FIFO")
+		}
+	}
+}
+
+func TestTarUntarRoundTripKeepsLinksInsideTheHome(t *testing.T) {
+	home := site(t)
+	_ = os.Symlink(filepath.Join(home, "shared/.env"), filepath.Join(home, "current/.env"))
+	r, body := run(t, home, Request{Action: "tar", Paths: []string{"current", "shared"}}, nil)
+	if !r.OK || !r.Payload {
+		t.Fatalf("%+v", r)
+	}
+	// Add links that point out of the home or climb out of the target.
+	var buf bytes.Buffer
+	tr := tar.NewReader(bytes.NewReader(body))
+	tw := tar.NewWriter(&buf)
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			break
+		}
+		_ = tw.WriteHeader(hdr)
+		_, _ = io.Copy(tw, tr)
+	}
+	_ = tw.WriteHeader(&tar.Header{Name: "evil-abs", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"})
+	_ = tw.WriteHeader(&tar.Header{Name: "evil-rel", Typeflag: tar.TypeSymlink, Linkname: "../../../etc"})
+	_ = tw.WriteHeader(&tar.Header{Name: "../../escaped.txt", Typeflag: tar.TypeReg, Size: 1, Mode: 0o644})
+	_, _ = tw.Write([]byte("x"))
+	_ = tw.Close()
+
+	r, _ = run(t, home, Request{Action: "untar", To: "restore"}, buf.Bytes())
+	if !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "restore/current/public/index.php")); string(b) != "<?php echo 1;" {
+		t.Fatal(string(b))
+	}
+	if l, _ := os.Readlink(filepath.Join(home, "restore/current/.env")); l != filepath.Join(home, "shared/.env") {
+		t.Fatal("link inside the home not restored:", l)
+	}
+	for _, n := range []string{"restore/evil-abs", "restore/evil-rel"} {
+		if _, err := os.Lstat(filepath.Join(home, n)); !os.IsNotExist(err) {
+			t.Errorf("%s restored", n)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "restore/escaped.txt")); err != nil {
+		t.Fatal("a climbing name must land inside the target")
+	}
+	// Never over an existing folder.
+	if r, _ := run(t, home, Request{Action: "untar", To: "restore"}, buf.Bytes()); r.OK || r.Code != "exists" {
+		t.Fatalf("%+v", r)
 	}
 }

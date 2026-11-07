@@ -97,6 +97,13 @@ func siteFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 		defer dl.Close()
 		sink.rest = dl
 	}
+	// A stuck worker must not hold the request for ever.
+	limit := 2 * time.Minute
+	if slices.Contains([]string{"upload", "download", "extract", "compress"}, p.Action) {
+		limit = 30 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	args := []string{"--reuid=" + l.User, "--regid=" + l.User, "--init-groups", "--reset-env", "--", env.Cfg.AgentBinary, "-fileop", l.Home}
 	if _, err := env.Exec.RunIO(ctx, stdin, sink, "setpriv", args...); err != nil && len(sink.head) == 0 {
 		cleanupDownload(env, dlName)
