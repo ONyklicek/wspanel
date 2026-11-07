@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Models\Site;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 class ServerOverview extends StatsOverviewWidget
@@ -30,7 +31,7 @@ class ServerOverview extends StatsOverviewWidget
                 ->color($n ? 'danger' : 'success')
                 ->url(SiteResource::getUrl()),
             Stat::make('Služby', "{$running} / {$total} běží")
-                ->description($failed ? "{$failed} selhalo" : ($lastSync ? 'ověřeno '.\Illuminate\Support\Carbon::parse($lastSync)->diffForHumans() : 'zatím neověřeno'))
+                ->description($failed ? "{$failed} selhalo" : ($lastSync ? 'ověřeno '.Carbon::parse($lastSync)->diffForHumans() : 'zatím neověřeno'))
                 ->color($failed ? 'danger' : 'success')
                 ->url(ServiceResource::getUrl()),
             Stat::make('Firewall', $fw === null ? '?' : ($fw['active'] ? 'aktivní' : 'vypnutý'))
