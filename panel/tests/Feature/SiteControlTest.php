@@ -28,6 +28,8 @@ class SiteControlTest extends TestCase
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['php' => [['version' => '8.4', 'installed' => true]], 'panel_units' => []])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.services')->andReturn([])->byDefault();
         $this->agent->shouldReceive('call')->with('site.health', Mockery::any())->andReturn(['ok' => true, 'status' => 200])->byDefault();
+        $this->agent->shouldReceive('call')->with('site.processes', Mockery::any())->andReturn(['processes' => []])->byDefault();
+        $this->agent->shouldReceive('call')->with('deploy.history', Mockery::any())->andReturn(['deploys' => []])->byDefault();
         $this->app->instance(AgentClient::class, $this->agent);
         $this->actingAs(User::factory()->create());
     }
