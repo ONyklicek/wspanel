@@ -3,10 +3,12 @@
 namespace App\Wire\Sites;
 
 use App\Actions\Databases\ManageDatabases;
+use App\Actions\Databases\ManageDatabaseServers;
 use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
 use App\Actions\Sites\DeleteSite;
+use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageTls;
@@ -16,14 +18,19 @@ use App\Enums\SshAccess;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
+use App\Support\Domains;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Carbon;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
+use NyonCode\WireCore\Foundation\Schema\Tab;
+use NyonCode\WireCore\Foundation\Schema\Tabs;
 use NyonCode\WireForms\Components\Radio;
+use NyonCode\WireForms\Components\Repeater;
 use NyonCode\WireForms\Components\Select;
+use NyonCode\WireForms\Components\Tags;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -413,11 +420,94 @@ final class SiteActions
             }));
     }
 
+    public static function edge(): Action
+    {
+        $domainRule = function (string $attribute, mixed $value, \Closure $fail) {
+            foreach ((array) $value as $d) {
+                if (! Domains::isValid(Domains::normalize((string) $d))) {
+                    $fail("{$d} není platná doména.");
+                }
+            }
+        };
+
+        return Action::make('edge')
+            ->label('Domény a přístup')
+            ->icon('outline:globe-europe-africa')
+            ->visible(fn (Site $record) => $record->isOperational())
+            ->modalHeading(fn (Site $record) => "Domény a přístup: {$record->domain}")
+            ->modalDescription('Zpracuje proxy před aplikací: další domény (každá dostane certifikát), přesměrování, ochranu heslem nebo IP adresou a hlavičky odpovědí.')
+            ->modalWidth('4xl')
+            ->fillFormUsing(fn (Site $record) => ManageEdge::formData($record))
+            ->form(fn (Site $record) => [
+                Tabs::make()->schema([
+                    Tab::make('domains')->label('Domény')->icon('outline:globe-alt')->schema([
+                        Tags::make('aliases')->label('Další domény webu')
+                            ->helperText('Web odpovídá i na nich (stejný obsah). Musí mířit na tento server.')
+                            ->rules([$domainRule]),
+                        Tags::make('redirect_hosts')->label('Domény přesměrované na '.$record->domain)
+                            ->helperText('Např. www.'.$record->domain.' nebo stará doména. Přesměrují trvale (308) i s cestou.')
+                            ->suggestions(str_starts_with($record->domain, 'www.') ? [substr($record->domain, 4)] : ['www.'.$record->domain])
+                            ->rules([$domainRule]),
+                    ]),
+                    Tab::make('redirects')->label('Přesměrování')->icon('outline:arrow-uturn-right')->schema([
+                        Repeater::make('redirects')->label('Pravidla přesměrování')->table()->addButtonLabel('Přidat přesměrování')->schema([
+                            TextInput::make('from')->label('Z cesty')->placeholder('/stara-stranka nebo /blog/*')->required()
+                                ->rules(['regex:~^/[A-Za-z0-9._\~!$&\'()+,;=:@%/-]{0,200}(/\*)?$~'])
+                                ->validationMessages(['regex' => 'Cesta začíná lomítkem; /blog/* přesměruje celou sekci.']),
+                            TextInput::make('to')->label('Na')->placeholder('/nova-stranka nebo https://…')->required()
+                                ->rules(['regex:~^(/[^\s"{}\\\\]{0,300}|https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[^\s"{}\\\\]{0,300})?)$~'])
+                                ->validationMessages(['regex' => 'Cesta na tomto webu nebo adresa https://…']),
+                            Select::make('code')->label('Typ')->options([301 => '301 trvalé', 302 => '302 dočasné', 308 => '308 trvalé (zachová metodu)', 307 => '307 dočasné (zachová metodu)'])
+                                ->default(301)->required()->rules([Options::rule()]),
+                        ]),
+                    ]),
+                    Tab::make('protection')->label('Ochrana')->icon('outline:lock-closed')->schema([
+                        Radio::make('auth_mode')->label('Heslo')->options(['off' => 'Bez hesla', 'site' => 'Celý web', 'path' => 'Jen část webu'])
+                            ->segmented()->default('off')->live()->required()->rules([Options::rule()]),
+                        Grid::make()->columns(['default' => 1, 'md' => 3])->schema([
+                            TextInput::make('auth_path')->label('Cesta')->placeholder('/admin')->visibleWhen('auth_mode', 'path')->requiredIf('auth_mode', 'path')
+                                ->rules(['nullable', 'regex:~^/[A-Za-z0-9._\-/]{0,200}$~']),
+                            TextInput::make('auth_user')->label('Uživatel')->hiddenWhen('auth_mode', 'off')->requiredIf('auth_mode', ['site', 'path'])
+                                ->rules(['nullable', 'regex:/^[A-Za-z0-9._-]{1,32}$/']),
+                            TextInput::make('auth_password')->label('Heslo')->password()->revealable()->hiddenWhen('auth_mode', 'off')
+                                ->rules(['nullable', 'min:8', 'max:128'])
+                                ->helperText(fn () => ($record->edge_settings['auth_user'] ?? null) ? 'Prázdné = ponechat současné.' : null),
+                        ]),
+                        Textarea::make('allow_ips')->label('Povolené IP adresy')->rows(3)->placeholder("203.0.113.7\n10.8.0.0/24")
+                            ->helperText('Prázdné = kdokoli. Ostatní dostanou 403. Jedna adresa nebo síť na řádek.')
+                            ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                                foreach (ManageDatabaseServers::parseAllow((string) $value) as $ip) {
+                                    if (! ManageDatabaseServers::validAddress($ip)) {
+                                        $fail("{$ip} není IP adresa ani síť.");
+                                    }
+                                }
+                            }]),
+                        TextInput::make('allow_path')->label('Platí pro cestu')->placeholder('/ = celý web')->default('/')
+                            ->rules(['nullable', 'regex:~^/[A-Za-z0-9._\-/]{0,200}$~']),
+                    ]),
+                    Tab::make('headers')->label('Hlavičky')->icon('outline:shield-check')->schema([
+                        Toggle::make('hsts')->label('HSTS (prohlížeč pak web otevírá jen přes HTTPS, rok)'),
+                        Toggle::make('security_headers')->label('Bezpečnostní hlavičky (nosniff, SAMEORIGIN, Referrer-Policy, Permissions-Policy)'),
+                        Repeater::make('headers')->label('Vlastní hlavičky')->table()->addButtonLabel('Přidat hlavičku')->schema([
+                            TextInput::make('name')->label('Název')->placeholder('X-Robots-Tag')->required()->rules(['regex:/^[A-Za-z0-9-]{1,64}$/']),
+                            TextInput::make('value')->label('Hodnota')->placeholder('noindex')->required()
+                                ->rules(['regex:/^[ !#-\[\]-z|~]{1,500}$/'])->validationMessages(['regex' => 'Bez uvozovek, zpětných lomítek a složených závorek.']),
+                        ]),
+                    ]),
+                ]),
+            ])
+            ->modalSubmitActionLabel('Uložit')
+            ->action(fn (Site $record, array $data) => self::attempt('Nastavení se nepodařilo uložit', function () use ($record, $data) {
+                app(ManageEdge::class)->set($record, $data);
+                Toast::success('Domény a přístup uloženy', 'Nové domény dostanou certifikát během chvíle.');
+            }));
+    }
+
     public static function more(): array
     {
         return [
             self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::phpSettings(), self::createDatabase(), self::addWorker(),
+            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::delete(),
         ];

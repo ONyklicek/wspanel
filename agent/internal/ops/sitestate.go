@@ -37,6 +37,8 @@ type siteState struct {
 	// PHPSettings: php.ini values set from the panel (see phpDirectives), plus
 	// worker_threads / max_requests for FrankenPHP worker mode.
 	PHPSettings map[string]string `json:"php_settings,omitempty"`
+	// Edge: more domains, redirects, password/IP protection, headers.
+	Edge *edgeSettings `json:"edge,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

@@ -1,6 +1,6 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
 # Edge (TLS) for {{.Domain}} ({{.Mode}}). Holds certificates, never touches site files.
-{{.Domain}} {
+{{.EdgeHosts}} {
 	encode zstd gzip
 {{- if .TLSDirective}}
 	{{.TLSDirective}}
@@ -14,18 +14,59 @@
 	log
 }
 {{- else}}
-{{- if .ReverbPort}}
-
-	# Laravel Reverb (WebSockets): /app = client connections, /apps = server API.
-	@reverb path /app /app/* /apps /apps/*
-	handle @reverb {
-		reverse_proxy 127.0.0.1:{{.ReverbPort}}
+{{- if .Edge.HSTS}}
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+{{- end}}
+{{- if .Edge.Security}}
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 {{- end}}
+{{- range .Edge.Headers}}
+	header {{.Name}} "{{.Value}}"
+{{- end}}
 
-	handle {
+	# In written order (a route block): who may come in, then redirects, then the app.
+	route {
+{{- if .Edge.AllowIPs}}
+		@wsp_not_allowed {
+			path {{.AllowMatcher}}
+			not remote_ip{{range .Edge.AllowIPs}} {{.}}{{end}}
+		}
+		respond @wsp_not_allowed "Přístup odepřen" 403
+{{- end}}
+{{- if .Edge.AuthPath}}
+		@wsp_auth path {{.AuthMatcher}}
+		basic_auth @wsp_auth {
+			{{.Edge.AuthUser}} {{.Edge.AuthHash}}
+		}
+{{- end}}
+{{- range .Edge.Redirects}}
+		redir {{.From}} {{.To}} {{.Code}}
+{{- end}}
+{{- if .ReverbPort}}
+
+		# Laravel Reverb (WebSockets): /app = client connections, /apps = server API.
+		@reverb path /app /app/* /apps /apps/*
+		handle @reverb {
+			reverse_proxy 127.0.0.1:{{.ReverbPort}}
+		}
+{{- end}}
 		reverse_proxy {{.Upstream}}
 	}
 	log
 }
+{{- range .Edge.RedirectHosts}}
+
+# Redirects to the main domain.
+{{.}} {
+{{- if $.TLSInternal}}
+	tls internal
+{{- end}}
+	redir https://{{$.Domain}}{uri} 308
+}
+{{- end}}
 {{- end}}

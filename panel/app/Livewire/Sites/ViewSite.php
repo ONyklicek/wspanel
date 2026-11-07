@@ -86,6 +86,14 @@ class ViewSite extends ViewPage
                     'custom' => 'vlastní certifikát',
                     default => "Let's Encrypt",
                 }),
+                TextEntry::make('edge_domains')->label('Další domény')
+                    ->state(fn () => implode(', ', array_merge($site->edge_settings['aliases'] ?? [], array_map(fn ($d) => $d.' → '.$site->domain, $site->edge_settings['redirect_hosts'] ?? []))) ?: 'žádné (Další → Domény a přístup)'),
+                TextEntry::make('edge_protection')->label('Ochrana')
+                    ->state(fn () => collect([
+                        ($site->edge_settings['auth_path'] ?? '') !== '' ? 'heslo na '.$site->edge_settings['auth_path'] : null,
+                        ($site->edge_settings['allow_ips'] ?? []) !== [] ? 'jen z '.count($site->edge_settings['allow_ips']).' IP na '.($site->edge_settings['allow_path'] ?? '/') : null,
+                        ($site->edge_settings['hsts'] ?? false) ? 'HSTS' : null,
+                    ])->filter()->join(' · ') ?: 'veřejný web'),
                 TextEntry::make('php_settings')->label('PHP nastavení')
                     ->state(fn () => ManagePhpSettings::summary($site))
                     ->visible($site->mode !== SiteMode::Node),

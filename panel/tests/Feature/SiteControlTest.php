@@ -193,4 +193,45 @@ class SiteControlTest extends TestCase
 
         app(ManagePhpSettings::class)->set($site, ['memory_limit' => '1G', 'worker_threads' => '8']);
     }
+
+    public function test_domains_and_access_are_sent_without_keeping_the_password(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.edge', Mockery::on(fn ($p) => $p['domain'] === 'app.example.com'
+                && $p['aliases'] === ['app.example.net'] && $p['redirect_hosts'] === ['www.app.example.com']
+                && $p['redirects'] === [['from' => '/old', 'to' => '/new', 'code' => 301]]
+                && $p['auth_path'] === '/admin' && $p['auth_user'] === 'boss' && $p['auth_password'] === 'secret-pass'
+                && $p['allow_ips'] === ['203.0.113.7'] && $p['hsts'] === true))
+            ->andReturn(['edge' => ['aliases' => ['app.example.net'], 'redirect_hosts' => ['www.app.example.com'], 'auth_path' => '/admin', 'auth_user' => 'boss', 'hsts' => true]]);
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', [
+            'aliases' => ['app.example.net'], 'redirect_hosts' => ['www.app.example.com'],
+            'redirects' => [['from' => '/old', 'to' => '/new', 'code' => 301]],
+            'auth_mode' => 'path', 'auth_path' => '/admin', 'auth_user' => 'boss', 'auth_password' => 'secret-pass',
+            'allow_ips' => '203.0.113.7', 'allow_path' => '/', 'hsts' => true,
+        ])->assertHasNoErrors()->assertNotified('Domény a přístup uloženy');
+
+        $site->refresh();
+        $this->assertSame(['app.example.net'], $site->edge_settings['aliases']);
+        $this->assertStringNotContainsString('secret-pass', json_encode($site->getAttributes()));
+        $this->assertSame('path', \App\Actions\Sites\ManageEdge::formData($site)['auth_mode']);
+    }
+
+    public function test_domains_and_access_are_checked_in_the_panel(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldNotReceive('call')->with('site.edge', Mockery::any());
+
+        foreach ([
+            ['aliases' => ['not a domain']],
+            ['redirects' => [['from' => 'old', 'to' => '/new', 'code' => 301]]],
+            ['redirects' => [['from' => '/a', 'to' => 'javascript:alert(1)', 'code' => 301]]],
+            ['auth_mode' => 'site', 'auth_user' => 'bad user', 'auth_password' => 'secret-pass'],
+            ['allow_ips' => 'office'],
+            ['headers' => [['name' => 'X-A', 'value' => 'a" b']]],
+        ] as $bad) {
+            $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', $bad)->assertHasErrors();
+        }
+    }
 }

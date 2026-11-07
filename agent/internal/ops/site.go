@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"wspanel/agent/internal/config"
@@ -61,6 +62,13 @@ type siteLayout struct {
 	// errors are shown (off unless the site asked).
 	PHPValues     []phpLine
 	DisplayErrors bool
+
+	// Edge settings, ready for the template.
+	Edge         edgeSettings
+	EdgeHosts    string // the site block's addresses: domain + aliases
+	AuthMatcher  string // basic_auth matcher ("*" = whole site)
+	AllowMatcher string // path the IP allowlist guards
+	TLSInternal  bool   // redirect-only hosts get the local CA too
 
 	EdgeFile string // TLS edge site block
 	Upstream string // where the edge forwards to
@@ -146,6 +154,16 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 	if n, err := strconv.Atoi(st.PHPSettings["max_requests"]); err == nil && st.PHPSettings["max_requests"] != "" {
 		l.WorkerMaxReq = n
 	}
+	l.EdgeHosts = st.Domain
+	if st.Edge != nil {
+		l.Edge = *st.Edge
+		if len(st.Edge.Aliases) > 0 {
+			l.EdgeHosts += ", " + strings.Join(st.Edge.Aliases, ", ")
+		}
+		l.AuthMatcher = edgePathMatcher(st.Edge.AuthPath)
+		l.AllowMatcher = edgePathMatcher(st.Edge.AllowPath)
+	}
+	l.TLSInternal = st.TLS == "internal"
 	return l, nil
 }
 

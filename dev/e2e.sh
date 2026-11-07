@@ -419,8 +419,9 @@ expect "sites still connect locally without TLS" "$(mariadb -h 127.0.0.1 -u shop
 contains "firewall opens 3306 for the allowlist only" "$(ufw status | grep '# wspanel-db-mariadb')" "$me"
 contains "fail2ban guards both engines" "$(fail2ban-client status 2>&1)" "sshd, wspanel-mariadb, wspanel-postgres"
 mariadb -h "$me" -u root -pwrong --ssl --ssl-verify-server-cert=0 -e 'select 1' >/dev/null 2>&1
-sleep 3
-contains "a failed MariaDB login is seen by fail2ban" "$(fail2ban-client status wspanel-mariadb 2>&1)" "Total failed:	1"
+# The jail ignores the server's own addresses (ignoreself), and this attempt comes
+# from one, so check that the jail's filter catches the failed login in the journal.
+contains "a failed MariaDB login is caught by the jail's filter" "$(fail2ban-regex --journalmatch '_SYSTEMD_UNIT=mariadb.service' 'systemd-journal[journalflags=1]' /etc/fail2ban/filter.d/wspanel-mariadb.conf 2>&1 | grep -oE ' [1-9][0-9]* matched')" "matched"
 contains "server-wide phpMyAdmin access" "$(php 'echo json_encode(app(App\Services\Agent\AgentClient::class)->call("db.access", ["engine" => "mariadb", "tool" => "phpmyadmin", "scope" => "all"]));')" '"token":"'
 dbs "setAccess('mariadb', 'local')" >/dev/null
 dbs "setAccess('postgresql', 'local')" >/dev/null
@@ -448,6 +449,28 @@ expect "an extension installs" "$(php 'var_export(app(App\Actions\Server\ManageP
 contains "and is loaded by PHP-FPM 8.4" "$(php8.4 -m 2>/dev/null)" "igbinary"
 php 'app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "remove");' >/dev/null
 expect "and is removed again" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-igbinary 2>/dev/null)" "config-files"
+
+# ----------------------------------------------------------------------------
+section "Domains and access at the edge"
+php '$s = App\Models\Site::where("domain","other.localhost")->sole(); app(App\Actions\Sites\ManageEdge::class)->set($s, [
+  "aliases" => ["other2.localhost"], "redirect_hosts" => ["www.other.localhost"], "redirects" => [["from" => "/old", "to" => "/new", "code" => 301]],
+  "auth_mode" => "path", "auth_path" => "/admin", "auth_user" => "boss", "auth_password" => "s3cret-pass",
+  "allow_ips" => "127.0.0.1", "allow_path" => "/private", "hsts" => true, "security_headers" => true,
+  "headers" => [["name" => "X-Robots-Tag", "value" => "noindex"]]]);' >/dev/null
+sleep 2
+ec() { curl -sk -o /dev/null -w '%{http_code}' --resolve "$1:443:${3:-127.0.0.1}" "https://$1$2" "${@:4}"; }
+expect "an alias serves the site" "$(ec other2.localhost /)" "200"
+expect "a redirect host keeps path and query" "$(curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' --resolve www.other.localhost:443:127.0.0.1 'https://www.other.localhost/x?y=1')" "308 https://other.localhost/x?y=1"
+expect "a path redirect" "$(curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' --resolve other.localhost:443:127.0.0.1 https://other.localhost/old)" "301 https://other.localhost/new"
+expect "the protected path asks for a password" "$(ec other.localhost /admin/)" "401"
+expect "and opens with it" "$(ec other.localhost /admin/ 127.0.0.1 -u boss:s3cret-pass)" "200"
+expect "the IP-limited path refuses others" "$(ec other.localhost /private/x "$me")" "403"
+expect "the rest stays public" "$(ec other.localhost / "$me")" "200"
+contains "HSTS and own headers are sent" "$(curl -skI --resolve other.localhost:443:127.0.0.1 https://other.localhost/)" "x-robots-tag: noindex"
+check "the password is not kept by the panel" bash -c "! grep -rq s3cret-pass /srv/panel/shared/database 2>/dev/null"
+php '$s = App\Models\Site::where("domain","other.localhost")->sole(); app(App\Actions\Sites\ManageEdge::class)->set($s, []);' >/dev/null
+sleep 1
+expect "clearing the settings opens the site again" "$(ec other.localhost /admin/)" "200"
 
 # ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"

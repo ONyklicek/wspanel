@@ -50,6 +50,28 @@ Soukromý klíč vlastního certifikátu je jen na serveru (čitelný pro proxy)
 auditu se nezapisuje. Vlastní certifikát hlídá panel na stránce SSL; obnovit ho
 musíte sami (nahrát nový).
 
+## Domény a přístup
+
+Detail webu → **Další → Domény a přístup**. Vše zpracuje proxy ještě před
+aplikací, takže to funguje pro každý typ webu.
+
+- **Další domény webu:** web odpovídá i na nich (stejný obsah), každá dostane
+  vlastní certifikát. Musí mířit na server.
+- **Přesměrované domény:** např. `www.example.com` nebo stará doména. Odpovídají
+  trvalým přesměrováním (308) na hlavní doménu i s cestou a parametry.
+- **Přesměrování cest:** `/stara-stranka` → `/nova-stranka` nebo na jinou adresu,
+  `/blog/*` přesměruje celou sekci. Typ 301/302/307/308.
+- **Heslo:** na celý web, nebo jen část (`/admin`). Panel si heslo nepamatuje;
+  na serveru je jen jeho bcrypt hash. Při další úpravě nechte pole prázdné a
+  heslo zůstane.
+- **Povolené IP adresy:** jen tyto adresy či sítě otevřou web (nebo zvolenou
+  cestu, např. `/wp-admin`), ostatní dostanou 403.
+- **Hlavičky:** HSTS, sada bezpečnostních hlaviček a vlastní hlavičky
+  (např. `X-Robots-Tag: noindex` pro staging).
+
+Konfiguraci před použitím ověří Caddy; neplatná se nepoužije a zůstane
+předchozí stav.
+
 ## PHP nastavení webu
 
 Detail webu → **Další → PHP nastavení**. Prázdné pole = výchozí hodnota PHP.
