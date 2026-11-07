@@ -62,6 +62,7 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(Service::query()->with('site'))
             ->columns([
                 TextColumn::make('name')->label('Služba')->weight('medium')

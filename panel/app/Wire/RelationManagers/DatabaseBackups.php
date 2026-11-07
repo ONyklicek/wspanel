@@ -24,6 +24,7 @@ class DatabaseBackups extends RelationManager
         // Set here as well: WireStack 2.9 scopes the query once per request and
         // loses it when an action rebuilds the table (invalidateTable()).
         return $table
+            ->stackedOnMobile()
             ->query($this->getRelationship()->getQuery())
             ->columns([
                 TextColumn::make('taken_at')->label('Pořízeno')->dateTime('j. n. Y H:i')->sortable()

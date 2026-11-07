@@ -69,6 +69,7 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(DnsZone::query()->with('site'))
             ->columns([
                 TextColumn::make('domain')->label('Doména')->searchable()->sortable()->weight('medium'),

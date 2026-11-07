@@ -24,11 +24,11 @@ return [
     'brand' => [
         'name' => env('WIRE_ADMIN_BRAND'),
 
-        'logo' => env('WIRE_ADMIN_LOGO'),
+        'logo' => env('WIRE_ADMIN_LOGO', 'brand/logo-light.svg'),
 
-        'logo_dark' => env('WIRE_ADMIN_LOGO_DARK'),
+        'logo_dark' => env('WIRE_ADMIN_LOGO_DARK', 'brand/logo-dark.svg'),
 
-        'mark' => env('WIRE_ADMIN_MARK'),
+        'mark' => env('WIRE_ADMIN_MARK', 'brand/mark.svg'),
 
         /*
          * In pixels rather than as a Tailwind class: a class named here would

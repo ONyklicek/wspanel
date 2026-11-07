@@ -88,6 +88,7 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(CronJob::query()->with('site'))
             ->columns([
                 TextColumn::make('site_domain')->label('Web')->state(fn (CronJob $record) => $record->site?->domain),

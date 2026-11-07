@@ -346,6 +346,60 @@ contains "node -> classic: serves PHP 8.4 again" "$(https other.localhost /)" "P
 check "no app unit left after returning to classic" test ! -f /etc/systemd/system/wspanel-web_other_localhost-app.service
 
 # ----------------------------------------------------------------------------
+section "Deploy by polling the repository (no webhook)"
+wait_body() { # wait_body HOST PATH NEEDLE -> last body
+	local b=""
+	for _ in $(seq 1 90); do
+		b=$(https "$1" "$2"); [[ "$b" == *"$3"* ]] && break
+		sleep 2
+	done
+	echo "$b"
+}
+poll() { php "$(site app.localhost) echo app(App\\Actions\\Sites\\DeployPoller::class)->poll(\$s) ?? 'none';" | tr -d '[:space:]'; }
+php "$(site app.localhost) \$s->update(['deploy_trigger' => 'poll_branch', 'deploy_polled_ref' => null]);" >/dev/null
+echo v5 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v5 && gitc push -q /home/git/app.git main
+expect "new commit on the branch is picked up" "$(poll)" "deployed"
+contains "v5 is live" "$(wait_body app.localhost / 'deploy-test-app v5')" "deploy-test-app v5"
+sleep 3
+expect "unchanged branch deploys nothing" "$(poll)" "none"
+php "$(site app.localhost) \$s->update(['deploy_trigger' => 'poll_tags', 'deploy_polled_ref' => null]);" >/dev/null
+echo v6 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v6 && gitc tag -f v10.0.0 && gitc tag -f v9.0.0 HEAD~1 && gitc push -qf /home/git/app.git main v10.0.0 v9.0.0
+for _ in $(seq 1 60); do [[ "$(php "$(site app.localhost) echo app(App\\Services\\Agent\\AgentClient::class)->call('deploy.history', ['domain' => \$s->domain])['running'] ? 1 : 0;" | tr -d '[:space:]')" == 0 ]] && break; sleep 2; done
+expect "newest tag by version is deployed" "$(poll)" "deployed"
+contains "tag v10.0.0 is live" "$(wait_body app.localhost / 'deploy-test-app v6')" "deploy-test-app v6"
+contains "deploy took the tag" "$(php "$(site app.localhost) echo json_encode(app(App\\Services\\Agent\\AgentClient::class)->call('deploy.history', ['domain' => \$s->domain])['deploys'][0]);")" '"ref":"v10.0.0"'
+php "$(site app.localhost) \$s->update(['deploy_trigger' => 'branch']);" >/dev/null
+
+# ----------------------------------------------------------------------------
+section "HTTPS for internal domains, custom certificates, private panel"
+php 'if (! App\Models\Site::where("domain","intra.lan")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "intra.lan", "mode" => "classic", "framework" => "php", "php_version" => "8.4"]);' >/dev/null
+expect "internal domain gets the local CA" "$(php 'echo App\Models\Site::where("domain","intra.lan")->value("tls_mode");' | tr -d '[:space:]')" "internal"
+php 'file_put_contents("/tmp/e2e/root.pem", app(App\Actions\Sites\ManageTls::class)->rootCa()["pem"]);' >/dev/null
+check "intra.lan verifies against the downloadable root certificate" curl -sf --max-time 15 --cacert "$W/root.pem" --resolve intra.lan:443:127.0.0.1 https://intra.lan/
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=intra.lan/O=E2E Firma CA" -addext "subjectAltName=DNS:intra.lan" -keyout "$W/custom.key" -out "$W/custom.crt" 2>/dev/null
+chmod 644 "$W/custom.key" "$W/custom.crt"
+php '$s = App\Models\Site::where("domain","intra.lan")->sole(); app(App\Actions\Sites\ManageTls::class)->set($s, "custom", file_get_contents("/tmp/e2e/custom.crt"), file_get_contents("/tmp/e2e/custom.key"));' >/dev/null
+sleep 2
+contains "custom certificate is served" "$(echo | openssl s_client -connect 127.0.0.1:443 -servername intra.lan 2>/dev/null | openssl x509 -noout -subject 2>/dev/null)" "E2E Firma CA"
+contains "mismatched key is refused" "$(php '$s = App\Models\Site::where("domain","intra.lan")->sole(); try { app(App\Actions\Sites\ManageTls::class)->set($s, "custom", file_get_contents("/tmp/e2e/custom.crt"), file_get_contents("/tmp/e2e/root.pem")); echo "ACCEPTED"; } catch (Throwable $e) { echo "REFUSED"; }')" "REFUSED"
+check "custom key is not in the audit log" bash -c '! grep -q "BEGIN PRIVATE KEY" /var/log/panel-agent/audit.log'
+php '$s = App\Models\Site::where("domain","intra.lan")->sole(); app(App\Actions\Sites\ManageTls::class)->set($s, "internal");' >/dev/null
+
+me=$(hostname -I | awk '{print $1}') # a non-loopback address of this host = an outsider
+outside() { curl -sk --max-time 15 -o /dev/null -w '%{http_code}' --resolve "panel.localhost:443:$me" "https://panel.localhost$1"; }
+contains "refuses a list without the admin's address" "$(php 'try { app(App\Actions\ManagePanelAccess::class)->set(["10.99.0.0/24"], true, "203.0.113.5"); echo "SAVED"; } catch (InvalidArgumentException $e) { echo "REFUSED"; }')" "REFUSED"
+php 'app(App\Actions\ManagePanelAccess::class)->set(["10.99.0.0/24"], true, null);' >/dev/null
+sleep 2
+expect "outsider gets 404 for the panel" "$(outside /login)" "404"
+expect "outsider gets 404 for Mailpit" "$(outside /mailpit/)" "404"
+contains "webhooks stay reachable for outsiders (answered by the panel)" "$(curl -sk --max-time 15 --resolve "panel.localhost:443:$me" -X POST https://panel.localhost/hooks/deploy/00000000000000000000000000000000)" '"error":"not found"'
+expect "loopback still reaches the panel" "$(code panel.localhost /login)" "200"
+contains "sites are not affected" "$(curl -sk --max-time 15 --resolve "app.localhost:443:$me" https://app.localhost/)" "deploy-test-app"
+php 'app(App\Actions\ManagePanelAccess::class)->set([], true, null);' >/dev/null
+sleep 2
+expect "panel is public again" "$(outside /login)" "200"
+
+# ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"
 php "$(site app.localhost) app(App\\Actions\\ManageCronJobs::class)->create(\$s, ['kind' => 'artisan', 'command' => 'optimize', 'schedule' => '* * * * *']);" >/dev/null
 check "task timer active" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer

@@ -52,6 +52,7 @@ class AuditTable extends Component
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->dataSource(new RowsDataSource($this->rows()))
             ->columns([
                 TextColumn::make('time')->label('Čas')->description(fn ($r) => $r->ago),

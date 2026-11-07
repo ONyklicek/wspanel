@@ -85,6 +85,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(Database::query()->with('site')->withCount('backups'))
             ->columns([
                 TextColumn::make('name')->label('Název')->searchable()->sortable()->fontFamily('mono')->weight('medium'),

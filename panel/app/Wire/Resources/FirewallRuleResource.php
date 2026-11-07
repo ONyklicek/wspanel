@@ -56,6 +56,7 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(FirewallRule::query())
             ->columns([
                 TextColumn::make('to')->label('Port')->fontFamily('mono')->weight('medium'),

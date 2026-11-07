@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 32" role="img" aria-label="WSPanel">
+  <rect width="32" height="32" rx="8" fill="#0e7490"/>
+  <rect x="7" y="8" width="18" height="5" rx="1.5" fill="#fff"/>
+  <rect x="7" y="15" width="18" height="5" rx="1.5" fill="#fff" fill-opacity=".75"/>
+  <rect x="7" y="22" width="11" height="3" rx="1.5" fill="#fff" fill-opacity=".5"/>
+  <circle cx="10" cy="10.5" r="1.1" fill="#0e7490"/>
+  <circle cx="10" cy="17.5" r="1.1" fill="#0e7490"/>
+  <text x="41" y="22" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="17" font-weight="650" fill="#0f172a">WS<tspan fill="#0891b2">Panel</tspan></text>
+</svg>

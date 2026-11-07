@@ -5,10 +5,9 @@
      the package's; what goes in the slots is yours. --}}
 <x-wire-admin::layout :title="$title ?? config('app.name')">
     <x-slot:head>
+        <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </x-slot:head>
-
-    <x-slot:brand>{{ config('app.name') }}</x-slot:brand>
 
     {{-- <x-slot:user><x-app-user-menu /></x-slot:user> --}}
 

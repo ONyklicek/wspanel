@@ -65,6 +65,7 @@ class ZoneRecords extends Component
         $domain = $this->getZone()->domain;
 
         return $table
+            ->stackedOnMobile()
             ->dataSource(new RowsDataSource($this->rows()))
             ->columns([
                 TextColumn::make('short')->label('Název')->fontFamily('mono')->searchable()->sortable(),

@@ -68,6 +68,7 @@ class SiteProcesses extends Component
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->dataSource(new RowsDataSource($this->rows()))
             ->columns([
                 TextColumn::make('label')->label('Proces')->weight('medium')->description(fn ($record) => $record->unit),

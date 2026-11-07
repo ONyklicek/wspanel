@@ -84,6 +84,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(Site::query()->with('services'))
             ->columns([
                 TextColumn::make('domain')

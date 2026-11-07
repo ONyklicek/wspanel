@@ -55,6 +55,7 @@ final class CertificateResource implements DescribesResource, ProvidesNavigation
     public function table(Table $table): Table
     {
         return $table
+            ->stackedOnMobile()
             ->query(Certificate::query())
             ->columns([
                 TextColumn::make('domain')->label('Doména')->searchable()->sortable()->weight('medium'),
