@@ -39,6 +39,14 @@ https() { # https HOST PATH -> body
 	curl -sk --max-time 15 --resolve "$1:443:127.0.0.1" "https://$1$2"
 }
 code() { curl -sk --max-time 15 -o /dev/null -w '%{http_code}' --resolve "$1:443:127.0.0.1" "https://$1$2"; }
+wait_body() { # wait_body HOST PATH NEEDLE -> last body (retries ~3 min)
+	local b=""
+	for _ in $(seq 1 90); do
+		b=$(https "$1" "$2"); [[ "$b" == *"$3"* ]] && break
+		sleep 2
+	done
+	echo "$b"
+}
 wait_deploy() { # wait_deploy DOMAIN RELEASE -> final status
 	local st=running
 	for _ in $(seq 1 90); do
@@ -342,19 +350,11 @@ contains "classic PHP 8.4 -> 8.3" "$(https other.localhost /)" "PHP 8.3"
 php "$(site other.localhost) app(App\\Actions\\Sites\\ChangeRuntime::class)->switchMode(\$s, ['mode' => 'node', 'framework' => 'node', 'node_version' => '22']);" >/dev/null
 check "classic -> node: FPM pool removed" test ! -f /etc/php/8.3/fpm/pool.d/web_other_localhost.conf
 php "$(site other.localhost) app(App\\Actions\\Sites\\ChangeRuntime::class)->switchMode(\$s, ['mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4']);" >/dev/null
-contains "node -> classic: serves PHP 8.4 again" "$(https other.localhost /)" "PHP 8.4"
+contains "node -> classic: serves PHP 8.4 again" "$(wait_body other.localhost / "PHP 8.4")" "PHP 8.4"
 check "no app unit left after returning to classic" test ! -f /etc/systemd/system/wspanel-web_other_localhost-app.service
 
 # ----------------------------------------------------------------------------
 section "Deploy by polling the repository (no webhook)"
-wait_body() { # wait_body HOST PATH NEEDLE -> last body
-	local b=""
-	for _ in $(seq 1 90); do
-		b=$(https "$1" "$2"); [[ "$b" == *"$3"* ]] && break
-		sleep 2
-	done
-	echo "$b"
-}
 poll() { php "$(site app.localhost) echo app(App\\Actions\\Sites\\DeployPoller::class)->poll(\$s) ?? 'none';" | tr -d '[:space:]'; }
 php "$(site app.localhost) \$s->update(['deploy_trigger' => 'poll_branch', 'deploy_polled_ref' => null]);" >/dev/null
 echo v5 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v5 && gitc push -q /home/git/app.git main
