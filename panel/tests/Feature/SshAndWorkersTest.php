@@ -97,12 +97,25 @@ class SshAndWorkersTest extends TestCase
     {
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()
-            ->with('worker.create', ['domain' => 'app.example.com', 'worker' => 'reverb'])
+            ->with('worker.create', ['domain' => 'app.example.com', 'worker' => 'reverb', 'public_port' => Site::publicHttpsPort()])
             ->andReturn(['started' => true, 'port' => 601]);
 
         $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'reverb'])
             ->assertHasNoErrors()
             ->assertNotified();
+    }
+
+    public function test_horizon_switches_the_sites_valkey_on_first(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->once()
+            ->with('valkey.set', ['domain' => 'app.example.com', 'enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => ['queue']])
+            ->andReturn(['port' => 602]);
+        $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'app.example.com', 'worker' => 'horizon'])->andReturn(['started' => true]);
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'horizon'])->assertHasNoErrors();
+
+        $this->assertSame('noeviction', $site->fresh()->valkey['policy']);
     }
 
     public function test_own_password_length_is_checked_on_the_server(): void

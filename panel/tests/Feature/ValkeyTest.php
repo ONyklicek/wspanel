@@ -38,10 +38,10 @@ class ValkeyTest extends TestCase
         $site = $this->site();
         $this->actingAs(User::factory()->create());
         $this->agent->shouldReceive('call')->once()
-            ->with('valkey.set', ['domain' => 'kv.example.com', 'enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true])
+            ->with('valkey.set', ['domain' => 'kv.example.com', 'enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []])
             ->andReturn(['socket' => '/run/wspanel-valkey/web_kv_example_com/valkey.sock']);
 
-        app(ManageValkey::class)->set($site, ['enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true]);
+        app(ManageValkey::class)->set($site, ['enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []]);
 
         $this->assertSame(128, $site->fresh()->valkey['maxmemory_mb']);
     }

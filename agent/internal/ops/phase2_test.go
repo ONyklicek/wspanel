@@ -35,6 +35,12 @@ func TestWorkerLifecycle(t *testing.T) {
 	}
 
 	before := len(dr.Calls())
+	if _, err := call(t, env, workerCreate, map[string]string{"domain": "app.example.com", "worker": "horizon"}); code(err) != "conflict" {
+		t.Fatalf("horizon without Valkey: %v", err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "app.example.com", "enabled": true, "maxmemory_mb": 64}); err != nil {
+		t.Fatal(err)
+	}
 	out, err := call(t, env, workerCreate, map[string]string{"domain": "app.example.com", "worker": "horizon"})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +64,9 @@ func TestWorkerLifecycle(t *testing.T) {
 	}
 	var seq []string
 	for _, c := range dr.Calls()[before:] {
-		seq = append(seq, c.String())
+		if strings.Contains(c.String(), "horizon") || len(seq) > 0 {
+			seq = append(seq, c.String()) // from the worker's own unit on
+		}
 	}
 	if !strings.HasPrefix(seq[0], "systemd-analyze verify ") || seq[1] != "systemctl daemon-reload" || seq[2] != "systemctl enable wspanel-web_app_example_com-horizon.service" {
 		t.Errorf("calls: %v", seq)

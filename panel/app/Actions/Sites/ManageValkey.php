@@ -24,6 +24,20 @@ class ManageValkey
     public function __construct(private readonly AgentClient $agent) {}
 
     /**
+     * What the app may keep in its Valkey, per framework: value => label.
+     *
+     * @return array<string, string>
+     */
+    public static function uses(Site $site): array
+    {
+        return match ($site->framework->value) {
+            'laravel' => ['cache' => 'Cache (CACHE_STORE)', 'session' => 'Session (SESSION_DRIVER)', 'queue' => 'Fronty (QUEUE_CONNECTION)'],
+            'symfony' => ['queue' => 'Messenger (MESSENGER_TRANSPORT_DSN)'],
+            default => [],
+        };
+    }
+
+    /**
      * @param  array{enabled: bool, maxmemory_mb?: int, policy?: string, persist?: bool}  $data
      *
      * @throws AgentException
@@ -40,6 +54,7 @@ class ManageValkey
             'maxmemory_mb' => (int) ($data['maxmemory_mb'] ?? 64),
             'policy' => (string) ($data['policy'] ?? 'allkeys-lru'),
             'persist' => (bool) ($data['persist'] ?? false),
+            'use' => array_values(array_intersect((array) ($data['use'] ?? []), array_keys(self::uses($site)))),
         ];
         app(Limits::class)->assertValkey($site->client, $settings['maxmemory_mb']);
         $out = $this->agent->call('valkey.set', ['domain' => $site->domain, 'enabled' => true] + $settings);

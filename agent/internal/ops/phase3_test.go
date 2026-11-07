@@ -83,6 +83,9 @@ func TestWorkerModeSite(t *testing.T) {
 		}
 	}
 	// Workers of a worker-mode site use FrankenPHP's PHP.
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "w.example.com", "enabled": true, "maxmemory_mb": 64}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "w.example.com", "worker": "horizon"}); err != nil {
 		t.Fatal(err)
 	}

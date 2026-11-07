@@ -36,6 +36,7 @@ use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Foundation\Schema\Tab;
 use NyonCode\WireCore\Foundation\Schema\Tabs;
 use NyonCode\WireCore\Infolists\Components\TextEntry;
+use NyonCode\WireForms\Components\CheckboxList;
 use NyonCode\WireForms\Components\CodeEditor;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Repeater;
@@ -338,9 +339,12 @@ final class SiteActions
             ->action(fn (Site $record, array $data) => self::attempt('Worker se nepodařilo přidat', function () use ($record, $data) {
                 $out = app(ManageWorkers::class)->create($record, $data['worker']);
                 $body = ($out['started'] ?? false) ? 'Běží.' : 'Zaregistrován, spustí se po prvním deployi.';
-                if ($data['worker'] === 'reverb') {
-                    $body .= " Do .env: REVERB_HOST={$record->domain}, REVERB_PORT=443, REVERB_SCHEME=https.";
-                }
+                $body .= match ($data['worker']) {
+                    'reverb' => ' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).',
+                    'horizon' => ' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).',
+                    'pulsework' => ' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).',
+                    default => '',
+                };
                 Toast::success('Worker přidán', $body);
             }));
     }
@@ -610,6 +614,7 @@ final class SiteActions
                 'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,
                 'policy' => $record->valkey['policy'] ?? 'allkeys-lru',
                 'persist' => $record->valkey['persist'] ?? false,
+                'use' => $record->valkey['use'] ?? [],
             ])
             ->form([
                 Toggle::make('enabled')->label('Zapnout Valkey pro tento web')->live(),
@@ -619,6 +624,10 @@ final class SiteActions
                     ->visibleWhen('enabled', true)->requiredIf('enabled', true),
                 Toggle::make('persist')->label('Ukládat data na disk (přežijí restart)')->visibleWhen('enabled', true)
                     ->helperText('Pro fronty a session ano, pro čistou cache není třeba.'),
+                CheckboxList::make('use')->label('Aplikace v něm má')->visibleWhen('enabled', true)
+                    ->options(fn (Site $record) => ManageValkey::uses($record))
+                    ->visible(fn (Site $record) => ManageValkey::uses($record) !== [])
+                    ->helperText('Panel nastaví ovladače v .env; nezaškrtnuté vrátí na výchozí (database). Fronty a session nemají být v paměti, která maže klíče: zvolte „nic nemaže“.'),
             ])
             ->action(fn (Site $record, array $data) => self::attempt('Valkey se nepodařilo nastavit', function () use ($record, $data) {
                 app(ManageValkey::class)->set($record, $data);

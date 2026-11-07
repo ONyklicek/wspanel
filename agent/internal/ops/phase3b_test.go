@@ -54,7 +54,7 @@ func TestReverbAndPulse(t *testing.T) {
 		t.Errorf("reverb unit:\n%s", unit)
 	}
 	edge := read(t, filepath.Join(env.Cfg.ProxySitesDir, "rt.example.com.caddy"))
-	if !strings.Contains(edge, "@reverb path /app /app/* /apps /apps/*") || !strings.Contains(edge, "reverse_proxy 127.0.0.1:"+itoa(port)) {
+	if !strings.Contains(edge, "@reverb path /app /app/*\n") || strings.Contains(edge, "/apps /apps/*") || !strings.Contains(edge, "reverse_proxy 127.0.0.1:"+itoa(port)) {
 		t.Errorf("edge:\n%s", edge)
 	}
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "rt.example.com", "worker": "pulse"}); err != nil {

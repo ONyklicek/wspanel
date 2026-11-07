@@ -109,9 +109,15 @@ class Site extends Model
      */
     public function url(string $path = '/'): string
     {
-        $port = parse_url((string) config('app.url'), PHP_URL_PORT);
+        $port = self::publicHttpsPort();
 
-        return 'https://'.$this->domain.($port && $port !== 443 ? ":{$port}" : '').$path;
+        return 'https://'.$this->domain.($port !== 443 ? ":{$port}" : '').$path;
+    }
+
+    /** The HTTPS port browsers reach the sites on (the panel's, as published). */
+    public static function publicHttpsPort(): int
+    {
+        return (int) (parse_url((string) config('app.url'), PHP_URL_PORT) ?: 443);
     }
 
     /** Operator-facing state: switched off beats everything else. */

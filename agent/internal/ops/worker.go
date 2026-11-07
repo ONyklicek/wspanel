@@ -50,6 +50,8 @@ func workerUnit(user, typ string) string {
 type workerParams struct {
 	Domain string `json:"domain"`
 	Worker string `json:"worker"`
+	// HTTPS port browsers use for the site (Reverb's client settings); 0 = 443.
+	PublicPort int `json:"public_port,omitempty"`
 }
 
 // workerUnitData builds the unit for a worker. The PHP binary follows the
@@ -108,6 +110,19 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 	if fsx.Exists(unitPath) {
 		return nil, protocol.Conflict("worker " + p.Worker + " already exists for " + p.Domain)
 	}
+	if p.PublicPort == 0 {
+		p.PublicPort = 443
+	}
+	if p.PublicPort < 1 || p.PublicPort > 65535 {
+		return nil, protocol.Invalid("public_port: 1-65535")
+	}
+	st0, _, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkValkeyWorker(st0, p.Worker); err != nil {
+		return nil, err
+	}
 	var rollback undo
 	defer func() {
 		if err != nil {
@@ -137,6 +152,14 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 		}
 		rollback.add(func() { _ = saveSiteState(env, prev) })
 		out["port"] = st.ReverbPort
+	}
+	st1, _, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	// The app's settings before the process starts, so it starts configured.
+	if err = workerAppEnv(ctx, env, l, st1, p.Worker, p.PublicPort); err != nil {
+		return nil, err
 	}
 	started, err := installUnit(ctx, env, unitPath, workerUnitData(env, l, p.Worker, spec), spec.Entry, &rollback)
 	if err != nil {

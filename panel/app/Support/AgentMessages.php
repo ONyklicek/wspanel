@@ -51,6 +51,9 @@ final class AgentMessages
         return [
             '/^extension (\S+) is needed by (.+); remove those first$/' => 'Rozšíření $1 potřebuje $2. Odeberte nejdřív je (jinak by je apt odebral také).',
 
+            '/^(horizon|pulsework) needs the site\'s Valkey.*$/' => 'Worker $1 potřebuje Valkey webu.',
+            '/^worker (\S+) keeps its data in Valkey; remove it first$/' => 'Worker $1 má data ve Valkey: nejdřív ho odeberte, pak Valkey vypněte.',
+
             // Site web-server rules (site.directives)
             '/^directives: the web server refused them$/' => 'Webserver pravidla odmítl, platí dál předchozí.',
             '/^directives: the web server could not read them$/' => 'Webserver pravidlům nerozumí, platí dál předchozí.',

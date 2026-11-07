@@ -48,6 +48,9 @@ type siteState struct {
 	FPMChildren int `json:"fpm_children,omitempty"`
 	// Directives: custom Caddyfile rules in the site's edge route (checked by checkDirectives).
 	Directives string `json:"directives,omitempty"`
+	// ValkeyPort: the site's Valkey port, kept after Valkey is switched off
+	// (its .env may still name it), so it is never given to another site.
+	ValkeyPort int `json:"valkey_port,omitempty"`
 	// Valkey: the site's own Valkey server, nil = none.
 	Valkey *valkeyConfig `json:"valkey,omitempty"`
 }

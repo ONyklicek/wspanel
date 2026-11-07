@@ -727,8 +727,8 @@ if [[ -d /srv/sites/laravel.localhost/current/vendor/laravel ]]; then # demo app
 	contains "a real Laravel app uses it through phpredis (.env as written)" "$(cd /srv/sites/laravel.localhost/current && runuser -u web_laravel_localhost -- php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); Illuminate\Support\Facades\Redis::set("lv", "ok"); echo Illuminate\Support\Facades\Redis::get("lv");' 2>&1)" "ok"
 	php "$(site laravel.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]);" >/dev/null
 fi
-php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]);" >/dev/null
-check "disabled: unit gone" test ! -f /etc/systemd/system/wspanel-web_shop_localhost-valkey.service
+contains "Valkey stays while Horizon keeps its data there" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]); echo 'OFF'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "horizon má data ve Valkey"
+check "and keeps running" systemctl is-active --quiet wspanel-web_shop_localhost-valkey.service
 
 # ----------------------------------------------------------------------------
 section "Web server rules"
@@ -742,6 +742,30 @@ contains "an import hidden in a block is refused" "$(php "$(site shop.localhost)
 contains "previous rules still active" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/)" "x-rule: e2e"
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, '');" >/dev/null
 check "rules removed" bash -c "! curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/ | grep -qi x-rule"
+
+# ----------------------------------------------------------------------------
+section "Laravel set up by the panel (Reverb, Horizon)"
+LV=/srv/sites/laravel.localhost
+if [[ -d $LV/current/vendor/laravel/reverb && -d $LV/current/vendor/laravel/horizon ]]; then # demo app with both installed
+	php "$(site laravel.localhost) \$w = app(App\\Actions\\Sites\\ManageWorkers::class); foreach (['horizon','reverb'] as \$x) { try { \$w->delete(\$s, \$x); } catch (Throwable) {} } app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]); \$w->create(\$s, 'reverb'); \$w->create(\$s, 'horizon');" >/dev/null
+	sleep 3
+	lenv=$(cat $LV/shared/.env)
+	contains "Reverb: app publishes on the server" "$lenv" 'REVERB_HOST="127.0.0.1"'
+	contains "Reverb: browsers through the site's HTTPS" "$lenv" 'VITE_REVERB_HOST="laravel.localhost"'
+	contains "Horizon: queue in the site's Valkey" "$lenv" 'QUEUE_CONNECTION="redis"'
+	rkey=$(grep -oP '^REVERB_APP_KEY="\K[^"]+' $LV/shared/.env)
+	contains "WebSocket upgrade through the edge" "$(curl -sk --http1.1 -i -N --max-time 3 --resolve laravel.localhost:443:127.0.0.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==' "https://laravel.localhost/app/$rkey?protocol=7&client=js&version=8.4.0" 2>&1 | head -1)" "101"
+	expect "Reverb's HTTP API is not public" "$(code laravel.localhost /apps/1/events)" "404"
+	LU="runuser -u web_laravel_localhost -- env HOME=$LV/tmp"
+	contains "the app publishes an event" "$(cd $LV/current && $LU php artisan tinker --execute 'Illuminate\Support\Facades\Broadcast::connection("reverb")->broadcast(["news"], "Hello", ["a" => 1]); echo "published";' 2>&1)" "published"
+	if [[ -f $LV/current/app/Jobs/WspE2e.php ]]; then
+		(cd $LV/current && $LU php artisan tinker --execute 'App\Jobs\WspE2e::dispatch();' >/dev/null 2>&1)
+		sleep 5
+		contains "Horizon runs a job through Valkey" "$(cd $LV/current && $LU php artisan tinker --execute 'echo Cache::get("wsp-e2e");' 2>&1)" "done via redis"
+	fi
+else
+	printf '  (skipped: laravel.localhost without laravel/reverb and laravel/horizon)\n'
+fi
 
 # ----------------------------------------------------------------------------
 section "Delete cleans up"

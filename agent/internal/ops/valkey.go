@@ -22,16 +22,19 @@ import (
 // user, on its own privileged port on 127.0.0.1 (what Laravel, Symfony and
 // Node clients expect) and on a unix socket in a runtime dir only that user
 // can enter. Every connection needs the site's password: the port is
-// reachable by any local process. The password is copied (as root, right
-// before start) from a root-only file into the site's 0700 runtime dir, so
-// no other site, not even one of the same client, can read it; never argv.
-// FLUSHALL in one site never touches another.
+// reachable by any local process. The password is in a file of its own that
+// only the site user can read (owner, 0400) in a root-owned directory the
+// user cannot rename into or link in; no other site, not even one of the
+// same client, can read it; never argv. FLUSHALL in one site never touches
+// another. Its port stays the site's after Valkey is switched off, so an old
+// .env can never point at another site's server.
 
 type valkeyConfig struct {
-	Port        int    `json:"port"`
-	MaxMemoryMB int    `json:"maxmemory_mb"`
-	Policy      string `json:"policy"`  // maxmemory-policy
-	Persist     bool   `json:"persist"` // RDB snapshots in <home>/valkey
+	Port        int      `json:"port"`
+	MaxMemoryMB int      `json:"maxmemory_mb"`
+	Policy      string   `json:"policy"`        // maxmemory-policy
+	Persist     bool     `json:"persist"`       // RDB snapshots in <home>/valkey
+	Use         []string `json:"use,omitempty"` // what the app keeps in it: cache, session, queue
 }
 
 var valkeyPolicies = []string{"allkeys-lru", "allkeys-lfu", "volatile-lru", "noeviction"}
@@ -54,14 +57,14 @@ func valkeyPaths(env *Env, l siteLayout) valkeyLayout {
 		RunDir:   run,
 		Socket:   filepath.Join(run, "valkey.sock"),
 		DataDir:  filepath.Join(l.Home, "valkey"),
-		// root-only source; copied into the runtime dir on each start
-		AuthFile:    filepath.Join(env.Cfg.StateDir, "valkey", l.User+".auth"),
-		AuthInclude: filepath.Join(run, "auth.conf"),
+		// readable by the site user only, in a root-owned 0711 directory
+		AuthFile:    filepath.Join(env.Cfg.SiteConfigDir, "valkey-auth", l.User+".conf"),
+		AuthInclude: filepath.Join(env.Cfg.SiteConfigDir, "valkey-auth", l.User+".conf"),
 	}
 }
 
 // valkeyPassword is the site's password: kept, or made on first use.
-func valkeyPassword(env *Env, v valkeyLayout) (string, error) {
+func valkeyPassword(env *Env, v valkeyLayout, user string) (string, error) {
 	if b, err := os.ReadFile(v.AuthFile); err == nil {
 		if pw, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "requirepass "); ok && pw != "" {
 			return pw, nil
@@ -72,10 +75,14 @@ func valkeyPassword(env *Env, v valkeyLayout) (string, error) {
 		return "", err
 	}
 	pw := hex.EncodeToString(buf)
-	if err := env.FS.MkdirAll(filepath.Dir(v.AuthFile), 0o700, fsx.Root); err != nil {
+	if err := env.FS.MkdirAll(filepath.Dir(v.AuthFile), 0o711, fsx.Root); err != nil {
 		return "", err
 	}
-	return pw, env.FS.WriteFile(v.AuthFile, []byte("requirepass "+pw+"\n"), 0o600, fsx.Root)
+	owner, err := lookupOwner(env, user)
+	if err != nil {
+		return "", err
+	}
+	return pw, env.FS.WriteFile(v.AuthFile, []byte("requirepass "+pw+"\n"), 0o400, owner)
 }
 
 // valkeyEnv: how the framework finds its server (Laravel's phpredis / Predis,
@@ -98,11 +105,12 @@ func valkeyEnv(framework string, port int, password string) ([]string, map[strin
 // valkeySet turns the site's Valkey on (or reconfigures it) or off.
 func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
 	var p struct {
-		Domain      string `json:"domain"`
-		Enabled     bool   `json:"enabled"`
-		MaxMemoryMB int    `json:"maxmemory_mb"`
-		Policy      string `json:"policy"`
-		Persist     bool   `json:"persist"`
+		Domain      string   `json:"domain"`
+		Enabled     bool     `json:"enabled"`
+		MaxMemoryMB int      `json:"maxmemory_mb"`
+		Policy      string   `json:"policy"`
+		Persist     bool     `json:"persist"`
+		Use         []string `json:"use"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -112,7 +120,30 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		return nil, err
 	}
 	v := valkeyPaths(env, l)
+	for _, u := range p.Use {
+		if err := validate.OneOf("use", u, valkeyUses); err != nil {
+			return nil, err
+		}
+	}
 	if !p.Enabled {
+		for _, w := range valkeyWorkers {
+			if fsx.Exists(filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, w))) {
+				return nil, protocol.Conflict("worker " + w + " keeps its data in Valkey; remove it first")
+			}
+		}
+		// The app goes back to its own defaults (no Valkey to talk to).
+		if f := envFilePath(l); f != "" && st.Valkey != nil && len(st.Valkey.Use) > 0 {
+			content, err := readSiteFile(ctx, env, l, f)
+			if err != nil {
+				return nil, err
+			}
+			keys, values := valkeyUseEnv(l.Framework, nil, 0, "")
+			if len(keys) > 0 {
+				if err := writeSiteFile(ctx, env, l, f, mergeEnvSection(content, keys, values, "Valkey (written by WSPanel)")); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if fsx.Exists(v.UnitFile) {
 			if err := removeUnit(ctx, env, v.UnitFile); err != nil {
 				return nil, err
@@ -120,7 +151,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		}
 		_ = os.Remove(v.Config)
 		_ = os.Remove(v.AuthFile)
-		st.Valkey = nil
+		st.Valkey = nil // st.ValkeyPort stays reserved for the site
 		if err := saveSiteState(env, st); err != nil {
 			return nil, err
 		}
@@ -136,12 +167,12 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		return nil, err
 	}
 	v.MaxMemoryMB, v.Policy, v.Persist = p.MaxMemoryMB, p.Policy, p.Persist
-	if st.Valkey != nil && st.Valkey.Port > 0 {
-		v.Port = st.Valkey.Port
+	if st.ValkeyPort > 0 {
+		v.Port = st.ValkeyPort
 	} else if v.Port, err = allocatePort(env); err != nil {
 		return nil, err
 	}
-	password, err := valkeyPassword(env, v)
+	password, err := valkeyPassword(env, v, l.User)
 	if err != nil {
 		return nil, err
 	}
@@ -187,8 +218,6 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		StopTimeout: 30,
 		Extra: append([]string{
 			"RuntimeDirectory=" + strings.TrimPrefix(v.RunDir, "/run/"),
-			// "+": as root, outside the sandbox, after the runtime dir exists.
-			"ExecStartPre=+/usr/bin/install -m 0400 -o " + l.User + " " + v.AuthFile + " " + v.AuthInclude,
 			"RuntimeDirectoryMode=0700",
 			// The data set may grow past maxmemory by fragmentation and buffers; this is the hard stop.
 			fmt.Sprintf("MemoryMax=%dM", p.MaxMemoryMB*3/2+64),
@@ -204,11 +233,17 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 			return nil, err
 		}
 		keys, values := valkeyEnv(l.Framework, v.Port, password)
+		ukeys, uvalues := valkeyUseEnv(l.Framework, p.Use, v.Port, password)
+		keys = append(keys, ukeys...)
+		for k, val := range uvalues {
+			values[k] = val
+		}
 		if err = writeSiteFile(ctx, env, l, f, mergeEnvSection(content, keys, values, "Valkey (written by WSPanel)")); err != nil {
 			return nil, err
 		}
 	}
-	st.Valkey = &valkeyConfig{Port: v.Port, MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist}
+	st.ValkeyPort = v.Port
+	st.Valkey = &valkeyConfig{Port: v.Port, MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist, Use: p.Use}
 	if err = saveSiteState(env, st); err != nil {
 		return nil, err
 	}
@@ -270,7 +305,7 @@ func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	v := valkeyPaths(env, l)
 	out := map[string]any{"domain": p.Domain, "enabled": true, "host": "127.0.0.1", "port": st.Valkey.Port, "socket": v.Socket, "unit": v.Unit,
-		"maxmemory_mb": st.Valkey.MaxMemoryMB, "policy": st.Valkey.Policy, "persist": st.Valkey.Persist}
+		"maxmemory_mb": st.Valkey.MaxMemoryMB, "policy": st.Valkey.Policy, "persist": st.Valkey.Persist, "use": st.Valkey.Use}
 	if states, err := unitStates(ctx, env, []string{v.Unit}); err == nil && len(states) == 1 {
 		out["active"] = states[0].Active
 	}
@@ -333,7 +368,7 @@ func valkeySite(env *Env, raw json.RawMessage) (siteState, siteLayout, error) {
 // socket in its place; as root the panel would then act on the other site.
 // The password goes in on stdin (--askpass), never in argv.
 func valkeyCLI(ctx context.Context, env *Env, l siteLayout, socket string, args ...string) (executor.Result, error) {
-	pw, err := valkeyPassword(env, valkeyPaths(env, l))
+	pw, err := valkeyPassword(env, valkeyPaths(env, l), l.User)
 	if err != nil {
 		return executor.Result{}, err
 	}

@@ -54,8 +54,9 @@
 {{- end}}
 {{- if .ReverbPort}}
 
-		# Laravel Reverb (WebSockets): /app = client connections, /apps = server API.
-		@reverb path /app /app/* /apps /apps/*
+		# Laravel Reverb: browsers' WebSockets (/app). The app publishes to Reverb
+		# on 127.0.0.1 directly, so its HTTP API (/apps) is not exposed.
+		@reverb path /app /app/*
 		handle @reverb {
 			reverse_proxy 127.0.0.1:{{.ReverbPort}}
 		}
