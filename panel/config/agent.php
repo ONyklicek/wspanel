@@ -10,4 +10,7 @@ return [
 
     // Where the agent writes database dumps (readable by the panel group, for downloads).
     'backup_dir' => env('AGENT_BACKUP_DIR', '/var/backups/wspanel'),
+
+    // Where the panel drops build artifacts uploaded by CI for the agent to deploy.
+    'artifact_dir' => env('AGENT_ARTIFACT_DIR', '/var/lib/wspanel-artifacts'),
 ];

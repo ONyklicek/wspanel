@@ -38,7 +38,7 @@ class DeployWebhookController
         if ($event === null) {
             return $this->record($site, $request, 'rejected', 'invalid signature', 403);
         }
-        $info = ['provider' => $event->provider, 'event' => $event->event, 'ref' => $event->branch, 'commit' => $event->commit];
+        $info = ['provider' => $event->provider, 'event' => $event->event, 'ref' => $event->tag ?? $event->branch, 'commit' => $event->commit];
 
         $info['delivery_id'] = $event->deliveryId; // informational only: the header is not signed
 
@@ -63,14 +63,27 @@ class DeployWebhookController
             if ($branch === null) {
                 return $this->record($site, $request, 'ignored', 'deploy is not configured', 202, $info);
             }
-            if ($event->branch !== $branch) {
-                return $this->record($site, $request, 'ignored', "push to {$event->branch}, deploying {$branch}", 202, $info);
+            if ($site->deploy_trigger === 'tags') {
+                // Releases / tags: deploy exactly the tag. Publishing a GitHub
+                // release also pushes its tag, so each tag deploys once.
+                if ($event->tag === null) {
+                    return $this->record($site, $request, 'ignored', 'deploying releases and tags only', 202, $info);
+                }
+                $seen = collect($history['deploys'] ?? [])->contains(fn ($d) => ($d['ref'] ?? null) === $event->tag && in_array($d['status'] ?? '', ['running', 'success'], true));
+                if ($seen || $site->deploy_requested_ref === $event->tag) {
+                    return $this->record($site, $request, 'ignored', "tag {$event->tag} is already deployed", 202, $info);
+                }
+                $result = $trigger->request($site, $history, $event->tag);
+            } else {
+                if ($event->branch !== $branch) {
+                    return $this->record($site, $request, 'ignored', $event->tag ? "tag {$event->tag}, deploying branch {$branch}" : "push to {$event->branch}, deploying {$branch}", 202, $info);
+                }
+                $deployed = collect($history['deploys'] ?? [])->firstWhere('id', $history['current'] ?? null)['commit'] ?? null;
+                if ($event->commit !== null && $deployed !== null && $event->commit === $deployed && ! ($history['running'] ?? false)) {
+                    return $this->record($site, $request, 'ignored', 'commit is already deployed', 202, $info);
+                }
+                $result = $trigger->request($site, $history);
             }
-            $deployed = collect($history['deploys'] ?? [])->firstWhere('id', $history['current'] ?? null)['commit'] ?? null;
-            if ($event->commit !== null && $deployed !== null && $event->commit === $deployed && ! ($history['running'] ?? false)) {
-                return $this->record($site, $request, 'ignored', 'commit is already deployed', 202, $info);
-            }
-            $result = $trigger->request($site, $history);
         } catch (AgentException $e) {
             // The detail stays in the delivery log; the caller only learns that it failed.
             $this->record($site, $request, 'failed', mb_substr($e->getMessage(), 0, 250), 502, $info);

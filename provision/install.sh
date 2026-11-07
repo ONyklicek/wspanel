@@ -217,6 +217,8 @@ id panel &>/dev/null || useradd --system --user-group --no-create-home --home-di
 
 # ---------------------------------------------------------------- directories
 install -d -m 0751 -o root -g root /srv/sites
+# CI build artifacts: the panel writes, the agent reads (and checks the owner).
+install -d -m 0730 -o root -g panel /var/lib/wspanel-artifacts
 install -d -m 0700 -o root -g root /srv/sites/.trash
 install -d -m 0750 -o panel -g panel /srv/panel /srv/panel/releases /srv/panel/shared /srv/panel/tmp
 # The web tier may traverse to the panel's public/ only (ACLs set per release below).

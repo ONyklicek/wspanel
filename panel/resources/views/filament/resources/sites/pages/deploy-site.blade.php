@@ -62,7 +62,7 @@
                                 <span>
                                     <span class="font-mono">{{ $d->release }}</span>
                                     @if ($d->release === $current) <span class="text-xs text-primary-600">· aktivní</span> @endif
-                                    <span class="block text-xs text-gray-500">{{ $d->started_at?->diffForHumans() }} @if ($d->commit) · {{ substr($d->commit, 0, 10) }} @endif</span>
+                                    <span class="block text-xs text-gray-500">{{ $d->started_at?->diffForHumans() }} @if ($d->ref) · {{ $d->ref }} @endif @if ($d->commit) · {{ substr($d->commit, 0, 10) }} @endif @if ($d->source === 'artifact') · build z CI @endif</span>
                                 </span>
                                 <x-filament::badge :color="$d->statusColor()">{{ $d->statusLabel() }}</x-filament::badge>
                             </button>

@@ -222,4 +222,30 @@ class DeployWebhookTest extends TestCase
         $this->assertNotSame($oldSecret, $this->site->webhook_secret);
         $this->hook($this->push(), [], $oldId)->assertNotFound();
     }
+
+    public function test_release_mode_deploys_the_published_tag_once(): void
+    {
+        $this->site->update(['deploy_trigger' => 'tags']);
+        $this->agent->shouldReceive('call')->once()->with('deploy.run', ['domain' => 'app.example.com', 'ref' => 'v1.4.0'])->andReturn(['job' => 'j1']);
+
+        $this->github(['ref' => 'refs/heads/main', 'after' => 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'])
+            ->assertStatus(202)->assertJson(['result' => 'ignored']);
+        $this->github(['action' => 'published', 'release' => ['tag_name' => 'v1.4.0']], 'release')
+            ->assertStatus(202)->assertJson(['result' => 'deployed']);
+
+        // The tag push GitHub sends with the release must not deploy it again.
+        $this->agent->shouldReceive('call')->with('deploy.history', ['domain' => 'app.example.com'])
+            ->andReturn(['deploys' => [['id' => '20261107T120000Z', 'status' => 'running', 'ref' => 'v1.4.0']], 'running' => true, 'current' => 'initial', 'config' => ['branch' => 'main']]);
+        $this->github(['ref' => 'refs/tags/v1.4.0', 'after' => 'b1b2c3d4e5f60718293a4b5c6d7e8f9012345678'])
+            ->assertStatus(202)->assertJson(['result' => 'ignored']);
+    }
+
+    public function test_draft_releases_and_bad_tags_do_not_deploy(): void
+    {
+        $this->site->update(['deploy_trigger' => 'tags']);
+        $this->agent->shouldNotReceive('call')->with('deploy.run', Mockery::any());
+
+        $this->github(['action' => 'created', 'release' => ['tag_name' => 'v2']], 'release')->assertJson(['result' => 'ignored']);
+        $this->github(['action' => 'published', 'release' => ['tag_name' => '--upload-pack=x']], 'release')->assertJson(['result' => 'ignored']);
+    }
 }

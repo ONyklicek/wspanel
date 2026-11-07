@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -171,6 +172,8 @@ type deployRecord struct {
 	Status   string    `json:"status"` // running | success | failed | rolled_back
 	Commit   string    `json:"commit,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	Ref      string    `json:"ref,omitempty"`    // tag, branch or commit deployed (default: the configured branch)
+	Source   string    `json:"source,omitempty"` // git | artifact
 }
 
 func historyPath(env *Env, domain string) string {
@@ -299,10 +302,22 @@ func listReleases(l siteLayout) []string {
 // global lock; activation takes it.
 func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
-		Domain string `json:"domain"`
+		Domain   string `json:"domain"`
+		Ref      string `json:"ref,omitempty"`      // tag / branch / commit; default: configured branch
+		Artifact string `json:"artifact,omitempty"` // pre-built tar.gz uploaded by CI (file name in ArtifactDir)
+		Commit   string `json:"commit,omitempty"`   // artifact: the commit it was built from (informational)
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
+	}
+	if p.Ref != "" && (!branchRe.MatchString(p.Ref) || strings.Contains(p.Ref, "..")) {
+		return nil, protocol.Invalid("ref: tag, branch or commit")
+	}
+	if p.Artifact != "" && !artifactNameRe.MatchString(p.Artifact) {
+		return nil, protocol.Invalid("artifact: file name of an uploaded .tar.gz")
+	}
+	if p.Commit != "" && !commitRe.MatchString(p.Commit) {
+		return nil, protocol.Invalid("commit: hex commit id")
 	}
 	// Load and claim together under the global lock: a mutating operation on
 	// the site (delete, switch) either finished before or sees the claim.
@@ -329,7 +344,10 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	defer endDeploy(p.Domain)
 
 	release := time.Now().UTC().Format("20060102T150405Z")
-	rec := deployRecord{ID: release, Started: time.Now().UTC(), Status: "running"}
+	rec := deployRecord{ID: release, Started: time.Now().UTC(), Status: "running", Ref: p.Ref, Source: "git"}
+	if p.Artifact != "" {
+		rec.Source = "artifact"
+	}
 	saveRecord(env, p.Domain, rec)
 	if err := env.FS.MkdirAll(env.Cfg.DeployLogDir, 0o700, fsx.Root); err != nil {
 		return nil, err
@@ -339,7 +357,10 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 		return nil, err
 	}
 	defer logf.Close()
-	d := &deployment{env: env, l: l, cfg: *st.Deploy, release: release, log: logf}
+	d := &deployment{env: env, l: l, cfg: *st.Deploy, release: release, log: logf, ref: p.Ref, artifact: p.Artifact, commit: p.Commit}
+	if p.Artifact != "" {
+		defer os.Remove(filepath.Join(env.Cfg.ArtifactDir, p.Artifact))
+	}
 
 	result, err := d.run(ctx)
 	rec.Finished = time.Now().UTC()
@@ -370,12 +391,14 @@ func shortCommit(c string) string {
 }
 
 type deployment struct {
-	env     *Env
-	l       siteLayout
-	cfg     deployConfig
-	release string
-	log     io.Writer
-	commit  string
+	env      *Env
+	l        siteLayout
+	cfg      deployConfig
+	release  string
+	log      io.Writer
+	commit   string
+	ref      string // what to fetch instead of the configured branch
+	artifact string // pre-built release from CI: no git, no composer/npm
 }
 
 func (d *deployment) logf(format string, a ...any) { fmt.Fprintf(d.log, format, a...) }
@@ -427,21 +450,30 @@ func (d *deployment) npm() string { return filepath.Join(d.env.Cfg.ToolsDir, d.l
 
 func (d *deployment) run(ctx context.Context) (string, error) {
 	l, dir := d.l, d.dir()
-	d.logf("Deploy of %s (%s, %s mode)\nrepository %s, branch %s\n", l.Domain, l.Framework, l.Mode, d.cfg.Repo, d.cfg.Branch)
-
 	cleanup := func() { _ = asUser(context.WithoutCancel(ctx), d.env, l.User, "/usr/bin/rm", "-rf", "--", dir) }
 
 	// 1. Source.
-	if err := d.step(ctx, "Fetch source", filepath.Join(l.Home, "releases"), nil,
-		"/usr/bin/git", "clone", "--depth=1", "--single-branch", "--branch", d.cfg.Branch, "--", d.cfg.Repo, dir); err != nil {
-		cleanup()
-		return "", err
+	switch {
+	case d.artifact != "":
+		d.logf("Deploy of %s (%s, %s mode)\nbuild artifact from CI%s\n", l.Domain, l.Framework, l.Mode, map[bool]string{true: ", ref " + d.ref, false: ""}[d.ref != ""])
+		if err := d.unpackArtifact(ctx); err != nil {
+			cleanup()
+			return "", err
+		}
+		d.logf("commit %s\n", or(d.commit, "(not given)"))
+	default:
+		ref := or(d.ref, d.cfg.Branch)
+		d.logf("Deploy of %s (%s, %s mode)\nrepository %s, %s %s\n", l.Domain, l.Framework, l.Mode, d.cfg.Repo, map[bool]string{true: "ref", false: "branch"}[d.ref != ""], ref)
+		if err := d.fetch(ctx, ref); err != nil {
+			cleanup()
+			return "", err
+		}
+		var commit strings.Builder
+		_, _ = d.env.Exec.RunIO(ctx, nil, &commit, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+			"/usr/bin/git", "-c", "safe.directory="+dir, "-C", dir, "rev-parse", "HEAD")
+		d.commit = strings.TrimSpace(commit.String())
+		d.logf("commit %s\n", d.commit)
 	}
-	var commit strings.Builder
-	_, _ = d.env.Exec.RunIO(ctx, nil, &commit, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
-		"/usr/bin/git", "-c", "safe.directory="+dir, "-C", dir, "rev-parse", "HEAD")
-	d.commit = strings.TrimSpace(commit.String())
-	d.logf("commit %s\n", d.commit)
 
 	// 2. Shared files and directories.
 	if err := d.linkShared(ctx); err != nil {
@@ -534,7 +566,10 @@ func (d *deployment) linkShared(ctx context.Context) error {
 func (d *deployment) build(ctx context.Context) error {
 	l, dir := d.l, d.dir()
 	php := d.php()
-	if l.Framework != "nuxt" && l.Framework != "next" && l.Framework != "node" && d.exists("composer.json") {
+	if d.artifact != "" {
+		d.logf("\n==> Build\nskipped: the artifact was built in CI (vendor/ and assets included)\n")
+	}
+	if d.artifact == "" && l.Framework != "nuxt" && l.Framework != "next" && l.Framework != "node" && d.exists("composer.json") {
 		// Symfony's composer scripts (cache:clear) boot the kernel: in prod, per the Symfony deployment docs.
 		var composerEnv []string
 		if l.Framework == "symfony" {
@@ -544,7 +579,7 @@ func (d *deployment) build(ctx context.Context) error {
 			return err
 		}
 	}
-	if (d.cfg.Assets || l.Mode == "node") && d.exists("package.json") {
+	if d.artifact == "" && (d.cfg.Assets || l.Mode == "node") && d.exists("package.json") {
 		install := []string{d.npm(), "install", "--no-audit", "--no-fund"}
 		if d.exists("package-lock.json") {
 			install = []string{d.npm(), "ci", "--no-audit", "--no-fund"}
@@ -812,4 +847,82 @@ func siteOpcache(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		return nil, err
 	}
 	return map[string]any{"domain": p.Domain, "opcache_production": p.Production}, nil
+}
+
+var (
+	artifactNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.tar\.gz$`)
+	commitRe       = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+	fullCommitRe   = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+)
+
+func or(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// fetch gets one ref: a branch or tag with a shallow clone, a full commit id
+// with a shallow fetch of exactly that commit.
+func (d *deployment) fetch(ctx context.Context, ref string) error {
+	releases := filepath.Join(d.l.Home, "releases")
+	dir := d.dir()
+	if !fullCommitRe.MatchString(ref) {
+		return d.step(ctx, "Fetch source", releases, nil,
+			"/usr/bin/git", "clone", "--depth=1", "--single-branch", "--branch", ref, "--", d.cfg.Repo, dir)
+	}
+	git := []string{"/usr/bin/git", "-c", "safe.directory=" + dir, "-C", dir}
+	for _, s := range []struct {
+		title string
+		args  []string
+	}{
+		{"Fetch source", []string{"/usr/bin/git", "init", "--quiet", "--", dir}},
+		{"Fetch source", append(append([]string{}, git...), "remote", "add", "origin", "--", d.cfg.Repo)},
+		{"Fetch source", append(append([]string{}, git...), "fetch", "--depth=1", "origin", ref)},
+		{"Fetch source", append(append([]string{}, git...), "checkout", "--quiet", "--detach", "FETCH_HEAD")},
+	} {
+		if err := d.step(ctx, s.title, releases, nil, s.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// unpackArtifact extracts a tar.gz uploaded by CI into the release dir. The
+// panel wrote the file, so the agent trusts nothing about it: it must be a
+// regular file (no symlink) owned by the panel user directly in the artifact
+// dir; root only opens it, and tar runs as the site user reading stdin, so
+// the archive can only ever write where the site user could.
+func (d *deployment) unpackArtifact(ctx context.Context) error {
+	l, dir := d.l, d.dir()
+	path := filepath.Join(d.env.Cfg.ArtifactDir, d.artifact)
+	d.logf("\n==> Unpack artifact\n%s\n", d.artifact)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("artifact: %w", err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return fmt.Errorf("artifact is not a regular file")
+	}
+	if owner, err := lookupOwner(d.env, d.env.Cfg.PanelUser); err == nil && !d.env.Cfg.DryRun {
+		if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != owner.UID || st.Nlink != 1 {
+			return fmt.Errorf("artifact must be a file written by the panel")
+		}
+	}
+	if fi.Size() > 1<<30 {
+		return fmt.Errorf("artifact is larger than 1 GB")
+	}
+	if err := asUser(ctx, d.env, l.User, "/usr/bin/install", "-d", "-m", "0750", "--", dir); err != nil {
+		return err
+	}
+	var out strings.Builder
+	_, err = d.env.Exec.RunIO(ctx, f, &out, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+		"/usr/bin/tar", "--extract", "--gzip", "--file=-", "--directory="+dir, "--no-same-owner", "--no-same-permissions", "--no-overwrite-dir")
+	d.logf("%s", out.String())
+	if err != nil {
+		return fmt.Errorf("unpacking the artifact failed: %w", err)
+	}
+	return nil
 }

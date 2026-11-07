@@ -324,3 +324,86 @@ func TestOpcacheProduction(t *testing.T) {
 		t.Errorf("worker site: %v", err)
 	}
 }
+
+func TestDeployTagAndCommit(t *testing.T) {
+	env := deployEnv(t, "laravel")
+	dr := env.Exec.(*executor.DryRun)
+	dr.Responder = fakeRepo([]string{"artisan"}, "")
+	out, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "ref": "v1.2.3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := out.(deployRecord); rec.Ref != "v1.2.3" || rec.Source != "git" {
+		t.Fatalf("record: %+v", rec)
+	}
+	clonedTag := false
+	for _, c := range dr.Calls() {
+		if c.Name == "systemd-run" && strings.Contains(strings.Join(c.Args, " "), "clone --depth=1 --single-branch --branch v1.2.3 --") {
+			clonedTag = true
+		}
+	}
+	if !clonedTag {
+		t.Error("tag not cloned")
+	}
+	before := len(dr.Calls())
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	_, _ = call(t, env, deployRun, map[string]string{"domain": "app.example.com", "ref": sha})
+	fetched := false
+	for _, c := range dr.Calls()[before:] {
+		if strings.Contains(strings.Join(c.Args, " "), "fetch --depth=1 origin "+sha) {
+			fetched = true
+		}
+	}
+	if !fetched {
+		t.Error("commit not fetched")
+	}
+	for _, bad := range []string{"--upload-pack=x", "a..b", "-x", "v1 2"} {
+		if _, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "ref": bad}); code(err) != protocol.CodeInvalidParams {
+			t.Errorf("ref %q: %v", bad, err)
+		}
+	}
+}
+
+func TestDeployArtifactSkipsTheBuild(t *testing.T) {
+	env := deployEnv(t, "laravel")
+	env.Cfg.ArtifactDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(env.Cfg.ArtifactDir, "build-1.tar.gz"), []byte("tgz"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dr := env.Exec.(*executor.DryRun)
+	before := len(dr.Calls())
+	out, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "artifact": "build-1.tar.gz", "commit": "abc1234"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := out.(deployRecord); rec.Source != "artifact" || rec.Commit != "abc1234" {
+		t.Fatalf("record: %+v", rec)
+	}
+	for _, c := range dr.Calls()[before:] {
+		j := strings.Join(c.Args, " ")
+		cmd := j
+		if i := strings.Index(j, " -- "); i >= 0 {
+			cmd = j[i+4:]
+		}
+		if strings.Contains(cmd, "git clone") || strings.Contains(cmd, "/usr/bin/composer") || strings.Contains(cmd, "/npm ") {
+			t.Errorf("artifact deploy must not fetch or build: %s", j)
+		}
+		if c.Name == "setpriv" && strings.Contains(j, "/usr/bin/tar") {
+			if c.Args[0] != "--reuid=web_app_example_com" || c.Stdin != "tgz" {
+				t.Errorf("tar must run as the site user reading stdin: %v", c)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(env.Cfg.ArtifactDir, "build-1.tar.gz")); !os.IsNotExist(err) {
+		t.Error("artifact not removed after the deploy")
+	}
+	if err := os.Symlink("/etc/passwd", filepath.Join(env.Cfg.ArtifactDir, "evil.tar.gz")); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "artifact": "evil.tar.gz"}); out != nil && out.(deployRecord).Status == "success" {
+		t.Error("a symlinked artifact must be refused")
+	}
+	if _, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "artifact": "../x.tar.gz"}); code(err) != protocol.CodeInvalidParams {
+		t.Errorf("path in artifact name: %v", err)
+	}
+}

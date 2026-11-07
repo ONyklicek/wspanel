@@ -13,5 +13,6 @@ final readonly class PushEvent
         public ?string $branch,
         public ?string $commit,
         public ?string $deliveryId = null,
+        public ?string $tag = null, // tag push or published release
     ) {}
 }

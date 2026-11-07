@@ -26,6 +26,8 @@ class ManageDeploys
             Deployment::updateOrCreate(['site_id' => $site->id, 'release' => $d['id']], [
                 'status' => $d['status'],
                 'commit' => ($d['commit'] ?? '') ?: null,
+                'ref' => ($d['ref'] ?? '') ?: null,
+                'source' => ($d['source'] ?? '') ?: null,
                 'error' => $d['error'] ?? null,
                 'started_at' => Carbon::parse($d['started']),
                 'finished_at' => isset($d['finished']) ? Carbon::parse($d['finished']) : null,
@@ -70,9 +72,14 @@ class ManageDeploys
      *
      * @throws AgentException
      */
-    public function start(Site $site): ?string
+    /**
+     * Starts a deploy and returns its release id.
+     *
+     * @param  array{ref?: string, artifact?: string, commit?: string}  $options
+     */
+    public function start(Site $site, array $options = []): ?string
     {
-        $this->agent->call('deploy.run', ['domain' => $site->domain]);
+        $this->agent->call('deploy.run', ['domain' => $site->domain] + array_filter($options));
         for ($i = 0; $i < 20; $i++) { // the release id appears in the history as soon as the job starts
             $running = collect($this->history($site)['deploys'])->firstWhere('status', 'running');
             if ($running) {

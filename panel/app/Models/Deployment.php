@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Deployment extends Model
 {
-    protected $fillable = ['site_id', 'release', 'status', 'commit', 'error', 'started_at', 'finished_at'];
+    protected $fillable = ['site_id', 'release', 'status', 'commit', 'ref', 'source', 'error', 'started_at', 'finished_at'];
 
     protected function casts(): array
     {

@@ -42,16 +42,29 @@ class WebhookVerifier
             ?? '');
 
         $isPing = $event === 'ping' || ($provider === 'gitlab' && $event === 'System Hook');
-        $isPush = in_array(strtolower($event), ['push', 'push hook', 'repo:push'], true);
+        $isPush = in_array(strtolower($event), ['push', 'push hook', 'tag push hook', 'repo:push'], true);
 
         $ref = $payload['ref'] ?? null;
         $branch = is_string($ref) && str_starts_with($ref, 'refs/heads/') ? substr($ref, 11) : null;
+        $tag = is_string($ref) && str_starts_with($ref, 'refs/tags/') ? substr($ref, 10) : null;
         if ($provider === 'bitbucket' && $branch === null) { // Bitbucket Cloud push payload
             $change = $payload['push']['changes'][0]['new'] ?? null;
-            if (($change['type'] ?? null) === 'branch') {
-                $branch = $change['name'] ?? null;
-            }
+            match ($change['type'] ?? null) {
+                'branch' => $branch = $change['name'] ?? null,
+                'tag' => $tag = $change['name'] ?? null,
+                default => null,
+            };
         }
+        // A published release (GitHub, Gitea, Forgejo) deploys its tag.
+        if (strtolower($event) === 'release' && ($payload['action'] ?? null) === 'published') {
+            $isPush = true;
+            $tag = $payload['release']['tag_name'] ?? null;
+        }
+        if (strtolower($event) === 'release hook' && ($payload['action'] ?? null) === 'create') { // GitLab
+            $isPush = true;
+            $tag = $payload['tag'] ?? null;
+        }
+        $tag = is_string($tag) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,99}$/', $tag) && ! str_contains($tag, '..') ? $tag : null;
         $commit = $payload['after'] ?? $payload['checkout_sha'] ?? ($payload['push']['changes'][0]['new']['target']['hash'] ?? null);
 
         $delivery = $request->header('X-GitHub-Delivery')
@@ -68,6 +81,7 @@ class WebhookVerifier
             branch: is_string($branch) ? $branch : null,
             commit: is_string($commit) && preg_match('/^[0-9a-f]{7,64}$/', $commit) ? $commit : null,
             deliveryId: is_string($delivery) && preg_match('/^[A-Za-z0-9{}-]{8,64}$/', $delivery) ? $delivery : null,
+            tag: $tag,
         );
     }
 

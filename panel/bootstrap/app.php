@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::post('/hooks/deploy/{hook}', DeployWebhookController::class)
                 ->middleware('throttle:webhooks')
                 ->name('hooks.deploy');
+
+            // Deploy API for CI pipelines: bearer token, no session.
+            Route::middleware('throttle:ci-deploy')->prefix('api/deploy/{hook}')->group(function () {
+                Route::post('/', [CiDeployController::class, 'trigger'])->name('api.deploy.trigger');
+                Route::post('/artifact', [CiDeployController::class, 'artifact'])->name('api.deploy.artifact');
+                Route::get('/{release}', [CiDeployController::class, 'status'])->name('api.deploy.status');
+            });
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

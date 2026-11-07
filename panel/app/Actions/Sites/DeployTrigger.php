@@ -22,16 +22,16 @@ class DeployTrigger
      *
      * @throws AgentException
      */
-    public function request(Site $site, ?array $history = null): string
+    public function request(Site $site, ?array $history = null, ?string $ref = null): string
     {
         $history ??= $this->agent->call('deploy.history', ['domain' => $site->domain]);
         if ($history['running'] ?? false) {
-            $site->update(['deploy_requested_at' => now()]);
+            $site->update(['deploy_requested_at' => now(), 'deploy_requested_ref' => $ref]);
 
             return 'queued';
         }
-        $this->agent->call('deploy.run', ['domain' => $site->domain]);
-        $site->update(['deploy_requested_at' => null]);
+        $this->agent->call('deploy.run', array_filter(['domain' => $site->domain, 'ref' => $ref]));
+        $site->update(['deploy_requested_at' => null, 'deploy_requested_ref' => null]);
 
         return 'deployed';
     }
@@ -44,7 +44,7 @@ class DeployTrigger
         $started = 0;
         foreach (Site::query()->whereNotNull('deploy_requested_at')->where('webhook_enabled', true)->get() as $site) {
             try {
-                if ($this->request($site) === 'deployed') {
+                if ($this->request($site, ref: $site->deploy_requested_ref) === 'deployed') {
                     $started++;
                 }
             } catch (AgentException) {

@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -236,11 +237,20 @@ class DeploySite extends Page
                 ->modalDescription('Push do nastavené větve spustí deploy. Bez platného podpisu se nic nespustí; push během běžícího deploye se zařadí a nasadí se nejnovější stav.')
                 ->fillForm(fn () => [
                     'enabled' => $this->record->webhook_enabled,
+                    'trigger' => $this->record->deploy_trigger ?? 'branch',
                     'url' => ManageWebhook::url($this->record),
                     'secret' => $this->record->webhook_secret,
                 ])
                 ->schema([
                     Toggle::make('enabled')->label('Zapnuto'),
+                    Radio::make('trigger')
+                        ->label('Co spustí deploy')
+                        ->options([
+                            'branch' => 'Push do větve '.($this->config['branch'] ?? 'main').' (nasadí se nejnovější commit)',
+                            'tags' => 'Nový release nebo tag (nasadí se přesně ten tag, např. v1.4.0)',
+                        ])
+                        ->descriptions(['tags' => 'GitHub/Gitea: událost „Releases“ (published) nebo push tagu. GitLab: „Tag push events“ nebo „Releases events“.'])
+                        ->required(),
                     TextInput::make('url')->label('Payload URL')->readOnly()->placeholder('vytvoří se po zapnutí')->copyable(),
                     TextInput::make('secret')->label('Secret')->readOnly()->placeholder('vytvoří se po zapnutí')->copyable(),
                     Text::make('GitHub / Gitea / Forgejo: Settings → Webhooks, content type application/json, událost „push“, secret výše. GitLab: Settings → Webhooks, Secret token = secret, „Push events“. Bitbucket: Repository settings → Webhooks, secret výše.'),
@@ -257,10 +267,24 @@ class DeploySite extends Page
                         }),
                 ])
                 ->action(function (array $data) {
+                    $this->record->update(['deploy_trigger' => $data['trigger'] ?? 'branch']);
                     $data['enabled'] ? app(ManageWebhook::class)->enable($this->record) : app(ManageWebhook::class)->disable($this->record);
                     Notification::make()->title($data['enabled'] ? 'Webhook zapnut' : 'Webhook vypnut')
                         ->body($data['enabled'] ? 'URL a secret najdete znovu v okně Webhook.' : null)->success()->send();
                 }),
+            Action::make('ci')
+                ->label('GitHub Actions / CI')
+                ->icon(Heroicon::OutlinedCommandLine)
+                ->color('gray')
+                ->modalWidth('5xl')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Zavřít')
+                ->modalHeading('Deploy z CI (GitHub Actions, GitLab CI…)')
+                ->modalContent(fn () => view('filament.resources.sites.pages.deploy-ci', [
+                    'enabled' => $this->record->webhook_enabled,
+                    'base' => $this->record->webhook_id ? route('api.deploy.trigger', ['hook' => $this->record->webhook_id]) : null,
+                    'framework' => $this->record->framework,
+                ])),
             Action::make('deployKey')
                 ->label('Deploy klíč')
                 ->icon(Heroicon::OutlinedKey)

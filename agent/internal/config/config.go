@@ -102,6 +102,11 @@ type Config struct {
 	PowerDNSAPI string `json:"powerdns_api"`
 	PowerDNSKey string `json:"powerdns_key"`
 
+	// Build artifacts uploaded by CI (through the panel) for deploys that skip
+	// the build on the server. Root-owned dir the panel user may write into.
+	ArtifactDir string `json:"artifact_dir"`
+	PanelUser   string `json:"panel_user"`
+
 	allowedUIDs []uint32
 }
 
@@ -164,6 +169,8 @@ func Defaults() Config {
 		PostfixSASL:       "/etc/postfix/sasl_passwd",
 		DKIMDir:           "/etc/opendkim",
 		DKIMSelector:      "wspanel",
+		ArtifactDir:       "/var/lib/wspanel-artifacts",
+		PanelUser:         "panel",
 		SASLDB:            "/etc/sasldb2",
 		SenderLogins:      "/etc/postfix/wspanel_sender_logins",
 		LoginSenders:      "/etc/postfix/wspanel_login_senders",
