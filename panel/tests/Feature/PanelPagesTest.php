@@ -64,7 +64,7 @@ class PanelPagesTest extends TestCase
 
     public function test_server_and_network_lists_render(): void
     {
-        foreach (['/services', '/firewall', '/ssl', '/tasks'] as $url) {
+        foreach (['/services', '/firewall', '/ssl', '/tasks', '/php', '/db-servers'] as $url) {
             $this->get($url)->assertOk();
         }
     }

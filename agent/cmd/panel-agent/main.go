@@ -159,11 +159,15 @@ func binaries(cfg config.Config) map[string]string {
 		"mariadb-dump":     "/usr/bin/mariadb-dump",
 		"apt-get":          "/usr/bin/apt-get",
 		"journalctl":       "/usr/bin/journalctl",
+		"dpkg-query":       "/usr/bin/dpkg-query",
+		"apt-cache":        "/usr/bin/apt-cache",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
 		"frankenphp-new":   cfg.FrankenPHPBin + ".new", // update candidate, checked before the swap
 	}
-	for _, v := range cfg.PHPVersions {
+	// Every version the panel can install, so a version added at runtime
+	// (php.install) is usable without restarting the agent.
+	for _, v := range append(append([]string{}, cfg.PHPVersions...), ops.InstallablePHP...) {
 		b["php-fpm"+v] = config.ForVersion(cfg.FPMBinary, v)
 	}
 	return b

@@ -47,7 +47,8 @@ type Op struct {
 
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
-var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true}
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true,
+	"php.extension": true, "php.install": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -89,6 +90,10 @@ func Registry() map[string]Op {
 		{"db.schedule", true, dbSchedule},
 		{"db.access", true, dbAccess},
 		{"db.server_status", false, dbServerStatus},
+		{"site.php", true, sitePHP},
+		{"php.status", false, phpStatus},
+		{"php.extension", true, phpExtension},
+		{"php.install", true, phpInstall},
 		{"db.root_password", true, dbRootPassword},
 		{"db.remote", true, dbRemote},
 		{"engine.install", true, engineInstall},

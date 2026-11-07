@@ -54,7 +54,13 @@ type siteLayout struct {
 	WorkerFile     string
 	WorkerIndex    string
 	WorkerThreads  int
+	WorkerMaxReq   int
 	WorkerEnv      []string
+
+	// php.ini values from the panel (pool or FrankenPHP php_ini), and whether
+	// errors are shown (off unless the site asked).
+	PHPValues     []phpLine
+	DisplayErrors bool
 
 	EdgeFile string // TLS edge site block
 	Upstream string // where the edge forwards to
@@ -95,6 +101,9 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		RunDir:         filepath.Join(cfg.SiteRunDir, user),
 		TmpfilesFile:   filepath.Join(cfg.TmpfilesDir, "wspanel-"+user+".conf"),
 		WorkerThreads:  workerThreads(),
+		WorkerMaxReq:   500,
+		PHPValues:      phpLines(st.PHPSettings),
+		DisplayErrors:  st.PHPSettings["display_errors"] == "on",
 
 		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
 	}
@@ -130,6 +139,12 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 	}
 	if !fsx.Within(cfg.SitesRoot, l.Home) {
 		return l, protocol.Invalid("domain resolves outside sites root")
+	}
+	if n, err := strconv.Atoi(st.PHPSettings["worker_threads"]); err == nil && n > 0 {
+		l.WorkerThreads = n
+	}
+	if n, err := strconv.Atoi(st.PHPSettings["max_requests"]); err == nil && st.PHPSettings["max_requests"] != "" {
+		l.WorkerMaxReq = n
 	}
 	return l, nil
 }

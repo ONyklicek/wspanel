@@ -3,6 +3,7 @@
 namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManageDeploys;
+use App\Actions\Sites\ManagePhpSettings;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -85,6 +86,9 @@ class ViewSite extends ViewPage
                     'custom' => 'vlastní certifikát',
                     default => "Let's Encrypt",
                 }),
+                TextEntry::make('php_settings')->label('PHP nastavení')
+                    ->state(fn () => ManagePhpSettings::summary($site))
+                    ->visible($site->mode !== SiteMode::Node),
             ]),
             Section::make('access')->label('Přístup a služby')->icon('outline:key')->columns(2)->schema([
                 TextEntry::make('ssh_access')->label('SSH / SFTP')->state(fn () => $site->ssh_access->getLabel())->badge()->color($site->ssh_access->getColor()),

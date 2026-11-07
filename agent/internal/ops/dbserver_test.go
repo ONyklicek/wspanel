@@ -157,17 +157,19 @@ func TestMariaDBPublishedToAnAllowlist(t *testing.T) {
 		t.Fatalf("allow normalized: %s", got)
 	}
 	conf, err := os.ReadFile(mariadbRemoteConf(env))
-	if err != nil || !strings.Contains(string(conf), "bind-address = *") || !strings.Contains(string(conf), "ssl_cert = ") {
+	if err != nil || !strings.Contains(string(conf), "bind-address = *") || !strings.Contains(string(conf), "ssl_cert = ") || !strings.Contains(string(conf), "skip-name-resolve = ON") {
 		t.Fatalf("conf: %s %v", conf, err)
 	}
 	if !ran(dr, "systemctl restart mariadb.service") {
 		t.Fatal("mariadb not restarted")
 	}
-	sql := stdinOf(dr, "mariadb", "'shop'@'%'")
+	sql := stdinOf(dr, "mariadb", "CREATE OR REPLACE USER 'shop'")
 	for _, want := range []string{
-		"CREATE OR REPLACE USER 'shop'@'%' IDENTIFIED BY PASSWORD '" + shopHash + "' REQUIRE SSL",
-		"GRANT ALL PRIVILEGES ON `shop`.* TO 'shop'@'%'",
-		"CREATE OR REPLACE USER 'root'@'%' IDENTIFIED BY PASSWORD '" + nativeHash("Root-Password-2026!") + "' REQUIRE SSL",
+		// MariaDB checks the address itself: one account per allowed host / IPv4 network, never '%'.
+		"CREATE OR REPLACE USER 'shop'@'203.0.113.7' IDENTIFIED BY PASSWORD '" + shopHash + "' REQUIRE SSL",
+		"CREATE OR REPLACE USER 'shop'@'10.8.0.0/255.255.255.0' IDENTIFIED BY PASSWORD '" + shopHash + "' REQUIRE SSL",
+		"GRANT ALL PRIVILEGES ON `shop`.* TO 'shop'@'10.8.0.0/255.255.255.0'",
+		"CREATE OR REPLACE USER 'root'@'203.0.113.7' IDENTIFIED BY PASSWORD '" + nativeHash("Root-Password-2026!") + "' REQUIRE SSL",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("missing %q in\n%s", want, sql)
@@ -187,8 +189,11 @@ func TestMariaDBPublishedToAnAllowlist(t *testing.T) {
 	if ran(dr, "ufw allow 3306/tcp comment wspanel-db-mariadb") {
 		t.Fatal("the port was opened to everyone")
 	}
+	if strings.Contains(sql, "@'%'") {
+		t.Fatalf("an allowlist must not create '%%' accounts:\n%s", sql)
+	}
 	jail, _ := os.ReadFile(filepath.Join(env.Cfg.Fail2banDir, "jail.d/wspanel-db.conf"))
-	if !strings.Contains(string(jail), "[mysqld-auth]") || strings.Contains(string(jail), "wspanel-postgres") {
+	if !strings.Contains(string(jail), "[wspanel-mariadb]") || strings.Contains(string(jail), "wspanel-postgres") {
 		t.Fatalf("jail: %s", jail)
 	}
 
@@ -198,7 +203,7 @@ func TestMariaDBPublishedToAnAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	pw := created.(map[string]any)["password"].(string)
-	if !strings.Contains(stdinOf(dr, "mariadb", "CREATE DATABASE `blog`"), "CREATE OR REPLACE USER 'blog'@'%' IDENTIFIED BY '"+pw+"' REQUIRE SSL") {
+	if !strings.Contains(stdinOf(dr, "mariadb", "CREATE DATABASE `blog`"), "CREATE OR REPLACE USER 'blog'@'10.8.0.0/255.255.255.0' IDENTIFIED BY '"+pw+"' REQUIRE SSL") {
 		t.Fatal("new database has no network account")
 	}
 }
@@ -333,5 +338,50 @@ func TestDBCertIsGeneratedInProcessAndFingerprinted(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(crt); string(after) != string(before) {
 		t.Fatal("certificate replaced")
+	}
+}
+
+func TestAllowlistNeedsAnActiveFirewall(t *testing.T) {
+	env, dr := dbServerEnv(t)
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.Name == "ufw" {
+			return executor.Result{Stdout: "Status: inactive\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	if _, err := call(t, env, dbRemote, map[string]any{"engine": "postgresql", "enabled": true, "allow": []string{"10.8.0.0/24"}}); code(err) != protocol.CodeConflict {
+		t.Fatalf("allowlist without a firewall: %v", err)
+	}
+	if loadDBServer(env)["postgresql"].Remote {
+		t.Fatal("published anyway")
+	}
+}
+
+func TestMariaDBRefusesIPv6Networks(t *testing.T) {
+	env, _ := dbServerEnv(t)
+	if _, err := call(t, env, dbRemote, map[string]any{"engine": "mariadb", "enabled": true, "allow": []string{"2001:db8::/32"}}); code(err) != protocol.CodeInvalidParams {
+		t.Fatalf("IPv6 network accepted for MariaDB: %v", err)
+	}
+	if hosts := mariadbNetHosts(dbServerState{Remote: true, Allow: []string{"2001:db8::1/128", "192.0.2.0/25"}}); strings.Join(hosts, " ") != "2001:db8::1 192.0.2.0/255.255.255.128" {
+		t.Fatal(hosts)
+	}
+}
+
+func TestPgHBAIsNotReadThroughASymlink(t *testing.T) {
+	env, _ := dbServerEnv(t)
+	hba := filepath.Join(env.Cfg.PostgresEtcDir, "17/main/pg_hba.conf")
+	secret := filepath.Join(t.TempDir(), "shadow")
+	if err := os.WriteFile(secret, []byte("root:$6$secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(hba)
+	if err := os.Symlink(secret, hba); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, dbRemote, map[string]any{"engine": "postgresql", "enabled": true, "anywhere": true}); err == nil {
+		t.Fatal("followed a symlinked pg_hba.conf")
+	}
+	if b, _ := os.ReadFile(secret); string(b) != "root:$6$secret\n" {
+		t.Fatal("the link target was touched")
 	}
 }

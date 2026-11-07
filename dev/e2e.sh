@@ -417,10 +417,10 @@ contains "postgres reaches PostgreSQL over TLS" "$(PGPASSWORD="$ppw" psql "host=
 contains "PostgreSQL refuses a network login without TLS" "$(PGPASSWORD="$ppw" psql "host=$me user=postgres dbname=postgres sslmode=disable" -Atc 'select 1' 2>&1)" "no encryption"
 expect "sites still connect locally without TLS" "$(mariadb -h 127.0.0.1 -u shop_db -p"$shop_pw" --skip-ssl -N -e 'select 1' shop_db 2>&1)" "1"
 contains "firewall opens 3306 for the allowlist only" "$(ufw status | grep '# wspanel-db-mariadb')" "$me"
-contains "fail2ban guards both engines" "$(fail2ban-client status 2>&1)" "mysqld-auth, sshd, wspanel-postgres"
+contains "fail2ban guards both engines" "$(fail2ban-client status 2>&1)" "sshd, wspanel-mariadb, wspanel-postgres"
 mariadb -h "$me" -u root -pwrong --ssl --ssl-verify-server-cert=0 -e 'select 1' >/dev/null 2>&1
 sleep 3
-contains "a failed MariaDB login is seen by fail2ban" "$(fail2ban-client status mysqld-auth 2>&1)" "Total failed:	1"
+contains "a failed MariaDB login is seen by fail2ban" "$(fail2ban-client status wspanel-mariadb 2>&1)" "Total failed:	1"
 contains "server-wide phpMyAdmin access" "$(php 'echo json_encode(app(App\Services\Agent\AgentClient::class)->call("db.access", ["engine" => "mariadb", "tool" => "phpmyadmin", "scope" => "all"]));')" '"token":"'
 dbs "setAccess('mariadb', 'local')" >/dev/null
 dbs "setAccess('postgresql', 'local')" >/dev/null
@@ -431,12 +431,31 @@ php 'app(App\Actions\Databases\ManageDatabaseServers::class)->removeRootPassword
 contains "root without a password refuses TCP again" "$(mariadb -h 127.0.0.1 -u root -p"$mpw" --skip-ssl -N -e 'select 1' 2>&1)" "denied"
 
 # ----------------------------------------------------------------------------
+section "PHP settings, versions and extensions"
+docroot=$(php 'echo App\Models\Site::where("domain","other.localhost")->value("doc_root");' | tail -1)
+runuser -u web_other_localhost -- sh -c "printf '%s' '<?php echo ini_get(\"memory_limit\"),\"|\",ini_get(\"date.timezone\");' > $docroot/ini.php"
+php '$s = App\Models\Site::where("domain","other.localhost")->sole(); app(App\Actions\Sites\ManagePhpSettings::class)->set($s, ["memory_limit" => "384M", "date.timezone" => "Europe/Prague"]);' >/dev/null
+expect "php.ini values reach the site's FPM pool" "$(https other.localhost /ini.php)" "384M|Europe/Prague"
+contains "an out-of-range value is refused" "$(php 'try { app(App\Actions\Sites\ManagePhpSettings::class)->set(App\Models\Site::where("domain","other.localhost")->sole(), ["memory_limit" => "99G"]); echo "SAVED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "16M"
+php 'app(App\Actions\Sites\ManagePhpSettings::class)->set(App\Models\Site::where("domain","other.localhost")->sole(), []);' >/dev/null
+expect "defaults come back" "$(https other.localhost /ini.php)" "256M|UTC"
+rm -f "$docroot/ini.php"
+php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) app(App\Actions\Sites\ManagePhpSettings::class)->set($s, ["memory_limit" => "512M", "worker_threads" => "3"]);' >/dev/null
+contains "worker site gets php_ini and its worker count" "$(cat /etc/panel-sites/web_worker_localhost.Caddyfile)" "php_ini memory_limit 512M"
+php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) app(App\Actions\Sites\ManagePhpSettings::class)->set($s, []);' >/dev/null
+contains "PHP status lists FrankenPHP's extensions" "$(php 'echo json_encode(app(App\Actions\Server\ManagePhp::class)->status()["frankenphp"]);')" '"pdo_mysql"'
+expect "an extension installs" "$(php 'var_export(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "install"));' | tail -1)" "true"
+contains "and is loaded by PHP-FPM 8.4" "$(php8.4 -m 2>/dev/null)" "igbinary"
+php 'app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "remove");' >/dev/null
+expect "and is removed again" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-igbinary 2>/dev/null)" "config-files"
+
+# ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"
 php "$(site app.localhost) app(App\\Actions\\ManageCronJobs::class)->create(\$s, ['kind' => 'artisan', 'command' => 'optimize', 'schedule' => '* * * * *']);" >/dev/null
 check "task timer active" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer
 php 'app(App\Actions\Firewall\ManageFirewall::class)->add(["action" => "allow", "port" => 8081, "proto" => "tcp", "description" => "e2e"]);' >/dev/null
 check "firewall rule added" bash -c 'ufw status | grep -q "8081/tcp"'
-contains "SSH port is protected" "$(php 'try { app(App\Actions\Firewall\ManageFirewall::class)->add(["action" => "deny", "port" => 22, "proto" => "tcp"]); echo "ALLOWED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "protected"
+contains "SSH port is protected" "$(php 'try { app(App\Actions\Firewall\ManageFirewall::class)->add(["action" => "deny", "port" => 22, "proto" => "tcp"]); echo "ALLOWED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "chráněný"
 php '$r = App\Models\FirewallRule::where("port", 8081)->first(); if ($r) app(App\Actions\Firewall\ManageFirewall::class)->delete($r);' >/dev/null
 check "firewall rule removed" bash -c '! ufw status | grep -q "8081/tcp"'
 php 'app(App\Actions\SyncCertificatesAndTasks::class)->certificates();' >/dev/null

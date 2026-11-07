@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\CreateSite;
+use App\Actions\Sites\ManagePhpSettings;
 use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteLogs;
 use App\Livewire\Sites\SiteProcesses;
@@ -155,5 +156,41 @@ class SiteControlTest extends TestCase
             ->call('openActionModal', 'wspanel-web_app_example_com-queue.service', 'log')
             ->assertSee('Worker crashed:')
             ->assertDontSee('<script>x</script>', false);
+    }
+
+    public function test_php_settings_are_sent_and_mirrored(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.php', Mockery::on(fn ($p) => $p['domain'] === 'app.example.com'
+                && (array) $p['settings'] === ['memory_limit' => '512M', 'date.timezone' => 'Europe/Prague', 'display_errors' => 'on']))
+            ->andReturn(['settings' => ['memory_limit' => '512M', 'date.timezone' => 'Europe/Prague', 'display_errors' => 'on']]);
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'phpSettings', [
+            'memory_limit' => '512M', 'date__timezone' => 'Europe/Prague', 'display_errors' => 'on', 'max_input_vars' => '',
+        ])->assertHasNoErrors()->assertNotified('PHP nastavení uloženo');
+
+        $this->assertSame('512M', $site->refresh()->php_settings['memory_limit']);
+        $this->get("/sites/{$site->id}")->assertSee('memory_limit 512M');
+    }
+
+    public function test_php_settings_are_checked_in_the_panel(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldNotReceive('call')->with('site.php', Mockery::any());
+
+        foreach ([['memory_limit' => 'lots'], ['max_execution_time' => '99999'], ['date__timezone' => 'Mars/Base'], ['display_errors' => 'maybe']] as $bad) {
+            $this->tableAction(Livewire::test(ListSites::class), $site, 'phpSettings', $bad)->assertHasErrors();
+        }
+    }
+
+    public function test_worker_knobs_only_for_worker_sites(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.php', Mockery::on(fn ($p) => (array) $p['settings'] === ['memory_limit' => '1G']))
+            ->andReturn(['settings' => ['memory_limit' => '1G']]);
+
+        app(ManagePhpSettings::class)->set($site, ['memory_limit' => '1G', 'worker_threads' => '8']);
     }
 }

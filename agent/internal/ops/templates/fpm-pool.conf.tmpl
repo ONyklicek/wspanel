@@ -26,10 +26,16 @@ php_admin_value[sys_temp_dir] = {{.Home}}/tmp
 php_admin_value[session.save_path] = {{.Home}}/tmp
 php_admin_value[error_log] = {{.Home}}/logs/php-error.log
 php_admin_flag[log_errors] = on
-php_admin_flag[display_errors] = off
+php_admin_flag[display_errors] = {{if .DisplayErrors}}on{{else}}off{{end}}
 php_admin_value[disable_functions] = {{.DisableFunctions}}
 ; mail(): {{.MailMode}} ({{if eq .MailMode "capture"}}Mailpit, nothing leaves the server{{else}}local Postfix, DKIM-signed{{end}})
 php_admin_value[sendmail_path] = "{{.SendmailPath}}"
+{{- if .PHPValues}}
+; PHP settings from the panel (the application may still raise them with ini_set)
+{{- range .PHPValues}}
+php_{{if .Flag}}flag{{else}}value{{end}}[{{.Key}}] = {{.Value}}
+{{- end}}
+{{- end}}
 {{- if .OpcacheProduction}}
 ; Production OPcache: no file stat on each request. Code changes take effect
 ; on the FPM reload every deploy does (manual edits need a reload too).

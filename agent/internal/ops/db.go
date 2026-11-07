@@ -86,22 +86,27 @@ func (m mariadb) create(ctx context.Context, env *Env, name, pw string) error {
 	q := fmt.Sprintf("CREATE DATABASE `%[1]s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
 		"CREATE USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; CREATE USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s'; "+
 		"GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'localhost', '%[1]s'@'127.0.0.1';", name, pw, grantPattern(name))
-	if dbRemoteOn(env, "mariadb") { // published server: the owner may also connect over the network, TLS only
-		q += fmt.Sprintf(" CREATE OR REPLACE USER '%[1]s'@'%%' IDENTIFIED BY '%[2]s' REQUIRE SSL; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%%';",
-			name, pw, grantPattern(name))
+	// Published server: the owner may also connect over the network, TLS only.
+	for _, h := range mariadbNetHosts(loadDBServer(env)["mariadb"]) {
+		q += fmt.Sprintf(" CREATE OR REPLACE USER '%[1]s'@'%[4]s' IDENTIFIED BY '%[2]s' REQUIRE SSL; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%[4]s';",
+			name, pw, grantPattern(name), h)
 	}
 	_, err := m.sql(ctx, env, q)
 	return err
 }
 
 func (m mariadb) drop(ctx context.Context, env *Env, name string) error {
-	_, err := m.sql(ctx, env, fmt.Sprintf("DROP DATABASE IF EXISTS `%[1]s`; DROP USER IF EXISTS '%[1]s'@'localhost', '%[1]s'@'127.0.0.1', '%[1]s'@'%%';", name))
+	hosts := append([]string{"localhost", "127.0.0.1", "%"}, mariadbNetHosts(loadDBServer(env)["mariadb"])...)
+	_, err := m.sql(ctx, env, fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS %s;", name, mariadbAccounts(name, slices.Compact(hosts))))
 	return err
 }
 
 func (m mariadb) setPassword(ctx context.Context, env *Env, name, pw string) error {
-	_, err := m.sql(ctx, env, fmt.Sprintf("ALTER USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; ALTER USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s'; "+
-		"ALTER USER IF EXISTS '%[1]s'@'%%' IDENTIFIED BY '%[2]s';", name, pw))
+	q := fmt.Sprintf("ALTER USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; ALTER USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s';", name, pw)
+	for _, h := range mariadbNetHosts(loadDBServer(env)["mariadb"]) {
+		q += fmt.Sprintf(" ALTER USER IF EXISTS '%s'@'%s' IDENTIFIED BY '%s';", name, h, pw)
+	}
+	_, err := m.sql(ctx, env, q)
 	return err
 }
 

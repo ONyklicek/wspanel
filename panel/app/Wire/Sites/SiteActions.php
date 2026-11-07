@@ -7,6 +7,7 @@ use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
 use App\Actions\Sites\DeleteSite;
+use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageWorkers;
@@ -20,6 +21,7 @@ use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Carbon;
 use NyonCode\WireCore\Actions\Action;
+use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\Textarea;
@@ -360,11 +362,62 @@ final class SiteActions
      *
      * @return list<Action>
      */
+    public static function phpSettings(): Action
+    {
+        $f = ManagePhpSettings::FIELDS;
+        // Form keys cannot hold a dot (it would nest the state): date.timezone -> date__timezone.
+        $k = fn (string $key) => str_replace('.', '__', $key);
+        $size = fn (string $key) => TextInput::make($k($key))->label($f[$key][0])->placeholder('výchozí '.$f[$key][1])
+            ->rules(['nullable', 'regex:/^(-1|[0-9]{1,6}[KMGkmg]?)$/'])
+            ->validationMessages(['regex' => 'Velikost jako 256M nebo 1G.']);
+        $int = fn (string $key, int $min, int $max) => TextInput::make($k($key))->label($f[$key][0])->placeholder('výchozí '.$f[$key][1])
+            ->integer()->rules(['nullable', 'integer', "between:{$min},{$max}"]);
+        $choice = fn (string $key, array $options) => Select::make($k($key))->label($f[$key][0])->options($options)
+            ->placeholder('výchozí ('.($options[$f[$key][1]] ?? $f[$key][1]).')')->rules([Options::rule()]);
+        $onOff = ['on' => 'zapnuto', 'off' => 'vypnuto'];
+
+        return Action::make('phpSettings')
+            ->label('PHP nastavení')
+            ->icon('outline:adjustments-horizontal')
+            ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Node)
+            ->modalHeading(fn (Site $record) => "PHP nastavení: {$record->domain}")
+            ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Worker
+                ? 'Hodnoty php.ini pro FrankenPHP tohoto webu. Po uložení se aplikace restartuje.'
+                : 'Hodnoty php.ini pro PHP-FPM pool tohoto webu (PHP '.$record->php_version.'). Po uložení se PHP plynule znovu načte. Prázdné pole = výchozí hodnota.')
+            ->modalWidth('3xl')
+            ->fillFormUsing(fn (Site $record) => collect($record->php_settings ?? [])->mapWithKeys(fn ($v, $key) => [str_replace('.', '__', $key) => $v])->all())
+            ->form(fn (Site $record) => [
+                Grid::make()->columns(['default' => 1, 'md' => 2])->schema(array_values(array_filter([
+                    $size('memory_limit'),
+                    $size('upload_max_filesize'),
+                    $size('post_max_size'),
+                    $int('max_execution_time', 0, 3600),
+                    $int('max_input_time', -1, 3600),
+                    $int('max_input_vars', 100, 100000),
+                    $int('session.gc_maxlifetime', 60, 2592000),
+                    Select::make('date__timezone')->label($f['date.timezone'][0])->searchable()
+                        ->options(array_combine(timezone_identifiers_list(), timezone_identifiers_list()))
+                        ->placeholder('výchozí ('.config('app.timezone', 'UTC').')')->rules([Options::rule()]),
+                    $choice('display_errors', $onOff)->helperText('Na produkci nechte vypnuté: chyby jsou v logu webu.'),
+                    $choice('error_reporting', ['production' => 'produkční (bez deprecated)', 'all' => 'vše (E_ALL)', 'errors' => 'jen fatální chyby']),
+                    $choice('allow_url_fopen', $onOff),
+                    $choice('short_open_tag', $onOff),
+                    $record->mode === SiteMode::Worker ? $int('worker_threads', 1, 64)->helperText('Víc workerů = víc souběžných požadavků i víc paměti.') : null,
+                    $record->mode === SiteMode::Worker ? $int('max_requests', 0, 100000)->helperText('Chrání před únikem paměti; 0 = nikdy.') : null,
+                ]))),
+            ])
+            ->modalSubmitActionLabel('Uložit')
+            ->action(fn (Site $record, array $data) => self::attempt('PHP nastavení se nepodařilo uložit', function () use ($record, $data) {
+                $applied = app(ManagePhpSettings::class)->set($record, collect($data)->mapWithKeys(fn ($v, $key) => [str_replace('__', '.', $key) => $v])->all());
+                Toast::success('PHP nastavení uloženo', $applied === [] ? 'Všechny hodnoty jsou výchozí.' : count($applied).' vlastních hodnot.');
+            }));
+    }
+
     public static function more(): array
     {
         return [
             self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::createDatabase(), self::addWorker(),
+            self::ssh(), self::tls(), self::phpSettings(), self::createDatabase(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::delete(),
         ];

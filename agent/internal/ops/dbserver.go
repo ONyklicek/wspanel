@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/netip"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"wspanel/agent/internal/fsx"
@@ -62,8 +64,6 @@ func saveDBServer(env *Env, st map[string]dbServerState) error {
 	b, _ := json.MarshalIndent(st, "", "  ")
 	return env.FS.WriteFile(dbServerStatePath(env), b, 0o600, fsx.Root)
 }
-
-func dbRemoteOn(env *Env, engine string) bool { return loadDBServer(env)[engine].Remote }
 
 func rootUser(engine string) string {
 	if engine == "mariadb" {
@@ -154,16 +154,18 @@ func dbRootPassword(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	case "mariadb":
 		m := mariadb{}
 		if p.Remove {
-			if _, err := m.sql(ctx, env, "ALTER USER 'root'@'localhost' IDENTIFIED VIA unix_socket; DROP USER IF EXISTS 'root'@'%';"); err != nil {
+			drop := ""
+			if hosts := mariadbNetHosts(s); len(hosts) > 0 {
+				drop = " DROP USER IF EXISTS " + mariadbAccounts("root", hosts) + ";"
+			}
+			if _, err := m.sql(ctx, env, "ALTER USER 'root'@'localhost' IDENTIFIED VIA unix_socket; DROP USER IF EXISTS 'root'@'%';"+drop); err != nil {
 				return nil, err
 			}
 			s.RootHash = ""
 		} else {
 			h := nativeHash(p.Password)
 			q := fmt.Sprintf("ALTER USER 'root'@'localhost' IDENTIFIED VIA unix_socket OR mysql_native_password USING '%s';", h)
-			if s.Remote {
-				q += rootRemoteSQL(h)
-			}
+			q += rootRemoteSQL(h, mariadbNetHosts(s))
 			if _, err := m.sql(ctx, env, q); err != nil {
 				return nil, err
 			}
@@ -194,9 +196,13 @@ func dbRootPassword(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	return out, nil
 }
 
-func rootRemoteSQL(hash string) string {
-	return fmt.Sprintf("CREATE OR REPLACE USER 'root'@'%%' IDENTIFIED BY PASSWORD '%s' REQUIRE SSL; "+
-		"GRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' WITH GRANT OPTION;", hash)
+func rootRemoteSQL(hash string, hosts []string) string {
+	var q strings.Builder
+	for _, h := range hosts {
+		fmt.Fprintf(&q, "CREATE OR REPLACE USER 'root'@'%[2]s' IDENTIFIED BY PASSWORD '%[1]s' REQUIRE SSL; "+
+			"GRANT ALL PRIVILEGES ON *.* TO 'root'@'%[2]s' WITH GRANT OPTION; ", hash, h)
+	}
+	return q.String()
 }
 
 // ---------------------------------------------------------------- db.remote
@@ -224,9 +230,28 @@ func dbRemote(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if p.Enabled && !p.Anywhere && len(allow) == 0 {
 		return nil, protocol.Invalid("allow: list the addresses allowed to connect, or set anywhere")
 	}
+	if p.Engine == "mariadb" {
+		for _, a := range allow {
+			if pfx := netip.MustParsePrefix(a); pfx.Addr().Is6() && pfx.Bits() != 128 {
+				return nil, protocol.Invalid("allow: MariaDB accepts single IPv6 addresses only, not " + a)
+			}
+		}
+	}
+	if p.Enabled && !p.Anywhere {
+		// The allowlist must not rest on the firewall alone, but it must not run
+		// without it either: an inactive ufw would leave the port open to all.
+		res, err := env.Exec.Run(ctx, "ufw", "status")
+		if err != nil {
+			return nil, err
+		}
+		if active, _ := parseUFWStatus(res.Stdout); !active {
+			return nil, protocol.Conflict("the firewall (ufw) is not active; an allowlist needs it")
+		}
+	}
 
 	st := loadDBServer(env)
 	s := st[p.Engine]
+	prev := s
 	s.Remote = p.Enabled
 	s.Anywhere = p.Enabled && p.Anywhere
 	s.Allow = nil
@@ -236,7 +261,7 @@ func dbRemote(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 
 	switch p.Engine {
 	case "mariadb":
-		err = applyMariaDBRemote(ctx, env, s)
+		err = applyMariaDBRemote(ctx, env, prev, s)
 	default:
 		err = applyPostgresRemote(ctx, env, s)
 	}
@@ -292,25 +317,74 @@ func normalizeAllow(in []string) ([]string, error) {
 
 // ---------------------------------------------------------------- MariaDB
 
+// mariadbNetHosts: the host part of the network accounts. With an allowlist
+// MariaDB itself checks the address too (one account per address or IPv4
+// network), so nothing rests on the firewall alone; '%' only for anywhere.
+func mariadbNetHosts(s dbServerState) []string {
+	if !s.Remote {
+		return nil
+	}
+	if s.Anywhere {
+		return []string{"%"}
+	}
+	var hosts []string
+	for _, a := range s.Allow {
+		pfx, err := netip.ParsePrefix(a)
+		if err != nil {
+			continue
+		}
+		addr := pfx.Addr()
+		if pfx.Bits() == addr.BitLen() {
+			hosts = append(hosts, addr.String())
+			continue
+		}
+		if addr.Is4() {
+			mask := ^uint32(0) << (32 - pfx.Bits())
+			hosts = append(hosts, fmt.Sprintf("%s/%d.%d.%d.%d", addr, mask>>24, mask>>16&0xff, mask>>8&0xff, mask&0xff))
+		}
+	}
+	return hosts
+}
+
+func mariadbAccounts(name string, hosts []string) string {
+	out := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		out = append(out, fmt.Sprintf("'%s'@'%s'", name, h))
+	}
+	return strings.Join(out, ", ")
+}
+
 func mariadbRemoteConf(env *Env) string {
 	return filepath.Join(env.Cfg.MariaDBConfDir, "90-wspanel-remote.cnf")
 }
 
-func applyMariaDBRemote(ctx context.Context, env *Env, s dbServerState) error {
+func applyMariaDBRemote(ctx context.Context, env *Env, prev, s dbServerState) error {
 	m := mariadb{}
 	owners, err := mariadbOwnerHashes(ctx, env)
 	if err != nil {
 		return err
 	}
+	names := make([]string, 0, len(owners))
+	for name := range owners {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	// The accounts of the previous setting go first ('%' always: also what an
+	// older agent created), then the new ones are made.
+	old := mariadbNetHosts(prev)
+	if !slices.Contains(old, "%") {
+		old = append([]string{"%"}, old...)
+	}
+	var drop []string
+	for _, user := range append([]string{"root"}, names...) {
+		drop = append(drop, mariadbAccounts(user, old))
+	}
+	if _, err := m.sql(ctx, env, "DROP USER IF EXISTS "+strings.Join(drop, ", ")+";"); err != nil {
+		return err
+	}
+
 	if !s.Remote {
-		users := []string{"'root'@'%'"}
-		for name := range owners {
-			users = append(users, fmt.Sprintf("'%s'@'%%'", name))
-		}
-		slices.Sort(users)
-		if _, err := m.sql(ctx, env, "DROP USER IF EXISTS "+strings.Join(users, ", ")+";"); err != nil {
-			return err
-		}
 		if err := os.Remove(mariadbRemoteConf(env)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -324,7 +398,8 @@ func applyMariaDBRemote(ctx context.Context, env *Env, s dbServerState) error {
 	}
 	conf := "# Managed by WSPanel agent (db.remote). Do not edit.\n[mariadbd]\nbind-address = *\n" +
 		"ssl_cert = " + crt + "\nssl_key = " + key + "\n" +
-		"# failed logins in the journal, for fail2ban\nlog_warnings = 2\n"
+		"# failed logins in the journal with the client's IP (not a resolved name), for fail2ban;\n" +
+		"# accounts then match by IP only, as the network accounts are written\nskip-name-resolve = ON\nlog_warnings = 2\n"
 	if err := env.FS.WriteFile(mariadbRemoteConf(env), []byte(conf), 0o644, fsx.Root); err != nil {
 		return err
 	}
@@ -332,18 +407,16 @@ func applyMariaDBRemote(ctx context.Context, env *Env, s dbServerState) error {
 		return err
 	}
 	// Network accounts mirror the local ones (same password hash), TLS only.
+	hosts := mariadbNetHosts(s)
 	var q strings.Builder
-	names := make([]string, 0, len(owners))
-	for name := range owners {
-		names = append(names, name)
-	}
-	slices.Sort(names)
 	for _, name := range names {
-		fmt.Fprintf(&q, "CREATE OR REPLACE USER '%[1]s'@'%%' IDENTIFIED BY PASSWORD '%[2]s' REQUIRE SSL; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%%'; ",
-			name, owners[name], grantPattern(name))
+		for _, h := range hosts {
+			fmt.Fprintf(&q, "CREATE OR REPLACE USER '%[1]s'@'%[4]s' IDENTIFIED BY PASSWORD '%[2]s' REQUIRE SSL; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%[4]s'; ",
+				name, owners[name], grantPattern(name), h)
+		}
 	}
 	if s.RootHash != "" {
-		q.WriteString(rootRemoteSQL(s.RootHash))
+		q.WriteString(rootRemoteSQL(s.RootHash, hosts))
 	}
 	if q.Len() == 0 {
 		return nil
@@ -512,8 +585,8 @@ func applyPostgresRemote(ctx context.Context, env *Env, s dbServerState) error {
 			return err
 		}
 		hbaPath := filepath.Join(dir, "pg_hba.conf")
-		cur, err := os.ReadFile(hbaPath)
-		if err != nil && !env.Cfg.DryRun {
+		cur, err := readConfigNoFollow(hbaPath)
+		if err != nil {
 			return err
 		}
 		if err := env.FS.WriteFile(hbaPath, []byte(replaceManagedBlock(string(cur), pgHBABegin, pgHBAEnd, hba)), 0o640, owner); err != nil {
@@ -522,6 +595,29 @@ func applyPostgresRemote(ctx context.Context, env *Env, s dbServerState) error {
 	}
 	_, err = env.Exec.Run(ctx, "systemctl", "restart", "postgresql.service")
 	return err
+}
+
+// readConfigNoFollow reads a config file that lives in a directory another
+// user owns (pg_hba.conf is postgres's): never through a symlink or a hard
+// link, so root cannot be tricked into reading, say, /etc/shadow and writing
+// it back with that user as the owner.
+func readConfigNoFollow(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && st.Nlink != 1 {
+		return nil, fmt.Errorf("%s has more than one link", path)
+	}
+	if fi.Size() > 1<<20 {
+		return nil, fmt.Errorf("%s is larger than 1 MB", path)
+	}
+	return io.ReadAll(f)
 }
 
 // replaceManagedBlock swaps the lines between begin and end (appending the
@@ -591,6 +687,13 @@ func syncDBFirewall(ctx context.Context, env *Env, engine string, port int, s db
 	return nil
 }
 
+// The stock mysqld-auth filter looks for a "mysqld" process; Debian 13 runs "mariadbd".
+const mariadbFail2banFilter = `# Managed by WSPanel agent (db.remote).
+[Definition]
+failregex = ^.*\[Warning\] Access denied for user '[^']+'@'<HOST>'
+ignoreregex =
+`
+
 const pgFail2banFilter = `# Managed by WSPanel agent (db.remote).
 [Definition]
 failregex = ^\S+ \S+ \S+ \[\d+\] <HOST> .*FATAL:  password authentication failed
@@ -603,10 +706,17 @@ ignoreregex =
 func writeDBFail2ban(ctx context.Context, env *Env, st map[string]dbServerState) error {
 	jail := filepath.Join(env.Cfg.Fail2banDir, "jail.d", "wspanel-db.conf")
 	filter := filepath.Join(env.Cfg.Fail2banDir, "filter.d", "wspanel-postgres.conf")
+	mfilter := filepath.Join(env.Cfg.Fail2banDir, "filter.d", "wspanel-mariadb.conf")
 	var b strings.Builder
 	b.WriteString("# Managed by WSPanel agent (db.remote).\n")
 	if st["mariadb"].Remote {
-		b.WriteString("\n[mysqld-auth]\nenabled = true\nbackend = systemd\njournalmatch = _SYSTEMD_UNIT=mariadb.service\nport = 3306\nmaxretry = 5\nfindtime = 10m\nbantime = 1h\n")
+		if err := env.FS.MkdirAll(filepath.Dir(mfilter), 0o755, fsx.Root); err != nil {
+			return err
+		}
+		if err := env.FS.WriteFile(mfilter, []byte(mariadbFail2banFilter), 0o644, fsx.Root); err != nil {
+			return err
+		}
+		b.WriteString("\n[wspanel-mariadb]\nenabled = true\nfilter = wspanel-mariadb\nbackend = systemd\njournalmatch = _SYSTEMD_UNIT=mariadb.service\nport = 3306\nmaxretry = 5\nfindtime = 10m\nbantime = 1h\n")
 	}
 	if st["postgresql"].Remote {
 		if err := env.FS.MkdirAll(filepath.Dir(filter), 0o755, fsx.Root); err != nil {

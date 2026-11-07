@@ -35,7 +35,8 @@ final class AgentMessages
 
         foreach (self::rules() as $pattern => $replace) {
             if (preg_match($pattern, $m, $match) === 1) {
-                return is_callable($replace) ? $replace($match) : preg_replace($pattern, $replace, $m);
+                // Only the recognised part: an English tail after it ("; change it…") is dropped.
+                return is_callable($replace) ? $replace($match) : preg_replace($pattern, $replace, $match[0]);
             }
         }
 
@@ -96,6 +97,8 @@ final class AgentMessages
             '/^allow: (.+) means everyone; use anywhere$/' => '$1 znamená všechny adresy, zvolte „Kdokoli z internetu“.',
             '/^allow: (.+) is not an IP address or network$/' => '$1 není IP adresa ani síť.',
             '/^creating the TLS certificate failed/' => 'TLS certifikát databáze se nepodařilo vytvořit.',
+            '/^allow: MariaDB accepts single IPv6 addresses only, not (\S+)$/' => 'MariaDB umí z IPv6 jen jednotlivé adresy, ne síť $1.',
+            '/^the firewall \(ufw\) is not active; an allowlist needs it$/' => 'Firewall (UFW) neběží. Povolené adresy bez něj nastavit nejde.',
 
             // SSH, mail, DNS, certificates, firewall
             '/^keys: at least one public key or a password is required$/' => 'Zadejte veřejný klíč, nebo nastavte heslo.',

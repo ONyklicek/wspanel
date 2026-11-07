@@ -235,6 +235,7 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	}
 	st.SSHAccess, st.SSHPassword, st.Deploy, st.OpcacheProduction = old.SSHAccess, old.SSHPassword, old.Deploy, old.OpcacheProduction
 	st.MailMode, st.TLS, st.Disabled = old.MailMode, old.TLS, old.Disabled
+	st.PHPSettings = carryPHPSettings(old.PHPSettings, st.Mode)
 	if _, ok := workerSpecs[st.Framework]["reverb"]; ok {
 		st.ReverbPort = old.ReverbPort // the Reverb route survives; otherwise refreshWorkers drops the worker
 	}

@@ -34,6 +34,9 @@ type siteState struct {
 	// TLS: auto (Let's Encrypt / ZeroSSL) | internal (local CA, for internal
 	// domains) | custom (uploaded certificate). Empty = auto.
 	TLS string `json:"tls,omitempty"`
+	// PHPSettings: php.ini values set from the panel (see phpDirectives), plus
+	// worker_threads / max_requests for FrankenPHP worker mode.
+	PHPSettings map[string]string `json:"php_settings,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

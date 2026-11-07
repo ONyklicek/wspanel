@@ -20,6 +20,7 @@ class AgentMessagesTest extends TestCase
             'engine' => ['postgresql is not installed on this server', 'PostgreSQL není na serveru nainstalovaná.'],
             'health' => ['Get "https://a.example.com/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)', 'Vypršel časový limit, web neodpověděl včas.'],
             'command' => ['systemctl: exit status 1', 'Příkaz systemctl skončil chybou (kód 1).'],
+            'english tail dropped' => ['port 22 is protected (SSH/HTTP/HTTPS); change it on the server directly', 'Port 22 je chráněný (SSH/HTTP/HTTPS), z panelu ho nejde zavřít.'],
             'unknown stays' => ['something new the agent says', 'something new the agent says'],
             'czech stays' => ['Agent není dostupný (/run/panel-agent.sock): No such file', 'Agent není dostupný (/run/panel-agent.sock): No such file'],
         ];

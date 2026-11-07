@@ -50,6 +50,44 @@ Soukromý klíč vlastního certifikátu je jen na serveru (čitelný pro proxy)
 auditu se nezapisuje. Vlastní certifikát hlídá panel na stránce SSL; obnovit ho
 musíte sami (nahrát nový).
 
+## PHP nastavení webu
+
+Detail webu → **Další → PHP nastavení**. Prázdné pole = výchozí hodnota PHP.
+
+| Nastavení | Příklad | Poznámka |
+|---|---|---|
+| `memory_limit` | `512M` | 16M–8G, `-1` = bez limitu |
+| `upload_max_filesize`, `post_max_size` | `64M` | velikost nahrávaných souborů; `post_max_size` nastavte aspoň stejně |
+| `max_execution_time`, `max_input_time` | `120` | sekundy |
+| `max_input_vars` | `5000` | velké formuláře (WooCommerce, Shopware…) |
+| `date.timezone` | `Europe/Prague` | výběr ze seznamu |
+| `display_errors`, `error_reporting` | | na produkci nechte chyby skryté, jsou v logu webu |
+| `session.gc_maxlifetime`, `allow_url_fopen`, `short_open_tag` | | |
+
+U **worker** webů (FrankenPHP) navíc **počet workerů** (výchozí podle počtu CPU)
+a **recyklace workeru po N požadavcích** (výchozí 500, chrání před únikem paměti).
+
+- U klasického webu se hodnoty zapíšou do jeho PHP-FPM poolu jako `php_value`,
+  takže aplikace je může dál měnit přes `ini_set()`. Před načtením panel
+  konfiguraci ověří (`php-fpm -t`); neplatná se nepoužije.
+- U worker webu se zapíšou do `php_ini` jeho instance FrankenPHP a aplikace se
+  restartuje.
+- Funkce jako `exec()` nebo `proc_open()` zůstávají z bezpečnostních důvodů
+  zakázané (viz [Bezpečnost](bezpecnost.md)).
+
+## PHP verze a rozšíření
+
+**Server → PHP** ukazuje nainstalované verze PHP-FPM, které weby je používají,
+a jejich rozšíření.
+
+- **Přidat / odebrat rozšíření:** balíčky `php8.x-…` z repozitáře
+  packages.sury.org (imagick, swoole, mongodb, xdebug…). Po změně se PHP-FPM
+  plynule znovu načte. Odebrané rozšíření přestane fungovat všem webům na té verzi.
+- **Doinstalovat verzi PHP** (8.1–8.5) se stejnou sadou rozšíření jako při
+  instalaci serveru. Web na ni přepnete v Další → Změnit verzi.
+- **FrankenPHP** (worker režim) je jedna binárka s pevnou sadou rozšíření;
+  stránka je vypíše. Novou verzi FrankenPHP nainstalujete v Server → Služby.
+
 ## Čisté PHP (WordPress, vlastní skripty)
 
 Pro weby bez frameworku zvolte typ **Čisté PHP**. Deploy z Gitu nepotřebujete:

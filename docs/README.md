@@ -48,6 +48,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Síť a pošta → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
 | **Síť a pošta → Pošta** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, log |
 | **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
+| **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
 | **Server → Firewall** | pravidla UFW a přístup k panelu (z jakých adres) |
 | **Server → Audit** | co přesně a kdy agent na serveru udělal |

@@ -9,6 +9,15 @@
 	servers {
 		protocols h1
 	}
+{{- if or .PHPValues .DisplayErrors}}
+	frankenphp {
+		# PHP settings from the panel
+{{- range .PHPValues}}
+		php_ini {{.Key}} {{.Value}}
+{{- end}}
+		php_ini display_errors {{if .DisplayErrors}}On{{else}}Off{{end}}
+	}
+{{- end}}
 }
 
 http:// {
@@ -33,7 +42,7 @@ http:// {
 			file {{.WorkerFile}}
 			num {{.WorkerThreads}}
 			# Recycle workers to contain memory leaks of long-running apps.
-			env MAX_REQUESTS 500
+			env MAX_REQUESTS {{.WorkerMaxReq}}
 {{- range .WorkerEnv}}
 			env {{.}}
 {{- end}}
