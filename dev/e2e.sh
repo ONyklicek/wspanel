@@ -720,7 +720,8 @@ rewrite ^/old/(.*)\$ /new/\$1 permanent;'));" >/dev/null
 contains "custom header served" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/)" "x-rule: e2e"
 contains "converted nginx redirect works" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/old/page)" "location: /new/page"
 contains "proxying elsewhere is refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, 'reverse_proxy 127.0.0.1:8025'); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "reverse_proxy"
-contains "rules the web server rejects are refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, 'encode nonsense-codec'); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "odmítl"
+contains "rules the web server rejects are refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, 'encode nonsense-codec'); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "Řádek 1"
+contains "an import hidden in a block is refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, \"header {\n\timport /etc/panel-agent/agent.json\n}\"); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "Řádek 2"
 contains "previous rules still active" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/)" "x-rule: e2e"
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, '');" >/dev/null
 check "rules removed" bash -c "! curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/ | grep -qi x-rule"

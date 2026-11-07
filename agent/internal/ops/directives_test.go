@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,5 +74,55 @@ func TestSiteDirectivesInEdgeRoute(t *testing.T) {
 	}
 	if st, _, _ := loadSite(env, "rules.example.com"); st.Directives != "header X-Rule yes\nredir /old /new 301" {
 		t.Errorf("a refused snippet must not replace the stored one: %q", st.Directives)
+	}
+}
+
+func TestDirectivesParseTimeConstructsRefusedInAnyBlock(t *testing.T) {
+	for _, src := range []string{
+		"header {\n\timport /etc/panel-agent/agent.json\n}",
+		"request_body {\n\timport x\n}",
+		"(snip) {\n\treverse_proxy x\n}",
+		"header {\n\t\"}\"\nreverse_proxy 127.0.0.1:8025\n}",
+	} {
+		if err := checkDirectives(src); err == nil {
+			t.Errorf("must be refused: %q", src)
+		}
+	}
+}
+
+func TestAdaptedConfigIsCheckedAsCaddyReadsIt(t *testing.T) {
+	parse := func(s string) any {
+		var v any
+		if err := json.Unmarshal([]byte(s), &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	ok := `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["wsp-check.invalid"]}],"handle":[{"handler":"subroute","routes":[{"handle":[{"handler":"static_response","headers":{"Location":["/new/{http.regexp.r1.1}"]},"status_code":301}],"match":[{"path_regexp":{"name":"r1","pattern":"^/old/(.*)$"}}]},{"handle":[{"handler":"headers","response":{"set":{"X-A":["b"]}}}]},{"handle":[{"handler":"static_response","status_code":403}],"match":[{"not":[{"remote_ip":{"ranges":["10.0.0.0/8"]}}]}]}]}]}]}}}}}`
+	if err := checkAdapted(parse(ok)); err != nil {
+		t.Fatalf("allowed config refused: %v", err)
+	}
+	for name, bad := range map[string]string{
+		"proxy":          `{"routes":[{"handle":[{"handler":"subroute","routes":[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"127.0.0.1:8025"}]}]}]}]}]}`,
+		"file server":    `{"handle":[{"handler":"file_server","root":"/etc"}]}`,
+		"expression":     `{"match":[{"expression":"true"}],"handle":[]}`,
+		"nested not":     `{"match":[{"not":[{"file":{"try_files":["/x"]}}]}],"handle":[]}`,
+		"host header":    `{"handle":[{"handler":"headers","request":{"set":{"Host":["victim.example.com"]}}}]}`,
+		"file in a body": `{"handle":[{"handler":"static_response","body":"{file./etc/shadow}"}]}`,
+	} {
+		if err := checkAdapted(parse(bad)); err == nil {
+			t.Errorf("%s must be refused", name)
+		}
+	}
+}
+
+func TestAdaptErrorsShowOnlyTheRulesLine(t *testing.T) {
+	file := "/tmp/wsp-rules-123/Caddyfile"
+	msg := adaptError(`Error: adapting config using caddyfile: /tmp/wsp-rules-123/Caddyfile:8: unrecognized directive: encodex`, file)
+	if msg != "line 3: unrecognized directive: encodex" || strings.Contains(msg, "/tmp") {
+		t.Errorf("got %q", msg)
+	}
+	if adaptError("panic: something /etc/panel-proxy/sites/other.caddy", file) != "the web server could not read them" {
+		t.Error("anything not about the rules file must not be shown")
 	}
 }

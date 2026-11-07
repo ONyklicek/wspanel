@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"wspanel/agent/internal/protocol"
@@ -168,11 +173,179 @@ func checkDirectives(src string) error {
 			}
 		}
 	}
+	for _, l := range lines {
+		// Parse-time constructs work in any block, so they are refused anywhere.
+		if first := strings.ToLower(l.toks[0]); first == "import" || strings.HasPrefix(first, "(") {
+			return fmt.Errorf("line %d: imports and snippets are not allowed", l.num)
+		}
+	}
 	tree, err := treeCaddy(lines)
 	if err != nil {
 		return err
 	}
 	return checkDirectiveLines(tree)
+}
+
+// What Caddy itself makes of the rules is checked too: the snippet is adapted
+// by Caddy's own parser (as nobody, in a wrapper of nothing but the snippet)
+// and every handler and matcher in the result must be allowed. This is the
+// decisive check: the hand-written one above only gives early, readable
+// errors, and a difference between the two parsers cannot let anything pass.
+var (
+	allowedHandlers       = []string{"headers", "encode", "rewrite", "static_response", "request_body", "vars", "map", "subroute", "error"}
+	allowedMatchers       = []string{"path", "path_regexp", "header", "header_regexp", "method", "query", "remote_ip", "client_ip", "protocol", "not", "host"}
+	directivesWrapperHead = "{\n\tadmin off\n}\nhttp://wsp-check.invalid {\n\troute {\n"
+	adaptLineRe           = regexp.MustCompile(`:(\d+)\b`)
+)
+
+func adaptDirectives(ctx context.Context, env *Env, src string) error {
+	if env.Cfg.DryRun {
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "wsp-rules-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return err
+	}
+	file := filepath.Join(dir, "Caddyfile")
+	if err := os.WriteFile(file, []byte(directivesWrapperHead+src+"\n\t}\n}\n"), 0o644); err != nil {
+		return err
+	}
+	// Explicitly: the agent's umask (0077) would leave it unreadable for nobody.
+	if err := os.Chmod(file, 0o644); err != nil {
+		return err
+	}
+	res, err := env.Exec.Run(ctx, "setpriv", "--reuid=nobody", "--regid=nogroup", "--clear-groups", "--",
+		env.Cfg.FrankenPHPBin, "adapt", "--config", file, "--adapter", "caddyfile")
+	if err != nil {
+		return fmt.Errorf("%s", adaptError(res.Stdout+"\n"+res.Stderr, file))
+	}
+	var cfg any
+	if err := json.Unmarshal([]byte(firstJSON(res.Stdout)), &cfg); err != nil {
+		return fmt.Errorf("the web server could not read them")
+	}
+	return checkAdapted(cfg)
+}
+
+// adaptError keeps only Caddy's reason and the line within the rules.
+func adaptError(out, file string) string {
+	head := strings.Count(directivesWrapperHead, "\n")
+	for _, line := range strings.Split(out, "\n") {
+		if i := strings.Index(line, file); i >= 0 {
+			msg := strings.TrimSpace(line[i+len(file):])
+			if m := adaptLineRe.FindStringSubmatch(msg); m != nil {
+				n, _ := strconv.Atoi(m[1])
+				msg = strings.TrimSpace(strings.TrimLeft(strings.TrimPrefix(msg, ":"+m[1]), ":"))
+				return fmt.Sprintf("line %d: %s", max(n-head, 1), msg)
+			}
+			return msg
+		}
+	}
+	return "the web server could not read them"
+}
+
+func firstJSON(s string) string {
+	if i := strings.Index(s, "{"); i >= 0 {
+		if j := strings.Index(s[i:], "\n"); j >= 0 {
+			return s[i : i+j]
+		}
+		return s[i:]
+	}
+	return s
+}
+
+func checkAdapted(v any) error {
+	switch t := v.(type) {
+	case map[string]any:
+		if h, ok := t["handler"].(string); ok {
+			if !slices.Contains(allowedHandlers, h) {
+				return fmt.Errorf("handler %q is not allowed", h)
+			}
+			if h == "headers" {
+				if req, ok := t["request"].(map[string]any); ok {
+					if err := checkRequestFields(req); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if m, ok := t["match"]; ok {
+			if err := checkAdaptedMatchers(m); err != nil {
+				return err
+			}
+		}
+		for _, child := range t {
+			if err := checkAdapted(child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, child := range t {
+			if err := checkAdapted(child); err != nil {
+				return err
+			}
+		}
+	case string:
+		low := strings.ToLower(t)
+		for _, f := range forbiddenPlaceholders {
+			if strings.Contains(low, f) {
+				return fmt.Errorf("placeholder %s… is not allowed", f)
+			}
+		}
+	}
+	return nil
+}
+
+func checkAdaptedMatchers(m any) error {
+	sets, ok := m.([]any)
+	if !ok {
+		return fmt.Errorf("unexpected matcher")
+	}
+	for _, s := range sets {
+		set, ok := s.(map[string]any)
+		if !ok {
+			return fmt.Errorf("unexpected matcher")
+		}
+		for name, val := range set {
+			if !slices.Contains(allowedMatchers, name) {
+				return fmt.Errorf("matcher %q is not allowed", name)
+			}
+			if name == "not" {
+				if err := checkAdaptedMatchers(val); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkRequestFields(req map[string]any) error {
+	for _, op := range []string{"set", "add", "delete", "replace"} {
+		var fields []string
+		switch v := req[op].(type) {
+		case map[string]any:
+			for k := range v {
+				fields = append(fields, k)
+			}
+		case []any:
+			for _, k := range v {
+				if s, ok := k.(string); ok {
+					fields = append(fields, s)
+				}
+			}
+		}
+		for _, f := range fields {
+			f = strings.ToLower(f)
+			if f == "host" || strings.HasPrefix(f, "x-forwarded-") || f == "x-real-ip" || f == "forwarded" {
+				return fmt.Errorf("request header %s is set by the edge", f)
+			}
+		}
+	}
+	return nil
 }
 
 func checkDirectiveLines(lines []cfLine) error {
@@ -269,6 +442,9 @@ func siteDirectives(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 		if err := checkDirectives(src); err != nil {
 			return nil, protocol.Invalid("directives: " + err.Error())
 		}
+		if err := adaptDirectives(ctx, env, src); err != nil {
+			return nil, protocol.Invalid("directives: " + err.Error())
+		}
 	}
 	st.Directives = src
 	l, err := layout(env.Cfg, st)
@@ -282,7 +458,9 @@ func siteDirectives(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 		}
 	}()
 	if err = writeEdge(ctx, env, l, &rollback); err != nil {
-		return nil, protocol.Invalid("directives: the web server refused them: " + err.Error())
+		// The whole edge config was checked: its errors may name other sites. Logged, not shown.
+		log.Printf("site.directives %s: edge rejected: %v", p.Domain, err)
+		return nil, protocol.Invalid("directives: the web server refused them")
 	}
 	if err = saveSiteState(env, st); err != nil {
 		return nil, err

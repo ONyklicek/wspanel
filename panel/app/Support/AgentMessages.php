@@ -50,7 +50,12 @@ final class AgentMessages
 
         return [
             // Site web-server rules (site.directives)
-            '/^directives: the web server refused them: (.+)$/s' => fn ($m) => 'Webserver pravidla odmítl, platí dál předchozí: '.$m[1],
+            '/^directives: the web server refused them$/' => 'Webserver pravidla odmítl, platí dál předchozí.',
+            '/^directives: the web server could not read them$/' => 'Webserver pravidlům nerozumí, platí dál předchozí.',
+            '/^directives: handler "([^"]+)" is not allowed$/' => 'Pravidla vedou na akci „$1“, kterou v pravidlech webu použít nejde.',
+            '/^directives: matcher "([^"]+)" is not allowed$/' => 'Matcher „$1“ použít nejde.',
+            '/^directives: request header (\S+) is set by the edge$/' => 'Hlavičku $1 nastavuje server sám, měnit ji nejde.',
+            '/^directives: placeholder (\S+) is not allowed$/' => 'Zástupný symbol $1 (soubory, proměnné prostředí) použít nejde.',
             '/^directives: line (\d+): directive "([^"]+)" is not allowed.*$/' => 'Řádek $1: direktivu „$2“ v pravidlech webu použít nejde. Povolené: header, request_header, encode, rewrite, uri, redir, respond, error, abort, request_body, vars, map, handle, handle_path, route.',
             '/^directives: line (\d+): matcher "([^"]+)" is not allowed.*$/' => 'Řádek $1: matcher „$2“ použít nejde. Povolené: path, path_regexp, header, header_regexp, method, query, remote_ip, client_ip, protocol, not, host.',
             '/^directives: line (\d+): placeholder (\S+) is not allowed$/' => 'Řádek $1: zástupný symbol $2 (soubory, proměnné prostředí) použít nejde.',
