@@ -41,7 +41,8 @@ dev-provision: agent-build
 	$(DEV) exec devserver /opt/wspanel/provision/install.sh \
 		--db=$(DB) --php=$(PHP) --panel-domain=panel.localhost \
 		--agent-bin=/opt/wspanel/build/panel-agent-linux-$(ARCH) \
-		--panel-source=/opt/wspanel/panel --local-certs
+		--panel-source=/opt/wspanel/panel --local-certs \
+		--allow-unenforced-socket-bind # Docker Desktop: no cgroup BPF socket-bind
 
 dev-shell:
 	$(DEV) exec devserver bash

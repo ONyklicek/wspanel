@@ -19,5 +19,9 @@
   "site_config_dir": "var/dry-root/etc/panel-sites",
   "site_run_dir": "var/dry-root/run/wspanel-sites",
   "tmpfiles_dir": "var/dry-root/etc/tmpfiles.d",
-  "node_dir": "var/dry-root/opt/fnm/node-versions"
+  "node_dir": "var/dry-root/opt/fnm/node-versions",
+  "authorized_keys_dir": "var/dry-root/etc/ssh/authorized_keys",
+  "tools_dir": "var/dry-root/etc/panel-sites/bin",
+  "node_port_min": 30600,
+  "node_port_max": 30999
 }

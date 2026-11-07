@@ -47,6 +47,7 @@ func Registry() map[string]Op {
 		{"site.switch_mode", true, siteSwitchMode},
 		{"site.set_version", true, siteSetVersion},
 		{"site.health", false, siteHealth},
+		{"ssh.set", true, sshSet},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},

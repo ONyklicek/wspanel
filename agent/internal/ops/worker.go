@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"wspanel/agent/internal/config"
@@ -28,6 +29,10 @@ var workerSpecs = map[string]map[string]workerSpec{
 		"horizon":   {"artisan", []string{"artisan", "horizon"}, 60},
 		"queue":     {"artisan", []string{"artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--memory=256"}, 60},
 		"scheduler": {"artisan", []string{"artisan", "schedule:work"}, 30},
+		// Reverb listens on an agent-allocated privileged port; the edge routes /app and /apps to it.
+		"reverb":    {"artisan", []string{"artisan", "reverb:start", "--host=127.0.0.1", "--port={port}"}, 30},
+		"pulse":     {"artisan", []string{"artisan", "pulse:check"}, 30},
+		"pulsework": {"artisan", []string{"artisan", "pulse:work"}, 30}, // only with Redis ingest
 	},
 	"symfony": {
 		"messenger": {"bin/console", []string{"bin/console", "messenger:consume", "async", "--time-limit=3600", "--memory-limit=256M"}, 60},
@@ -36,7 +41,7 @@ var workerSpecs = map[string]map[string]workerSpec{
 }
 
 // WorkerTypes lists all known worker types (for validation messages / UI).
-var WorkerTypes = []string{"horizon", "queue", "scheduler", "messenger"}
+var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "messenger"}
 
 func workerUnit(user, typ string) string {
 	return "wspanel-" + user + "-" + typ + ".service"
@@ -55,11 +60,18 @@ func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitDat
 	if l.Mode == "worker" {
 		php = env.Cfg.FrankenPHPBin + " php-cli"
 	}
+	args := strings.Join(spec.Args, " ")
+	extra := noBindExtra
+	if typ == "reverb" {
+		args = strings.ReplaceAll(args, "{port}", strconv.Itoa(l.ReverbPort))
+		extra = portUnitExtra(l.ReverbPort)
+	}
 	return unitData{
 		Description: fmt.Sprintf("WSPanel %s worker for %s", typ, l.Domain),
 		User:        l.User,
 		Home:        l.Home,
-		ExecStart:   php + " " + strings.Join(spec.Args, " "),
+		ExecStart:   php + " " + args,
+		Extra:       extra,
 		StopTimeout: spec.StopTimeout,
 	}
 }
@@ -102,11 +114,36 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 			rollback.run()
 		}
 	}()
+	out := map[string]any{"worker": p.Worker, "domain": p.Domain}
+	if p.Worker == "reverb" {
+		// Port + edge route first; the state change is rolled back with the edge.
+		st, _, lerr := loadSite(env, p.Domain)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if st.ReverbPort, err = allocatePort(env); err != nil {
+			return nil, err
+		}
+		if l, err = layout(env.Cfg, st); err != nil {
+			return nil, err
+		}
+		if err = writeEdge(ctx, env, l, &rollback); err != nil {
+			return nil, err
+		}
+		prev := st
+		prev.ReverbPort = 0
+		if err = saveSiteState(env, st); err != nil {
+			return nil, err
+		}
+		rollback.add(func() { _ = saveSiteState(env, prev) })
+		out["port"] = st.ReverbPort
+	}
 	started, err := installUnit(ctx, env, unitPath, workerUnitData(env, l, p.Worker, spec), spec.Entry, &rollback)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"unit": filepath.Base(unitPath), "worker": p.Worker, "domain": p.Domain, "started": started}, nil
+	out["unit"], out["started"] = filepath.Base(unitPath), started
+	return out, nil
 }
 
 func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -126,6 +163,25 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	if err := removeUnit(ctx, env, unitPath); err != nil {
 		return nil, err
+	}
+	if p.Worker == "reverb" { // drop the edge route and release the port
+		st, _, err := loadSite(env, p.Domain)
+		if err != nil {
+			return nil, err
+		}
+		st.ReverbPort = 0
+		l, err := layout(env.Cfg, st)
+		if err != nil {
+			return nil, err
+		}
+		var rb undo
+		if err := writeEdge(ctx, env, l, &rb); err != nil {
+			rb.run()
+			return nil, err
+		}
+		if err := saveSiteState(env, st); err != nil {
+			return nil, err
+		}
 	}
 	return map[string]string{"unit": filepath.Base(unitPath), "removed": "true"}, nil
 }

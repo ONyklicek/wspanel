@@ -5,18 +5,23 @@ namespace App\Filament\Resources\Sites\Tables;
 use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\DeleteSite;
+use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
+use App\Enums\SshAccess;
 use App\Filament\Resources\Sites\Schemas\SiteForm;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -55,6 +60,11 @@ class SitesTable
                     ->color(fn (Site $record) => $record->health_checked_at === null ? 'gray' : ($record->health_ok ? 'success' : 'danger'))
                     ->tooltip(fn (Site $record) => $record->health_error
                         ?? ($record->health_checked_at ? 'ověřeno '.$record->health_checked_at->diffForHumans() : null)),
+                TextColumn::make('ssh_access')
+                    ->label('SSH')
+                    ->badge()
+                    ->tooltip(fn (Site $record) => $record->ssh_access === SshAccess::Off ? null
+                        : 'sftp://'.$record->system_user.'@'.request()->getHost()),
                 TextColumn::make('system_user')->label('Uživatel')->fontFamily('mono')->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('doc_root')->label('Doc root')->fontFamily('mono')->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('created_at')->label('Založeno')->dateTime('j. n. Y H:i')->sortable(),
@@ -113,6 +123,32 @@ class SitesTable
                                 ? Notification::make()->title("{$record->domain} odpovídá ({$record->health_status})")->success()->send()
                                 : Notification::make()->title("{$record->domain} neodpovídá")->body($record->health_error)->danger()->send();
                         }),
+                    Action::make('ssh')
+                        ->label('SSH / SFTP')
+                        ->icon(Heroicon::OutlinedCommandLine)
+                        ->visible(fn (Site $record) => $record->status === SiteStatus::Active)
+                        ->modalHeading(fn (Site $record) => "SSH / SFTP pro {$record->domain}")
+                        ->modalDescription(fn (Site $record) => "Přihlášení jen klíčem jako {$record->system_user}, v rámci tohoto webu. Přesměrování portů je zakázané. Přímé SSH obchází audit panelu.")
+                        ->fillForm(fn (Site $record) => ['access' => $record->ssh_access->value, 'keys' => $record->ssh_keys])
+                        ->schema([
+                            Radio::make('access')->label('Přístup')->options(SshAccess::class)->required()->live(),
+                            Textarea::make('keys')
+                                ->label('Veřejné klíče')
+                                ->helperText('Jeden na řádek, např. ssh-ed25519 AAAA… jmeno@pocitac. Hesla jsou vypnutá.')
+                                ->rows(4)
+                                ->required(fn (Get $get) => ! in_array($get('access'), [SshAccess::Off, SshAccess::Off->value], true)),
+                        ])
+                        ->action(function (Site $record, array $data) {
+                            try {
+                                app(ManageSsh::class)->handle($record, $data['access'], (string) ($data['keys'] ?? ''));
+                                Notification::make()
+                                    ->title("SSH pro {$record->domain}: {$record->ssh_access->getLabel()}")
+                                    ->body($record->ssh_access === SshAccess::Off ? null : "ssh {$record->system_user}@".request()->getHost())
+                                    ->success()->send();
+                            } catch (AgentException $e) {
+                                Notification::make()->title('Nastavení SSH selhalo')->body($e->getMessage())->danger()->persistent()->send();
+                            }
+                        }),
                     Action::make('addWorker')
                         ->label('Přidat worker')
                         ->icon(Heroicon::OutlinedCpuChip)
@@ -132,6 +168,9 @@ class SitesTable
                                             ? 'Plánovač (artisan schedule:work)'
                                             : 'Plánovač (messenger:consume scheduler_default)',
                                         'messenger' => 'Messenger (messenger:consume async)',
+                                        'reverb' => 'Reverb – WebSockets (artisan reverb:start)',
+                                        'pulse' => 'Pulse – kontroly (artisan pulse:check)',
+                                        'pulsework' => 'Pulse – ingest z Redisu (artisan pulse:work)',
                                         default => $t,
                                     }]))
                                 ->required(),
@@ -139,10 +178,11 @@ class SitesTable
                         ->action(function (Site $record, array $data) {
                             try {
                                 $out = app(ManageWorkers::class)->create($record, $data['worker']);
-                                Notification::make()
-                                    ->title('Worker přidán')
-                                    ->body(($out['started'] ?? false) ? 'Běží.' : 'Zaregistrován, spustí se po prvním deployi.')
-                                    ->success()->send();
+                                $body = ($out['started'] ?? false) ? 'Běží.' : 'Zaregistrován, spustí se po prvním deployi.';
+                                if ($data['worker'] === 'reverb') {
+                                    $body .= " Do .env: REVERB_HOST={$record->domain}, REVERB_PORT=443, REVERB_SCHEME=https (proxy posílá /app a /apps na Reverb).";
+                                }
+                                Notification::make()->title('Worker přidán')->body($body)->success()->persistent()->send();
                             } catch (AgentException $e) {
                                 Notification::make()->title('Worker se nepodařilo přidat')->body($e->getMessage())->danger()->persistent()->send();
                             }

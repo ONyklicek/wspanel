@@ -21,6 +21,8 @@ type siteState struct {
 	PHPVersion  string `json:"php_version,omitempty"`  // classic: FPM version; worker: FrankenPHP's PHP (informational)
 	NodeVersion string `json:"node_version,omitempty"` // node: major version
 	Port        int    `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent
+	ReverbPort  int    `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
+	SSHAccess   string `json:"ssh_access,omitempty"`   // off | sftp | shell
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

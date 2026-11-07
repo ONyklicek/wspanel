@@ -51,10 +51,21 @@ type Config struct {
 	SiteConfigDir string `json:"site_config_dir"` // per-site FrankenPHP Caddyfiles
 	SiteRunDir    string `json:"site_run_dir"`    // per-site socket dirs (group = proxy group)
 	TmpfilesDir   string `json:"tmpfiles_dir"`
-	ProxyGroup    string `json:"proxy_group"` // group of the edge proxy, owns site socket dirs
-	NodeDir       string `json:"node_dir"`    // fnm node-versions dir
-	NodePortMin   int    `json:"node_port_min"`
+	ProxyGroup    string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
+	NodeDir       string `json:"node_dir"`      // fnm node-versions dir
+	NodePortMin   int    `json:"node_port_min"` // must stay below net.ipv4.ip_unprivileged_port_start
 	NodePortMax   int    `json:"node_port_max"`
+	// Dev containers only: allow app ports although SocketBindAllow/Deny is not
+	// enforced by the kernel (then an app could bind other privileged ports).
+	AllowUnenforcedSocketBind bool   `json:"allow_unenforced_socket_bind"`
+	AgentBinary               string `json:"agent_binary"` // used as the bind probe
+
+	// SSH / SFTP for site users. Keys live in root-owned files the site user
+	// cannot edit; sshd reads them via AuthorizedKeysFile (see provisioning).
+	AuthorizedKeysDir string `json:"authorized_keys_dir"`
+	SSHGroup          string `json:"ssh_group"`  // shell + SFTP
+	SFTPGroup         string `json:"sftp_group"` // SFTP only
+	ToolsDir          string `json:"tools_dir"`  // per-user php/node links put first on PATH
 
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
@@ -90,17 +101,25 @@ func Defaults() Config {
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",
 
-		SiteConfigDir:  "/etc/panel-sites",
-		SiteRunDir:     "/run/wspanel-sites",
-		TmpfilesDir:    "/etc/tmpfiles.d",
-		ProxyGroup:     "panel-proxy",
-		NodeDir:        "/opt/fnm/node-versions",
-		NodePortMin:    30000,
-		NodePortMax:    39999,
-		SystemdDir:     "/etc/systemd/system",
-		PHPCLIBinary:   "/usr/bin/php{version}",
-		UFWBinary:      "/usr/sbin/ufw",
-		ProtectedPorts: []int{22, 80, 443},
+		SiteConfigDir: "/etc/panel-sites",
+		SiteRunDir:    "/run/wspanel-sites",
+		TmpfilesDir:   "/etc/tmpfiles.d",
+		ProxyGroup:    "panel-proxy",
+		NodeDir:       "/opt/fnm/node-versions",
+		// Privileged ports: only units granted CAP_NET_BIND_SERVICE (and allowed
+		// exactly their own port via SocketBindAllow) can bind them, so no
+		// other site user can squat a port while its owner restarts.
+		NodePortMin:       600,
+		NodePortMax:       999,
+		AgentBinary:       "/usr/local/sbin/panel-agent",
+		AuthorizedKeysDir: "/etc/ssh/authorized_keys",
+		SSHGroup:          "wspanel-ssh",
+		SFTPGroup:         "wspanel-sftp",
+		ToolsDir:          "/etc/panel-sites/bin",
+		SystemdDir:        "/etc/systemd/system",
+		PHPCLIBinary:      "/usr/bin/php{version}",
+		UFWBinary:         "/usr/sbin/ufw",
+		ProtectedPorts:    []int{22, 80, 443},
 	}
 }
 

@@ -3,7 +3,7 @@
 #
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
-#              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--local-certs]
+#              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
 #
 # --db accepts: none | mariadb | postgres | mariadb,postgres
 # Safe to re-run: every step is idempotent.
@@ -31,6 +31,8 @@ AGENT_BIN=""
 PANEL_SOURCE=""
 LOCAL_CERTS=0
 SSH_PORT=22
+ROOT_LOGIN="prohibit-password"
+UNENFORCED_BIND=false
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -46,6 +48,8 @@ for arg in "$@"; do
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
     --ssh-port=*) SSH_PORT="${arg#*=}" ;;
+    --allow-unenforced-socket-bind) UNENFORCED_BIND=true ;; # dev containers only (no cgroup BPF)
+    --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
     --local-certs) LOCAL_CERTS=1 ;; # dev only: Caddy internal CA instead of Let's Encrypt
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) die "unknown argument: $arg" ;;
@@ -92,7 +96,8 @@ export DEBIAN_FRONTEND=noninteractive
 log "Base packages"
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
-  ca-certificates curl gnupg acl sqlite3 unzip git rsync composer valkey-server ufw
+  ca-certificates curl gnupg acl sqlite3 unzip git rsync composer valkey-server ufw \
+  openssh-server fail2ban mc nano
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
@@ -162,10 +167,20 @@ if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
   chmod -R a+rX /opt/fnm
 fi
 
+# ---------------------------------------------------------------- kernel
+# App ports (Node SSR, Reverb) are allocated below 1024 so that only the unit
+# granted CAP_NET_BIND_SERVICE for exactly that port can bind it. Containers
+# often lower this to 0; the agent refuses to allocate ports if it is.
+log "Kernel settings"
+echo "net.ipv4.ip_unprivileged_port_start = 1024" > /etc/sysctl.d/90-wspanel.conf
+sysctl -q -p /etc/sysctl.d/90-wspanel.conf
+
 # ---------------------------------------------------------------- users
 log "System users"
 id panel-proxy &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-proxy --shell /usr/sbin/nologin panel-proxy
 id panel-web &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-web --shell /usr/sbin/nologin panel-web
+getent group wspanel-ssh >/dev/null || groupadd --system wspanel-ssh
+getent group wspanel-sftp >/dev/null || groupadd --system wspanel-sftp
 id panel &>/dev/null || useradd --system --user-group --no-create-home --home-dir /srv/panel --shell /usr/sbin/nologin panel
 
 # ---------------------------------------------------------------- directories
@@ -194,7 +209,8 @@ cat > /etc/panel-agent/agent.json <<JSON
   "php_versions": $(json_list "${PHP_LIST[@]}"),
   "default_php_version": "$PANEL_PHP",
   "db_engines": $(json_list "${DB_ENGINES[@]}"),
-  "protected_ports": [$SSH_PORT, 80, 443]
+  "protected_ports": [$SSH_PORT, 80, 443],
+  "allow_unenforced_socket_bind": $UNENFORCED_BIND
 }
 JSON
 chmod 0600 /etc/panel-agent/agent.json
@@ -259,6 +275,23 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   ls -1dt /srv/panel/releases/*/ | tail -n +6 | xargs -r rm -rf
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
 fi
+
+# ---------------------------------------------------------------- SSH / SFTP
+log "SSH (keys only) and fail2ban"
+install -d -m 0755 /etc/ssh/authorized_keys /etc/panel-sites/bin
+sed -e "s|__ROOT_LOGIN__|$ROOT_LOGIN|" "$HERE/files/sshd-wspanel.conf.tmpl" > /etc/ssh/sshd_config.d/50-wspanel.conf
+if [[ "$SSH_PORT" != 22 ]]; then
+  echo "Port $SSH_PORT" > /etc/ssh/sshd_config.d/40-wspanel-port.conf
+fi
+install -m 0644 "$HERE/files/profile-wspanel.sh" /etc/profile.d/wspanel.sh
+# Same PATH for non-login SSH commands, via pam_env (idempotent block).
+sed -i '/^# >>> WSPanel/,/^# <<< WSPanel/d' /etc/security/pam_env.conf
+cat "$HERE/files/pam_env-wspanel.conf" >> /etc/security/pam_env.conf
+sed -e "s|__SSH_PORT__|$SSH_PORT|" "$HERE/files/fail2ban-wspanel.conf.tmpl" > /etc/fail2ban/jail.d/wspanel.conf
+sshd -t || die "sshd config invalid"
+systemctl reload ssh 2>/dev/null || systemctl restart ssh
+systemctl enable --now fail2ban
+systemctl restart fail2ban
 
 # ---------------------------------------------------------------- firewall
 log "Firewall (UFW)"

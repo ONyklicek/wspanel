@@ -32,6 +32,11 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.SiteRunDir = filepath.Join(root, "run/wspanel-sites")
 	cfg.TmpfilesDir = filepath.Join(root, "etc/tmpfiles.d")
 	cfg.NodeDir = filepath.Join(root, "opt/fnm/node-versions")
+	cfg.AuthorizedKeysDir = filepath.Join(root, "etc/ssh/authorized_keys")
+	cfg.ToolsDir = filepath.Join(root, "etc/panel-sites/bin")
+	// Ports below 1024 need root on the dev machine; the privileged range is a
+	// production property (checked by checkPrivilegedPorts, skipped in dry-run).
+	cfg.NodePortMin, cfg.NodePortMax = 30600, 30999
 	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -133,8 +138,16 @@ func TestSiteCreateLaravel(t *testing.T) {
 	// The web user may read only public dirs; everything else is traverse-only.
 	var readGrants []string
 	for _, c := range dr.Calls() {
-		if c.Name == "setfacl" && strings.Contains(strings.Join(c.Args, " "), ":rX") {
-			readGrants = append(readGrants, c.Args[len(c.Args)-1])
+		if c.Name == "setfacl" {
+			t.Fatalf("setfacl must never run as root: %s", c)
+		}
+		if c.Name == "setpriv" && strings.Contains(strings.Join(c.Args, " "), "/usr/bin/setfacl") {
+			if c.Args[0] != "--reuid=web_shop_example_com" || c.Args[1] != "--regid=web_shop_example_com" {
+				t.Fatalf("setfacl not run as the site user: %s", c)
+			}
+			if strings.Contains(strings.Join(c.Args, " "), ":rX") {
+				readGrants = append(readGrants, c.Args[len(c.Args)-1])
+			}
 		}
 	}
 	want := []string{home + "/releases/initial/public", home + "/shared/storage/app/public"}

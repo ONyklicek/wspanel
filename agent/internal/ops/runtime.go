@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"wspanel/agent/internal/config"
 	"wspanel/agent/internal/fsx"
@@ -75,9 +76,13 @@ func nodeEntry(framework string, port int) (entry string, args []string) {
 // allocatePort picks the lowest free port in the configured range that no
 // other site holds and nothing listens on.
 func allocatePort(env *Env) (int, error) {
+	if err := checkPrivilegedPorts(env); err != nil {
+		return 0, err
+	}
 	used := map[int]bool{}
 	for _, st := range allSiteStates(env.Cfg) {
 		used[st.Port] = true
+		used[st.ReverbPort] = true
 	}
 	for p := env.Cfg.NodePortMin; p <= env.Cfg.NodePortMax; p++ {
 		if used[p] {
@@ -92,6 +97,78 @@ func allocatePort(env *Env) (int, error) {
 	}
 	return 0, fmt.Errorf("no free port in %d-%d", env.Cfg.NodePortMin, env.Cfg.NodePortMax)
 }
+
+// checkPrivilegedPorts refuses to hand out app ports unless the kernel treats
+// them as privileged (provisioning sets ip_unprivileged_port_start=1024;
+// containers often set it to 0).
+func checkPrivilegedPorts(env *Env) error {
+	if env.Cfg.DryRun {
+		return nil
+	}
+	b, err := os.ReadFile("/proc/sys/net/ipv4/ip_unprivileged_port_start")
+	if err != nil {
+		return fmt.Errorf("cannot read ip_unprivileged_port_start: %w", err)
+	}
+	start, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		return err
+	}
+	if start <= env.Cfg.NodePortMax {
+		return fmt.Errorf("net.ipv4.ip_unprivileged_port_start is %d: app ports %d-%d would be bindable by any site user; set it to 1024 (see provision/install.sh)",
+			start, env.Cfg.NodePortMin, env.Cfg.NodePortMax)
+	}
+	if ok, err := socketBindEnforced(env); err != nil {
+		return err
+	} else if !ok && !env.Cfg.AllowUnenforcedSocketBind {
+		return fmt.Errorf("systemd SocketBindAllow/SocketBindDeny is not enforced on this system (cgroup BPF), so an app granted CAP_NET_BIND_SERVICE could bind other privileged ports; refusing to run Node SSR / Reverb")
+	}
+	return nil
+}
+
+var bindProbe struct {
+	sync.Once
+	ok  bool
+	err error
+}
+
+// socketBindEnforced checks once that systemd really enforces SocketBindDeny:
+// a transient unit with the same rules as an app unit tries to bind a port it
+// is not allowed to. It must fail.
+func socketBindEnforced(env *Env) (bool, error) {
+	bindProbe.Do(func() {
+		allowed, probe := env.Cfg.NodePortMin, env.Cfg.NodePortMax
+		args := []string{"--wait", "--quiet", "--collect", "--pipe",
+			"-p", "User=nobody", "-p", "AmbientCapabilities=CAP_NET_BIND_SERVICE",
+			"-p", "SocketBindAllow=tcp:" + strconv.Itoa(allowed), "-p", "SocketBindDeny=any",
+			env.Cfg.AgentBinary, "-probe-bind", "127.0.0.1:" + strconv.Itoa(probe)}
+		res, err := env.Exec.Run(context.Background(), "systemd-run", args...)
+		out := strings.TrimSpace(res.Stdout)
+		switch {
+		case out == "denied":
+			bindProbe.ok = true
+		case out == "bound":
+			bindProbe.ok = false
+		case err != nil:
+			bindProbe.err = fmt.Errorf("socket bind probe failed: %w", err)
+		default:
+			bindProbe.err = fmt.Errorf("socket bind probe: unexpected output %q", out)
+		}
+	})
+	return bindProbe.ok, bindProbe.err
+}
+
+// portUnitExtra lets a unit bind exactly one privileged port and nothing else.
+func portUnitExtra(port int) []string {
+	return []string{
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+		"SocketBindAllow=tcp:" + strconv.Itoa(port),
+		"SocketBindDeny=any",
+	}
+}
+
+// noBindExtra: the unit may not bind any IP port (Unix sockets are unaffected).
+var noBindExtra = []string{"CapabilityBoundingSet=", "SocketBindDeny=any"}
 
 // ---------------------------------------------------------------- FrankenPHP
 
@@ -152,6 +229,7 @@ type unitData struct {
 	RunDir      string
 	ExecStart   string
 	Environment []string
+	Extra       []string // extra [Service] lines (capabilities, socket bind rules)
 	StopTimeout int
 }
 
@@ -165,6 +243,7 @@ func appUnitData(env *Env, l siteLayout) (unitData, string, error) {
 		d.RunDir = l.RunDir
 		d.ExecStart = env.Cfg.FrankenPHPBin + " run --config " + l.InstanceConfig + " --adapter caddyfile"
 		d.Environment = []string{"XDG_DATA_HOME=" + l.Home + "/tmp/xdg", "XDG_CONFIG_HOME=" + l.Home + "/tmp/xdg"}
+		d.Extra = noBindExtra
 		return d, entry, nil
 	case "node":
 		bin, ok := nodeVersions(env.Cfg)[l.NodeVersion]
@@ -179,6 +258,7 @@ func appUnitData(env *Env, l siteLayout) (unitData, string, error) {
 			"NODE_ENV=production", "PATH=" + filepath.Dir(bin) + ":/usr/bin:/bin",
 			"HOST=127.0.0.1", "PORT=" + port, "HOSTNAME=127.0.0.1", "NITRO_HOST=127.0.0.1", "NITRO_PORT=" + port,
 		}
+		d.Extra = portUnitExtra(l.Port)
 		return d, entry, nil
 	}
 	return d, "", fmt.Errorf("mode %s has no app unit", l.Mode)

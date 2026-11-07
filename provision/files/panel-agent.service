@@ -15,7 +15,9 @@ LogsDirectoryMode=0700
 UMask=0077
 PrivateTmp=yes
 ProtectHome=yes
-NoNewPrivileges=yes
+# No NoNewPrivileges: combined with the narrowed bounding set below, systemd
+# drops CAP_SETUID from the agent, and the agent needs it to run commands as
+# a site user (setpriv). It runs as root already, so NNP would add little.
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectClock=yes

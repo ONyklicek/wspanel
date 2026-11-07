@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -24,6 +25,7 @@ type siteLayout struct {
 	PHPVersion  string
 	NodeVersion string
 	Port        int
+	ReverbPort  int
 	User        string
 	Home        string
 
@@ -68,6 +70,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		PHPVersion:  st.PHPVersion,
 		NodeVersion: st.NodeVersion,
 		Port:        st.Port,
+		ReverbPort:  st.ReverbPort,
 		User:        user,
 		Home:        filepath.Join(cfg.SitesRoot, st.Domain),
 
@@ -258,6 +261,9 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = saveSiteState(env, st); err != nil {
 		return nil, err
 	}
+	if err = writeToolLinks(env, l); err != nil {
+		return nil, err
+	}
 	return siteOutput(l, started), nil
 }
 
@@ -309,8 +315,17 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 	if err := env.FS.Mkdir(filepath.Join(l.Home, "tmp"), 0o700, o); err != nil {
 		return err
 	}
-	if err := ensureShared(env, l, o); err != nil {
-		return err
+	// The tree was created by root a moment ago and the user has no process
+	// yet, so nothing in it can be a planted symlink.
+	for _, d := range sharedDirs(l.Framework) {
+		if err := env.FS.MkdirAll(filepath.Join(l.Home, "shared", d), 0o750, o); err != nil {
+			return err
+		}
+	}
+	if f := sharedEnvFile(l.Framework); f != "" {
+		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), nil, 0o600, o); err != nil {
+			return err
+		}
 	}
 	if l.Mode == "node" {
 		js, err := render("placeholder-server.js.tmpl", l)
@@ -332,29 +347,60 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 	return env.FS.Symlink("releases/initial", filepath.Join(l.Home, "current"), o)
 }
 
+// asUser runs a fixed binary as the site user (setpriv drops to its uid/gid
+// and groups). Used for every change inside an existing site home: the user
+// controls that tree and may have planted symlinks, which then lead only
+// where the user could write or chmod anyway — never where root could.
+func asUser(ctx context.Context, env *Env, user, bin string, args ...string) error {
+	full := append([]string{"--reuid=" + user, "--regid=" + user, "--init-groups", "--reset-env", "--", bin}, args...)
+	_, err := env.Exec.Run(ctx, "setpriv", full...)
+	return err
+}
+
 // ensureShared creates missing per-framework shared dirs and the env file
-// (also used when a site switches framework).
-func ensureShared(env *Env, l siteLayout, o fsx.Owner) error {
+// when a site switches framework — as the site user (see asUser).
+func ensureShared(ctx context.Context, env *Env, l siteLayout) error {
+	var dirs []string
 	for _, d := range sharedDirs(l.Framework) {
-		if err := env.FS.MkdirAll(filepath.Join(l.Home, "shared", d), 0o750, o); err != nil {
+		dirs = append(dirs, filepath.Join(l.Home, "shared", d))
+	}
+	if len(dirs) > 0 {
+		if err := asUser(ctx, env, l.User, "/usr/bin/install", append([]string{"-d", "-m", "0750"}, dirs...)...); err != nil {
 			return err
 		}
 	}
-	if f := sharedEnvFile(l.Framework); f != "" && !fsx.Exists(filepath.Join(l.Home, "shared", f)) {
-		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), nil, 0o600, o); err != nil {
-			return err
+	if f := sharedEnvFile(l.Framework); f != "" {
+		path := filepath.Join(l.Home, "shared", f)
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			if err := asUser(ctx, env, l.User, "/usr/bin/install", "-m", "0600", "/dev/null", path); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// currentRelease is the release dir `current` points to.
-func currentRelease(l siteLayout) string {
+var releaseNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// currentRelease is the release dir `current` points to. It must be a plain
+// name of a real directory (not a symlink) directly under releases/.
+func currentRelease(l siteLayout) (string, error) {
 	target, err := os.Readlink(filepath.Join(l.Home, "current"))
 	if err != nil {
-		return "initial"
+		return "", fmt.Errorf("read current release: %w", err)
 	}
-	return filepath.Base(target)
+	name := filepath.Base(target)
+	if filepath.Clean(target) != filepath.Join("releases", name) && filepath.Clean(target) != filepath.Join(l.Home, "releases", name) {
+		return "", protocol.Invalid("current must point to releases/<name>, got " + target)
+	}
+	if !releaseNameRe.MatchString(name) || name == ".." {
+		return "", protocol.Invalid("invalid release name " + name)
+	}
+	fi, err := os.Lstat(filepath.Join(l.Home, "releases", name))
+	if err != nil || !fi.IsDir() {
+		return "", protocol.Invalid("release " + name + " is not a directory")
+	}
+	return name, nil
 }
 
 // grantWebAccess gives the web tier exactly what it must serve: traverse
@@ -362,6 +408,9 @@ func currentRelease(l siteLayout) string {
 // Caddy follows symlinks, so a symlink planted by the site can only ever
 // reach files the web user may read — i.e. public files.
 // Laravel's public/storage -> shared/storage/app/public is the one other path.
+//
+// setfacl runs as the site user: an owner may set ACLs on its own files, and a
+// planted symlink then cannot steer the grant onto anything the user does not own.
 func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string) error {
 	acl := "u:" + l.WebUser
 	traverse := []string{l.Home, filepath.Join(l.Home, "releases"), filepath.Join(l.Home, "releases", release)}
@@ -372,17 +421,15 @@ func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string)
 		}
 		readable = append(readable, filepath.Join(l.Home, "shared/storage/app/public"))
 	}
-	for _, d := range traverse {
-		if _, err := env.Exec.Run(ctx, "setfacl", "-m", acl+":x", d); err != nil {
-			return err
-		}
+	if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", append([]string{"-m", acl + ":x"}, traverse...)...); err != nil {
+		return err
 	}
 	read := acl + ":rX,d:" + acl + ":rX"
 	for _, d := range readable {
 		if !fsx.Exists(d) {
 			continue
 		}
-		if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-m", read, d); err != nil {
+		if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-m", read, d); err != nil {
 			return err
 		}
 	}
@@ -436,6 +483,8 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		}
 	}
 	_ = os.Remove(siteStatePath(env.Cfg, p.Domain))
+	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))
+	removeToolLinks(env, l.User)
 	trashed := ""
 	if fsx.Exists(l.Home) {
 		if err := env.FS.MkdirAll(env.Cfg.TrashDir, 0o700, fsx.Root); err != nil {

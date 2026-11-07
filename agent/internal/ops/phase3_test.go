@@ -78,7 +78,7 @@ func TestWorkerModeSite(t *testing.T) {
 		t.Error("worker site must not have a web tier block")
 	}
 	for _, c := range dr.Calls() {
-		if c.Name == "setfacl" || (c.Name == "php-fpm8.3" || c.Name == "php-fpm8.4") {
+		if c.Name == "setfacl" || c.Name == "setpriv" || c.Name == "php-fpm8.3" || c.Name == "php-fpm8.4" {
 			t.Errorf("unexpected call for worker site: %s", c)
 		}
 	}
@@ -194,7 +194,7 @@ func TestSwitchModes(t *testing.T) {
 	}
 	var revoked bool
 	for _, c := range dr.Calls() {
-		if c.Name == "setfacl" && strings.Contains(strings.Join(c.Args, " "), "-x u:panel-web") {
+		if c.Name == "setpriv" && strings.Contains(strings.Join(c.Args, " "), "/usr/bin/setfacl -R -P -x u:panel-web") {
 			revoked = true
 		}
 	}

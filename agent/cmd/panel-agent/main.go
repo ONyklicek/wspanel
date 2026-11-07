@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -24,9 +25,20 @@ import (
 func main() {
 	cfgPath := flag.String("config", "/etc/panel-agent/agent.json", "config file")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	probeBind := flag.String("probe-bind", "", "internal: try to bind addr, print bound/denied (socket-bind enforcement probe)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(ops.Version)
+		return
+	}
+	if *probeBind != "" {
+		ln, err := net.Listen("tcp", *probeBind)
+		if err != nil {
+			fmt.Println("denied")
+			return
+		}
+		ln.Close()
+		fmt.Println("bound")
 		return
 	}
 
@@ -90,9 +102,12 @@ func binaries(cfg config.Config) map[string]string {
 		"systemctl":        "/usr/bin/systemctl",
 		"useradd":          "/usr/sbin/useradd",
 		"userdel":          "/usr/sbin/userdel",
-		"setfacl":          "/usr/bin/setfacl",
+		"usermod":          "/usr/sbin/usermod",
+		"pkill":            "/usr/bin/pkill",
+		"setpriv":          "/usr/bin/setpriv", // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
+		"systemd-run":      "/usr/bin/systemd-run",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
 	}

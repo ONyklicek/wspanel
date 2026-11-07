@@ -55,6 +55,42 @@ dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
 - **Worker a Node web obsluhuje statiku sám pod svým uživatelem.** Symlink tak
   nedosáhne dál, než kam smí uživatel webu.
 
+## Laravel a Symfony
+
+| Laravel | Symfony |
+|---|---|
+| Octane = worker režim webu (FrankenPHP) | worker režim přes Symfony Runtime (7.4+) |
+| Horizon, fronta (`queue:work`), scheduler (`schedule:work`) | Messenger, scheduler (`messenger:consume scheduler_default`) |
+| Reverb (`reverb:start`): edge posílá `/app` a `/apps` na jeho port | |
+| Pulse (`pulse:check`, volitelně `pulse:work` při Redis ingestu) | |
+
+Workery běží na stejném PHP jako web (FPM CLI dané verze, nebo `frankenphp php-cli` ve worker režimu).
+
+## Porty aplikací
+
+Node SSR a Reverb dostávají porty 600–999 na `127.0.0.1`. Porty pod 1024 může
+bindovat jen proces s `CAP_NET_BIND_SERVICE`, takže si port restartující se
+aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
+- Provisioning nastaví `net.ipv4.ip_unprivileged_port_start=1024`. Kontejnery
+  ho často mají na 0.
+- Unita aplikace dostane capability a `SocketBindAllow` jen na svůj port.
+- Agent si vynucení `SocketBindDeny` (cgroup BPF) ověří sondou. Když vynucené
+  není, Node a Reverb odmítne. Výjimka `--allow-unenforced-socket-bind` je jen
+  pro Docker Desktop.
+
+## SSH a SFTP
+
+- Přihlášení jen klíčem jako uživatel webu (`web_<doména>`). Úroveň přístupu se
+  volí v panelu: vypnuto, jen SFTP, nebo SSH + SFTP.
+- Klíče leží v `/etc/ssh/authorized_keys/<user>` (root, 0644). Uživatel webu
+  si nemůže přidat vlastní. Každý klíč má `restrict`; shell dostane navíc jen pty.
+- Port forwarding, agent a X11 jsou zakázané: přes SSH se nedostanete na
+  lokální služby (databáze, backendy jiných webů).
+- V shellu jsou `php` a `node`/`npm` ve verzi webu (`/etc/panel-sites/bin/<user>`
+  přes `/etc/profile.d` a `pam_env`), k tomu `composer`, `git`, `mc` a `nano`.
+- fail2ban hlídá SSH. Root se může přihlásit jen klíčem; `--no-root-ssh` ho zakáže úplně.
+- Přímé SSH obchází audit panelu, proto panel u webu zobrazuje, že je zapnuté.
+
 ## Struktura webu
 
 ```

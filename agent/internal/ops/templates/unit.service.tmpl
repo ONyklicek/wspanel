@@ -21,6 +21,9 @@ Environment=HOME={{.Home}}/tmp
 Environment={{.}}
 {{- end}}
 UMask=0027
+{{- range .Extra}}
+{{.}}
+{{- end}}
 
 # Sandbox: the process runs arbitrary application code, so it gets as little
 # of the system as possible. Writable: only its own site.

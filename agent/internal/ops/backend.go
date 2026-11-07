@@ -18,7 +18,11 @@ import (
 func setupBackend(ctx context.Context, env *Env, l siteLayout, rb *undo) (bool, error) {
 	switch l.Mode {
 	case "classic":
-		if err := grantWebAccess(ctx, env, l, currentRelease(l)); err != nil {
+		release, err := currentRelease(l)
+		if err != nil {
+			return false, err
+		}
+		if err := grantWebAccess(ctx, env, l, release); err != nil {
 			return false, err
 		}
 		if err := writePool(ctx, env, l, rb); err != nil {
@@ -82,11 +86,12 @@ func teardownBackend(ctx context.Context, env *Env, l siteLayout, mode, next str
 				return err
 			}
 		}
-		if fsx.Exists(l.Home) {
-			if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-x", "u:"+l.WebUser, l.Home); err != nil {
+		if _, err := lookupOwner(env, l.User); err == nil && fsx.Exists(l.Home) {
+			// As the site user, like the grant (see grantWebAccess).
+			if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-x", "u:"+l.WebUser, l.Home); err != nil {
 				return err
 			}
-			if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-k", l.Home); err != nil {
+			if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-k", l.Home); err != nil {
 				return err
 			}
 		}
@@ -220,16 +225,16 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if err != nil {
 		return nil, err
 	}
+	st.SSHAccess = old.SSHAccess
+	if _, ok := workerSpecs[st.Framework]["reverb"]; ok {
+		st.ReverbPort = old.ReverbPort // the Reverb route survives; otherwise refreshWorkers drops the worker
+	}
 	if st.Mode == "node" {
 		if st.Port, err = allocatePort(env); err != nil {
 			return nil, err
 		}
 	}
 	l, err := layout(env.Cfg, st)
-	if err != nil {
-		return nil, err
-	}
-	owner, err := lookupOwner(env, l.User)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +245,7 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 			rollback.run()
 		}
 	}()
-	if err = ensureShared(env, l, owner); err != nil {
+	if err = ensureShared(ctx, env, l); err != nil {
 		return nil, err
 	}
 	started, err := setupBackend(ctx, env, l, &rollback)
@@ -260,6 +265,9 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	}
 	if err = refreshWorkers(ctx, env, l); err != nil {
 		return nil, fmt.Errorf("switched to %s, but updating workers failed: %w", st.Mode, err)
+	}
+	if err = writeToolLinks(env, l); err != nil {
+		return nil, err
 	}
 	return siteOutput(l, started), nil
 }
@@ -322,6 +330,9 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 		if err = refreshWorkers(ctx, env, l); err != nil {
 			return nil, fmt.Errorf("switched to PHP %s, but updating workers failed: %w", p.Version, err)
 		}
+		if err = writeToolLinks(env, l); err != nil {
+			return nil, err
+		}
 		return siteOutput(l, true), nil
 
 	case "node":
@@ -346,6 +357,9 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 			return nil, err
 		}
 		if err = saveSiteState(env, st); err != nil {
+			return nil, err
+		}
+		if err = writeToolLinks(env, l); err != nil {
 			return nil, err
 		}
 		return siteOutput(l, started), nil

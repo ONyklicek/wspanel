@@ -2,6 +2,17 @@
 # Edge (TLS) for {{.Domain}} ({{.Mode}}). Holds certificates, never touches site files.
 {{.Domain}} {
 	encode zstd gzip
-	reverse_proxy {{.Upstream}}
+{{- if .ReverbPort}}
+
+	# Laravel Reverb (WebSockets): /app = client connections, /apps = server API.
+	@reverb path /app /app/* /apps /apps/*
+	handle @reverb {
+		reverse_proxy 127.0.0.1:{{.ReverbPort}}
+	}
+{{- end}}
+
+	handle {
+		reverse_proxy {{.Upstream}}
+	}
 	log
 }

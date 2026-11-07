@@ -5,12 +5,13 @@ namespace App\Models;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
+use App\Enums\SshAccess;
 use Illuminate\Database\Eloquent\Model;
 
 class Site extends Model
 {
     protected $fillable = [
-        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port',
+        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys',
         'system_user', 'home', 'doc_root', 'status', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
     ];
@@ -21,6 +22,7 @@ class Site extends Model
             'mode' => SiteMode::class,
             'framework' => Framework::class,
             'status' => SiteStatus::class,
+            'ssh_access' => SshAccess::class,
             'port' => 'integer',
             'health_ok' => 'boolean',
             'health_status' => 'integer',
