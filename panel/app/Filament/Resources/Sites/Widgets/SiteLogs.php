@@ -15,6 +15,8 @@ class SiteLogs extends Widget
 
     protected int|string|array $columnSpan = 'full';
 
+    protected static bool $isLazy = false;
+
     public ?Site $record = null;
 
     public string $source = 'php';

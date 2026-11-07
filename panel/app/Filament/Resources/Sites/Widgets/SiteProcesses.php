@@ -26,6 +26,8 @@ class SiteProcesses extends TableWidget
 
     protected int|string|array $columnSpan = 'full';
 
+    protected static bool $isLazy = false;
+
     public ?string $agentError = null;
 
     private const WORKER_LABELS = [
