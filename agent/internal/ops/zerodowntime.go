@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"wspanel/agent/internal/peercred"
 )
 
 // Zero-downtime switches of a site's own process after a deploy.
@@ -42,9 +44,29 @@ func gracefulWorkerRestart(ctx context.Context, env *Env, l siteLayout) (bool, e
 	}
 	client := &http.Client{
 		Timeout: 2 * time.Minute, // workers finish their requests before they restart
-		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "unix", sock)
-		}},
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				c, err := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "unix", sock)
+				if err != nil {
+					return nil, err
+				}
+				// Decided on the connection itself, not on the path: whatever
+				// the path pointed at by now, the server on the other end must
+				// be the site user's own process.
+				uc, ok := c.(*net.UnixConn)
+				if !ok {
+					c.Close()
+					return nil, fmt.Errorf("admin socket: not a unix connection")
+				}
+				uid, err := peercred.UID(uc)
+				if err != nil || int(uid) != owner.UID {
+					c.Close()
+					return nil, fmt.Errorf("admin socket of %s is served by another user", l.Domain)
+				}
+				return c, nil
+			},
+		},
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/frankenphp/workers/restart", nil)
 	res, err := client.Do(req)
