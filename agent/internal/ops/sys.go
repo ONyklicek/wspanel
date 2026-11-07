@@ -22,7 +22,6 @@ func managedUnits(cfg config.Config) []string {
 	for _, e := range cfg.DBEngines {
 		units = append(units, e+".service")
 	}
-	units = append(units, "valkey-server.service")
 	return append(units, allWorkerUnits(cfg)...)
 }
 

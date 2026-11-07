@@ -122,6 +122,9 @@ func TestSiteMovesToAClientGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := filepath.Join(env.Cfg.SitesRoot, "e.example.com")
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "e.example.com", "enabled": true, "maxmemory_mb": 32}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := call(t, env, siteSetGroup, map[string]any{"domain": "e.example.com", "group": "wsc_9"}); err != nil {
 		t.Fatal(err)
 	}
@@ -130,6 +133,7 @@ func TestSiteMovesToAClientGroup(t *testing.T) {
 		"chown -R -h --from=:web_e_example_com :wsc_9 " + home,
 		"systemctl reload php8.3-fpm",
 		"setfacl -m g::--- " + home,
+		"chown -h :wsc_9 " + filepath.Join(env.Cfg.SiteConfigDir, "web_e_example_com.valkey.conf"),
 	} {
 		if !hasCall(dr, want) {
 			t.Errorf("missing %q in:\n%s", want, strings.Join(callLines(dr), "\n"))

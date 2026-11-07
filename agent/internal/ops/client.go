@@ -196,9 +196,12 @@ func siteSetGroup(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if err := isolateHome(ctx, env, l, p.Group != ""); err != nil {
 		return nil, err
 	}
-	if fsx.Exists(l.InstanceConfig) {
-		if _, err := env.Exec.Run(ctx, "chown", "-h", ":"+to, l.InstanceConfig); err != nil {
-			return nil, err
+	// Root-owned configs the site's processes read through their group.
+	for _, f := range []string{l.InstanceConfig, valkeyPaths(env, l).Config} {
+		if fsx.Exists(f) {
+			if _, err := env.Exec.Run(ctx, "chown", "-h", ":"+to, f); err != nil {
+				return nil, err
+			}
 		}
 	}
 	st.Group = p.Group

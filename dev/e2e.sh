@@ -60,10 +60,11 @@ wait_deploy() { # wait_deploy DOMAIN RELEASE -> final status
 
 # ----------------------------------------------------------------------------
 section "Services"
-for u in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-fpm mariadb postgresql valkey-server ssh fail2ban; do
+for u in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-fpm mariadb postgresql ssh fail2ban; do
 	check "$u active" systemctl is-active --quiet "$u"
 done
 check "ufw active" bash -c 'ufw status | grep -q "Status: active"'
+check "no shared Valkey: each site has its own" bash -c '! systemctl is-active --quiet valkey-server && ! ss -ltn | grep -q ":6379 "'
 expect "ip_unprivileged_port_start = 1024" "$(sysctl -n net.ipv4.ip_unprivileged_port_start)" "1024"
 expect "agent socket root:panel 0660" "$(stat -c '%U:%G %a' /run/panel-agent.sock)" "root:panel 660"
 expect "panel login page" "$(code panel.localhost /login)" "200"

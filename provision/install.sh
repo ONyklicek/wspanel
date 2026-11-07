@@ -597,7 +597,10 @@ for v in "${PHP_LIST[@]}"; do
   systemctl enable "php$v-fpm"
   systemctl restart "php$v-fpm"
 done
-systemctl enable --now valkey-server
+# No shared Valkey: every site gets its own (Další → Valkey), with its own
+# port, password and memory. The package stays for the binaries only.
+systemctl disable --now valkey-server >/dev/null 2>&1 || true
+systemctl mask valkey-server >/dev/null 2>&1 || true
 frankenphp validate --config /etc/panel-web/Caddyfile --adapter caddyfile
 frankenphp validate --config /etc/panel-proxy/Caddyfile --adapter caddyfile
 systemctl enable panel-web panel-proxy panel-agent

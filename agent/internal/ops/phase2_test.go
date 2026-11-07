@@ -126,8 +126,8 @@ func TestPanelUnitsCannotBeStopped(t *testing.T) {
 	if _, err := call(t, env, serviceStop, map[string]string{"service": "php-fpm", "version": "8.3"}); err != nil {
 		t.Errorf("stopping a non-panel FPM must work: %v", err)
 	}
-	if _, err := call(t, env, serviceReset, map[string]string{"service": "valkey"}); err != nil {
-		t.Fatal(err)
+	if _, err := call(t, env, serviceStart, map[string]string{"service": "valkey"}); code(err) != "invalid_params" {
+		t.Errorf("the shared Valkey is gone (every site has its own): %v", err)
 	}
 }
 

@@ -16,7 +16,7 @@ import (
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker", "app", "task", "site-valkey"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "worker", "app", "task", "site-valkey"}
 
 // siteServices take a domain; "worker" also a worker type, "task" a task id.
 var siteServices = []string{"worker", "app", "task", "site-valkey"}
@@ -100,8 +100,6 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 			return "", protocol.NotFound(p.Service + " is not installed on this server")
 		}
 		return p.Service + ".service", nil
-	case "valkey":
-		return "valkey-server.service", nil
 	}
 	return "", protocol.Invalid("service")
 }
@@ -155,7 +153,7 @@ func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action st
 	if action == "stop" && slices.Contains(env.Cfg.PanelUnits(), unit) {
 		return nil, protocol.Forbidden(unit + " runs the panel itself and cannot be stopped from it; use restart")
 	}
-	if action == "reload" && (slices.Contains(siteServices, p.Service) || p.Service == "valkey") {
+	if action == "reload" && slices.Contains(siteServices, p.Service) {
 		return nil, protocol.Invalid("reload: not supported for " + p.Service + ", use restart")
 	}
 	// A broken config is never (re)loaded.
