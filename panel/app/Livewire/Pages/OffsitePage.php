@@ -75,7 +75,7 @@ class OffsitePage extends Page
     {
         $providers = array_map(fn (array $p) => $p['label'], ManageOffsite::PROVIDERS);
         $secretHelp = $this->status['has_secret']
-            ? 'Prázdné = ponechat uložené. Uloží se jen na serveru (root, 0600).'
+            ? 'Prázdné = ponechat uložené (jen když se nemění server, port, účet, šifrování ani sdílená složka). Uloží se jen na serveru (root, 0600).'
             : 'Uloží se jen na serveru (root, 0600), panel ho neuchovává.';
 
         return [

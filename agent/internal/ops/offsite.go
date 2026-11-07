@@ -173,10 +173,14 @@ func (c *offsiteConfig) keepSecrets(old offsiteConfig) {
 	if c.Type != old.Type {
 		return
 	}
-	if c.Type == "s3" && c.SecretKey == "" && c.AccessKey == old.AccessKey {
+	if c.Type == "s3" && c.SecretKey == "" && c.AccessKey == old.AccessKey && c.Endpoint == old.Endpoint && c.Bucket == old.Bucket && c.Region == old.Region {
 		c.SecretKey = old.SecretKey
 	}
-	if c.Type != "s3" && c.Password == "" && c.Host == old.Host && c.Username == old.Username {
+	// The password goes only where it went before, as protected as before:
+	// any change of server, port, account, encryption, pin or share needs it
+	// typed again.
+	if c.Type != "s3" && c.Password == "" && c.Host == old.Host && c.Port == old.Port && c.Username == old.Username &&
+		c.FTPTLS == old.FTPTLS && c.TLSPin == old.TLSPin && c.Share == old.Share && c.Domain == old.Domain && c.SMBEncrypt == old.SMBEncrypt {
 		c.Password = old.Password
 	}
 }
@@ -206,8 +210,12 @@ func signingKey(env *Env) ([]byte, error) {
 	return k, nil
 }
 
-func fileMAC(key []byte, f io.ReaderAt, size int64) ([]byte, error) {
+// fileMAC signs a copy together with where it belongs: the target folder
+// (sites/<domain>, db/<engine>/<name>), the file name and the size. A valid
+// copy of one site's backup moved under another site's name does not verify.
+func fileMAC(key []byte, dir, name string, f io.ReaderAt, size int64) ([]byte, error) {
 	m := hmac.New(sha256.New, key)
+	fmt.Fprintf(m, "wspanel-backup-v1\n%s/%s\n%d\n", dir, name, size)
 	if _, err := io.Copy(m, io.NewSectionReader(f, 0, size)); err != nil {
 		return nil, err
 	}
@@ -274,7 +282,7 @@ func copyOffsite(ctx context.Context, env *Env, t offsiteTarget, file string) (s
 	if err != nil {
 		return "", err
 	}
-	mac, err := fileMAC(key, f, fi.Size())
+	mac, err := fileMAC(key, t.dir, file, f, fi.Size())
 	if err != nil {
 		return "", err
 	}
@@ -363,7 +371,6 @@ func offsiteSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if c.Type == "" {
 		c.Type = "s3"
 	}
-	c.keepSecrets(loadOffsite(env))
 	c.Prefix = strings.Trim(c.Prefix, "/")
 	if c.Type == "s3" && c.Region == "" {
 		c.Region = "us-east-1"
@@ -371,6 +378,7 @@ func offsiteSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if c.Type == "ftp" && c.FTPTLS == "" {
 		c.FTPTLS = "explicit"
 	}
+	c.keepSecrets(loadOffsite(env)) // after the defaults: compared as stored
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -580,7 +588,7 @@ func offsiteFetch(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 			tmp.Close()
 			return nil, err
 		}
-		mac, err := fileMAC(key, tmp, n)
+		mac, err := fileMAC(key, t.dir, p.File, tmp, n)
 		if err != nil {
 			tmp.Close()
 			return nil, err

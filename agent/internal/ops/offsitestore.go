@@ -320,7 +320,34 @@ func (s *smbStore) Fetch(ctx context.Context, key string, dst io.Writer, maxSize
 	name := f.Name()
 	f.Close()
 	defer os.Remove(name)
-	if _, err := s.run(ctx, `get "`+remote+`" "`+name+`"`); err != nil {
+	// The listed size is the server's word: watch the file as it grows and
+	// stop smbclient once it passes the cap.
+	gctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	over := make(chan struct{})
+	go func() {
+		t := time.NewTicker(200 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-gctx.Done():
+				return
+			case <-t.C:
+				if fi, err := os.Stat(name); err == nil && fi.Size() > maxSize {
+					close(over)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	_, err = s.run(gctx, `get "`+remote+`" "`+name+`"`)
+	select {
+	case <-over:
+		return 0, errTooLarge
+	default:
+	}
+	if err != nil {
 		return 0, err
 	}
 	in, err := os.Open(name)

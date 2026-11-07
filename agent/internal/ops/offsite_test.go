@@ -1,7 +1,9 @@
 package ops
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http/httptest"
 	"os"
@@ -314,5 +316,80 @@ func TestSMBStoreDrivesSmbclientWithoutThePasswordOnTheCommandLine(t *testing.T)
 		if _, err := call(t, env, offsiteSet, c); code(err) != protocol.CodeInvalidParams {
 			t.Errorf("%v accepted", bad)
 		}
+	}
+}
+
+func TestASignedCopyMovedToAnotherSiteDoesNotVerify(t *testing.T) {
+	env, fake, url := offsiteEnv(t)
+	if _, err := setOffsite(t, env, url, nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err := call(t, env, siteBackup, map[string]any{"domain": "app.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := out.(backupInfo)
+	// Same server key, same content, but presented as a backup of another time.
+	moved := strings.Replace(b.File, backupStamp(b.File), "20250101T000000Z", 1)
+	movedKey := strings.Replace(b.Offsite, b.File, moved, 1)
+	fake.Objects[movedKey], fake.Modified[movedKey] = fake.Objects[b.Offsite], time.Now()
+	fake.Objects[movedKey+".sig"], fake.Modified[movedKey+".sig"] = fake.Objects[b.Offsite+".sig"], time.Now()
+	if _, err := call(t, env, offsiteFetch, map[string]any{"domain": "app.example.com", "file": moved}); err == nil || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("a signature verified under another name: %v", err)
+	}
+}
+
+func TestTheStoredPasswordIsNotReusedForWeakerOrOtherTransport(t *testing.T) {
+	env, _, _ := backupEnv(t)
+	old := offsiteConfig{Type: "ftp", Host: "nas", Username: "u", Password: "pw", FTPTLS: "explicit", KeepDays: 7}
+	for name, change := range map[string]func(*offsiteConfig){
+		"tls off":      func(c *offsiteConfig) { c.FTPTLS = "none" },
+		"another pin":  func(c *offsiteConfig) { c.TLSPin = strings.Repeat("AB", 32) },
+		"another port": func(c *offsiteConfig) { c.Port = 2121 },
+		"another host": func(c *offsiteConfig) { c.Host = "evil" },
+	} {
+		c := old
+		c.Password = ""
+		change(&c)
+		c.keepSecrets(old)
+		if c.Password != "" {
+			t.Errorf("%s: the stored password was reused", name)
+		}
+	}
+	same := old
+	same.Password, same.KeepDays = "", 30
+	same.keepSecrets(old)
+	if same.Password != "pw" {
+		t.Fatal("unchanged transport must keep the password")
+	}
+	_ = env
+}
+
+func TestAnSMBDownloadIsStoppedPastTheCap(t *testing.T) {
+	env, dr, _ := backupEnv(t)
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		cmd := c.Args[len(c.Args)-1]
+		switch {
+		case strings.HasPrefix(cmd, "ls"):
+			return executor.Result{Stdout: "  a.tar.gz                            A       10  Sat Nov  7 19:01:48 2026\n"}, nil
+		case strings.HasPrefix(cmd, "get"):
+			// The server lied about the size and keeps sending.
+			dst := strings.Split(cmd, `"`)[3]
+			f, _ := os.OpenFile(dst, os.O_WRONLY|os.O_TRUNC, 0o600)
+			defer f.Close()
+			for i := 0; i < 100; i++ {
+				f.Write(make([]byte, 1<<20))
+				time.Sleep(20 * time.Millisecond)
+			}
+		}
+		return executor.Result{}, nil
+	}
+	st, err := openSMB(env, offsiteConfig{Type: "smb", Host: "nas", Share: "s", Username: "u", Password: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Fetch(t.Context(), "dir/a.tar.gz", io.Discard, 1<<20); !errors.Is(err, errTooLarge) {
+		t.Fatalf("got %v", err)
 	}
 }

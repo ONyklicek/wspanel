@@ -135,10 +135,13 @@ Jak kopie fungují:
 
 Při uložení panel do úložiště zkusí zapsat, přečíst a smazat zkušební soubor;
 uloží se jen funkční nastavení. Hesla a klíče zná jen agent (root, 0600), panel
-je zpět nedostane a do auditu se nezapisují.
+je zpět nedostane a do auditu se nezapisují. Uložené heslo se znovu použije,
+jen když se nemění server, port, účet, šifrování, otisk ani sdílená složka;
+jinak ho zadejte znovu.
 
 **Podpis záloh.** Ke každé kopii se ukládá podpis `<soubor>.sig` (HMAC-SHA256
-klíčem, který zná jen tento server). Zpět na server se stáhne jen kopie
+klíčem, který zná jen tento server). Podpis zahrnuje i web či databázi a
+název zálohy, takže zálohu jednoho webu nejde vydávat za zálohu jiného. Zpět na server se stáhne jen kopie
 s platným podpisem. Kdo má přístup k úložišti, tedy nemůže podstrčit
 pozměněnou zálohu, která by se pak obnovila. Tlačítkem **Klíč pro ověření
 záloh** si klíč zobrazíte; uložte si ho mimo server (správce hesel). Na novém
