@@ -7,9 +7,12 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "filament/filament": "^5.11",
         "laravel/framework": "^13.17",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "nyoncode/wire-module-auth": "^2.9",
+        "nyoncode/wire-module-notifications": "^2.9",
+        "nyoncode/wire-module-users": "^2.9",
+        "nyoncode/wire-suite": "^2.9"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -19,6 +22,7 @@
         "laravel/pint": "^1.27",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
+        "nyoncode/wire-boost": "^2.9",
         "phpunit/phpunit": "^12.5.12"
     },
     "autoload": {

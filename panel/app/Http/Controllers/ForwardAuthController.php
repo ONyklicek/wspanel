@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Filament\Facades\Filament;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -15,7 +14,7 @@ class ForwardAuthController extends Controller
 {
     public function __invoke(Request $request): Response
     {
-        if (Filament::auth()->check()) {
+        if (auth()->check()) {
             return response()->noContent();
         }
 
@@ -24,6 +23,6 @@ class ForwardAuthController extends Controller
             $request->session()->put('url.intended', rtrim((string) config('app.url'), '/').$uri);
         }
 
-        return redirect()->to(Filament::getLoginUrl());
+        return redirect()->to(route('login'));
     }
 }

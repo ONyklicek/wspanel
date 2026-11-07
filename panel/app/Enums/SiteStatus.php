@@ -2,11 +2,10 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasColor;
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasColor;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum SiteStatus: string implements HasColor, HasLabel
-{
+enum SiteStatus: string implements HasColor, HasLabel {
     case Pending = 'pending';
     case Active = 'active';
     case Failed = 'failed';

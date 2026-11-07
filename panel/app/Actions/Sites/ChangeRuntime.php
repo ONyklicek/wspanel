@@ -3,7 +3,7 @@
 namespace App\Actions\Sites;
 
 use App\Actions\Services\SyncServices;
-use App\Filament\Resources\Sites\Schemas\SiteForm;
+use App\Support\Domains;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -23,7 +23,7 @@ class ChangeRuntime
      */
     public function switchMode(Site $site, array $data): Site
     {
-        $out = $this->agent->call('site.switch_mode', ['domain' => $site->domain] + SiteForm::runtimeParams($data));
+        $out = $this->agent->call('site.switch_mode', ['domain' => $site->domain] + Domains::runtimeParams($data));
 
         return $this->record($site, $out);
     }

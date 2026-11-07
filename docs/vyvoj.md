@@ -18,7 +18,7 @@ slouží jen k vývoji, produkce běží nativně.
 make dev-up          # spustí kontejner
 make dev-provision   # install.sh uvnitř (DB=mariadb,postgres PHP=8.3,8.4, --dns=powerdns, --mail=capture)
 docker compose -f dev/compose.yaml exec devserver bash -c \
-  'cd /srv/panel/current && runuser -u panel -- php artisan make:filament-user'
+  'cd /srv/panel/current && runuser -u panel -- php artisan wire:user'
 make dev-demo        # skutečné aplikace: Laravel 13, Symfony Demo, WordPress přes SFTP
 make dev-e2e         # end-to-end test celého stacku (126 kontrol)
 make dev-shell       # shell na „serveru“

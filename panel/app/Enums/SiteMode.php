@@ -2,11 +2,9 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasDescription;
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum SiteMode: string implements HasDescription, HasLabel
-{
+enum SiteMode: string implements HasLabel {
     case Classic = 'classic';
     case Worker = 'worker';
     case Node = 'node';

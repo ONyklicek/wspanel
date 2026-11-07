@@ -2,10 +2,9 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum Framework: string implements HasLabel
-{
+enum Framework: string implements HasLabel {
     case Laravel = 'laravel';
     case Symfony = 'symfony';
     case Php = 'php';

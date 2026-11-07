@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "wire-boost": {
+            "command": "php",
+            "args": ["panel/artisan", "wire-boost:mcp"]
+        },
+        "laravel-boost": {
+            "command": "php",
+            "args": ["panel/artisan", "boost:mcp"]
+        }
+    }
+}

@@ -465,7 +465,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   (cd "$release" && as_panel env PATH="$node_bin:/usr/bin:/bin" npm ci --no-audit --no-fund --loglevel=error \
     && as_panel env PATH="$node_bin:/usr/bin:/bin" npm run build >/dev/null && rm -rf node_modules)
   grep -q '^APP_KEY=base64:' /srv/panel/shared/.env || (cd "$release" && as_panel php artisan key:generate --force)
-  (cd "$release" && as_panel php artisan migrate --force && as_panel php artisan optimize && as_panel php artisan filament:optimize)
+  (cd "$release" && as_panel php artisan migrate --force && as_panel php artisan optimize)
   setfacl -m u:panel-web:x "$release"
   setfacl -R -m u:panel-web:rX,d:u:panel-web:rX "$release/public"
   ln -sfn "$release" /srv/panel/current.tmp && mv -Tf /srv/panel/current.tmp /srv/panel/current
@@ -562,5 +562,5 @@ if [[ -f /etc/systemd/system/panel-scheduler.service ]]; then
 fi
 
 log "Done. Panel: $PANEL_URL"
-[[ -n "$PANEL_SOURCE" ]] && log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan make:filament-user"
+[[ -n "$PANEL_SOURCE" ]] && log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan wire:user"
 exit 0

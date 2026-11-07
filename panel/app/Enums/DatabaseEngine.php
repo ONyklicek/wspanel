@@ -2,10 +2,9 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum DatabaseEngine: string implements HasLabel
-{
+enum DatabaseEngine: string implements HasLabel {
     case MariaDb = 'mariadb';
     case PostgreSql = 'postgresql';
 

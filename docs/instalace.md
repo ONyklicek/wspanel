@@ -29,7 +29,7 @@
    ```
 4. Vytvořte účet správce:
    ```
-   cd /srv/panel/current && runuser -u panel -- php artisan make:filament-user
+   cd /srv/panel/current && runuser -u panel -- php artisan wire:user
    ```
 5. Otevřete `https://panel.example.com` a přihlaste se.
 

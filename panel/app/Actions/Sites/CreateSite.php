@@ -3,7 +3,7 @@
 namespace App\Actions\Sites;
 
 use App\Enums\SiteStatus;
-use App\Filament\Resources\Sites\Schemas\SiteForm;
+use App\Support\Domains;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -21,8 +21,8 @@ class CreateSite
     public function handle(array $data): Site
     {
         $data['mode'] ??= 'classic';
-        $params = ['domain' => $data['domain']] + SiteForm::runtimeParams($data);
-        $tls = $data['tls'] ?? (SiteForm::isInternalDomain($data['domain']) ? 'internal' : 'auto');
+        $params = ['domain' => $data['domain']] + Domains::runtimeParams($data);
+        $tls = $data['tls'] ?? (Domains::isInternal($data['domain']) ? 'internal' : 'auto');
         if (in_array($tls, ['auto', 'internal'], true)) {
             $params['tls'] = $tls;
         }

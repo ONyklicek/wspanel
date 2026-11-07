@@ -2,12 +2,10 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasColor;
-use Filament\Support\Contracts\HasDescription;
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasColor;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum SshAccess: string implements HasColor, HasDescription, HasLabel
-{
+enum SshAccess: string implements HasColor, HasLabel {
     case Off = 'off';
     case Sftp = 'sftp';
     case Shell = 'shell';

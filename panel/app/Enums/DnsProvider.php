@@ -2,11 +2,9 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasDescription;
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum DnsProvider: string implements HasDescription, HasLabel
-{
+enum DnsProvider: string implements HasLabel {
     case Local = 'local';
     case Cloudflare = 'cloudflare';
 

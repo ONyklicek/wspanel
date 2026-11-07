@@ -2,10 +2,9 @@
 
 namespace App\Enums;
 
-use Filament\Support\Contracts\HasLabel;
+use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum ServiceType: string implements HasLabel
-{
+enum ServiceType: string implements HasLabel {
     case PhpFpm = 'php-fpm';
     case Proxy = 'proxy';
     case Web = 'web';

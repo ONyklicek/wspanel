@@ -6,6 +6,13 @@
                 "artisan",
                 "boost:mcp"
             ]
+        },
+        "wire-boost": {
+            "command": "php",
+            "args": [
+                "artisan",
+                "wire-boost:mcp"
+            ]
         }
     }
 }
