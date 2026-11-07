@@ -7,6 +7,7 @@ use App\Actions\Clients\ManageClients;
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\SyncDatabases;
 use App\Actions\Sites\CreateSite;
+use App\Actions\Sites\ManageEdge;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\ListSites;
 use App\Models\Backup;
@@ -304,5 +305,34 @@ class ClientTenancyTest extends TestCase
         $this->agent->shouldNotReceive('call')->with('sys.metrics');
 
         $this->get('/')->assertOk()->assertSee('Můj účet')->assertSee('alice.example.com')->assertDontSee('Služby');
+    }
+
+    public function test_mailpit_is_for_administrators_only(): void
+    {
+        $this->signInAs(Client::factory()->create());
+
+        $this->get('/auth/check')->assertForbidden();
+    }
+
+    public function test_an_alias_of_another_clients_site_counts_as_taken(): void
+    {
+        [$alice, $bob] = Client::factory()->count(2)->create();
+        $this->site('bob.example.com', $bob)->update(['edge_settings' => ['aliases' => ['www.bob.example.com']]]);
+        $this->signInAs($alice);
+
+        $this->fillForm(Livewire::test(CreateSitePage::class), ['domain' => 'www.bob.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4'])
+            ->call('save')
+            ->assertHasErrors('data.domain');
+    }
+
+    public function test_extra_domains_count_against_the_package(): void
+    {
+        $alice = Client::factory()->for(Package::factory()->state(['max_aliases' => 1]))->create();
+        $site = $this->site('alice.example.com', $alice);
+        $this->signInAs($alice);
+        $this->agent->shouldNotReceive('call')->with('site.edge', Mockery::any());
+
+        $this->expectExceptionMessage('Limit balíčku: Další domény webů 0 z 1.');
+        app(ManageEdge::class)->set($site, ['aliases' => ['a.example.com', 'b.example.com']]);
     }
 }

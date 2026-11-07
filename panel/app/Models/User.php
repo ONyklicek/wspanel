@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -37,6 +38,20 @@ class User extends Authenticatable implements PasskeyUser
             'password' => 'hashed',
             'role' => UserRole::class,
         ];
+    }
+
+    /**
+     * A signed-in person changes only their own password. Password resets
+     * (nobody signed in), console commands and new accounts are unaffected.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (User $user): void {
+            $actor = auth()->id();
+            if ($user->isDirty('password') && $actor !== null && $actor !== $user->id) {
+                throw new AuthorizationException('Heslo jiného uživatele měnit nelze. Ať si ho změní sám, případně přes „Zapomenuté heslo“.');
+            }
+        });
     }
 
     public function client(): BelongsTo

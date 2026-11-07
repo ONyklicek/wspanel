@@ -11,9 +11,11 @@ use App\Models\Database;
 use App\Models\Deployment;
 use App\Models\DnsZone;
 use App\Models\Site;
+use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Contracts\View\View;
+use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Infolists\Components\TextEntry;
@@ -104,7 +106,11 @@ class ViewSite extends ViewPage
                     ->state(fn () => $site->ssh_access === SshAccess::Off ? 'zapnete v menu Další → SSH / SFTP' : "sftp -P {$port} {$site->sshTarget()}")
                     ->copyable($site->ssh_access !== SshAccess::Off),
                 TextEntry::make('databases')->label('Databáze')
-                    ->state(fn () => $site->databases->map(fn (Database $d) => $d->name.' ('.$d->engine->getLabel().')')->join(', ') ?: 'žádná'),
+                    ->state(fn () => $site->databases->map(fn (Database $d) => $d->name.' ('.$d->engine->getLabel().')')->join(', ') ?: 'žádná')
+                    ->actions($site->databases->map(fn (Database $d) => Action::make('openDb'.$d->id)
+                        ->label($d->name)->icon('outline:circle-stack')->color('gray')->size('sm')
+                        ->tooltip('Otevřít databázi '.$d->name)
+                        ->url(DatabaseResource::url('view', $d)))->all()),
                 TextEntry::make('mail')->label('Pošta')
                     ->state(fn () => $site->mail_mode === 'capture' ? 'zachytává se v Mailpitu' : 'odesílá se')
                     ->badge()->color($site->mail_mode === 'capture' ? 'warning' : 'success'),

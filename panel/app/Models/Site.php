@@ -40,6 +40,29 @@ class Site extends Model
 
     protected $hidden = ['webhook_secret', 'ci_token_hash'];
 
+    /**
+     * Whether a host name is already served by some site of any client: as
+     * its domain, an alias or a redirected host.
+     */
+    public static function hostTaken(string $host, ?int $exceptSiteId = null): bool
+    {
+        $host = strtolower($host);
+        if (strcasecmp($host, (string) parse_url((string) config('app.url'), PHP_URL_HOST)) === 0) {
+            return true;
+        }
+
+        return self::acrossClients()->when($exceptSiteId, fn ($q) => $q->whereKeyNot($exceptSiteId))->get(['id', 'domain', 'edge_settings'])
+            ->contains(fn (Site $s) => $s->domain === $host
+                || in_array($host, $s->edge_settings['aliases'] ?? [], true)
+                || in_array($host, $s->edge_settings['redirect_hosts'] ?? [], true));
+    }
+
+    /** Extra host names of the site (aliases and redirected hosts). */
+    public function extraHostCount(): int
+    {
+        return count($this->edge_settings['aliases'] ?? []) + count($this->edge_settings['redirect_hosts'] ?? []);
+    }
+
     /** The agent's English text, shown in Czech (stored as it came). */
     protected function lastError(): Attribute
     {

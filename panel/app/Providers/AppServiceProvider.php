@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
+use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
+use NyonCode\WireCore\Core\Plugin\PluginManager;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroup;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroups;
+use NyonCode\WireCore\Foundation\Enums\Hook;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -45,6 +48,22 @@ class AppServiceProvider extends ServiceProvider
                 Gate::define((string) $ability, fn (User $user): bool => $user->isAdmin());
             }
         }
+
+        // Nobody sets another person's password: the account screen offers
+        // the password only on one's own account (User::booted() refuses the
+        // write anyway). Others reset theirs through "Forgot password".
+        app(PluginManager::class)->hook(Hook::FormConfiguring, function (FormConfiguringPayload $payload): FormConfiguringPayload {
+            // The page's record, not the form's model: asking the form would configure it again.
+            $host = $payload->target?->host;
+            $key = is_object($host) && property_exists($host, 'record') ? $host->record : null;
+            $record = is_scalar($key) ? User::find($key) : null;
+            if ($record instanceof User && $record->exists && $record->id !== auth()->id()) {
+                $payload->schema = array_values(array_filter($payload->schema,
+                    fn ($component) => ! (is_object($component) && method_exists($component, 'getName') && $component->getName() === 'security')));
+            }
+
+            return $payload;
+        }, for: 'users');
 
         // Menu sections. Entries name a group by key; the heading and order live here.
         app(NavigationGroups::class)->registerMany([

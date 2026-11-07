@@ -151,7 +151,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     ->visible(fn () => Gate::allows('admin') && Client::query()->exists()),
             ])
             ->using(function (array $data): Site {
-                if (Site::acrossClients()->where('domain', $data['domain'])->exists()) {
+                if (Site::hostTaken($data['domain'])) {
                     throw ValidationException::withMessages(['data.domain' => 'Web s touto doménou už existuje.']);
                 }
                 try {

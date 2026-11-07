@@ -10,6 +10,7 @@ use App\Exceptions\LimitReachedException;
 use App\Models\Client;
 use App\Models\CronJob;
 use App\Models\Service;
+use App\Models\Site;
 use App\Models\User;
 
 /**
@@ -30,6 +31,7 @@ final class Limits
     public const COUNTED = [
         'sites' => ['max_sites', 'Weby', null],
         'databases' => ['max_databases', 'Databáze', null],
+        'aliases' => ['max_aliases', 'Další domény webů', null],
         'cron' => ['max_cron', 'Naplánované úlohy', null],
         'workers' => ['max_workers', 'Workery', null],
         'disk' => ['disk_quota_mb', 'Místo na disku', 'MB'],
@@ -142,6 +144,7 @@ final class Limits
 
         return match ($key) {
             'sites' => $client->sites()->count(),
+            'aliases' => (int) $client->sites()->get(['id', 'edge_settings'])->sum(fn (Site $s) => $s->extraHostCount()),
             'databases' => $client->databases()->count(),
             'cron' => CronJob::withoutGlobalScopes()->whereIn('site_id', $siteIds())->count(),
             'workers' => Service::withoutGlobalScopes()->whereIn('site_id', $siteIds())->where('type', ServiceType::Worker)->count(),

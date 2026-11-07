@@ -5,6 +5,7 @@ namespace App\Actions\Sites;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\Limits;
 
 /**
  * What the edge proxy does for a site: more domains, redirects, password and
@@ -44,6 +45,10 @@ class ManageEdge
                 ->map(fn ($h) => ['name' => trim((string) $h['name']), 'value' => trim((string) ($h['value'] ?? ''))])->values()->all(),
         ], fn ($v) => $v !== '' && $v !== [] && $v !== false);
         $payload['domain'] = $site->domain;
+        $added = count($payload['aliases'] ?? []) + count($payload['redirect_hosts'] ?? []) - $site->extraHostCount();
+        if ($added > 0) {
+            app(Limits::class)->assertCanAdd($site->client, 'aliases', $added);
+        }
 
         $out = $this->agent->call('site.edge', $payload);
         $site->update(['edge_settings' => $out['edge'] ?? null]);

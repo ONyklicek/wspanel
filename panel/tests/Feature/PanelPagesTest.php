@@ -52,6 +52,7 @@ class PanelPagesTest extends TestCase
         $db = Database::create(['engine' => 'mariadb', 'name' => 'shop_db', 'site_id' => $this->site()->id]);
         $this->get('/databases')->assertOk()->assertSee('shop_db');
         $this->get("/databases/{$db->id}")->assertOk()->assertSee('Zálohy');
+        $this->get('/sites/'.$db->site_id)->assertOk()->assertSee('/databases/'.$db->id, false);
     }
 
     public function test_dns_screens_render(): void
