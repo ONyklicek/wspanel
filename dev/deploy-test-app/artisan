@@ -1,0 +1,20 @@
+<?php
+// Stand-in for Laravel's artisan: records which commands the deploy ran.
+$cmd = $argv[1] ?? '';
+$log = __DIR__.'/storage/logs/artisan.log';
+@mkdir(dirname($log), 0750, true);
+file_put_contents($log, date('c')." {$cmd} ".implode(' ', array_slice($argv, 2))." as ".posix_getpwuid(posix_geteuid())['name']."\n", FILE_APPEND);
+switch ($cmd) {
+    case 'migrate':
+    case 'optimize':
+        echo "artisan {$cmd}: ok\n";
+        exit(0);
+    case 'storage:link':
+        @unlink(__DIR__.'/public/storage');
+        symlink(__DIR__.'/storage/app/public', __DIR__.'/public/storage');
+        echo "storage linked\n";
+        exit(0);
+    default:
+        fwrite(STDERR, "unknown command {$cmd}\n");
+        exit(1);
+}

@@ -1,0 +1,7 @@
+{
+  "name": "deploy-test-app",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"require('fs').mkdirSync('public/build',{recursive:true});require('fs').writeFileSync('public/build/manifest.json',JSON.stringify({builtAt:new Date().toISOString(),node:process.version}))\""
+  }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "wspanel/deploy-test-app",
+    "description": "Minimal Laravel-shaped app for testing the WSPanel deploy pipeline (no dependencies).",
+    "type": "project",
+    "require": {},
+    "autoload": {"psr-4": {"App\\": "app/"}},
+    "config": {"lock": false}
+}
