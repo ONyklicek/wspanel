@@ -94,6 +94,13 @@ type Config struct {
 	PostfixSASL  string `json:"postfix_sasl"`
 	DKIMDir      string `json:"dkim_dir"`
 	DKIMSelector string `json:"dkim_selector"`
+	SASLDB       string `json:"sasl_db"`       // per-site SMTP logins (Cyrus sasldb)
+	SenderLogins string `json:"sender_logins"` // Postfix: sender domain -> SMTP login allowed to use it
+	LoginSenders string `json:"login_senders"` // Postfix: Unix login -> senders allowed with sendmail -f
+
+	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
+	PowerDNSAPI string `json:"powerdns_api"`
+	PowerDNSKey string `json:"powerdns_key"`
 
 	allowedUIDs []uint32
 }
@@ -157,6 +164,9 @@ func Defaults() Config {
 		PostfixSASL:       "/etc/postfix/sasl_passwd",
 		DKIMDir:           "/etc/opendkim",
 		DKIMSelector:      "wspanel",
+		SASLDB:            "/etc/sasldb2",
+		SenderLogins:      "/etc/postfix/wspanel_sender_logins",
+		LoginSenders:      "/etc/postfix/wspanel_login_senders",
 	}
 }
 

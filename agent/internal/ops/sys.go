@@ -67,6 +67,7 @@ func sysVersions(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		"worker_php":  workerPHP,
 		"node":        nodeMajors(env.Cfg),
 		"db_tools":    installedDBTools(env),
+		"dns_local":   env.Cfg.PowerDNSAPI != "" && env.Cfg.PowerDNSKey != "",
 		"workers":     workerTypesByFramework(),
 		"panel_units": env.Cfg.PanelUnits(),
 		"dry_run":     env.Cfg.DryRun,

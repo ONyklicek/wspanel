@@ -454,6 +454,17 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 		cleanup()
 		return "", err
 	}
+	// Build scripts may replace the env link (Symfony Demo renames its own
+	// .env.local into place): the shared file is the configuration, always.
+	if f := sharedEnvFile(l.Framework); f != "" {
+		if target, err := os.Readlink(filepath.Join(d.dir(), f)); err != nil || target != filepath.Join(l.Home, "shared", f) {
+			d.logf("\n%s was replaced during the build; linking the shared one again\n", f)
+			if err := d.linkShared(ctx); err != nil {
+				cleanup()
+				return "", err
+			}
+		}
+	}
 
 	// 4. Activate (privileged part, under the global lock).
 	previous, _ := currentRelease(l)

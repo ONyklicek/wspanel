@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,24 +39,85 @@ func sendmailPath(cfg config.Config, l siteLayout) string {
 }
 
 // mailEnv: the variables a framework reads for SMTP, pointing at Postfix
-// (port 25) or Mailpit.
-func mailEnv(cfg config.Config, l siteLayout) ([]string, map[string]string) {
-	host, port := "127.0.0.1", "25"
+// (port 25, with the site's own login) or Mailpit.
+func mailEnv(cfg config.Config, l siteLayout, password string) ([]string, map[string]string) {
+	host, port, user := "127.0.0.1", "25", smtpLogin(cfg, l)
 	if l.MailMode == "capture" {
 		h, p, ok := strings.Cut(cfg.MailpitSMTP, ":")
 		if ok {
 			host, port = h, p
 		}
+		user, password = "", ""
 	}
 	switch l.Framework {
 	case "laravel", "php":
-		return []string{"MAIL_MAILER", "MAIL_HOST", "MAIL_PORT", "MAIL_FROM_ADDRESS"},
-			map[string]string{"MAIL_MAILER": "smtp", "MAIL_HOST": host, "MAIL_PORT": port, "MAIL_FROM_ADDRESS": "noreply@" + l.Domain}
+		return []string{"MAIL_MAILER", "MAIL_HOST", "MAIL_PORT", "MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM_ADDRESS"},
+			map[string]string{"MAIL_MAILER": "smtp", "MAIL_HOST": host, "MAIL_PORT": port, "MAIL_USERNAME": user,
+				"MAIL_PASSWORD": password, "MAIL_FROM_ADDRESS": "noreply@" + l.Domain}
 	case "symfony":
-		return []string{"MAILER_DSN"}, map[string]string{"MAILER_DSN": "smtp://" + host + ":" + port}
+		auth := ""
+		if user != "" {
+			auth = url.QueryEscape(user) + ":" + url.QueryEscape(password) + "@"
+		}
+		return []string{"MAILER_DSN"}, map[string]string{"MAILER_DSN": "smtp://" + auth + host + ":" + port}
 	default: // node
-		return []string{"SMTP_HOST", "SMTP_PORT"}, map[string]string{"SMTP_HOST": host, "SMTP_PORT": port}
+		return []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"},
+			map[string]string{"SMTP_HOST": host, "SMTP_PORT": port, "SMTP_USER": user, "SMTP_PASS": password}
 	}
+}
+
+// smtpLogin is the site's SASL login at the local Postfix.
+func smtpLogin(cfg config.Config, l siteLayout) string {
+	return l.User + "@" + saslRealm(cfg)
+}
+
+func saslRealm(cfg config.Config) string {
+	if cfg.PanelDomain != "" {
+		return cfg.PanelDomain
+	}
+	return "localhost"
+}
+
+// setSMTPLogin creates or resets the site's SMTP login (password over stdin)
+// and returns the password, which then lives only in the site's env file.
+func setSMTPLogin(ctx context.Context, env *Env, l siteLayout) (string, error) {
+	pw := newPassword()
+	if _, err := env.Exec.RunIO(ctx, strings.NewReader(pw), nil, "saslpasswd2", "-p", "-c", "-f", env.Cfg.SASLDB, "-u", saslRealm(env.Cfg), l.User); err != nil {
+		return "", fmt.Errorf("creating the SMTP login failed: %w", err)
+	}
+	return pw, nil
+}
+
+func removeSMTPLogin(ctx context.Context, env *Env, user string) {
+	_, _ = env.Exec.Run(ctx, "saslpasswd2", "-d", "-f", env.Cfg.SASLDB, "-u", saslRealm(env.Cfg), user)
+}
+
+// writeSenderMaps ties every site to its domain: over SMTP only the site's
+// login may send as @domain (reject_sender_login_mismatch); with sendmail
+// the site's Unix user may only use @domain as the envelope sender. OpenDKIM
+// signs by the envelope sender, so a site can never get mail signed for
+// another site's domain.
+func writeSenderMaps(ctx context.Context, env *Env) error {
+	var logins, senders strings.Builder
+	logins.WriteString("# Managed by WSPanel agent.\n")
+	senders.WriteString("# Managed by WSPanel agent.\n")
+	for _, st := range allSiteStates(env.Cfg) {
+		l, err := layout(env.Cfg, st)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(&logins, "@%s %s\n", st.Domain, smtpLogin(env.Cfg, l))
+		fmt.Fprintf(&senders, "%s @%s\n", l.User, st.Domain)
+	}
+	for _, f := range []struct{ path, content string }{{env.Cfg.SenderLogins, logins.String()}, {env.Cfg.LoginSenders, senders.String()}} {
+		if err := env.FS.WriteFile(f.path, []byte(f.content), 0o644, fsx.Root); err != nil {
+			return err
+		}
+		if _, err := env.Exec.Run(ctx, "postmap", f.path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type siteMailParams struct {
@@ -110,7 +172,13 @@ func siteMail(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err er
 		if err != nil {
 			return nil, err
 		}
-		keys, values := mailEnv(env.Cfg, l)
+		pw := ""
+		if p.Mode == "send" {
+			if pw, err = setSMTPLogin(ctx, env, l); err != nil {
+				return nil, err
+			}
+		}
+		keys, values := mailEnv(env.Cfg, l, pw)
 		if err := writeSiteFile(ctx, env, l, envFile, mergeEnv(old, keys, values)); err != nil {
 			return nil, err
 		}
@@ -299,7 +367,7 @@ func writeDKIMTables(ctx context.Context, env *Env) error {
 	for _, k := range keys {
 		id := k.Selector + "._domainkey." + k.Domain
 		fmt.Fprintf(&kt, "%s %s:%s:%s\n", id, k.Domain, k.Selector, dkimKeyPath(env, k.Domain))
-		fmt.Fprintf(&stb, "*@%s %s\n*@*.%s %s\n", k.Domain, id, k.Domain, id)
+		fmt.Fprintf(&stb, "*@%s %s\n", k.Domain, id)
 	}
 	if err := env.FS.WriteFile(filepath.Join(env.Cfg.DKIMDir, "KeyTable"), []byte(kt.String()), 0o644, fsx.Root); err != nil {
 		return err

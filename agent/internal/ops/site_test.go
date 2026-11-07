@@ -34,10 +34,14 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.NodeDir = filepath.Join(root, "opt/fnm/node-versions")
 	cfg.AuthorizedKeysDir = filepath.Join(root, "etc/ssh/authorized_keys")
 	cfg.ToolsDir = filepath.Join(root, "etc/panel-sites/bin")
+	cfg.SenderLogins = filepath.Join(root, "etc/postfix/wspanel_sender_logins")
+	cfg.LoginSenders = filepath.Join(root, "etc/postfix/wspanel_login_senders")
+	cfg.DKIMDir = filepath.Join(root, "etc/opendkim")
+	cfg.PostfixSASL = filepath.Join(root, "etc/postfix/sasl_passwd")
 	// Ports below 1024 need root on the dev machine; the privileged range is a
 	// production property (checked by checkPrivilegedPorts, skipped in dry-run).
 	cfg.NodePortMin, cfg.NodePortMax = 30600, 30999
-	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir} {
+	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir, filepath.Join(root, "etc/postfix"), cfg.DKIMDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -229,7 +233,7 @@ func TestSiteCreateRollsBackOnInvalidProxyConfig(t *testing.T) {
 	joined := strings.Join(calls, "\n")
 	wantTail := "frankenphp validate --config /etc/panel-proxy/Caddyfile --adapter caddyfile\n" +
 		"systemctl reload panel-proxy.service\nsystemctl reload panel-web.service\n" +
-		"systemctl reload php8.4-fpm.service\nuserdel web_a_example_com"
+		"systemctl reload php8.4-fpm.service\nsaslpasswd2 -d -f /etc/sasldb2 -u localhost web_a_example_com\nuserdel web_a_example_com"
 	if !strings.HasSuffix(joined, wantTail) {
 		t.Errorf("rollback calls:\n%s", joined)
 	}

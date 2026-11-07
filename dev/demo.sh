@@ -98,7 +98,7 @@ require_once ABSPATH . 'wp-settings.php';
 EOF
 	chmod -R a+rX "$W/wp"
 	printf 'put -r %s/wp/wordpress/* public_html/\n' "$W" >"$W/sftp-batch"
-	SSHPASS=$(cat "$pw_file") sshpass -e sftp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	SSHPASS=$(cat "$pw_file") sshpass -e sftp -q -o BatchMode=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 		-o PubkeyAuthentication=no -b "$W/sftp-batch" web_wordpress_localhost@127.0.0.1 >/dev/null &&
 		echo "    uploaded $(find "$W/wp/wordpress" -type f | wc -l) files over SFTP as web_wordpress_localhost"
 	rm -f /srv/sites/wordpress.localhost/current/public/index.html

@@ -7,12 +7,14 @@ use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Filament\Pages\Mail;
 use App\Filament\Resources\Databases\DatabaseResource;
+use App\Filament\Resources\DnsZones\DnsZoneResource;
 use App\Filament\Resources\Sites\SiteActions;
 use App\Filament\Resources\Sites\SiteResource;
 use App\Filament\Resources\Sites\Widgets\SiteLogs;
 use App\Filament\Resources\Sites\Widgets\SiteProcesses;
 use App\Models\Database;
 use App\Models\Deployment;
+use App\Models\DnsZone;
 use App\Models\Site;
 use Filament\Actions\ActionGroup;
 use Filament\Infolists\Components\TextEntry;
@@ -130,6 +132,14 @@ class ViewSite extends ViewRecord
                         ->url(fn (Site $record) => $record->databases->count() === 1
                             ? DatabaseResource::getUrl('view', ['record' => $record->databases->first()])
                             : DatabaseResource::getUrl('index')),
+                    TextEntry::make('dns')
+                        ->label('DNS')
+                        ->state(fn (Site $record) => ($zone = DnsZone::query()->where('domain', $record->domain)->first())
+                            ? 'zóna: '.$zone->provider->getLabel()
+                            : 'zóna není v panelu (spravuje ji registrátor)')
+                        ->url(fn (Site $record) => ($zone = DnsZone::query()->where('domain', $record->domain)->first())
+                            ? DnsZoneResource::getUrl('view', ['record' => $zone])
+                            : DnsZoneResource::getUrl('create')),
                     TextEntry::make('mail_mode')
                         ->label('Pošta')
                         ->badge()

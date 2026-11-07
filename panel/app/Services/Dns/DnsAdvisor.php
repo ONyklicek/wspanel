@@ -1,0 +1,99 @@
+<?php
+
+namespace App\Services\Dns;
+
+use App\Actions\Mail\ManageMail;
+
+/**
+ * What a domain on this server should have in DNS, and whether public DNS
+ * already says so.
+ */
+class DnsAdvisor
+{
+    /**
+     * Recommended RRsets for a zone: the web (A/AAAA), CAA for the
+     * certificates and the mail records (SPF, DKIM, DMARC).
+     *
+     * @param  array{name: string, value: string}|null  $dkim
+     * @return list<array{name: string, type: string, ttl: int, records: list<string>, note: string}>
+     */
+    public static function recommended(string $domain, ?array $dkim = null): array
+    {
+        $v4 = config('panel.public_ipv4');
+        $v6 = config('panel.public_ipv6');
+        $out = [];
+        if ($v4) {
+            $out[] = ['name' => $domain, 'type' => 'A', 'ttl' => 3600, 'records' => [$v4], 'note' => 'Web na tomto serveru (IPv4).'];
+        }
+        if ($v6) {
+            $out[] = ['name' => $domain, 'type' => 'AAAA', 'ttl' => 3600, 'records' => [$v6], 'note' => 'Web na tomto serveru (IPv6).'];
+        }
+        $out[] = ['name' => $domain, 'type' => 'CAA', 'ttl' => 3600, 'records' => ['0 issue "letsencrypt.org"', '0 issue "zerossl.com"'], 'note' => 'Certifikáty smí vydat jen autority, které používá server.'];
+        foreach (ManageMail::dnsRecords($domain, $dkim, null, $v4) as $r) {
+            $out[] = ['name' => $r['name'], 'type' => 'TXT', 'ttl' => 3600, 'records' => [$r['value']], 'note' => $r['note']];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Checks public DNS for a domain served here.
+     *
+     * @param  list<string>  $expectedNs  nameservers the zone should be delegated to (empty = don't check)
+     * @return list<array{label: string, ok: bool|null, detail: string}>
+     */
+    public static function check(string $domain, array $expectedNs = []): array
+    {
+        $checks = [];
+        $a = self::lookup($domain, DNS_A, 'ip');
+        $v4 = config('panel.public_ipv4');
+        $checks[] = [
+            'label' => "A záznam {$domain}",
+            'ok' => $v4 ? in_array($v4, $a, true) : ($a !== [] ? null : false),
+            'detail' => $a === [] ? 'doména se nepřekládá na žádnou IPv4 adresu' : implode(', ', $a).($v4 && ! in_array($v4, $a, true) ? " (server má {$v4})" : ''),
+        ];
+        if ($expectedNs !== []) {
+            $ns = array_map(fn ($n) => rtrim(strtolower($n), '.'), self::lookup($domain, DNS_NS, 'target'));
+            $want = array_map(fn ($n) => rtrim(strtolower($n), '.'), $expectedNs);
+            $checks[] = [
+                'label' => 'Nameservery (delegace u registrátora)',
+                'ok' => $ns !== [] && array_diff($want, $ns) === [],
+                'detail' => $ns === [] ? 'nenalezeny' : implode(', ', $ns).(array_diff($want, $ns) ? ' (očekáváno '.implode(', ', $want).')' : ''),
+            ];
+        }
+        $txt = self::lookup($domain, DNS_TXT, 'txt');
+        $checks[] = [
+            'label' => 'SPF',
+            'ok' => collect($txt)->contains(fn ($t) => str_starts_with($t, 'v=spf1')),
+            'detail' => collect($txt)->first(fn ($t) => str_starts_with($t, 'v=spf1')) ?? 'chybí TXT záznam v=spf1',
+        ];
+        $dmarc = self::lookup('_dmarc.'.$domain, DNS_TXT, 'txt');
+        $checks[] = [
+            'label' => 'DMARC',
+            'ok' => $dmarc !== [],
+            'detail' => $dmarc[0] ?? 'chybí TXT záznam _dmarc',
+        ];
+
+        return $checks;
+    }
+
+    /** @return list<string> */
+    private static function lookup(string $name, int $type, string $field): array
+    {
+        $records = @dns_get_record($name, $type) ?: [];
+
+        return array_values(array_filter(array_map(fn ($r) => $r[$field] ?? null, $records)));
+    }
+
+    /**
+     * Default nameserver names for local zones: ns1/ns2 under the panel domain.
+     *
+     * @return list<string>
+     */
+    public static function defaultNameservers(): array
+    {
+        $panel = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
+
+        return ["ns1.{$panel}", "ns2.{$panel}"];
+    }
+}

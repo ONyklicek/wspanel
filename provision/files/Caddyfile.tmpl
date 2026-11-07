@@ -20,6 +20,12 @@ __PANEL_DOMAIN__ {
 		forward_auth unix//run/panel-web/web.sock {
 			uri /auth/check
 		}
+		# Message bodies are attacker-controlled HTML (any site can send mail):
+		# render them as an opaque origin, so nothing in them can act as the
+		# logged-in panel user.
+		@message path /mailpit/view/* /mailpit/api/v1/message/*
+		header @message Content-Security-Policy "sandbox allow-popups allow-popups-to-escape-sandbox"
+		header @message X-Content-Type-Options nosniff
 		reverse_proxy 127.0.0.1:8025 {
 			header_up Authorization "Basic __MAILPIT_BASIC__"
 		}

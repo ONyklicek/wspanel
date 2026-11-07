@@ -150,7 +150,8 @@ func binaries(cfg config.Config) map[string]string {
 		"postconf":         "/usr/sbin/postconf",
 		"postmap":          "/usr/sbin/postmap",
 		"postqueue":        "/usr/sbin/postqueue",
-		"setpriv":          "/usr/bin/setpriv", // runs fixed binaries as a site user
+		"saslpasswd2":      "/usr/sbin/saslpasswd2", // password on stdin (-p)
+		"setpriv":          "/usr/bin/setpriv",      // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
 		"systemd-run":      "/usr/bin/systemd-run",

@@ -47,6 +47,7 @@ PUBLIC_IPV4=""       # server's public addresses for suggested DNS records; dete
 PUBLIC_IPV6=""
 ROOT_LOGIN="prohibit-password"
 UNENFORCED_BIND=false
+DNS_SERVER="none"   # powerdns: this server is authoritative DNS for zones managed in the panel
 MAIL_DEFAULT="send" # new sites: send (Postfix) | capture (Mailpit, nothing leaves the server)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -70,6 +71,7 @@ for arg in "$@"; do
     --allow-unenforced-socket-bind) UNENFORCED_BIND=true ;; # dev containers only (no cgroup BPF)
     --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
     --mail=*) MAIL_DEFAULT="${arg#*=}" ;;
+    --dns=*) DNS_SERVER="${arg#*=}" ;;
     --local-certs) LOCAL_CERTS=1 ;; # dev only: Caddy internal CA instead of Let's Encrypt
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) die "unknown argument: $arg" ;;
@@ -86,6 +88,7 @@ done
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${PANEL_DOMAIN}"
 [[ "$MAIL_DEFAULT" == send || "$MAIL_DEFAULT" == capture ]] || die "--mail must be send or capture"
+[[ "$DNS_SERVER" == none || "$DNS_SERVER" == powerdns ]] || die "--dns must be none or powerdns"
 [[ -z "$PUBLIC_SSH_PORT" ]] && PUBLIC_SSH_PORT="$SSH_PORT"
 [[ "$PUBLIC_SSH_PORT" =~ ^[0-9]+$ && "$PUBLIC_HTTPS_PORT" =~ ^[0-9]+$ ]] || die "invalid --public-*-port"
 PANEL_URL="https://$PANEL_DOMAIN"
@@ -233,11 +236,30 @@ install -d -m 0750 -o root -g panel /var/backups/wspanel
 log "Mail (Postfix, OpenDKIM, Mailpit)"
 echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections
 echo "postfix postfix/mailname string $PANEL_DOMAIN" | debconf-set-selections
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends postfix opendkim
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends postfix opendkim libsasl2-modules sasl2-bin
+# Every site has its own SMTP login (created by the agent) and may send only as
+# its own domain: over SMTP via reject_sender_login_mismatch, with sendmail via
+# local_login_sender_maps. OpenDKIM signs by that verified envelope sender.
+install -d -m 0755 /etc/postfix/sasl
+printf 'pwcheck_method: auxprop\nauxprop_plugin: sasldb\nmech_list: PLAIN LOGIN\nsasldb_path: /etc/sasldb2\n' > /etc/postfix/sasl/smtpd.conf
+[[ -f /etc/sasldb2 ]] || install -m 0640 -o root -g sasl /dev/null /etc/sasldb2
+adduser --quiet postfix sasl
+for m in wspanel_sender_logins wspanel_login_senders; do
+  [[ -f /etc/postfix/$m ]] || printf '# Managed by WSPanel agent.\n' > "/etc/postfix/$m"
+  postmap "/etc/postfix/$m"
+done
 postconf -e "myhostname=$PANEL_DOMAIN" "myorigin=\$myhostname" "inet_interfaces=loopback-only" \
   "mydestination=" "local_transport=error:local delivery is disabled" "mynetworks=127.0.0.0/8 [::1]/128" \
+  "smtpd_sasl_auth_enable=yes" "smtpd_sasl_type=cyrus" "smtpd_sasl_path=smtpd" "smtpd_sasl_security_options=noanonymous" \
+  "smtpd_tls_security_level=none" \
+  "smtpd_relay_restrictions=permit_sasl_authenticated, reject" \
+  "smtpd_recipient_restrictions=permit_sasl_authenticated, reject" \
+  "smtpd_sender_login_maps=hash:/etc/postfix/wspanel_sender_logins" \
+  "smtpd_sender_restrictions=reject_sender_login_mismatch" \
+  "local_login_sender_maps=hash:/etc/postfix/wspanel_login_senders, static:*" \
   "smtpd_milters=inet:127.0.0.1:8891" "non_smtpd_milters=inet:127.0.0.1:8891" "milter_default_action=accept" \
   "smtp_tls_security_level=may" "smtp_tls_CApath=/etc/ssl/certs" "message_size_limit=26214400"
+postconf -F 'smtp/inet/chroot = n' # smtpd must reach /etc/sasldb2
 install -d -m 0755 /etc/opendkim
 install -d -m 0750 -o opendkim -g opendkim /etc/opendkim/keys
 [[ -f /etc/opendkim/KeyTable ]] || printf '# Managed by WSPanel agent.\n' > /etc/opendkim/KeyTable
@@ -254,6 +276,9 @@ PidFile                 /run/opendkim/opendkim.pid
 UserID                  opendkim
 KeyTable                refile:/etc/opendkim/KeyTable
 SigningTable            refile:/etc/opendkim/SigningTable
+# Sign by the envelope sender (checked by Postfix against the site's login),
+# not by the From header a site could set to anything.
+SenderMacro             mail_addr
 InternalHosts           127.0.0.1, ::1
 TrustAnchorFile         /usr/share/dns/root.key
 CONF
@@ -284,6 +309,43 @@ systemctl daemon-reload
 systemctl enable mailpit >/dev/null
 systemctl restart mailpit
 
+# ---------------------------------------------------------------- DNS (optional)
+# Authoritative only (no recursion), zones in SQLite, managed by the agent over
+# the API on loopback. Zones can also live at Cloudflare (panel, API token).
+PDNS_API_KEY=""
+if [[ "$DNS_SERVER" == powerdns ]]; then
+  log "DNS server (PowerDNS)"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends pdns-server pdns-backend-sqlite3
+  rm -f /etc/powerdns/pdns.d/bind.conf
+  install -d -m 0750 -o pdns -g pdns /var/lib/powerdns
+  if [[ ! -s /var/lib/powerdns/pdns.sqlite3 ]]; then
+    sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/pdns-backend-sqlite3/schema/schema.sqlite3.sql
+    chown pdns:pdns /var/lib/powerdns/pdns.sqlite3 && chmod 0640 /var/lib/powerdns/pdns.sqlite3
+  fi
+  if [[ -f /etc/powerdns/pdns.d/wspanel.conf ]]; then
+    PDNS_API_KEY="$(sed -n 's/^api-key=//p' /etc/powerdns/pdns.d/wspanel.conf)"
+  else
+    PDNS_API_KEY="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+  fi
+  cat > /etc/powerdns/pdns.d/wspanel.conf <<CONF
+# Managed by WSPanel install.sh.
+launch=gsqlite3
+gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
+local-address=0.0.0.0, ::
+api=yes
+api-key=$PDNS_API_KEY
+webserver=yes
+webserver-address=127.0.0.1
+webserver-port=8081
+webserver-allow-from=127.0.0.1/32
+default-soa-content=ns1.$PANEL_DOMAIN. hostmaster.$PANEL_DOMAIN. 0 10800 3600 604800 3600
+default-ttl=3600
+CONF
+  chmod 0640 /etc/powerdns/pdns.d/wspanel.conf; chgrp pdns /etc/powerdns/pdns.d/wspanel.conf
+  systemctl enable pdns >/dev/null
+  systemctl restart pdns
+fi
+
 # ---------------------------------------------------------------- agent
 log "Agent"
 install -m 0755 "$AGENT_BIN" /usr/local/sbin/panel-agent
@@ -301,6 +363,8 @@ cat > /etc/panel-agent/agent.json <<JSON
   "panel_domain": "$PANEL_DOMAIN",
   "protected_ports": [$SSH_PORT, 80, 443],
   "mail_default": "$MAIL_DEFAULT",
+  "powerdns_api": "$([[ -n "$PDNS_API_KEY" ]] && echo http://127.0.0.1:8081)",
+  "powerdns_key": "$PDNS_API_KEY",
   "allow_unenforced_socket_bind": $UNENFORCED_BIND
 }
 JSON
@@ -362,8 +426,8 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   }
   set_panel_env APP_URL "$PANEL_URL"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
-  [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
-  [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+  [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=' /srv/panel/shared/.env || echo "APP_LOCALE=cs" >> /srv/panel/shared/.env
@@ -451,6 +515,10 @@ ufw allow "$SSH_PORT/tcp" comment ssh >/dev/null
 ufw allow 80/tcp comment http >/dev/null
 ufw allow 443/tcp comment https >/dev/null
 ufw allow 443/udp comment http3 >/dev/null
+if [[ "$DNS_SERVER" == powerdns ]]; then
+  ufw allow 53/udp comment dns >/dev/null
+  ufw allow 53/tcp comment dns >/dev/null
+fi
 ufw --force enable >/dev/null
 
 # ---------------------------------------------------------------- start

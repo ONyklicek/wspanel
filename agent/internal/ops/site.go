@@ -260,7 +260,14 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		return nil, err
 	}
 	rollback.add(func() { _ = os.RemoveAll(l.Home) })
-	if err = createSiteTree(env, l, owner); err != nil {
+	smtpPassword := ""
+	if l.MailMode == "send" {
+		if smtpPassword, err = setSMTPLogin(ctx, env, l); err != nil {
+			return nil, err
+		}
+		rollback.add(func() { removeSMTPLogin(context.WithoutCancel(ctx), env, l.User) })
+	}
+	if err = createSiteTree(env, l, owner, smtpPassword); err != nil {
 		return nil, err
 	}
 
@@ -273,6 +280,9 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		return nil, err
 	}
 	if err = saveSiteState(env, st); err != nil {
+		return nil, err
+	}
+	if err = writeSenderMaps(ctx, env); err != nil {
 		return nil, err
 	}
 	if err = writeToolLinks(env, l); err != nil {
@@ -316,7 +326,7 @@ func envFilePath(l siteLayout) string {
 //	current -> releases/initial
 //	shared/                     per-framework persistent dirs + env file
 //	tmp/ logs/
-func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
+func createSiteTree(env *Env, l siteLayout, o fsx.Owner, smtpPassword string) error {
 	dirs := []string{"releases", "releases/initial", "shared", "logs"}
 	if l.Mode != "node" {
 		dirs = append(dirs, "releases/initial/public")
@@ -337,7 +347,7 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 		}
 	}
 	if f := sharedEnvFile(l.Framework); f != "" {
-		keys, values := mailEnv(env.Cfg, l)
+		keys, values := mailEnv(env.Cfg, l, smtpPassword)
 		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), []byte(mergeEnv("", keys, values)), 0o600, o); err != nil {
 			return err
 		}
@@ -530,6 +540,10 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	removeDeployLogs(env, p.Domain)
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))
 	removeToolLinks(env, l.User)
+	removeSMTPLogin(ctx, env, l.User)
+	if err := writeSenderMaps(ctx, env); err != nil {
+		return nil, fmt.Errorf("site removed, but updating the mail sender maps failed: %w", err)
+	}
 	trashed := ""
 	if fsx.Exists(l.Home) {
 		if err := env.FS.MkdirAll(env.Cfg.TrashDir, 0o700, fsx.Root); err != nil {

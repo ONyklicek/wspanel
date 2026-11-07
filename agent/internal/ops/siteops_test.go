@@ -136,3 +136,31 @@ func TestSSHPasswordGoesThroughStdin(t *testing.T) {
 		t.Errorf("plain PHP site has no public_html: %v", err)
 	}
 }
+
+func TestSitesMaySendOnlyAsTheirOwnDomain(t *testing.T) {
+	env, dr := testEnv(t)
+	for _, d := range []string{"a.example.com", "b.example.com"} {
+		if _, err := call(t, env, siteCreate, map[string]string{"domain": d, "framework": "laravel", "php_version": "8.3"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	logins, _ := os.ReadFile(env.Cfg.SenderLogins)
+	senders, _ := os.ReadFile(env.Cfg.LoginSenders)
+	for _, want := range []string{"@a.example.com web_a_example_com@", "@b.example.com web_b_example_com@"} {
+		if !strings.Contains(string(logins), want) {
+			t.Errorf("sender_logins lacks %q:\n%s", want, logins)
+		}
+	}
+	if !strings.Contains(string(senders), "web_a_example_com @a.example.com\n") {
+		t.Errorf("login_senders:\n%s", senders)
+	}
+	envFile, _ := os.ReadFile(filepath.Join(env.Cfg.SitesRoot, "a.example.com/shared/.env"))
+	if !strings.Contains(string(envFile), `MAIL_USERNAME="web_a_example_com@`) || !strings.Contains(string(envFile), `MAIL_PASSWORD="`) {
+		t.Errorf("site env lacks its SMTP login:\n%s", envFile)
+	}
+	for _, c := range dr.Calls() {
+		if c.Name == "saslpasswd2" && strings.Contains(strings.Join(c.Args, " "), "-c") && c.Stdin == "" {
+			t.Error("SMTP password must come over stdin")
+		}
+	}
+}
