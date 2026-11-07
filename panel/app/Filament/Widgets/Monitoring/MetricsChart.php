@@ -17,6 +17,8 @@ abstract class MetricsChart extends ChartWidget
 
     protected static bool $isDiscovered = false;
 
+    protected static bool $isLazy = false;
+
     /** @return array<string, array{0: string, 1: string}> column => [label, color] */
     abstract protected function series(): array;
 

@@ -15,6 +15,8 @@ class LiveStats extends StatsOverviewWidget
 
     protected static bool $isDiscovered = false;
 
+    protected static bool $isLazy = false;
+
     protected int|string|array $columnSpan = 'full';
 
     protected function getColumns(): int
