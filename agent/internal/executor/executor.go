@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"sync"
@@ -23,6 +24,9 @@ type Result struct {
 type Executor interface {
 	// Run starts the allowlisted program `name` with args. A non-zero exit is an error.
 	Run(ctx context.Context, name string, args ...string) (Result, error)
+	// RunIO is Run with stdin and stdout streams (dumps, restores, file
+	// contents). stdout may be nil to capture it in Result. No timeout beyond ctx.
+	RunIO(ctx context.Context, stdin io.Reader, stdout io.Writer, name string, args ...string) (Result, error)
 }
 
 // DefaultTimeout bounds every command.
@@ -39,17 +43,25 @@ func NewReal(bins map[string]string, env []string) *Real {
 }
 
 func (r *Real) Run(ctx context.Context, name string, args ...string) (Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
+	defer cancel()
+	return r.RunIO(ctx, nil, nil, name, args...)
+}
+
+func (r *Real) RunIO(ctx context.Context, stdin io.Reader, out io.Writer, name string, args ...string) (Result, error) {
 	path, ok := r.bins[name]
 	if !ok {
 		return Result{ExitCode: -1}, fmt.Errorf("executor: %q is not an allowed binary", name)
 	}
-	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
-	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = r.env
 	cmd.Dir = "/"
 	var stdout, stderr bytes.Buffer
+	cmd.Stdin = stdin
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if out != nil {
+		cmd.Stdout = out
+	}
 	err := cmd.Run()
 	res := Result{Stdout: stdout.String(), Stderr: stderr.String()}
 	if err != nil {
@@ -77,8 +89,9 @@ func truncate(s string, n int) string {
 
 // Call is one recorded dry-run invocation.
 type Call struct {
-	Name string
-	Args []string
+	Name  string
+	Args  []string
+	Stdin string // RunIO only
 }
 
 func (c Call) String() string { return c.Name + " " + strings.Join(c.Args, " ") }
@@ -92,8 +105,17 @@ type DryRun struct {
 	Log       func(string)
 }
 
-func (d *DryRun) Run(_ context.Context, name string, args ...string) (Result, error) {
+func (d *DryRun) Run(ctx context.Context, name string, args ...string) (Result, error) {
+	return d.RunIO(ctx, nil, nil, name, args...)
+}
+
+// RunIO records stdin (for tests); Responder output is written to stdout.
+func (d *DryRun) RunIO(_ context.Context, stdin io.Reader, out io.Writer, name string, args ...string) (Result, error) {
 	c := Call{Name: name, Args: append([]string(nil), args...)}
+	if stdin != nil {
+		b, _ := io.ReadAll(stdin)
+		c.Stdin = string(b)
+	}
 	d.mu.Lock()
 	d.calls = append(d.calls, c)
 	d.mu.Unlock()
@@ -101,7 +123,12 @@ func (d *DryRun) Run(_ context.Context, name string, args ...string) (Result, er
 		d.Log("dry-run: " + c.String())
 	}
 	if d.Responder != nil {
-		return d.Responder(c)
+		res, err := d.Responder(c)
+		if out != nil && res.Stdout != "" {
+			_, _ = io.WriteString(out, res.Stdout)
+			res.Stdout = ""
+		}
+		return res, err
 	}
 	return Result{}, nil
 }

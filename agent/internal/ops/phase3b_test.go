@@ -205,3 +205,27 @@ func TestCurrentReleaseValidation(t *testing.T) {
 		t.Error("accepted releases/evil -> /etc")
 	}
 }
+
+func TestManagedCgroupsAreExactSystemPaths(t *testing.T) {
+	env, _ := testEnv(t)
+	m := managedCgroups(env.Cfg, "", "web_a_com")
+	if c := managedCgroups(env.Cfg, "/docker/abc", "web_a_com"); !c["/docker/abc/system.slice/php8.3-fpm.service"] || c["/system.slice/php8.3-fpm.service"] {
+		t.Error("container root prefix not applied")
+	}
+	for _, ok := range []string{"/system.slice/php8.3-fpm.service", "/system.slice/wspanel-web_a_com-app.service", "/system.slice/wspanel-web_a_com-horizon.service"} {
+		if !m[ok] {
+			t.Errorf("%s should be managed", ok)
+		}
+	}
+	for _, bad := range []string{
+		"/user.slice/user-990.slice/user@990.service/app.slice/php8.3-fpm.service", // user's own unit with a lookalike name
+		"/user.slice/user-990.slice/session-3.scope",
+		"/system.slice/ssh.service",
+		"/system.slice/wspanel-web_a_com-x_com-app.service", // another site's unit
+		"/system.slice/wspanel-web_a_com-shell.service",
+	} {
+		if m[bad] {
+			t.Errorf("%s must not be spared", bad)
+		}
+	}
+}

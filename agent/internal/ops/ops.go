@@ -36,11 +36,20 @@ type Op struct {
 	Name     string
 	Mutating bool // mutating ops are serialized
 	Handle   Handler
+	Async    bool // runs as a background job; the request returns a job id
 }
+
+// asyncOps are long-running (dumps, restores): they answer with a job id and
+// the panel polls job.status.
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
-	list := []Op{
+	list := []struct {
+		Name     string
+		Mutating bool
+		Handle   Handler
+	}{
 		{"agent.ping", false, ping},
 		{"site.create", true, siteCreate},
 		{"site.delete", true, siteDelete},
@@ -65,8 +74,8 @@ func Registry() map[string]Op {
 		{"sys.versions", false, sysVersions},
 	}
 	m := make(map[string]Op, len(list))
-	for _, op := range list {
-		m[op.Name] = op
+	for _, o := range list {
+		m[o.Name] = Op{Name: o.Name, Mutating: o.Mutating, Handle: o.Handle, Async: asyncOps[o.Name]}
 	}
 	return m
 }

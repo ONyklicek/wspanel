@@ -137,7 +137,7 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	}
 	// Any change ends existing sessions and everything started from them, so
 	// revoked access cannot linger in a nohup/screen process.
-	if err := killSessionProcesses(env, l.User); err != nil {
+	if err := killSessionProcesses(ctx, env, l.User); err != nil {
 		return nil, fmt.Errorf("access set, but ending existing sessions failed: %w", err)
 	}
 	st.SSHAccess = p.Access

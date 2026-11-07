@@ -5,6 +5,8 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,10 +40,29 @@ type Server struct {
 	ops    map[string]ops.Op
 	mutate sync.Mutex // serializes mutating operations
 	wg     sync.WaitGroup
+
+	jobsMu sync.Mutex
+	jobs   map[string]*job
 }
 
+// job is a background run of an async operation.
+type job struct {
+	ID       string    `json:"id"`
+	Op       string    `json:"op"`
+	Status   string    `json:"status"` // running | done | failed
+	Output   any       `json:"output,omitempty"`
+	Error    string    `json:"error,omitempty"`
+	Started  time.Time `json:"started"`
+	Finished time.Time `json:"finished,omitzero"`
+}
+
+const (
+	jobTimeout   = 3 * time.Hour
+	jobRetention = 24 * time.Hour
+)
+
 func New(env *ops.Env, a *audit.Log, log *slog.Logger) *Server {
-	return &Server{Env: env, Audit: a, Log: log, ops: ops.Registry()}
+	return &Server{Env: env, Audit: a, Log: log, ops: ops.Registry(), jobs: map[string]*job{}}
 }
 
 // Listen creates the socket with mode 0660 and group SocketGroup. The umask
@@ -134,6 +155,12 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 
 // Dispatch runs one request and writes the audit entry. Exposed for tests.
 func (s *Server) Dispatch(ctx context.Context, req protocol.Request, peer int64) protocol.Response {
+	if req.Op == "job.status" {
+		return s.jobStatus(req.Params)
+	}
+	if op, ok := s.ops[req.Op]; ok && op.Async {
+		return s.startJob(ctx, op, req, peer)
+	}
 	start := time.Now()
 	op, ok := s.ops[req.Op]
 	var out any
@@ -173,6 +200,67 @@ func (s *Server) Dispatch(ctx context.Context, req protocol.Request, peer int64)
 		return fail(err)
 	}
 	return protocol.Response{OK: true, Output: out}
+}
+
+// startJob runs an async op in the background. The audit entry is written
+// when it finishes; the response carries only the job id.
+func (s *Server) startJob(ctx context.Context, op ops.Op, req protocol.Request, peer int64) protocol.Response {
+	idb := make([]byte, 8)
+	_, _ = rand.Read(idb)
+	j := &job{ID: hex.EncodeToString(idb), Op: op.Name, Status: "running", Started: time.Now().UTC()}
+	s.jobsMu.Lock()
+	for id, old := range s.jobs { // forget finished jobs after a day
+		if !old.Finished.IsZero() && time.Since(old.Finished) > jobRetention {
+			delete(s.jobs, id)
+		}
+	}
+	s.jobs[j.ID] = j
+	s.jobsMu.Unlock()
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if op.Mutating {
+			s.mutate.Lock()
+			defer s.mutate.Unlock()
+		}
+		jctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jobTimeout)
+		out, err := safeCall(op, jctx, s.Env, req.Params)
+		cancel()
+		s.jobsMu.Lock()
+		j.Finished = time.Now().UTC()
+		if err != nil {
+			j.Status, j.Error = "failed", err.Error()
+		} else {
+			j.Status, j.Output = "done", out
+		}
+		s.jobsMu.Unlock()
+		entry := audit.Entry{Time: j.Started, Op: op.Name, Params: req.Params, PeerUID: peer, OK: err == nil,
+			DurationMS: j.Finished.Sub(j.Started).Milliseconds(), DryRun: s.Env.Cfg.DryRun, Error: j.Error}
+		if s.Audit != nil {
+			_ = s.Audit.Write(entry)
+		}
+		s.Log.Info("job", "op", op.Name, "id", j.ID, "status", j.Status, "ms", entry.DurationMS, "err", j.Error)
+	}()
+	id := j.ID
+	return protocol.Response{OK: true, Output: map[string]string{"job_id": id, "status": "running"}, JobID: &id}
+}
+
+func (s *Server) jobStatus(raw json.RawMessage) protocol.Response {
+	var p struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil || len(p.ID) != 16 {
+		return fail(protocol.Invalid("id: required"))
+	}
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+	j, ok := s.jobs[p.ID]
+	if !ok {
+		return fail(protocol.NotFound("job " + p.ID + " not found (finished jobs are kept for a day; restarting the agent forgets them)"))
+	}
+	cp := *j
+	return protocol.Response{OK: true, Output: cp}
 }
 
 func safeCall(op ops.Op, ctx context.Context, env *ops.Env, params json.RawMessage) (out any, err error) {
