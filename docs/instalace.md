@@ -40,7 +40,8 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 
 | Volba | Výchozí | Význam |
 |---|---|---|
-| `--panel-domain=` | (povinné) | doména panelu |
+| `--panel-domain=` | (povinné bez `--panel-port`) | doména panelu |
+| `--panel-port=` | `443` | port panelu (např. `8443`); viz Adresa panelu níže |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |
 | `--agent-bin=` | (povinné) | sestavená binárka agenta |
 | `--panel-source=` | – | adresář `panel/` (bez něj se nainstaluje jen systém) |
@@ -99,3 +100,18 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `/var/log/panel-agent/deploys/` | logy deployů |
 | `/var/backups/wspanel` | zálohy databází |
 | `/etc/panel-proxy`, `/etc/panel-web` | konfigurace proxy (generuje agent) |
+
+
+## Adresa panelu
+
+Panel nemusí mít vlastní subdoménu:
+
+| Jak | Volby | Panel je na |
+|---|---|---|
+| vlastní subdoména | `--panel-domain=panel.example.com` | `https://panel.example.com` (Let's Encrypt) |
+| port domény webu | `--panel-domain=example.com --panel-port=8443` | `https://example.com:8443`; web `example.com` dál běží na 443 |
+| jen port, bez domény | `--panel-port=8443` | `https://<IP serveru>:8443` s certifikátem vlastní CA panelu (prohlížeč ji nezná, dokud si nenainstalujete kořenový certifikát: SSL → Kořenový certifikát) |
+
+Instalace port panelu otevře ve firewallu a chrání ho proti zablokování.
+Edge předává panel web tieru pod interním jménem, takže panel nikdy
+nekoliduje s webem téže domény; odkazy panel skládá z `APP_URL`.

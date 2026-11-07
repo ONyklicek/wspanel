@@ -11,7 +11,8 @@
 	}
 }
 
-http://__PANEL_DOMAIN__ {
+# The panel, under the internal name the edge gives it (never a site's domain).
+http://wspanel-panel.internal {
 	@hidden {
 		path */.*
 		not path /.well-known/*

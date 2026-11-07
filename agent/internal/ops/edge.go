@@ -124,7 +124,7 @@ func siteEdge(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 			if err := validate.Domain(h); err != nil {
 				return nil, protocol.Invalid(field + ": " + h + " is not a valid domain")
 			}
-			if h == env.Cfg.PanelDomain {
+			if h == env.Cfg.PanelDomain && (env.Cfg.PanelPort == 0 || env.Cfg.PanelPort == 443) {
 				return nil, protocol.Invalid(field + ": " + h + " is the panel's domain")
 			}
 			if owner, ok := taken[h]; ok {

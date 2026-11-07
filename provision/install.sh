@@ -4,6 +4,13 @@
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
 #              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
+#              [--panel-port=8443]
+#
+# Panel address:
+#   --panel-domain=panel.example.com             own hostname, port 443, Let's Encrypt
+#   --panel-domain=example.com --panel-port=8443 a port of a domain the sites use too
+#   --panel-port=8443 (no --panel-domain)        the server's IP address and that port,
+#                                                with the panel's own CA certificate
 #
 # --db accepts: none | mariadb | postgres | mariadb,postgres
 # Safe to re-run: every step is idempotent.
@@ -36,6 +43,7 @@ DB="none"
 PHP_VERSIONS="8.4"
 NODE_VERSIONS="22,24"
 PANEL_DOMAIN=""
+PANEL_PORT=443
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -61,6 +69,7 @@ for arg in "$@"; do
     --php=*) PHP_VERSIONS="${arg#*=}" ;;
     --node=*) NODE_VERSIONS="${arg#*=}" ;; # Node majors for SSR sites, "none" to skip
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
+    --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
@@ -84,17 +93,36 @@ done
 [[ $EUID -eq 0 ]] || die "run as root"
 . /etc/os-release
 [[ "${ID:-}" == "debian" && "${VERSION_CODENAME:-}" == "trixie" ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
-[[ -n "$PANEL_DOMAIN" ]] || die "--panel-domain is required"
+[[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
+if [[ -z "$PANEL_DOMAIN" ]]; then
+  [[ $PANEL_PORT -ne 443 ]] || die "--panel-domain is required (or give --panel-port to reach the panel at the server's IP address)"
+  PANEL_DOMAIN="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  [[ -n "$PANEL_DOMAIN" ]] || die "cannot find the server's IPv4 address; give --panel-domain"
+fi
 [[ "$PANEL_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || die "invalid --panel-domain"
+[[ $PANEL_PORT -ne 80 && $PANEL_PORT -ne $SSH_PORT ]] || die "--panel-port must not be 80 or the SSH port"
+# An IP address has no public certificate: the panel uses its own CA (SSL → Kořenový certifikát).
+PANEL_IS_IP=0
+[[ "$PANEL_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && PANEL_IS_IP=1
+# Hostname for mail and DNS (an IP address is not one).
+MAIL_NAME="$PANEL_DOMAIN"
+[[ $PANEL_IS_IP -eq 1 ]] && MAIL_NAME="$(hostname -f 2>/dev/null || hostname)"
 [[ -n "$AGENT_BIN" && -x "$AGENT_BIN" ]] || die "--agent-bin must point to the built panel-agent binary"
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
-[[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${PANEL_DOMAIN}"
+[[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${MAIL_NAME}"
 [[ "$MAIL_DEFAULT" == send || "$MAIL_DEFAULT" == capture ]] || die "--mail must be send or capture"
 [[ "$DNS_SERVER" == none || "$DNS_SERVER" == powerdns ]] || die "--dns must be none or powerdns"
 [[ -z "$PUBLIC_SSH_PORT" ]] && PUBLIC_SSH_PORT="$SSH_PORT"
 [[ "$PUBLIC_SSH_PORT" =~ ^[0-9]+$ && "$PUBLIC_HTTPS_PORT" =~ ^[0-9]+$ ]] || die "invalid --public-*-port"
+# Where browsers reach the panel: its own port, or the sites' (published) HTTPS port.
+PANEL_PUBLIC_PORT="$PUBLIC_HTTPS_PORT"
+[[ $PANEL_PORT -ne 443 ]] && PANEL_PUBLIC_PORT="$PANEL_PORT"
 PANEL_URL="https://$PANEL_DOMAIN"
-[[ "$PUBLIC_HTTPS_PORT" != 443 ]] && PANEL_URL="$PANEL_URL:$PUBLIC_HTTPS_PORT"
+[[ "$PANEL_PUBLIC_PORT" != 443 ]] && PANEL_URL="$PANEL_URL:$PANEL_PUBLIC_PORT"
+PANEL_ADDRESS="$PANEL_DOMAIN"
+[[ $PANEL_PORT -ne 443 ]] && PANEL_ADDRESS="$PANEL_DOMAIN:$PANEL_PORT"
+PANEL_TLS=""
+[[ $PANEL_IS_IP -eq 1 ]] && PANEL_TLS="tls internal"
 
 DB_ENGINES=()
 case "$DB" in
@@ -246,7 +274,7 @@ log "Client disk quotas: $QUOTA_STATE"
 # outside. Mailpit catches mail of sites in "capture" mode (tests, staging).
 log "Mail (Postfix, OpenDKIM, Mailpit)"
 echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections
-echo "postfix postfix/mailname string $PANEL_DOMAIN" | debconf-set-selections
+echo "postfix postfix/mailname string $MAIL_NAME" | debconf-set-selections
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends postfix opendkim libsasl2-modules sasl2-bin
 # Every site has its own SMTP login (created by the agent) and may send only as
 # its own domain: over SMTP via reject_sender_login_mismatch, with sendmail via
@@ -259,7 +287,7 @@ for m in wspanel_sender_logins wspanel_login_senders; do
   [[ -f /etc/postfix/$m ]] || printf '# Managed by WSPanel agent.\n' > "/etc/postfix/$m"
   postmap "/etc/postfix/$m"
 done
-postconf -e "myhostname=$PANEL_DOMAIN" "myorigin=\$myhostname" "inet_interfaces=loopback-only" \
+postconf -e "myhostname=$MAIL_NAME" "myorigin=\$myhostname" "inet_interfaces=loopback-only" \
   "mydestination=" "local_transport=error:local delivery is disabled" "mynetworks=127.0.0.0/8 [::1]/128" \
   "smtpd_sasl_auth_enable=yes" "smtpd_sasl_type=cyrus" "smtpd_sasl_path=smtpd" "smtpd_sasl_security_options=noanonymous" \
   "smtpd_tls_security_level=none" \
@@ -349,7 +377,7 @@ webserver=yes
 webserver-address=127.0.0.1
 webserver-port=8081
 webserver-allow-from=127.0.0.1/32
-default-soa-content=ns1.$PANEL_DOMAIN. hostmaster.$PANEL_DOMAIN. 0 10800 3600 604800 3600
+default-soa-content=ns1.$MAIL_NAME. hostmaster.$MAIL_NAME. 0 10800 3600 604800 3600
 default-ttl=3600
 CONF
   chmod 0640 /etc/powerdns/pdns.d/wspanel.conf; chgrp pdns /etc/powerdns/pdns.d/wspanel.conf
@@ -372,7 +400,8 @@ cat > /etc/panel-agent/agent.json <<JSON
   "default_php_version": "$PANEL_PHP",
   "db_engines": $(json_list "${DB_ENGINES[@]}"),
   "panel_domain": "$PANEL_DOMAIN",
-  "protected_ports": [$SSH_PORT, 80, 443],
+  "panel_port": $PANEL_PORT,
+  "protected_ports": [$SSH_PORT, 80, 443$([[ $PANEL_PORT -ne 443 ]] && echo ", $PANEL_PORT")],
   "mail_default": "$MAIL_DEFAULT",
   "powerdns_api": "$([[ -n "$PDNS_API_KEY" ]] && echo http://127.0.0.1:8081)",
   "powerdns_key": "$PDNS_API_KEY",
@@ -392,7 +421,7 @@ install -m 0644 "$HERE/files/panel-agent.service" /etc/systemd/system/panel-agen
 
 # ---------------------------------------------------------------- proxy
 log "Reverse proxy"
-sed -e "s|__PANEL_DOMAIN__|$PANEL_DOMAIN|" -e "s|__ACME_EMAIL__|$ACME_EMAIL|" \
+sed -e "s|__PANEL_ADDRESS__|$PANEL_ADDRESS|" -e "s|__PANEL_TLS__|$PANEL_TLS|" -e "s|__ACME_EMAIL__|$ACME_EMAIL|" \
   -e "s|__MAILPIT_BASIC__|$(cat /etc/mailpit/ui-basic)|" \
   "$HERE/files/Caddyfile.tmpl" > /etc/panel-proxy/Caddyfile
 chmod 0640 /etc/panel-proxy/Caddyfile; chgrp panel-proxy /etc/panel-proxy/Caddyfile
@@ -415,7 +444,7 @@ chmod 0640 /etc/panel-proxy/panel-access.caddy; chgrp panel-proxy /etc/panel-pro
 if [[ $LOCAL_CERTS -eq 1 ]]; then
   sed -i 's|^\temail .*|\tlocal_certs|' /etc/panel-proxy/Caddyfile
 fi
-sed -e "s|__PANEL_DOMAIN__|$PANEL_DOMAIN|" "$HERE/files/web-Caddyfile.tmpl" > /etc/panel-web/Caddyfile
+cp "$HERE/files/web-Caddyfile.tmpl" /etc/panel-web/Caddyfile
 install -m 0644 "$HERE/files/panel-proxy.service" /etc/systemd/system/panel-proxy.service
 install -m 0644 "$HERE/files/panel-web.service" /etc/systemd/system/panel-web.service
 install -m 0644 "$HERE/files/panel-pool.conf" "/etc/php/$PANEL_PHP/fpm/pool.d/panel.conf"
@@ -452,6 +481,8 @@ if [[ -n "$PANEL_SOURCE" ]]; then
     fi
   }
   set_panel_env APP_URL "$PANEL_URL"
+  set_panel_env PANEL_PORT "$PANEL_PORT"
+  set_panel_env PANEL_SITES_HTTPS_PORT "$PUBLIC_HTTPS_PORT"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
   [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
   [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
@@ -544,6 +575,10 @@ ufw allow "$SSH_PORT/tcp" comment ssh >/dev/null
 ufw allow 80/tcp comment http >/dev/null
 ufw allow 443/tcp comment https >/dev/null
 ufw allow 443/udp comment http3 >/dev/null
+if [[ $PANEL_PORT -ne 443 ]]; then
+  ufw allow "$PANEL_PORT/tcp" comment panel >/dev/null
+  ufw allow "$PANEL_PORT/udp" comment panel-http3 >/dev/null
+fi
 if [[ "$DNS_SERVER" == powerdns ]]; then
   ufw allow 53/udp comment dns >/dev/null
   ufw allow 53/tcp comment dns >/dev/null

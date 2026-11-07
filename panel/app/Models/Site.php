@@ -47,7 +47,8 @@ class Site extends Model
     public static function hostTaken(string $host, ?int $exceptSiteId = null): bool
     {
         $host = strtolower($host);
-        if (strcasecmp($host, (string) parse_url((string) config('app.url'), PHP_URL_HOST)) === 0) {
+        // The panel's domain is taken only when the panel listens on 443 itself.
+        if ((int) config('panel.port', 443) === 443 && strcasecmp($host, (string) parse_url((string) config('app.url'), PHP_URL_HOST)) === 0) {
             return true;
         }
 
@@ -117,7 +118,7 @@ class Site extends Model
     /** The HTTPS port browsers reach the sites on (the panel's, as published). */
     public static function publicHttpsPort(): int
     {
-        return (int) (parse_url((string) config('app.url'), PHP_URL_PORT) ?: 443);
+        return (int) (config('panel.sites_https_port') ?: (parse_url((string) config('app.url'), PHP_URL_PORT) ?: 443));
     }
 
     /** Operator-facing state: switched off beats everything else. */

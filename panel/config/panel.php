@@ -11,6 +11,11 @@ return [
     'public_ipv4' => env('PANEL_PUBLIC_IPV4'),
     'public_ipv6' => env('PANEL_PUBLIC_IPV6'),
 
+    // The panel's own HTTPS port (443 = it has its domain to itself) and the
+    // port browsers reach the sites on (as published; 8443 in the dev container).
+    'port' => (int) env('PANEL_PORT', 443),
+    'sites_https_port' => (int) env('PANEL_SITES_HTTPS_PORT', 0),
+
     // Mailpit web UI path on the panel domain (behind the panel login).
     'mailpit_path' => '/mailpit/',
 ];

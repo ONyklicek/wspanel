@@ -8,6 +8,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
 use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
@@ -34,6 +35,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // The web tier receives the panel under an internal host name: every
+        // link and redirect is built from APP_URL, the address users open.
+        if (filled(config('app.url')) && ! $this->app->runningUnitTests()) {
+            URL::forceRootUrl((string) config('app.url'));
+            URL::forceScheme('https');
+        }
+
         // The file manager uploads through Livewire: up to the panel's PHP limit (512 MB).
         config(['livewire.temporary_file_upload.rules' => ['required', 'file', 'max:524288'], 'livewire.temporary_file_upload.max_upload_time' => 30]);
 

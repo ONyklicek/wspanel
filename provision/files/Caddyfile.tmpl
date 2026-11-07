@@ -14,7 +14,8 @@
 	}
 }
 
-__PANEL_DOMAIN__ {
+__PANEL_ADDRESS__ {
+	__PANEL_TLS__
 	encode zstd gzip
 	header {
 		X-Frame-Options DENY
@@ -35,6 +36,7 @@ __PANEL_DOMAIN__ {
 		handle /mailpit* {
 			forward_auth unix//run/panel-web/web.sock {
 				uri /auth/check
+				header_up Host wspanel-panel.internal
 			}
 			# Message bodies are attacker-controlled HTML (any site can send mail):
 			# render them as an opaque origin, so nothing in them can act as the
@@ -47,8 +49,12 @@ __PANEL_DOMAIN__ {
 			}
 		}
 
+		# The web tier knows the panel under a fixed internal name, so the panel
+		# may share a domain with a site (example.com:8443 beside example.com).
 		handle {
-			reverse_proxy unix//run/panel-web/web.sock
+			reverse_proxy unix//run/panel-web/web.sock {
+				header_up Host wspanel-panel.internal
+			}
 		}
 	}
 }

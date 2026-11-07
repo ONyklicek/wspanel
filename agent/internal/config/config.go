@@ -92,6 +92,7 @@ type Config struct {
 	ProxyCertDir string `json:"proxy_cert_dir"` // uploaded certificates (custom TLS)
 	DeployLogDir string `json:"deploy_log_dir"`
 	PanelDomain  string `json:"panel_domain"`
+	PanelPort    int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
 
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
