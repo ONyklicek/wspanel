@@ -12,7 +12,8 @@ přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
 - SSH/SFTP s klíči i hesly,
 - odchozí poštu s DKIM a Mailpit,
 - DNS (vlastní PowerDNS i Cloudflare),
-- SSL (Let's Encrypt), firewall, naplánované úlohy a audit.
+- SSL (Let's Encrypt), firewall, naplánované úlohy a audit,
+- monitoring vytížení (CPU, RAM, disky, síť, weby, procesy) s historií 30 dní.
 
 ```
 agent/      Go agent: jediná komponenta s rootem, whitelist operací přes Unix socket
@@ -32,6 +33,7 @@ docs/       dokumentace
 - [SSH a SFTP](docs/ssh-sftp.md)
 - [Pošta](docs/posta.md)
 - [DNS](docs/dns.md)
+- [Vytížení serveru](docs/vytizeni.md)
 - [Bezpečnost](docs/bezpecnost.md)
 - [Vývoj a testování](docs/vyvoj.md)
 - [Řešení problémů](docs/reseni-problemu.md)

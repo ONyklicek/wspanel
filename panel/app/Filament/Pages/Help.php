@@ -36,6 +36,7 @@ class Help extends Page
         'ssh-sftp' => 'SSH a SFTP',
         'posta' => 'Pošta',
         'dns' => 'DNS',
+        'vytizeni' => 'Vytížení serveru',
         'bezpecnost' => 'Bezpečnost',
         'reseni-problemu' => 'Řešení problémů',
         'vyvoj' => 'Vývoj a testování',

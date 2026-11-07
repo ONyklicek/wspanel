@@ -92,6 +92,8 @@ func Registry() map[string]Op {
 		{"ssl.status", false, sslStatus},
 		{"ssl.check", false, sslCheck},
 		{"sys.resources", false, sysResources},
+		{"sys.metrics", false, sysMetrics},
+		{"sys.site_disk", false, sysSiteDisk},
 		{"cron.list", false, cronList},
 		{"cron.add", true, cronAdd},
 		{"cron.edit", true, cronEdit},

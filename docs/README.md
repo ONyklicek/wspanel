@@ -18,6 +18,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | odesílat e-maily z webu, testovat je v Mailpitu | [Pošta](posta.md) |
 | spravovat DNS (na serveru nebo v Cloudflare) | [DNS](dns.md) |
 | fronty, Horizon, Reverb, plánovač | [Weby → Procesy a workery](weby.md#procesy-a-workery) |
+| vidět vytížení CPU, RAM, disku, kdo server zatěžuje | [Vytížení serveru](vytizeni.md) |
 | pochopit, jak je to zabezpečené | [Bezpečnost](bezpecnost.md) |
 | vyvíjet panel a testovat ho na Macu | [Vývoj](vyvoj.md) |
 | něco nefunguje | [Řešení problémů](reseni-problemu.md) |
@@ -38,7 +39,8 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 
 | Menu | Co tam je |
 |---|---|
-| **Dashboard** | vytížení serveru, disk, certifikáty, upozornění |
+| **Nástěnka** | souhrn: zátěž, paměť, disk, certifikáty, upozornění |
+| **Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
 | **Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi |
 | **Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
 | **DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
