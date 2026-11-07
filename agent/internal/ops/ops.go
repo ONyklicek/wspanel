@@ -90,6 +90,7 @@ func Registry() map[string]Op {
 		{"env.get", false, envGet},
 		{"env.set", true, envSet},
 		{"audit.tail", false, auditTail},
+		{"site.opcache", true, siteOpcache},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},

@@ -28,3 +28,8 @@ php_admin_value[error_log] = {{.Home}}/logs/php-error.log
 php_admin_flag[log_errors] = on
 php_admin_flag[display_errors] = off
 php_admin_value[disable_functions] = {{.DisableFunctions}}
+{{- if .OpcacheProduction}}
+; Production OPcache: no file stat on each request. Code changes take effect
+; on the FPM reload every deploy does (manual edits need a reload too).
+php_admin_flag[opcache.validate_timestamps] = off
+{{- end}}

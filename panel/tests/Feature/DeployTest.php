@@ -115,6 +115,16 @@ class DeployTest extends TestCase
             ->assertNotified('Web běží na releasu initial');
     }
 
+    public function test_production_opcache_toggle(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('deploy.config', Mockery::any())->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('site.opcache', ['domain' => 'app.example.com', 'production' => true])->andReturn([]);
+
+        Livewire::test(DeploySite::class, ['record' => $this->site->id])
+            ->callAction('settings', ['repo' => 'git@github.com:acme/app.git', 'branch' => 'main', 'keep' => 5, 'opcache_production' => true])
+            ->assertHasNoActionErrors();
+    }
+
     public function test_env_is_read_and_saved_through_the_agent(): void
     {
         $this->agent->shouldReceive('call')->once()->with('env.get', ['domain' => 'app.example.com'])->andReturn(['content' => "APP_NAME=Shop\n"]);

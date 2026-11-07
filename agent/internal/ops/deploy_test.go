@@ -283,3 +283,44 @@ func TestDeleteKeepsOtherSitesDeployLogs(t *testing.T) {
 		t.Error("deleting a.com removed a log of a.com-x.com")
 	}
 }
+
+func TestOpcacheProduction(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "o.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	pool := filepath.Join(strings.ReplaceAll(env.Cfg.FPMPoolDir, "{version}", "8.3"), "web_o_example_com.conf")
+	if strings.Contains(read(t, pool), "validate_timestamps") {
+		t.Fatal("default must keep revalidation")
+	}
+	before := len(dr.Calls())
+	if _, err := call(t, env, siteOpcache, map[string]any{"domain": "o.example.com", "production": true}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(read(t, pool), "php_admin_flag[opcache.validate_timestamps] = off") {
+		t.Fatal("production flag missing")
+	}
+	var validated bool
+	for _, c := range dr.Calls()[before:] {
+		if c.String() == "php-fpm8.3 -t" {
+			validated = true
+		}
+	}
+	if !validated {
+		t.Error("pool not validated before reload")
+	}
+	// Survives a PHP version switch.
+	if _, err := call(t, env, siteSetVersion, map[string]string{"domain": "o.example.com", "version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	pool84 := filepath.Join(strings.ReplaceAll(env.Cfg.FPMPoolDir, "{version}", "8.4"), "web_o_example_com.conf")
+	if !strings.Contains(read(t, pool84), "validate_timestamps] = off") {
+		t.Error("flag lost on version switch")
+	}
+	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "o.example.com", "mode": "worker", "framework": "laravel"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, siteOpcache, map[string]any{"domain": "o.example.com", "production": false}); code(err) != protocol.CodeInvalidParams {
+		t.Errorf("worker site: %v", err)
+	}
+}

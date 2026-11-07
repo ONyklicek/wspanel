@@ -233,7 +233,7 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if err != nil {
 		return nil, err
 	}
-	st.SSHAccess = old.SSHAccess
+	st.SSHAccess, st.Deploy, st.OpcacheProduction = old.SSHAccess, old.Deploy, old.OpcacheProduction
 	if _, ok := workerSpecs[st.Framework]["reverb"]; ok {
 		st.ReverbPort = old.ReverbPort // the Reverb route survives; otherwise refreshWorkers drops the worker
 	}

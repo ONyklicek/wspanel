@@ -27,7 +27,9 @@ type siteLayout struct {
 	Port        int
 	ReverbPort  int
 	User        string
-	Home        string
+
+	OpcacheProduction bool
+	Home              string
 
 	// classic
 	Socket           string // FPM socket
@@ -71,8 +73,10 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		NodeVersion: st.NodeVersion,
 		Port:        st.Port,
 		ReverbPort:  st.ReverbPort,
-		User:        user,
-		Home:        filepath.Join(cfg.SitesRoot, st.Domain),
+
+		OpcacheProduction: st.OpcacheProduction,
+		User:              user,
+		Home:              filepath.Join(cfg.SitesRoot, st.Domain),
 
 		WebFile:          filepath.Join(cfg.WebSitesDir, st.Domain+".caddy"),
 		WebUser:          cfg.WebUser,

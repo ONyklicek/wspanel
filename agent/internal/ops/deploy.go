@@ -234,7 +234,8 @@ func deployHistory(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	}
 	slices.Reverse(h)
 	current, _ := currentRelease(l)
-	return map[string]any{"deploys": h, "releases": listReleases(l), "current": current, "config": st.Deploy, "running": deployInProgress(p.Domain)}, nil
+	return map[string]any{"deploys": h, "releases": listReleases(l), "current": current, "config": st.Deploy,
+		"running": deployInProgress(p.Domain), "opcache_production": st.OpcacheProduction}, nil
 }
 
 // deployLog returns the build log from `offset` (the panel polls it live).
@@ -747,4 +748,49 @@ func envSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"path": path, "bytes": len(p.Content)}, nil
+}
+
+// siteOpcache switches production OPcache (no revalidation) for a classic site.
+func siteOpcache(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain     string `json:"domain"`
+		Production bool   `json:"production"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	st, _, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if st.Mode != "classic" {
+		return nil, protocol.Invalid("opcache: only classic (PHP-FPM) sites; worker mode keeps the app in memory anyway")
+	}
+	st.OpcacheProduction = p.Production
+	l, err := layout(env.Cfg, st)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := render("fpm-pool.conf.tmpl", l)
+	if err != nil {
+		return nil, err
+	}
+	old, err := os.ReadFile(l.PoolFile)
+	if err != nil {
+		return nil, err
+	}
+	if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
+		return nil, err
+	}
+	if err := validateFPM(ctx, env, l.PHPVersion); err != nil {
+		_ = env.FS.WriteFile(l.PoolFile, old, 0o644, fsx.Root)
+		return nil, err
+	}
+	if _, err := env.Exec.Run(ctx, "systemctl", "reload", strings.ReplaceAll(env.Cfg.FPMUnit, "{version}", l.PHPVersion)); err != nil {
+		return nil, err
+	}
+	if err := saveSiteState(env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"domain": p.Domain, "opcache_production": p.Production}, nil
 }

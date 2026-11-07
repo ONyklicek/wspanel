@@ -24,6 +24,8 @@ type siteState struct {
 	ReverbPort  int           `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
 	SSHAccess   string        `json:"ssh_access,omitempty"`   // off | sftp | shell
 	Deploy      *deployConfig `json:"deploy,omitempty"`
+	// classic: OPcache does not revalidate files (deploys reload FPM)
+	OpcacheProduction bool `json:"opcache_production,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

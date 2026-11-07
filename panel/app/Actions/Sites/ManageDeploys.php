@@ -54,6 +54,12 @@ class ManageDeploys
     }
 
     /** @throws AgentException */
+    public function opcache(Site $site, bool $production): void
+    {
+        $this->agent->call('site.opcache', ['domain' => $site->domain, 'production' => $production]);
+    }
+
+    /** @throws AgentException */
     public function publicKey(Site $site): string
     {
         return $this->agent->call('deploy.key', ['domain' => $site->domain])['public_key'];

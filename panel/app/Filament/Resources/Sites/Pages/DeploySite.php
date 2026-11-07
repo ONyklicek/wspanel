@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Sites\Pages;
 use App\Actions\Sites\ManageDeploys;
 use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
+use App\Enums\SiteMode;
 use App\Filament\Resources\Sites\SiteResource;
 use App\Models\Deployment;
 use App\Models\Site;
@@ -43,6 +44,8 @@ class DeploySite extends Page
     public array $releases = [];
 
     public bool $running = false;
+
+    public bool $opcacheProduction = false;
 
     public ?string $logRelease = null;
 
@@ -87,6 +90,7 @@ class DeploySite extends Page
             $this->current = $h['current'];
             $this->releases = $h['releases'];
             $this->running = $h['running'];
+            $this->opcacheProduction = (bool) ($h['opcache_production'] ?? false);
         } catch (AgentException $e) {
             Notification::make()->title('Agent není dostupný')->body($e->getMessage())->danger()->send();
         }
@@ -143,7 +147,8 @@ class DeploySite extends Page
                 ->label('Nastavení')
                 ->icon(Heroicon::OutlinedCog6Tooth)
                 ->color('gray')
-                ->fillForm(fn () => $this->config ?? ['branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5])
+                ->fillForm(fn () => ($this->config ?? ['branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5])
+                    + ['opcache_production' => $this->opcacheProduction])
                 ->schema([
                     TextInput::make('repo')
                         ->label('Repozitář')
@@ -158,10 +163,17 @@ class DeploySite extends Page
                     Toggle::make('assets')->label('Buildit assety (npm install + npm run build)')->visible(fn () => ! $this->record->framework->isNode()),
                     Toggle::make('auto_rollback')->label('Když nový release neodpovídá, vrátit předchozí'),
                     Select::make('keep')->label('Držet releasů')->options(array_combine(range(2, 10), range(2, 10)))->required(),
+                    Toggle::make('opcache_production')
+                        ->label('Produkční OPcache (nekontrolovat změny souborů)')
+                        ->helperText('Rychlejší: PHP nekontroluje soubory při každém požadavku. Kód se načte při deployi (reload FPM); ruční úpravy přes SFTP se projeví až po dalším deployi nebo reloadu.')
+                        ->visible(fn () => $this->record->mode === SiteMode::Classic),
                 ])
                 ->action(function (array $data) {
                     try {
                         app(ManageDeploys::class)->configure($this->record, $data + ['migrate' => false, 'assets' => false]);
+                        if ($this->record->mode === SiteMode::Classic && (bool) ($data['opcache_production'] ?? false) !== $this->opcacheProduction) {
+                            app(ManageDeploys::class)->opcache($this->record, (bool) $data['opcache_production']);
+                        }
                         $this->refreshHistory();
                         Notification::make()->title('Nastavení deploye uloženo')->success()->send();
                     } catch (AgentException $e) {
