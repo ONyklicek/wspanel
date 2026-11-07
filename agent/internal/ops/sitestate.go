@@ -46,6 +46,8 @@ type siteState struct {
 	Group string `json:"group,omitempty"`
 	// FPMChildren: classic mode, pm.max_children (0 = default).
 	FPMChildren int `json:"fpm_children,omitempty"`
+	// Directives: custom Caddyfile rules in the site's edge route (checked by checkDirectives).
+	Directives string `json:"directives,omitempty"`
 	// Valkey: the site's own Valkey server, nil = none.
 	Valkey *valkeyConfig `json:"valkey,omitempty"`
 }

@@ -139,6 +139,7 @@ func Registry() map[string]Op {
 		{"client.create", true, clientCreate},
 		{"client.delete", true, clientDelete},
 		{"client.quota", true, clientQuota},
+		{"site.directives", true, siteDirectives},
 		{"valkey.set", true, valkeySet},
 		{"valkey.status", false, valkeyStatus},
 		{"valkey.flush", true, valkeyFlush},

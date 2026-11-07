@@ -337,6 +337,41 @@ uživatelem webu, se sandboxem, a po pádu se sám restartuje.
 Reverb: do `.env` dejte `REVERB_HOST=<doména>`, `REVERB_PORT=443`,
 `REVERB_SCHEME=https`. Port, na kterém Reverb poslouchá, přiděluje panel.
 
+## Pravidla webserveru
+
+**Další → Pravidla webserveru**: vlastní pravidla webu v syntaxi Caddy (obdoba
+„dalších direktiv nginx“ jinde). Platí v pořadí, jak jsou napsaná, za
+přístupovými pravidly panelu (heslo, IP) a před aplikací.
+
+```
+encode gzip zstd
+header /assets/* Cache-Control "public, max-age=31536000, immutable"
+redir /stary-clanek /novy-clanek 301
+@api path /api/*
+header @api X-Robots-Tag "noindex"
+request_body {
+	max_size 64MB
+}
+```
+
+- Povolené direktivy: `header`, `request_header`, `encode`, `rewrite`, `uri`,
+  `redir`, `respond`, `error`, `abort`, `request_body`, `vars`, `map`, a bloky
+  `handle`, `handle_path`, `route`; matchery `path`, `path_regexp`, `header`,
+  `header_regexp`, `method`, `query`, `remote_ip`, `client_ip`, `protocol`,
+  `not`, `host`.
+- Nejde nic, čím by web sáhl jinam: `reverse_proxy`, soubory (`root`,
+  `file_server`, `{file.*}`), proměnné prostředí, `import`, změna hlavičky
+  `Host` nebo `X-Forwarded-*`.
+- Před nasazením pravidla zkontroluje server. Chybná se nepoužijí a platí dál
+  předchozí.
+- **Převést z nginx nebo .htaccess:** vložte pravidla a stiskněte Převést.
+  Převede se `return`, `rewrite … permanent/redirect`, `rewrite` (přepis),
+  `add_header`, `expires`, `gzip`, `client_max_body_size`, `deny all`,
+  `location` bloky; z `.htaccess` `Redirect`, `RewriteRule` (přesměrování,
+  přepis, `[F]`), `Header set/append/unset`, `Require all denied`. Pravidla
+  s `RewriteCond` a vše ostatní zůstane jako komentář k ruční úpravě; front
+  controller (`… index.php`) není potřeba, panel ho řeší sám.
+
 ## Valkey (Redis)
 
 Každý web si může zapnout **vlastní Valkey server** (plně kompatibilní

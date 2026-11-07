@@ -714,6 +714,18 @@ php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\
 check "disabled: unit gone" test ! -f /etc/systemd/system/wspanel-web_shop_localhost-valkey.service
 
 # ----------------------------------------------------------------------------
+section "Web server rules"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, app(App\\Support\\WebRules\\RulesConverter::class)->convert('add_header X-Rule \"e2e\";
+rewrite ^/old/(.*)\$ /new/\$1 permanent;'));" >/dev/null
+contains "custom header served" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/)" "x-rule: e2e"
+contains "converted nginx redirect works" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/old/page)" "location: /new/page"
+contains "proxying elsewhere is refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, 'reverse_proxy 127.0.0.1:8025'); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "reverse_proxy"
+contains "rules the web server rejects are refused" "$(php "$(site shop.localhost) try { app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, 'encode nonsense-codec'); echo 'ACCEPTED'; } catch (Throwable \$e) { echo \$e->getMessage(); }")" "odmítl"
+contains "previous rules still active" "$(curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/)" "x-rule: e2e"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageWebRules::class)->set(\$s, '');" >/dev/null
+check "rules removed" bash -c "! curl -sk -D - -o /dev/null --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/ | grep -qi x-rule"
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

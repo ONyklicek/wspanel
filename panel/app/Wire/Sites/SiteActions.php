@@ -14,6 +14,7 @@ use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageValkey;
+use App\Actions\Sites\ManageWebRules;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -24,6 +25,7 @@ use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
 use App\Support\Limits;
 use App\Support\Toast;
+use App\Support\WebRules\RulesConverter;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Carbon;
@@ -32,6 +34,7 @@ use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireCore\Foundation\Schema\Tab;
 use NyonCode\WireCore\Foundation\Schema\Tabs;
+use NyonCode\WireForms\Components\CodeEditor;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Repeater;
 use NyonCode\WireForms\Components\Select;
@@ -508,6 +511,37 @@ final class SiteActions
             }));
     }
 
+    /** The site's own web-server rules, with a converter from nginx / .htaccess. */
+    public static function webRules(): Action
+    {
+        return Action::make('webRules')
+            ->label('Pravidla webserveru')
+            ->icon('outline:code-bracket')
+            ->visible(fn (Site $record) => $record->isOperational())
+            ->modalHeading(fn (Site $record) => "Pravidla webserveru: {$record->domain}")
+            ->modalDescription('Vlastní pravidla v syntaxi Caddy (přesměrování, přepisy URL, hlavičky, cache, komprese, limit velikosti požadavku). Platí v pořadí, jak jsou napsaná, za přístupovými pravidly panelu a před aplikací. Před nasazením je zkontroluje server; chybná se nepoužijí.')
+            ->modalWidth('4xl')
+            ->fillFormUsing(fn (Site $record) => ['rules' => $record->web_rules ?? '', 'import' => ''])
+            ->form([
+                CodeEditor::make('rules')->label('Pravidla (Caddy)')->language('caddyfile')->withLineNumbers()->minHeight(260)->maxLength(16384)
+                    ->rules(['nullable', 'string', 'max:16384'])
+                    ->helperText('Např.: header /assets/* Cache-Control "public, max-age=31536000" · redir /stary /novy 301 · encode gzip zstd'),
+                Textarea::make('import')->label('Převést z nginx nebo .htaccess')->rows(4)
+                    ->placeholder("location ~* \\.(css|js)$ { expires 30d; }\nRewriteRule ^blog/(.*)$ /novinky/$1 [R=301,L]")
+                    ->helperText('Vložte pravidla a stiskněte Převést: doplní se dolů do pravidel. Co převést nejde, zůstane jako komentář.')
+                    ->hintAction(Action::make('convert')->label('Převést')->icon('outline:arrows-right-left')
+                        ->action(function ($get, $set) {
+                            $converted = app(RulesConverter::class)->convert((string) $get('import'));
+                            $set('rules', trim(trim((string) $get('rules'))."\n".$converted));
+                            $set('import', '');
+                        })),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt('Pravidla se nepodařilo uložit', function () use ($record, $data) {
+                app(ManageWebRules::class)->set($record, (string) ($data['rules'] ?? ''));
+                Toast::success(filled($data['rules'] ?? null) ? 'Pravidla platí' : 'Pravidla odebrána');
+            }));
+    }
+
     /** The site's own Valkey (Redis-compatible) server. */
     public static function valkey(): Action
     {
@@ -592,7 +626,7 @@ final class SiteActions
     {
         return [
             self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::addWorker(),
+            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::webRules(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::assignClient(), self::delete(),
         ];

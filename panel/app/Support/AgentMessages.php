@@ -49,6 +49,17 @@ final class AgentMessages
         $cs = fn (string $s) => self::cs($s);
 
         return [
+            // Site web-server rules (site.directives)
+            '/^directives: the web server refused them: (.+)$/s' => fn ($m) => 'Webserver pravidla odmítl, platí dál předchozí: '.$m[1],
+            '/^directives: line (\d+): directive "([^"]+)" is not allowed.*$/' => 'Řádek $1: direktivu „$2“ v pravidlech webu použít nejde. Povolené: header, request_header, encode, rewrite, uri, redir, respond, error, abort, request_body, vars, map, handle, handle_path, route.',
+            '/^directives: line (\d+): matcher "([^"]+)" is not allowed.*$/' => 'Řádek $1: matcher „$2“ použít nejde. Povolené: path, path_regexp, header, header_regexp, method, query, remote_ip, client_ip, protocol, not, host.',
+            '/^directives: line (\d+): placeholder (\S+) is not allowed$/' => 'Řádek $1: zástupný symbol $2 (soubory, proměnné prostředí) použít nejde.',
+            '/^directives: line (\d+): request header (\S+) is set by the edge$/' => 'Řádek $1: hlavičku $2 nastavuje server sám, měnit ji nejde.',
+            '/^directives: line (\d+): matcher names starting with @wsp_ are the panel\'s$/' => 'Řádek $1: názvy matcherů začínající @wsp_ používá panel.',
+            '/^directives: line (\d+): (.+)$/' => 'Řádek $1: $2',
+            '/^directives: missing }$/' => 'Chybí uzavírací závorka }.',
+            '/^directives: at most (\d+) KB$/' => 'Pravidla mohou mít nejvýš $1 KB.',
+
             // Backups of sites, off-site storage
             '/^the copy\'s signature does not match.*$/s' => 'Podpis kopie nesedí: zálohu nevytvořil tento server, nebo ji někdo v úložišti změnil. Nic se nestáhlo.',
             '/^connecting to the storage failed: (.+)$/s' => fn ($m) => 'Připojení k úložišti selhalo: '.$cs($m[1]),

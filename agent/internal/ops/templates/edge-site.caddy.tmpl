@@ -47,6 +47,11 @@
 {{- range .Edge.Redirects}}
 		redir {{.From}} {{.To}} {{.Code}}
 {{- end}}
+{{- if .Directives}}
+
+		# Custom rules of the site (panel: Další → Pravidla webserveru).
+{{.Directives}}
+{{- end}}
 {{- if .ReverbPort}}
 
 		# Laravel Reverb (WebSockets): /app = client connections, /apps = server API.
