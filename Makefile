@@ -27,7 +27,9 @@ agent-build:
 ## writes files under var/dry-root. Panel's .env points AGENT_SOCKET at var/agent.sock.
 agent-dry:
 	mkdir -p var/state var/dry-root/srv/sites var/dry-root/etc/panel-proxy/sites var/dry-root/etc/panel-web/sites var/dry-root/etc/systemd/system \
-		var/dry-root/etc/php/8.3/fpm/pool.d var/dry-root/etc/php/8.4/fpm/pool.d
+		var/dry-root/etc/php/8.3/fpm/pool.d var/dry-root/etc/php/8.4/fpm/pool.d \
+		var/dry-root/etc/panel-sites var/dry-root/etc/tmpfiles.d
+	for v in v22.12.0 v24.1.0; do mkdir -p var/dry-root/opt/fnm/node-versions/$$v/installation/bin && touch var/dry-root/opt/fnm/node-versions/$$v/installation/bin/node; done
 	cd agent && go build -o ../var/panel-agent-dev ./cmd/panel-agent
 	./var/panel-agent-dev -config dev/agent.dryrun.json
 

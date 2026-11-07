@@ -3,6 +3,7 @@
 namespace App\Actions\Sites;
 
 use App\Enums\SiteStatus;
+use App\Filament\Resources\Sites\Schemas\SiteForm;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -15,33 +16,25 @@ class CreateSite
      * Stores the site as pending, asks the agent to provision it and records
      * the outcome. A failed site stays in the list with its error.
      *
-     * @param  array{domain: string, framework: string, php_version: string, mode?: string}  $data
+     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string}  $data
      */
     public function handle(array $data): Site
     {
+        $data['mode'] ??= 'classic';
+        $params = ['domain' => $data['domain']] + SiteForm::runtimeParams($data);
+
         $site = Site::create([
             'domain' => $data['domain'],
-            'mode' => $data['mode'] ?? 'classic',
+            'mode' => $data['mode'],
             'framework' => $data['framework'],
-            'php_version' => $data['php_version'],
+            'php_version' => $params['php_version'] ?? null,
+            'node_version' => $params['node_version'] ?? null,
             'status' => SiteStatus::Pending,
         ]);
 
         try {
-            $out = $this->agent->call('site.create', [
-                'domain' => $site->domain,
-                'framework' => $site->framework->value,
-                'php_version' => $site->php_version,
-                'mode' => $site->mode->value,
-            ]);
-
-            $site->update([
-                'system_user' => $out['system_user'] ?? null,
-                'home' => $out['home'] ?? null,
-                'doc_root' => $out['doc_root'] ?? null,
-                'status' => SiteStatus::Active,
-                'last_error' => null,
-            ]);
+            $out = $this->agent->call('site.create', $params);
+            $site->update(Site::attributesFromAgent($out) + ['status' => SiteStatus::Active, 'last_error' => null]);
         } catch (AgentException $e) {
             $site->update(['status' => SiteStatus::Failed, 'last_error' => $e->getMessage()]);
         }

@@ -15,5 +15,9 @@
   "fpm_pool_dir": "var/dry-root/etc/php/{version}/fpm/pool.d",
   "proxy_sites_dir": "var/dry-root/etc/panel-proxy/sites",
   "web_sites_dir": "var/dry-root/etc/panel-web/sites",
-  "systemd_dir": "var/dry-root/etc/systemd/system"
+  "systemd_dir": "var/dry-root/etc/systemd/system",
+  "site_config_dir": "var/dry-root/etc/panel-sites",
+  "site_run_dir": "var/dry-root/run/wspanel-sites",
+  "tmpfiles_dir": "var/dry-root/etc/tmpfiles.d",
+  "node_dir": "var/dry-root/opt/fnm/node-versions"
 }

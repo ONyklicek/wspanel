@@ -4,20 +4,22 @@ namespace App\Console\Commands;
 
 use App\Actions\Firewall\SyncFirewall;
 use App\Actions\Services\SyncServices;
+use App\Actions\Sites\CheckSiteHealth;
 use App\Services\Agent\AgentException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('panel:sync')]
-#[Description('Mirror the real service and firewall state from the agent into the panel database')]
+#[Description('Mirror the real service, firewall and site health state from the agent into the panel database')]
 class SyncState extends Command
 {
-    public function handle(SyncServices $services, SyncFirewall $firewall): int
+    public function handle(SyncServices $services, SyncFirewall $firewall, CheckSiteHealth $health): int
     {
         try {
             $n = $services->handle();
             $fw = $firewall->handle();
+            $health->all();
         } catch (AgentException $e) {
             $this->error("Agent: {$e->getMessage()}");
 

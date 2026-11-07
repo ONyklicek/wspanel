@@ -47,13 +47,16 @@ class SiteManagementTest extends TestCase
             'php_version' => '8.3',
             'mode' => 'classic',
         ])->andReturn([
+            'mode' => 'classic',
+            'framework' => 'symfony',
+            'php_version' => '8.3',
             'system_user' => 'web_shop_example_com',
             'home' => '/srv/sites/shop.example.com',
             'doc_root' => '/srv/sites/shop.example.com/current/public',
         ]);
 
         Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => ' HTTPS://Shop.Example.com/ ', 'framework' => 'symfony', 'php_version' => '8.3'])
+            ->fillForm(['domain' => ' HTTPS://Shop.Example.com/ ', 'mode' => 'classic', 'framework' => 'symfony', 'php_version' => '8.3'])
             ->call('create')
             ->assertHasNoFormErrors()
             ->assertRedirect('/sites');

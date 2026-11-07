@@ -73,6 +73,9 @@ class SyncServices
     private static function workerFields(string $user, string $worker): array
     {
         $domain = Site::query()->where('system_user', $user)->value('domain');
+        if ($worker === 'app') { // the site's own process in worker / node mode
+            return ['type' => ServiceType::App->value, 'instance' => $domain ?? $user, 'worker' => null, '_user' => $user];
+        }
 
         return ['type' => ServiceType::Worker->value, 'instance' => $domain ?? $user, 'worker' => $worker, '_user' => $user];
     }

@@ -15,12 +15,12 @@ import (
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker", "app"}
 
 type serviceParams struct {
 	Service string `json:"service"`
 	Version string `json:"version,omitempty"` // php-fpm only
-	Domain  string `json:"domain,omitempty"`  // worker only
+	Domain  string `json:"domain,omitempty"`  // worker and app only
 	Worker  string `json:"worker,omitempty"`  // worker only
 }
 
@@ -32,10 +32,22 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 	if p.Service != "php-fpm" && p.Version != "" {
 		return "", protocol.Invalid("version: only valid for php-fpm")
 	}
-	if p.Service != "worker" && (p.Domain != "" || p.Worker != "") {
-		return "", protocol.Invalid("domain/worker: only valid for worker")
+	if p.Service != "worker" && p.Worker != "" {
+		return "", protocol.Invalid("worker: only valid for service worker")
+	}
+	if p.Service != "worker" && p.Service != "app" && p.Domain != "" {
+		return "", protocol.Invalid("domain: only valid for worker and app")
 	}
 	switch p.Service {
+	case "app": // the site's own process in worker or node mode
+		if err := validate.Domain(p.Domain); err != nil {
+			return "", err
+		}
+		name := appUnitName(validate.SiteUser(p.Domain))
+		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
+			return "", protocol.NotFound(p.Domain + " has no app process (classic sites run in PHP-FPM)")
+		}
+		return name, nil
 	case "worker":
 		if err := validate.Domain(p.Domain); err != nil {
 			return "", err
@@ -117,7 +129,7 @@ func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action st
 	if action == "stop" && slices.Contains(env.Cfg.PanelUnits(), unit) {
 		return nil, protocol.Forbidden(unit + " runs the panel itself and cannot be stopped from it; use restart")
 	}
-	if action == "reload" && (p.Service == "worker" || p.Service == "valkey") {
+	if action == "reload" && (p.Service == "worker" || p.Service == "valkey" || p.Service == "app") {
 		return nil, protocol.Invalid("reload: not supported for " + p.Service + ", use restart")
 	}
 	// A broken config is never (re)loaded.

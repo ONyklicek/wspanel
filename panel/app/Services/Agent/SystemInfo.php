@@ -54,6 +54,28 @@ class SystemInfo
         }
     }
 
+    /** PHP version built into FrankenPHP (worker mode), e.g. "8.5". */
+    public function workerPhpVersion(): ?string
+    {
+        try {
+            return ($this->versions()['worker_php'] ?? '') ?: null;
+        } catch (AgentException) {
+            return null;
+        }
+    }
+
+    /** @return array<string, string> major => label */
+    public function nodeVersionOptions(): array
+    {
+        try {
+            $majors = $this->versions()['node'] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+
+        return collect($majors)->sortDesc()->mapWithKeys(fn (string $v) => [$v => "Node {$v}"])->all();
+    }
+
     public function defaultPhpVersion(): ?string
     {
         try {

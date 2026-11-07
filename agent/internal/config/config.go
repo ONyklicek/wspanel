@@ -47,6 +47,15 @@ type Config struct {
 	FrankenPHPBin string `json:"frankenphp_bin"`
 	DefaultPHPVer string `json:"default_php_version"`
 
+	// Worker mode (one FrankenPHP instance per site) and Node SSR.
+	SiteConfigDir string `json:"site_config_dir"` // per-site FrankenPHP Caddyfiles
+	SiteRunDir    string `json:"site_run_dir"`    // per-site socket dirs (group = proxy group)
+	TmpfilesDir   string `json:"tmpfiles_dir"`
+	ProxyGroup    string `json:"proxy_group"` // group of the edge proxy, owns site socket dirs
+	NodeDir       string `json:"node_dir"`    // fnm node-versions dir
+	NodePortMin   int    `json:"node_port_min"`
+	NodePortMax   int    `json:"node_port_max"`
+
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
 	UFWBinary      string `json:"ufw_binary"`
@@ -81,6 +90,13 @@ func Defaults() Config {
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",
 
+		SiteConfigDir:  "/etc/panel-sites",
+		SiteRunDir:     "/run/wspanel-sites",
+		TmpfilesDir:    "/etc/tmpfiles.d",
+		ProxyGroup:     "panel-proxy",
+		NodeDir:        "/opt/fnm/node-versions",
+		NodePortMin:    30000,
+		NodePortMax:    39999,
 		SystemdDir:     "/etc/systemd/system",
 		PHPCLIBinary:   "/usr/bin/php{version}",
 		UFWBinary:      "/usr/sbin/ufw",

@@ -87,13 +87,14 @@ func run(cfgPath string, log *slog.Logger) error {
 // binaries is the executor allowlist: logical name -> absolute path.
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
-		"systemctl":       "/usr/bin/systemctl",
-		"useradd":         "/usr/sbin/useradd",
-		"userdel":         "/usr/sbin/userdel",
-		"setfacl":         "/usr/bin/setfacl",
-		"systemd-analyze": "/usr/bin/systemd-analyze",
-		"ufw":             cfg.UFWBinary,
-		"frankenphp":      cfg.FrankenPHPBin,
+		"systemctl":        "/usr/bin/systemctl",
+		"useradd":          "/usr/sbin/useradd",
+		"userdel":          "/usr/sbin/userdel",
+		"setfacl":          "/usr/bin/setfacl",
+		"systemd-analyze":  "/usr/bin/systemd-analyze",
+		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
+		"ufw":              cfg.UFWBinary,
+		"frankenphp":       cfg.FrankenPHPBin,
 	}
 	for _, v := range cfg.PHPVersions {
 		b["php-fpm"+v] = config.ForVersion(cfg.FPMBinary, v)
@@ -121,7 +122,7 @@ func dryResponder(c executor.Call) (executor.Result, error) {
 		}
 	case "frankenphp":
 		if len(c.Args) > 0 && c.Args[0] == "version" {
-			return executor.Result{Stdout: "FrankenPHP dry-run"}, nil
+			return executor.Result{Stdout: "FrankenPHP v1.13.5 PHP 8.5.12 Caddy v2.11.9 (dry-run)"}, nil
 		}
 	}
 	return executor.Result{}, nil

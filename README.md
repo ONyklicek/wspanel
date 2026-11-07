@@ -35,6 +35,26 @@ dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
 - Firewall (UFW): porty SSH, 80 a 443 nejde z panelu zakázat ani smazat.
   Služby, na kterých běží panel, nejde z panelu zastavit.
 
+## Režimy webu
+
+| Režim | Backend | Verze | Cesta požadavku |
+|---|---|---|---|
+| Classic | PHP-FPM pool pod uživatelem webu | 8.2–8.4 (FPM balíčky) | edge → `panel-web` → FPM socket |
+| Worker | vlastní FrankenPHP instance pod uživatelem webu (Laravel Octane, Symfony 7.4+) | PHP zabudované ve FrankenPHP | edge → `/run/wspanel-sites/<user>/http.sock` |
+| Node SSR | Node proces (Nuxt, Next.js, `server.js`) | major verze z fnm (`/opt/fnm`) | edge → `127.0.0.1:<port>` (port přiděluje agent) |
+
+- **Změna režimu** (`site.switch_mode`): nový backend se postaví vedle starého a edge se
+  přepne až ve chvíli, kdy je hotový. Při chybě web běží dál jako dřív.
+  Workery se přenastaví na nové PHP, nepodporované se odeberou.
+- **Změna verze** (`site.set_version`):
+  - classic: nový FPM pool vedle starého, bez výpadku,
+  - node: restart procesu,
+  - worker: verzi nejde zvolit, je daná buildem FrankenPHP.
+- **Kontrola, že web odpovídá** (`site.health`): HTTP dotaz přímo na backend (mimo
+  edge). Panel ho spouští každou minutu.
+- **Worker a Node web obsluhuje statiku sám pod svým uživatelem.** Symlink tak
+  nedosáhne dál, než kam smí uživatel webu.
+
 ## Struktura webu
 
 ```
@@ -71,7 +91,7 @@ Pro vývoj používej domény `*.localhost`, případně provisioning s `--local
 ```sh
 make agent-build ARCH=amd64
 # na serveru (Debian 13, root):
-./provision/install.sh --db=mariadb --php=8.3,8.4 \
+./provision/install.sh --db=mariadb --php=8.3,8.4 --node=22,24 \
   --panel-domain=panel.example.com --acme-email=admin@example.com \
   --agent-bin=./build/panel-agent-linux-amd64 --panel-source=./panel
 ```
@@ -89,3 +109,5 @@ později jen doinstalovat (Fáze 4).
   - firewall (`fw.list/allow/deny/delete`),
   - zrcadlení skutečného stavu do panelu (`panel:sync` každou minutu přes
     `panel-scheduler`) a přehled na dashboardu.
+- **Fáze 3:** worker režim (FrankenPHP + Octane / Symfony Runtime), Node SSR přes
+  fnm, přepínání režimů a verzí z panelu, kontrola, že web odpovídá.

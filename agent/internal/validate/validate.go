@@ -62,8 +62,27 @@ func SiteUser(domain string) string {
 	return name[:25] + "_" + hex.EncodeToString(sum[:])[:6]
 }
 
-// Frameworks supported by site presets.
-var Frameworks = []string{"laravel", "symfony", "php"}
+// Frameworks by family. PHP frameworks run in classic (PHP-FPM) or worker
+// (FrankenPHP) mode, Node frameworks in node mode.
+var (
+	PHPFrameworks    = []string{"laravel", "symfony", "php"}
+	WorkerFrameworks = []string{"laravel", "symfony"} // need a worker entry point (Octane / Symfony Runtime)
+	NodeFrameworks   = []string{"nuxt", "next", "node"}
+	Frameworks       = append(append([]string{}, PHPFrameworks...), NodeFrameworks...)
+)
 
-// SiteModes; only classic is implemented in phase 1.
-var SiteModes = []string{"classic"}
+// SiteModes: classic = PHP-FPM, worker = FrankenPHP instance, node = Node SSR process.
+var SiteModes = []string{"classic", "worker", "node"}
+
+// FrameworksForMode lists the frameworks a mode can run.
+func FrameworksForMode(mode string) []string {
+	switch mode {
+	case "classic":
+		return PHPFrameworks
+	case "worker":
+		return WorkerFrameworks
+	case "node":
+		return NodeFrameworks
+	}
+	return nil
+}

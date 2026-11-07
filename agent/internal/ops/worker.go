@@ -47,20 +47,30 @@ type workerParams struct {
 	Worker string `json:"worker"`
 }
 
-type workerTemplate struct {
-	siteLayout
-	Type        string
-	Command     string
-	StopTimeout int
+// workerUnitData builds the unit for a worker. The PHP binary follows the
+// site's mode: FPM's CLI of the same version in classic mode, the PHP built
+// into FrankenPHP in worker mode.
+func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitData {
+	php := config.ForVersion(env.Cfg.PHPCLIBinary, l.PHPVersion)
+	if l.Mode == "worker" {
+		php = env.Cfg.FrankenPHPBin + " php-cli"
+	}
+	return unitData{
+		Description: fmt.Sprintf("WSPanel %s worker for %s", typ, l.Domain),
+		User:        l.User,
+		Home:        l.Home,
+		ExecStart:   php + " " + strings.Join(spec.Args, " "),
+		StopTimeout: spec.StopTimeout,
+	}
 }
 
-func resolveWorker(env *Env, p workerParams) (siteState, siteLayout, workerSpec, string, error) {
+func resolveWorker(env *Env, p workerParams) (siteLayout, workerSpec, string, error) {
 	if err := validate.OneOf("worker", p.Worker, WorkerTypes); err != nil {
-		return siteState{}, siteLayout{}, workerSpec{}, "", err
+		return siteLayout{}, workerSpec{}, "", err
 	}
 	st, l, err := loadSite(env, p.Domain)
 	if err != nil {
-		return st, l, workerSpec{}, "", err
+		return l, workerSpec{}, "", err
 	}
 	spec, ok := workerSpecs[st.Framework][p.Worker]
 	if !ok {
@@ -69,9 +79,9 @@ func resolveWorker(env *Env, p workerParams) (siteState, siteLayout, workerSpec,
 			allowed = append(allowed, t)
 		}
 		slices.Sort(allowed)
-		return st, l, spec, "", protocol.Invalid(fmt.Sprintf("worker: %q is not available for framework %s (allowed: %v)", p.Worker, st.Framework, allowed))
+		return l, spec, "", protocol.Invalid(fmt.Sprintf("worker: %q is not available for framework %s (allowed: %v)", p.Worker, st.Framework, allowed))
 	}
-	return st, l, spec, filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, p.Worker)), nil
+	return l, spec, filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, p.Worker)), nil
 }
 
 func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
@@ -79,59 +89,24 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	st, l, spec, unitPath, err := resolveWorker(env, p)
+	l, spec, unitPath, err := resolveWorker(env, p)
 	if err != nil {
 		return nil, err
 	}
 	if fsx.Exists(unitPath) {
 		return nil, protocol.Conflict("worker " + p.Worker + " already exists for " + p.Domain)
 	}
-	php := config.ForVersion(env.Cfg.PHPCLIBinary, st.PHPVersion)
-	unit, err := render("worker.service.tmpl", workerTemplate{
-		siteLayout:  l,
-		Type:        p.Worker,
-		Command:     php + " " + strings.Join(spec.Args, " "),
-		StopTimeout: spec.StopTimeout,
-	})
-	if err != nil {
-		return nil, err
-	}
-	name := filepath.Base(unitPath)
-
 	var rollback undo
 	defer func() {
 		if err != nil {
 			rollback.run()
 		}
 	}()
-	if err = env.FS.WriteFile(unitPath, unit, 0o644, fsx.Root); err != nil {
+	started, err := installUnit(ctx, env, unitPath, workerUnitData(env, l, p.Worker, spec), spec.Entry, &rollback)
+	if err != nil {
 		return nil, err
 	}
-	rollback.add(func() {
-		_ = os.Remove(unitPath)
-		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
-	})
-	if _, err = env.Exec.Run(ctx, "systemd-analyze", "verify", unitPath); err != nil {
-		return nil, fmt.Errorf("worker unit invalid, not installing: %w", err)
-	}
-	if _, err = env.Exec.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-		return nil, err
-	}
-	if _, err = env.Exec.Run(ctx, "systemctl", "enable", name); err != nil {
-		return nil, err
-	}
-	rollback.add(func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "disable", name) })
-
-	// Before the first deploy there is no artisan / bin/console: enable the
-	// unit but do not start it into a crash loop.
-	started := false
-	if fsx.Exists(filepath.Join(l.Home, "current", spec.Entry)) {
-		if _, err = env.Exec.Run(ctx, "systemctl", "start", name); err != nil {
-			return nil, err
-		}
-		started = true
-	}
-	return map[string]any{"unit": name, "worker": p.Worker, "domain": p.Domain, "started": started}, nil
+	return map[string]any{"unit": filepath.Base(unitPath), "worker": p.Worker, "domain": p.Domain, "started": started}, nil
 }
 
 func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -155,6 +130,31 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	return map[string]string{"unit": filepath.Base(unitPath), "removed": "true"}, nil
 }
 
+// refreshWorkers re-renders a site's worker units after a mode or version
+// change (they embed the PHP binary). Workers the new framework does not
+// support are removed.
+func refreshWorkers(ctx context.Context, env *Env, l siteLayout) error {
+	for _, typ := range WorkerTypes {
+		path := filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, typ))
+		if !fsx.Exists(path) {
+			continue
+		}
+		spec, ok := workerSpecs[l.Framework][typ]
+		if !ok {
+			if err := removeUnit(ctx, env, path); err != nil {
+				return err
+			}
+			continue
+		}
+		var rb undo
+		if _, err := installUnit(ctx, env, path, workerUnitData(env, l, typ, spec), spec.Entry, &rb); err != nil {
+			rb.run()
+			return err
+		}
+	}
+	return nil
+}
+
 func removeUnit(ctx context.Context, env *Env, unitPath string) error {
 	name := filepath.Base(unitPath)
 	if _, err := env.Exec.Run(ctx, "systemctl", "disable", "--now", name); err != nil {
@@ -170,13 +170,21 @@ func removeUnit(ctx context.Context, env *Env, unitPath string) error {
 	return nil
 }
 
-// siteWorkerUnits lists installed worker unit files of a site.
+// siteWorkerUnits lists installed worker unit files of a site. Exact names
+// only: a prefix glob would also match another site whose user starts with
+// this one (web_a_com vs web_a_com-x_com).
 func siteWorkerUnits(cfg config.Config, user string) []string {
-	matches, _ := filepath.Glob(filepath.Join(cfg.SystemdDir, "wspanel-"+user+"-*.service"))
-	return matches
+	var out []string
+	for _, typ := range WorkerTypes {
+		path := filepath.Join(cfg.SystemdDir, workerUnit(user, typ))
+		if fsx.Exists(path) {
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
-// allWorkerUnits lists every worker unit name managed by WSPanel.
+// allWorkerUnits lists every unit managed by WSPanel (workers and app units).
 func allWorkerUnits(cfg config.Config) []string {
 	matches, _ := filepath.Glob(filepath.Join(cfg.SystemdDir, "wspanel-*.service"))
 	out := make([]string, 0, len(matches))

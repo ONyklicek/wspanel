@@ -13,12 +13,14 @@ import (
 
 // siteState is the agent's own record of a site, kept in its root-only state
 // dir. The panel's database is not trusted for anything that decides which
-// command runs; this is.
+// command runs or which port is used; this is.
 type siteState struct {
-	Domain     string `json:"domain"`
-	Framework  string `json:"framework"`
-	PHPVersion string `json:"php_version"`
-	Mode       string `json:"mode"`
+	Domain      string `json:"domain"`
+	Framework   string `json:"framework"`
+	Mode        string `json:"mode"`
+	PHPVersion  string `json:"php_version,omitempty"`  // classic: FPM version; worker: FrankenPHP's PHP (informational)
+	NodeVersion string `json:"node_version,omitempty"` // node: major version
+	Port        int    `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent
 }
 
 func siteStatePath(cfg config.Config, domain string) string {
@@ -34,8 +36,21 @@ func saveSiteState(env *Env, st siteState) error {
 	return env.FS.WriteFile(siteStatePath(env.Cfg, st.Domain), b, 0o600, fsx.Root)
 }
 
+// allSiteStates reads every state file (used for port allocation).
+func allSiteStates(cfg config.Config) []siteState {
+	files, _ := filepath.Glob(filepath.Join(cfg.StateDir, "sites", "*.json"))
+	out := make([]siteState, 0, len(files))
+	for _, f := range files {
+		var st siteState
+		if b, err := os.ReadFile(f); err == nil && json.Unmarshal(b, &st) == nil {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
 // loadSite returns the site's state and layout. Sites created before the
-// state file existed are inferred from the files on disk.
+// state file existed (phase 1, always classic) are inferred from disk.
 func loadSite(env *Env, domain string) (siteState, siteLayout, error) {
 	if err := validate.Domain(domain); err != nil {
 		return siteState{}, siteLayout{}, err
@@ -44,6 +59,9 @@ func loadSite(env *Env, domain string) (siteState, siteLayout, error) {
 	if b, err := os.ReadFile(siteStatePath(env.Cfg, domain)); err == nil {
 		if err := json.Unmarshal(b, &st); err != nil {
 			return st, siteLayout{}, err
+		}
+		if st.Domain != domain {
+			return st, siteLayout{}, protocol.Invalid("state file does not match domain")
 		}
 	} else {
 		st = siteState{Domain: domain, Mode: "classic", Framework: "php"}
@@ -67,6 +85,6 @@ func loadSite(env *Env, domain string) (siteState, siteLayout, error) {
 			return st, siteLayout{}, protocol.NotFound("site " + domain + " has no PHP-FPM pool")
 		}
 	}
-	l, err := layout(env.Cfg, st.Domain, st.Framework, st.PHPVersion)
+	l, err := layout(env.Cfg, st)
 	return st, l, err
 }

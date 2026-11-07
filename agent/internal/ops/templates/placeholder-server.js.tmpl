@@ -1,0 +1,9 @@
+// Placeholder created by WSPanel. Replaced by the first deploy.
+const http = require('http');
+
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end('<!doctype html><html lang="cs"><meta charset="utf-8"><title>{{.Domain}}</title>'
+    + '<body style="font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">'
+    + '<h1>{{.Domain}}</h1><p>Node SSR web je založený (Node ' + process.versions.node + '). Čeká na první deploy.</p></body></html>');
+}).listen(Number(process.env.PORT), process.env.HOST);

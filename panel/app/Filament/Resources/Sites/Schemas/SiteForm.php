@@ -5,9 +5,13 @@ namespace App\Filament\Resources\Sites\Schemas;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Services\Agent\SystemInfo;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Text;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 
 class SiteForm
@@ -17,11 +21,8 @@ class SiteForm
 
     public static function configure(Schema $schema): Schema
     {
-        $system = app(SystemInfo::class);
-
         return $schema->components([
             Section::make('Nový web')
-                ->columns(2)
                 ->schema([
                     TextInput::make('domain')
                         ->label('Doména')
@@ -35,31 +36,80 @@ class SiteForm
                             }
                         })
                         ->unique(ignoreRecord: true)
-                        ->helperText('Doména musí DNS záznamem mířit na tento server, jinak nepůjde vydat certifikát.')
-                        ->columnSpanFull(),
-                    Select::make('framework')
-                        ->label('Framework')
-                        ->options(Framework::class)
-                        ->default(Framework::Laravel->value)
-                        ->required()
-                        ->helperText('Určuje adresářovou strukturu, .env a později deploy a workery.'),
-                    Select::make('php_version')
-                        ->label('Verze PHP')
-                        ->options(fn () => $system->phpVersionOptions())
-                        ->default(fn () => $system->defaultPhpVersion())
-                        ->required()
-                        ->helperText(fn () => $system->phpVersionOptions() === []
-                            ? 'Agent není dostupný, verze PHP nelze načíst.'
-                            : null),
-                    Select::make('mode')
-                        ->label('Režim')
-                        ->options([SiteMode::Classic->value => SiteMode::Classic->getLabel()])
-                        ->default(SiteMode::Classic->value)
-                        ->required()
-                        ->selectablePlaceholder(false)
-                        ->helperText('Worker (FrankenPHP) a Node SSR přibudou ve Fázi 3.'),
+                        ->helperText('Doména musí DNS záznamem mířit na tento server, jinak nepůjde vydat certifikát.'),
                 ]),
+            Section::make('Jak web poběží')
+                ->columns(2)
+                ->schema(self::runtimeFields()),
         ]);
+    }
+
+    /**
+     * Mode, framework and version fields; shared by "create" and "switch mode".
+     *
+     * @return array<int, mixed>
+     */
+    public static function runtimeFields(?string $currentMode = null): array
+    {
+        $system = app(SystemInfo::class);
+        $modes = collect(SiteMode::cases())
+            ->reject(fn (SiteMode $m) => $m->value === $currentMode)
+            ->mapWithKeys(fn (SiteMode $m) => [$m->value => $m->getLabel()]);
+
+        return [
+            Radio::make('mode')
+                ->label('Režim')
+                ->options($modes->all())
+                ->descriptions(collect(SiteMode::cases())->mapWithKeys(fn (SiteMode $m) => [$m->value => $m->getDescription()])->all())
+                ->default($modes->keys()->first())
+                ->required()
+                ->live()
+                ->afterStateUpdated(function (Set $set, ?string $state) {
+                    $set('framework', array_key_first(Framework::optionsForMode($state)));
+                })
+                ->columnSpanFull(),
+            Select::make('framework')
+                ->label('Framework')
+                ->options(fn (Get $get) => Framework::optionsForMode($get('mode')))
+                ->default(fn (Get $get) => array_key_first(Framework::optionsForMode($get('mode') ?? $modes->keys()->first())))
+                ->required()
+                ->in(fn (Get $get) => array_keys(Framework::optionsForMode($get('mode'))))
+                ->selectablePlaceholder(false)
+                ->helperText('Určuje adresářovou strukturu, .env, workery a spouštěcí příkaz.'),
+            Select::make('php_version')
+                ->label('Verze PHP')
+                ->options(fn () => $system->phpVersionOptions())
+                ->default(fn () => $system->defaultPhpVersion())
+                ->visible(fn (Get $get) => $get('mode') === SiteMode::Classic->value)
+                ->required(fn (Get $get) => $get('mode') === SiteMode::Classic->value),
+            Text::make(fn () => 'Worker režim běží na PHP '.($system->workerPhpVersion() ?? '?').', které je zabudované ve FrankenPHP. Laravel potřebuje Octane (octane:install --server=frankenphp), Symfony verzi 7.4 nebo novější.')
+                ->visible(fn (Get $get) => $get('mode') === SiteMode::Worker->value),
+            Select::make('node_version')
+                ->label('Verze Node')
+                ->options(fn () => $system->nodeVersionOptions())
+                ->default(fn () => array_key_first($system->nodeVersionOptions()))
+                ->visible(fn (Get $get) => $get('mode') === SiteMode::Node->value)
+                ->required(fn (Get $get) => $get('mode') === SiteMode::Node->value),
+        ];
+    }
+
+    /**
+     * Agent params for the chosen runtime: only the version field the mode uses.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, string>
+     */
+    public static function runtimeParams(array $data): array
+    {
+        $params = ['mode' => $data['mode'], 'framework' => $data['framework']];
+        if ($data['mode'] === SiteMode::Classic->value) {
+            $params['php_version'] = $data['php_version'];
+        }
+        if ($data['mode'] === SiteMode::Node->value) {
+            $params['node_version'] = $data['node_version'];
+        }
+
+        return $params;
     }
 
     public static function normalizeDomain(?string $domain): string

@@ -1,0 +1,42 @@
+# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
+# Worker mode for {{.Domain}} ({{.Framework}}): one FrankenPHP instance running
+# as {{.User}}. It serves static files itself, so it can only ever expose
+# what that user can read. Reached by the edge proxy over a Unix socket.
+{
+	admin off
+	auto_https off
+	persist_config off
+	servers {
+		protocols h1
+	}
+}
+
+http:// {
+	bind unix/{{.AppSocket}}|0220
+	root * {{.Home}}/current/public
+
+	@hidden {
+		path */.*
+		not path /.well-known/*
+	}
+	respond @hidden 404
+
+	php_server {
+{{- if .WorkerIndex}}
+		index {{.WorkerIndex}}
+		try_files {path} {{.WorkerIndex}}
+{{- end}}
+		# Only the edge reaches this server; it terminates TLS.
+		env HTTPS on
+		env SERVER_PORT 443
+		worker {
+			file {{.WorkerFile}}
+			num {{.WorkerThreads}}
+			# Recycle workers to contain memory leaks of long-running apps.
+			env MAX_REQUESTS 500
+{{- range .WorkerEnv}}
+			env {{.}}
+{{- end}}
+		}
+	}
+}

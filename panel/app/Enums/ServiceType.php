@@ -13,6 +13,7 @@ enum ServiceType: string implements HasLabel
     case PostgreSql = 'postgresql';
     case Valkey = 'valkey';
     case Worker = 'worker';
+    case App = 'app';
 
     public function getLabel(): string
     {
@@ -24,6 +25,7 @@ enum ServiceType: string implements HasLabel
             self::PostgreSql => 'PostgreSQL',
             self::Valkey => 'Valkey',
             self::Worker => 'Worker',
+            self::App => 'Aplikace (worker / Node)',
         };
     }
 

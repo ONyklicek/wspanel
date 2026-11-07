@@ -3,7 +3,7 @@
 #
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
-#              [--panel-source=./panel] [--ssh-port=22] [--local-certs]
+#              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--local-certs]
 #
 # --db accepts: none | mariadb | postgres | mariadb,postgres
 # Safe to re-run: every step is idempotent.
@@ -14,10 +14,17 @@ declare -A FRANKENPHP_SHA256=(
   [x86_64]="78e9b0ed1999ba658545c68bd74baece5697192f75f56e02aa778119f1164812"
   [aarch64]="4d0311de6986d4fe9dc9bc3467d9549d26b89ab7ac6804cbe68fbb5352f8b153"
 )
+FNM_VERSION="v1.39.0"
+declare -A FNM_ASSET=([x86_64]="fnm-linux.zip" [aarch64]="fnm-arm64.zip")
+declare -A FNM_SHA256=(
+  [x86_64]="7807664f39d39fc518da1c35ba0181e4b3267603c4b1dedeb4b5fc6ae440a224"
+  [aarch64]="4eaff58b2c5bf30d0934027572dd0b5bbb60d2a1af309230b53662d4b1d45599"
+)
 PANEL_PHP="8.4" # the panel itself always runs on this version
 
 DB="none"
 PHP_VERSIONS="8.4"
+NODE_VERSIONS="22,24"
 PANEL_DOMAIN=""
 ACME_EMAIL=""
 AGENT_BIN=""
@@ -33,6 +40,7 @@ for arg in "$@"; do
   case "$arg" in
     --db=*) DB="${arg#*=}" ;;
     --php=*) PHP_VERSIONS="${arg#*=}" ;;
+    --node=*) NODE_VERSIONS="${arg#*=}" ;; # Node majors for SSR sites, "none" to skip
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
@@ -68,6 +76,12 @@ for v in "${PHP_LIST[@]}"; do
   [[ "$v" =~ ^8\.[2-5]$ ]] || die "unsupported PHP version: $v"
 done
 [[ " ${PHP_LIST[*]} " == *" $PANEL_PHP "* ]] || PHP_LIST+=("$PANEL_PHP")
+
+NODE_LIST=()
+if [[ "$NODE_VERSIONS" != "none" ]]; then
+  IFS=',' read -r -a NODE_LIST <<< "$NODE_VERSIONS"
+  for v in "${NODE_LIST[@]}"; do [[ "$v" =~ ^[0-9]{2}$ ]] || die "invalid Node major: $v"; done
+fi
 
 ARCH="$(uname -m)"
 [[ -n "${FRANKENPHP_SHA256[$ARCH]:-}" ]] || die "unsupported architecture: $ARCH"
@@ -127,6 +141,27 @@ if ! /usr/local/bin/frankenphp version 2>/dev/null | grep -q "${FRANKENPHP_VERSI
   rm -f "$tmp"
 fi
 
+# ---------------------------------------------------------------- Node (fnm)
+# System-wide installs in /opt/fnm, readable by every site user. The agent
+# discovers versions from /opt/fnm/node-versions; sites pick a major.
+if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
+  if ! /usr/local/bin/fnm --version 2>/dev/null | grep -q "${FNM_VERSION#v}"; then
+    log "fnm $FNM_VERSION"
+    tmp="$(mktemp -d)"
+    curl -fsSLo "$tmp/fnm.zip" "https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/${FNM_ASSET[$ARCH]}"
+    echo "${FNM_SHA256[$ARCH]}  $tmp/fnm.zip" | sha256sum -c - || die "fnm checksum mismatch"
+    unzip -q -o "$tmp/fnm.zip" -d "$tmp"
+    install -m 0755 "$tmp/fnm" /usr/local/bin/fnm
+    rm -rf "$tmp"
+  fi
+  install -d -m 0755 /opt/fnm
+  for v in "${NODE_LIST[@]}"; do
+    log "Node $v"
+    FNM_DIR=/opt/fnm /usr/local/bin/fnm install "$v"
+  done
+  chmod -R a+rX /opt/fnm
+fi
+
 # ---------------------------------------------------------------- users
 log "System users"
 id panel-proxy &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-proxy --shell /usr/sbin/nologin panel-proxy
@@ -139,7 +174,10 @@ install -d -m 0700 -o root -g root /srv/sites/.trash
 install -d -m 0750 -o panel -g panel /srv/panel /srv/panel/releases /srv/panel/shared /srv/panel/tmp
 # The web tier may traverse to the panel's public/ only (ACLs set per release below).
 setfacl -m u:panel-web:x /srv/panel /srv/panel/releases
-install -d -m 0755 /etc/panel-proxy /etc/panel-proxy/sites /etc/panel-web /etc/panel-web/sites
+install -d -m 0755 /etc/panel-proxy /etc/panel-proxy/sites /etc/panel-web /etc/panel-web/sites /etc/panel-sites
+# Socket dirs of worker-mode sites live under here (one per site, via tmpfiles.d).
+echo "d /run/wspanel-sites 0755 root root -" > /etc/tmpfiles.d/wspanel.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/wspanel.conf
 install -d -m 0700 /etc/panel-agent
 
 # ---------------------------------------------------------------- agent

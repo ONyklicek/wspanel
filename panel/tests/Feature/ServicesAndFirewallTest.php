@@ -45,6 +45,7 @@ class ServicesAndFirewallTest extends TestCase
             'workers' => ['laravel' => ['horizon', 'queue', 'scheduler'], 'symfony' => ['messenger', 'scheduler']],
         ])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.services')->andReturnUsing(fn () => $this->units)->byDefault();
+        $this->agent->shouldReceive('call')->with('site.health', Mockery::any())->andReturn(['ok' => true, 'status' => 200])->byDefault();
         $this->agent->shouldReceive('call')->with('fw.list')->andReturn([
             'active' => true,
             'protected_ports' => [22, 80, 443],

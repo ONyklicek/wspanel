@@ -28,13 +28,35 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.WebSitesDir = filepath.Join(root, "etc/panel-web/sites")
 	cfg.StateDir = filepath.Join(root, "var/lib/panel-agent")
 	cfg.SystemdDir = filepath.Join(root, "etc/systemd/system")
-	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir} {
+	cfg.SiteConfigDir = filepath.Join(root, "etc/panel-sites")
+	cfg.SiteRunDir = filepath.Join(root, "run/wspanel-sites")
+	cfg.TmpfilesDir = filepath.Join(root, "etc/tmpfiles.d")
+	cfg.NodeDir = filepath.Join(root, "opt/fnm/node-versions")
+	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	dr := &executor.DryRun{}
+	// Fake fnm installs: two 22.x (newest must win) and one 24.x.
+	for _, v := range []string{"v22.9.0", "v22.12.0", "v24.1.0"} {
+		bin := filepath.Join(cfg.NodeDir, v, "installation/bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(bin, "node"), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dr := &executor.DryRun{Responder: frankenVersion}
 	return &Env{Cfg: cfg, Exec: dr, FS: &fsx.FS{DryRun: true}}, dr
+}
+
+// frankenVersion fakes `frankenphp version` (worker mode reads the PHP version from it).
+func frankenVersion(c executor.Call) (executor.Result, error) {
+	if c.Name == "frankenphp" && len(c.Args) > 0 && c.Args[0] == "version" {
+		return executor.Result{Stdout: "FrankenPHP v1.13.5 PHP 8.5.12 Caddy v2.11.9"}, nil
+	}
+	return executor.Result{}, nil
 }
 
 func call(t *testing.T, env *Env, h Handler, params any) (any, error) {
@@ -58,7 +80,7 @@ func TestSiteCreateLaravel(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := filepath.Join(env.Cfg.SitesRoot, "shop.example.com")
-	if out.(map[string]string)["system_user"] != "web_shop_example_com" {
+	if out.(map[string]any)["system_user"] != "web_shop_example_com" {
 		t.Fatalf("output: %v", out)
 	}
 	for _, p := range []string{"releases/initial/public/index.php", "shared/storage/framework/views", "shared/.env", "tmp", "logs"} {
@@ -136,7 +158,7 @@ func TestSiteCreateSymfonyEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(out.(map[string]string)["env_file"], "shared/.env.local") {
+	if !strings.HasSuffix(out.(map[string]any)["env_file"].(string), "shared/.env.local") {
 		t.Fatalf("env_file: %v", out)
 	}
 	if !fsx.Exists(filepath.Join(env.Cfg.SitesRoot, "app.example.cz/shared/var/log")) {
@@ -158,8 +180,10 @@ func TestSiteCreateRejectsBadParams(t *testing.T) {
 			t.Errorf("%v: want invalid_params, got %v", c, err)
 		}
 	}
-	if len(dr.Calls()) != 0 {
-		t.Fatalf("no command may run on invalid input, got %v", dr.Calls())
+	for _, c := range dr.Calls() {
+		if c.String() != "frankenphp version" { // read-only lookup of worker mode's PHP version
+			t.Fatalf("no command may run on invalid input, got %v", dr.Calls())
+		}
 	}
 }
 
@@ -169,7 +193,7 @@ func TestSiteCreateRollsBackOnInvalidProxyConfig(t *testing.T) {
 		if c.Name == "frankenphp" && c.Args[0] == "validate" && strings.Contains(c.Args[2], "panel-proxy") {
 			return executor.Result{ExitCode: 1}, errors.New("broken")
 		}
-		return executor.Result{}, nil
+		return frankenVersion(c)
 	}
 	_, err := call(t, env, siteCreate, map[string]string{"domain": "a.example.com", "framework": "php", "php_version": "8.4"})
 	if err == nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"wspanel/agent/internal/config"
@@ -14,21 +15,40 @@ import (
 	"wspanel/agent/internal/validate"
 )
 
-// siteLayout is everything derived from a validated domain. No path in here
-// is ever built from unvalidated input.
+// siteLayout is everything derived from a validated site state. No path in
+// here is ever built from unvalidated input.
 type siteLayout struct {
-	Domain           string
-	Framework        string
-	PHPVersion       string
-	User             string
-	Home             string
-	Socket           string
+	Domain      string
+	Framework   string
+	Mode        string
+	PHPVersion  string
+	NodeVersion string
+	Port        int
+	User        string
+	Home        string
+
+	// classic
+	Socket           string // FPM socket
 	PoolFile         string
-	EdgeFile         string // TLS edge site block
 	WebFile          string // web tier site block
 	WebUser          string
 	WebSocket        string
 	DisableFunctions string
+
+	// worker / node
+	AppUnit        string
+	AppUnitFile    string
+	InstanceConfig string // worker: FrankenPHP Caddyfile
+	RunDir         string // worker: socket dir, group = edge proxy
+	AppSocket      string
+	TmpfilesFile   string
+	WorkerFile     string
+	WorkerIndex    string
+	WorkerThreads  int
+	WorkerEnv      []string
+
+	EdgeFile string // TLS edge site block
+	Upstream string // where the edge forwards to
 }
 
 // DisableFunctions is the single list applied to every PHP-FPM pool (sites
@@ -37,22 +57,48 @@ type siteLayout struct {
 // way around the rest of the list.
 const DisableFunctions = "exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec,putenv,dl"
 
-func layout(cfg config.Config, domain, framework, version string) (siteLayout, error) {
-	user := validate.SiteUser(domain)
-	l := siteLayout{
-		Domain:     domain,
-		Framework:  framework,
-		PHPVersion: version,
-		User:       user,
-		Home:       filepath.Join(cfg.SitesRoot, domain),
-		Socket:     filepath.Join(cfg.FPMSocketDir, "php"+version+"-"+user+".sock"),
-		PoolFile:   filepath.Join(config.ForVersion(cfg.FPMPoolDir, version), user+".conf"),
-		EdgeFile:   filepath.Join(cfg.ProxySitesDir, domain+".caddy"),
-		WebFile:    filepath.Join(cfg.WebSitesDir, domain+".caddy"),
-		WebUser:    cfg.WebUser,
-		WebSocket:  cfg.WebSocket,
+func appUnitName(user string) string { return "wspanel-" + user + "-app.service" }
 
+func layout(cfg config.Config, st siteState) (siteLayout, error) {
+	user := validate.SiteUser(st.Domain)
+	l := siteLayout{
+		Domain:      st.Domain,
+		Framework:   st.Framework,
+		Mode:        st.Mode,
+		PHPVersion:  st.PHPVersion,
+		NodeVersion: st.NodeVersion,
+		Port:        st.Port,
+		User:        user,
+		Home:        filepath.Join(cfg.SitesRoot, st.Domain),
+
+		WebFile:          filepath.Join(cfg.WebSitesDir, st.Domain+".caddy"),
+		WebUser:          cfg.WebUser,
+		WebSocket:        cfg.WebSocket,
 		DisableFunctions: DisableFunctions,
+
+		AppUnit:        appUnitName(user),
+		AppUnitFile:    filepath.Join(cfg.SystemdDir, appUnitName(user)),
+		InstanceConfig: filepath.Join(cfg.SiteConfigDir, user+".Caddyfile"),
+		RunDir:         filepath.Join(cfg.SiteRunDir, user),
+		TmpfilesFile:   filepath.Join(cfg.TmpfilesDir, "wspanel-"+user+".conf"),
+		WorkerThreads:  workerThreads(),
+
+		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
+	}
+	l.AppSocket = filepath.Join(l.RunDir, "http.sock")
+	if st.Mode == "classic" && st.PHPVersion != "" {
+		l.Socket = filepath.Join(cfg.FPMSocketDir, "php"+st.PHPVersion+"-"+user+".sock")
+		l.PoolFile = filepath.Join(config.ForVersion(cfg.FPMPoolDir, st.PHPVersion), user+".conf")
+	}
+	switch st.Mode {
+	case "classic":
+		l.Upstream = "unix/" + cfg.WebSocket
+	case "worker":
+		l.Upstream = "unix/" + l.AppSocket
+		_, l.WorkerFile, l.WorkerEnv = workerEntry(st.Framework, l.Home)
+		l.WorkerIndex = workerIndex(st.Framework)
+	case "node":
+		l.Upstream = "127.0.0.1:" + strconv.Itoa(st.Port)
 	}
 	if !fsx.Within(cfg.SitesRoot, l.Home) {
 		return l, protocol.Invalid("domain resolves outside sites root")
@@ -78,7 +124,7 @@ func sharedDirs(framework string) []string {
 // sharedEnvFile is where DB credentials etc. go for each framework.
 func sharedEnvFile(framework string) string {
 	switch framework {
-	case "laravel":
+	case "laravel", "nuxt", "next", "node":
 		return ".env"
 	case "symfony":
 		return ".env.local"
@@ -86,42 +132,83 @@ func sharedEnvFile(framework string) string {
 	return ""
 }
 
-type siteCreateParams struct {
-	Domain     string `json:"domain"`
-	Framework  string `json:"framework"`
-	PHPVersion string `json:"php_version"`
-	Mode       string `json:"mode"`
+// siteParams is the common, validated description of how a site runs.
+type siteParams struct {
+	Domain      string `json:"domain"`
+	Framework   string `json:"framework"`
+	Mode        string `json:"mode"`
+	PHPVersion  string `json:"php_version,omitempty"`
+	NodeVersion string `json:"node_version,omitempty"`
 }
 
-func (p *siteCreateParams) validate(cfg config.Config) error {
+// resolve validates params against the mode and the server, and returns the
+// state to store. Ports are not allocated here.
+func (p *siteParams) resolve(ctx context.Context, env *Env) (siteState, error) {
 	if p.Mode == "" {
 		p.Mode = "classic"
 	}
 	if err := validate.Domain(p.Domain); err != nil {
-		return err
-	}
-	if err := validate.OneOf("framework", p.Framework, validate.Frameworks); err != nil {
-		return err
+		return siteState{}, err
 	}
 	if err := validate.OneOf("mode", p.Mode, validate.SiteModes); err != nil {
-		return err
+		return siteState{}, err
 	}
-	return validate.OneOf("php_version", p.PHPVersion, cfg.PHPVersions)
+	if err := validate.OneOf("framework", p.Framework, validate.FrameworksForMode(p.Mode)); err != nil {
+		return siteState{}, err
+	}
+	st := siteState{Domain: p.Domain, Framework: p.Framework, Mode: p.Mode}
+	switch p.Mode {
+	case "classic":
+		if p.NodeVersion != "" {
+			return st, protocol.Invalid("node_version: only valid for node mode")
+		}
+		if err := validate.OneOf("php_version", p.PHPVersion, env.Cfg.PHPVersions); err != nil {
+			return st, err
+		}
+		st.PHPVersion = p.PHPVersion
+	case "worker":
+		if p.NodeVersion != "" {
+			return st, protocol.Invalid("node_version: only valid for node mode")
+		}
+		v, err := workerPHPVersion(ctx, env)
+		if err != nil {
+			return st, err
+		}
+		if p.PHPVersion != "" && p.PHPVersion != v {
+			return st, protocol.Invalid(fmt.Sprintf("php_version: worker mode runs PHP %s (built into FrankenPHP)", v))
+		}
+		st.PHPVersion = v
+	case "node":
+		if p.PHPVersion != "" {
+			return st, protocol.Invalid("php_version: not valid for node mode")
+		}
+		if err := validate.OneOf("node_version", p.NodeVersion, nodeMajors(env.Cfg)); err != nil {
+			return st, err
+		}
+		st.NodeVersion = p.NodeVersion
+	}
+	return st, nil
 }
 
 func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
-	var p siteCreateParams
+	var p siteParams
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := p.validate(env.Cfg); err != nil {
-		return nil, err
-	}
-	l, err := layout(env.Cfg, p.Domain, p.Framework, p.PHPVersion)
+	st, err := p.resolve(ctx, env)
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range []string{l.Home, l.PoolFile, l.EdgeFile, l.WebFile, siteStatePath(env.Cfg, p.Domain)} {
+	if st.Mode == "node" {
+		if st.Port, err = allocatePort(env); err != nil {
+			return nil, err
+		}
+	}
+	l, err := layout(env.Cfg, st)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range []string{l.Home, l.EdgeFile, l.WebFile, l.AppUnitFile, l.InstanceConfig, siteStatePath(env.Cfg, p.Domain)} {
 		if fsx.Exists(path) {
 			return nil, protocol.Conflict(fmt.Sprintf("site %s already exists (%s)", p.Domain, path))
 		}
@@ -143,7 +230,6 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		return nil, err
 	}
 	rollback.add(func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "userdel", l.User) })
-
 	owner, err := lookupOwner(env, l.User)
 	if err != nil {
 		return nil, err
@@ -160,75 +246,41 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = createSiteTree(env, l, owner); err != nil {
 		return nil, err
 	}
-	if err = grantWebAccess(ctx, env, l, "initial"); err != nil {
-		return nil, err
-	}
 
-	// 3. PHP-FPM pool: write, validate, reload.
-	pool, err := render("fpm-pool.conf.tmpl", l)
+	// 3. Backend for the mode, 4. edge, 5. state.
+	started, err := setupBackend(ctx, env, l, &rollback)
 	if err != nil {
 		return nil, err
 	}
-	if err = env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
+	if err = writeEdge(ctx, env, l, &rollback); err != nil {
 		return nil, err
 	}
-	fpmUnit := config.ForVersion(env.Cfg.FPMUnit, l.PHPVersion)
-	rollback.add(func() {
-		_ = os.Remove(l.PoolFile)
-		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "reload", fpmUnit)
-	})
-	if err = validateFPM(ctx, env, l.PHPVersion); err != nil {
+	if err = saveSiteState(env, st); err != nil {
 		return nil, err
 	}
-	if _, err = env.Exec.Run(ctx, "systemctl", "reload", fpmUnit); err != nil {
-		return nil, err
-	}
+	return siteOutput(l, started), nil
+}
 
-	// 4. Web tier, then edge: write, validate, reload. The web tier goes first
-	// so the edge never routes to a host the web tier does not know yet.
-	for _, tier := range []struct {
-		tmpl, file, unit string
-		validate         func(context.Context, *Env) error
-	}{
-		{"web-site.caddy.tmpl", l.WebFile, env.Cfg.WebUnit, validateWeb},
-		{"edge-site.caddy.tmpl", l.EdgeFile, env.Cfg.ProxyUnit, validateEdge},
-	} {
-		block, rerr := render(tier.tmpl, l)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if err = env.FS.WriteFile(tier.file, block, 0o644, fsx.Root); err != nil {
-			return nil, err
-		}
-		file, unit := tier.file, tier.unit
-		rollback.add(func() {
-			_ = os.Remove(file)
-			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "reload", unit)
-		})
-		if err = tier.validate(ctx, env); err != nil {
-			return nil, err
-		}
-		if _, err = env.Exec.Run(ctx, "systemctl", "reload", unit); err != nil {
-			return nil, err
-		}
-	}
-
-	// 5. The agent's own record of the site (framework decides worker commands).
-	if err = saveSiteState(env, siteState{Domain: l.Domain, Framework: l.Framework, PHPVersion: l.PHPVersion, Mode: p.Mode}); err != nil {
-		return nil, err
-	}
-
-	return map[string]string{
+func siteOutput(l siteLayout, started bool) map[string]any {
+	out := map[string]any{
 		"domain":      l.Domain,
 		"framework":   l.Framework,
-		"mode":        p.Mode,
+		"mode":        l.Mode,
 		"php_version": l.PHPVersion,
 		"system_user": l.User,
 		"home":        l.Home,
-		"doc_root":    filepath.Join(l.Home, "current", "public"),
-		"fpm_socket":  l.Socket,
 		"env_file":    envFilePath(l),
-	}, nil
+		"started":     started,
+	}
+	switch l.Mode {
+	case "node":
+		out["node_version"] = l.NodeVersion
+		out["port"] = l.Port
+		out["doc_root"] = filepath.Join(l.Home, "current")
+	default:
+		out["doc_root"] = filepath.Join(l.Home, "current", "public")
+	}
+	return out
 }
 
 func envFilePath(l siteLayout) string {
@@ -240,42 +292,69 @@ func envFilePath(l siteLayout) string {
 
 // createSiteTree builds the zero-downtime layout:
 //
-//	releases/initial/public/index.php   placeholder until the first deploy
+//	releases/initial/           placeholder until the first deploy
 //	current -> releases/initial
-//	shared/                             per-framework persistent dirs + env file
+//	shared/                     per-framework persistent dirs + env file
 //	tmp/ logs/
 func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
-	dirs := []struct {
-		rel  string
-		mode os.FileMode
-	}{
-		{"releases", 0o750}, {"releases/initial", 0o750}, {"releases/initial/public", 0o750},
-		{"shared", 0o750}, {"tmp", 0o700}, {"logs", 0o750},
-	}
-	for _, d := range sharedDirs(l.Framework) {
-		dirs = append(dirs, struct {
-			rel  string
-			mode os.FileMode
-		}{"shared/" + d, 0o750})
+	dirs := []string{"releases", "releases/initial", "shared", "logs"}
+	if l.Mode != "node" {
+		dirs = append(dirs, "releases/initial/public")
 	}
 	for _, d := range dirs {
-		if err := env.FS.Mkdir(filepath.Join(l.Home, d.rel), d.mode, o); err != nil {
+		if err := env.FS.Mkdir(filepath.Join(l.Home, d), 0o750, o); err != nil {
 			return err
 		}
 	}
-	index, err := render("placeholder-index.php.tmpl", l)
-	if err != nil {
+	if err := env.FS.Mkdir(filepath.Join(l.Home, "tmp"), 0o700, o); err != nil {
 		return err
 	}
-	if err := env.FS.WriteFile(filepath.Join(l.Home, "releases/initial/public/index.php"), index, 0o640, o); err != nil {
+	if err := ensureShared(env, l, o); err != nil {
 		return err
 	}
-	if f := sharedEnvFile(l.Framework); f != "" {
-		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), nil, 0o600, o); err != nil {
+	if l.Mode == "node" {
+		js, err := render("placeholder-server.js.tmpl", l)
+		if err != nil {
+			return err
+		}
+		if err := env.FS.WriteFile(filepath.Join(l.Home, "releases/initial/server.js"), js, 0o640, o); err != nil {
+			return err
+		}
+	} else {
+		index, err := render("placeholder-index.php.tmpl", l)
+		if err != nil {
+			return err
+		}
+		if err := env.FS.WriteFile(filepath.Join(l.Home, "releases/initial/public/index.php"), index, 0o640, o); err != nil {
 			return err
 		}
 	}
 	return env.FS.Symlink("releases/initial", filepath.Join(l.Home, "current"), o)
+}
+
+// ensureShared creates missing per-framework shared dirs and the env file
+// (also used when a site switches framework).
+func ensureShared(env *Env, l siteLayout, o fsx.Owner) error {
+	for _, d := range sharedDirs(l.Framework) {
+		if err := env.FS.MkdirAll(filepath.Join(l.Home, "shared", d), 0o750, o); err != nil {
+			return err
+		}
+	}
+	if f := sharedEnvFile(l.Framework); f != "" && !fsx.Exists(filepath.Join(l.Home, "shared", f)) {
+		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), nil, 0o600, o); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// currentRelease is the release dir `current` points to.
+func currentRelease(l siteLayout) string {
+	target, err := os.Readlink(filepath.Join(l.Home, "current"))
+	if err != nil {
+		return "initial"
+	}
+	return filepath.Base(target)
 }
 
 // grantWebAccess gives the web tier exactly what it must serve: traverse
@@ -300,6 +379,9 @@ func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string)
 	}
 	read := acl + ":rX,d:" + acl + ":rX"
 	for _, d := range readable {
+		if !fsx.Exists(d) {
+			continue
+		}
 		if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-m", read, d); err != nil {
 			return err
 		}
@@ -312,8 +394,8 @@ type siteDeleteParams struct {
 	Confirm string `json:"confirm"` // must repeat the domain
 }
 
-// siteDelete removes the site's pool, proxy config and system user. The home
-// directory is not deleted but moved to the root-only trash.
+// siteDelete removes everything the site has in any mode and its system user.
+// The home directory is not deleted but moved to the root-only trash.
 func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p siteDeleteParams
 	if err := decode(raw, &p); err != nil {
@@ -325,34 +407,17 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if p.Confirm != p.Domain {
 		return nil, protocol.Invalid("confirm: must equal domain")
 	}
-	l, err := layout(env.Cfg, p.Domain, "php", env.Cfg.DefaultPHPVer)
+	l, err := layout(env.Cfg, siteState{Domain: p.Domain})
 	if err != nil {
 		return nil, err
 	}
-	if !fsx.Exists(l.Home) && !fsx.Exists(l.EdgeFile) && !fsx.Exists(l.WebFile) {
+	if !fsx.Exists(l.Home) && !fsx.Exists(l.EdgeFile) && !fsx.Exists(siteStatePath(env.Cfg, p.Domain)) {
 		return nil, protocol.NotFound("site " + p.Domain + " does not exist")
 	}
 
-	// Edge first, so the site stops receiving traffic; then the web tier.
-	for _, tier := range []struct {
-		file, unit string
-		validate   func(context.Context, *Env) error
-	}{
-		{l.EdgeFile, env.Cfg.ProxyUnit, validateEdge},
-		{l.WebFile, env.Cfg.WebUnit, validateWeb},
-	} {
-		if !fsx.Exists(tier.file) {
-			continue
-		}
-		if err := os.Remove(tier.file); err != nil {
-			return nil, err
-		}
-		if err := tier.validate(ctx, env); err != nil {
-			return nil, err
-		}
-		if _, err := env.Exec.Run(ctx, "systemctl", "reload", tier.unit); err != nil {
-			return nil, err
-		}
+	// Edge first, so the site stops receiving traffic.
+	if err := removeCaddyBlock(ctx, env, l.EdgeFile, env.Cfg.ProxyUnit, validateEdge); err != nil {
+		return nil, err
 	}
 	// Workers must stop before their user disappears.
 	for _, unit := range siteWorkerUnits(env.Cfg, l.User) {
@@ -360,19 +425,8 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 			return nil, err
 		}
 	}
-	// Pools of any version (handles a site that switched versions).
-	for _, v := range env.Cfg.PHPVersions {
-		pool := filepath.Join(config.ForVersion(env.Cfg.FPMPoolDir, v), l.User+".conf")
-		if !fsx.Exists(pool) {
-			continue
-		}
-		if err := os.Remove(pool); err != nil {
-			return nil, err
-		}
-		if err := validateFPM(ctx, env, v); err != nil {
-			return nil, err
-		}
-		if _, err := env.Exec.Run(ctx, "systemctl", "reload", config.ForVersion(env.Cfg.FPMUnit, v)); err != nil {
+	for _, mode := range validate.SiteModes {
+		if err := teardownBackend(ctx, env, l, mode, ""); err != nil {
 			return nil, err
 		}
 	}

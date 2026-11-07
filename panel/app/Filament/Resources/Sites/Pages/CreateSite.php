@@ -34,7 +34,7 @@ class CreateSite extends CreateRecord
 
         return Notification::make()
             ->title("Web {$site->domain} založen")
-            ->body("Běží na PHP {$site->php_version}, uživatel {$site->system_user}.")
+            ->body("{$site->runtimeLabel()}, uživatel {$site->system_user}.")
             ->success();
     }
 

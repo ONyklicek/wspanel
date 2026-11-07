@@ -1,6 +1,6 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
 [Unit]
-Description=WSPanel {{.Type}} worker for {{.Domain}}
+Description={{.Description}}
 After=network.target valkey-server.service
 StartLimitIntervalSec=300
 StartLimitBurst=10
@@ -10,22 +10,26 @@ Type=simple
 User={{.User}}
 Group={{.User}}
 WorkingDirectory={{.Home}}/current
-ExecStart={{.Command}}
+ExecStart={{.ExecStart}}
 Restart=always
 RestartSec=5s
 KillSignal=SIGTERM
 TimeoutStopSec={{.StopTimeout}}
 Environment=TMPDIR={{.Home}}/tmp
+Environment=HOME={{.Home}}/tmp
+{{- range .Environment}}
+Environment={{.}}
+{{- end}}
 UMask=0027
 
-# Sandbox: the worker runs arbitrary application code, so it gets as little
+# Sandbox: the process runs arbitrary application code, so it gets as little
 # of the system as possible. Writable: only its own site.
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths={{.Home}}
+ReadWritePaths={{.Home}}{{if .RunDir}} {{.RunDir}}{{end}}
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
@@ -38,6 +42,7 @@ RestrictRealtime=yes
 LockPersonality=yes
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent -/var/lib/panel-proxy -/etc/panel-proxy
 
 [Install]
 WantedBy=multi-user.target

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"wspanel/agent/internal/config"
+	"wspanel/agent/internal/validate"
 )
 
 // Version is set at build time via -ldflags.
@@ -50,14 +51,21 @@ func sysVersions(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if res, err := env.Exec.Run(ctx, "frankenphp", "version"); err == nil && res.Stdout != "" {
 		franken = strings.TrimSpace(res.Stdout)
 	}
+	workerPHP, _ := workerPHPVersion(ctx, env)
+	frameworks := map[string][]string{}
+	for _, m := range validate.SiteModes {
+		frameworks[m] = validate.FrameworksForMode(m)
+	}
 	return map[string]any{
 		"agent":       Version,
 		"php":         php,
 		"php_default": env.Cfg.DefaultPHPVer,
 		"frankenphp":  franken,
 		"db_engines":  env.Cfg.DBEngines,
-		"frameworks":  []string{"laravel", "symfony", "php"},
-		"site_modes":  []string{"classic"},
+		"frameworks":  frameworks,
+		"site_modes":  validate.SiteModes,
+		"worker_php":  workerPHP,
+		"node":        nodeMajors(env.Cfg),
 		"workers":     workerTypesByFramework(),
 		"panel_units": env.Cfg.PanelUnits(),
 		"dry_run":     env.Cfg.DryRun,
