@@ -1,41 +1,56 @@
 # WSPanel
 
-Vlastní hosting control panel pro jeden server (Debian 13). Produkce běží
-nativně přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
+Vlastní hostingový panel pro jeden server (Debian 13). Produkce běží nativně
+přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
+
+**Umí:**
+- weby: Čisté PHP, Laravel, Symfony, Nuxt/Next/Node v režimech PHP-FPM,
+  FrankenPHP worker a Node SSR,
+- deploy z Gitu, releasů a GitHub Actions,
+- workery (fronty, Horizon, Reverb, Pulse, Messenger, plánovač),
+- MariaDB a PostgreSQL se zálohami, phpMyAdmin a Adminer,
+- SSH/SFTP s klíči i hesly,
+- odchozí poštu s DKIM a Mailpit,
+- DNS (vlastní PowerDNS i Cloudflare),
+- SSL (Let's Encrypt), firewall, naplánované úlohy a audit.
 
 ```
 agent/      Go agent: jediná komponenta s rootem, whitelist operací přes Unix socket
 panel/      Laravel 13 + Filament 5, běží jako neprivilegovaný uživatel `panel`, stav v SQLite
-provision/  install.sh pro Debian 13 + systemd unity, Caddyfile, PHP tuning
-dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
+provision/  install.sh pro Debian 13 + systemd unity, Caddyfile, konfigurace
+dev/        Debian 13 kontejner se systemd (náhrada VM na Macu), e2e test, demo
+docs/       dokumentace
 ```
 
-## Bezpečnostní model v kostce
+## Dokumentace
 
-- Panel nemá root ani sudo. Všechno privilegované posílá agentovi přes
-  `/run/panel-agent.sock`. Socket má práva `root:panel 0660` a agent navíc
-  ověřuje UID protistrany přes `SO_PEERCRED`.
-- Agent zná jen operace z `agent/internal/ops/ops.go`. Parametry ověřuje přes
-  enum/regex a neznámé klíče odmítne. Příkazy spouští přes `exec.Command` s
-  allowlistem binárek, nikdy přes shell.
-- Před každým reloadem ověří config (`php-fpm -t`, `frankenphp validate`).
-  Když selže, provedené kroky se vrátí zpět.
-- Každá operace se zapíše do `/var/log/panel-agent/audit.log` (JSON lines).
-- Každý web má vlastního systémového uživatele, `open_basedir`, FPM pool a
-  `disable_functions` (včetně `proc_open` a `putenv`).
-- Proxy má dvě vrstvy, protože Caddy `file_server` následuje symlinky i mimo root:
-  - `panel-proxy` (edge) drží TLS klíče, ale `/srv` nevidí vůbec
-    (`InaccessiblePaths`). Na web tier jen předává požadavky přes Unix socket.
-  - `panel-web` obsluhuje statiku a FastCGI. Nemá žádná tajemství a přes ACL
-    smí číst jen adresáře `public/`. Symlink, který si web nastrčí, tak vede
-    nanejvýš k souborům, které jsou veřejné i tak.
-- Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
-  uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
-  svého webu). Příkaz určuje framework, panel ho zadat nemůže.
-- Firewall (UFW): porty SSH, 80 a 443 nejde z panelu zakázat ani smazat.
-  Služby, na kterých běží panel, nejde z panelu zastavit.
+- [Přehled](docs/README.md)
+- [Instalace](docs/instalace.md)
+- [Weby](docs/weby.md)
+- [Deploy](docs/deploy.md)
+- [Databáze](docs/databaze.md)
+- [SSH a SFTP](docs/ssh-sftp.md)
+- [Pošta](docs/posta.md)
+- [DNS](docs/dns.md)
+- [Bezpečnost](docs/bezpecnost.md)
+- [Vývoj a testování](docs/vyvoj.md)
+- [Řešení problémů](docs/reseni-problemu.md)
 
-## Režimy webu
+## Rychlý start
+
+```sh
+make agent-build
+# na serveru (Debian 13, root):
+./provision/install.sh --panel-domain=panel.example.com --acme-email=admin@example.com \
+  --agent-bin=./build/panel-agent-linux-amd64 --panel-source=./panel \
+  --db=mariadb,postgres --php=8.3,8.4 --dns=powerdns
+```
+
+Vývoj na Macu: `make dev-up dev-provision dev-demo`, pak https://panel.localhost:8443.
+
+## Technické detaily
+
+### Režimy webu
 
 | Režim | Backend | Verze | Cesta požadavku |
 |---|---|---|---|
@@ -55,7 +70,7 @@ dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
 - **Worker a Node web obsluhuje statiku sám pod svým uživatelem.** Symlink tak
   nedosáhne dál, než kam smí uživatel webu.
 
-## Laravel a Symfony
+### Laravel a Symfony
 
 | Laravel | Symfony |
 |---|---|
@@ -66,7 +81,7 @@ dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
 
 Workery běží na stejném PHP jako web (FPM CLI dané verze, nebo `frankenphp php-cli` ve worker režimu).
 
-## Porty aplikací
+### Porty aplikací
 
 Node SSR a Reverb dostávají porty 600–999 na `127.0.0.1`. Porty pod 1024 může
 bindovat jen proces s `CAP_NET_BIND_SERVICE`, takže si port restartující se
@@ -78,7 +93,7 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
   není, Node a Reverb odmítne. Výjimka `--allow-unenforced-socket-bind` je jen
   pro Docker Desktop.
 
-## SSH a SFTP
+### SSH a SFTP
 
 - Přihlášení jen klíčem jako uživatel webu (`web_<doména>`). Úroveň přístupu se
   volí v panelu: vypnuto, jen SFTP, nebo SSH + SFTP.
@@ -91,7 +106,7 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
 - fail2ban hlídá SSH. Root se může přihlásit jen klíčem; `--no-root-ssh` ho zakáže úplně.
 - Přímé SSH obchází audit panelu, proto panel u webu zobrazuje, že je zapnuté.
 
-## Databáze
+### Databáze
 
 - **Enginy:** MariaDB a PostgreSQL, volitelné při instalaci (`--db=`). Později
   je jde z panelu doinstalovat (`engine.install`), odebrat ne.
@@ -115,7 +130,7 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
     omezeným na jednu databázi a 30 minut,
   - Adminer má server pevně na 127.0.0.1 (CVE-2021-21311).
 
-## SSL, úlohy, monitoring
+### SSL, úlohy, monitoring
 
 - **SSL:** certifikáty vydává a obnovuje edge proxy (Caddy) sama. Panel ukazuje
   stav, vydavatele a poslední chybu z logu. Před vydáním umí zkontrolovat, že
@@ -131,7 +146,7 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
   - upozornění na novou verzi FrankenPHP (binárka se neaktualizuje sama a má v
     sobě OpenSSL i PHP).
 
-## Deploy
+### Deploy
 
 V panelu: web → **Deploy**.
 - **Nastavení:** repozitář (SSH s deploy klíčem, nebo veřejné https), větev,
@@ -170,7 +185,7 @@ V panelu: web → **Deploy**.
 - **Rollback** jde na kterýkoli z držených releasů. **`.env`** se edituje
   přímo na stránce Deploy (čte i zapisuje se jako uživatel webu).
 
-## Provoz
+### Provoz
 
 - **Audit (menu Audit):** posledních 500 operací agenta s filtrem podle oblasti.
   Citlivé parametry (obsah `.env`, hesla, tokeny) agent do logu nezapisuje,
@@ -186,7 +201,7 @@ V panelu: web → **Deploy**.
      a worker weby. Všechny weby jsou pár sekund nedostupné.
   4. Když něco nenaběhne, vrátí původní binárku.
 
-## Struktura webu
+### Struktura webu
 
 ```
 /srv/sites/<doména>/
@@ -196,56 +211,3 @@ V panelu: web → **Deploy**.
   tmp/  logs/
 ```
 
-## Vývoj na Macu
-
-```sh
-make test          # Go testy agenta + PHPUnit testy panelu
-make agent-dry     # agent v dry-run režimu na var/agent.sock (příkazy jen loguje)
-cd panel && php artisan serve   # panel proti dry-run agentovi (AGENT_SOCKET v .env)
-```
-
-Integrace na skutečném systemd, FPM a Caddy:
-
-```sh
-make dev-up                    # Debian 13 kontejner se systemd
-make dev-provision             # install.sh uvnitř (DB=mariadb,postgres PHP=8.3,8.4)
-make dev-shell                 # shell na "serveru"
-docker compose -f dev/compose.yaml exec devserver bash -c \
-  'cd /srv/panel/current && runuser -u panel -- php artisan make:filament-user'
-# panel: https://panel.localhost:8443 (certifikát z interní CA Caddy)
-```
-
-Pro vývoj používej domény `*.localhost`, případně provisioning s `--local-certs`.
-
-## Produkce
-
-```sh
-make agent-build ARCH=amd64
-# na serveru (Debian 13, root):
-./provision/install.sh --db=mariadb --php=8.3,8.4 --node=22,24 \
-  --panel-domain=panel.example.com --acme-email=admin@example.com \
-  --agent-bin=./build/panel-agent-linux-amd64 --panel-source=./panel
-```
-
-`--db`: `none` | `mariadb` | `postgres` | `mariadb,postgres`. Engine půjde
-později jen doinstalovat (Fáze 4).
-
-## Stav
-
-- **Fáze 1:** agent, zakládání a mazání classic (PHP-FPM) webů pro Laravel,
-  Symfony a obecné PHP.
-- **Fáze 2:**
-  - služby (`service.start/stop/restart/reload/reset`),
-  - workery webů (`worker.create/delete`),
-  - firewall (`fw.list/allow/deny/delete`),
-  - zrcadlení skutečného stavu do panelu (`panel:sync` každou minutu přes
-    `panel-scheduler`) a přehled na dashboardu.
-- **Fáze 3:** worker režim (FrankenPHP + Octane / Symfony Runtime), Node SSR přes
-  fnm, přepínání režimů a verzí z panelu, kontrola, že web odpovídá, SSH/SFTP,
-  Reverb a Pulse.
-- **Fáze 4:** databáze se zálohami, phpMyAdmin a Adminer, SSL přehled,
-  naplánované úlohy a monitoring.
-- **Deploy pipeline:** git a deploy klíč, build v sandboxu pod uživatelem webu,
-  atomické přepnutí, restart služeb, health-check, automatický rollback, editor
-  `.env`, webhook pro deploy po pushi (GitHub, GitLab, Gitea/Forgejo,
-  Bitbucket).

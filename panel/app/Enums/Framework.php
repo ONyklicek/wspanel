@@ -18,7 +18,7 @@ enum Framework: string implements HasLabel
         return match ($this) {
             self::Laravel => 'Laravel',
             self::Symfony => 'Symfony',
-            self::Php => 'Obecné PHP',
+            self::Php => 'Čisté PHP (bez frameworku)',
             self::Nuxt => 'Nuxt',
             self::Next => 'Next.js',
             self::Node => 'Node (server.js)',

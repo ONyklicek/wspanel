@@ -1,0 +1,88 @@
+# Bezpečnost
+
+Panel je navržený tak, aby kompromitace jednoho webu, nebo i samotného panelu,
+neznamenala kompromitaci serveru ani ostatních webů.
+
+## Model v kostce
+
+- Panel nemá root ani sudo. Všechno privilegované posílá agentovi přes
+  `/run/panel-agent.sock`. Socket má práva `root:panel 0660` a agent navíc
+  ověřuje UID protistrany přes `SO_PEERCRED`.
+- Agent zná jen operace z `agent/internal/ops/ops.go`. Parametry ověřuje přes
+  enum/regex a neznámé klíče odmítne. Příkazy spouští přes `exec.Command` s
+  allowlistem binárek, nikdy přes shell.
+- Před každým reloadem ověří config (`php-fpm -t`, `frankenphp validate`).
+  Když selže, provedené kroky se vrátí zpět.
+- Každá operace se zapíše do `/var/log/panel-agent/audit.log` (JSON lines).
+- Každý web má vlastního systémového uživatele, `open_basedir`, FPM pool a
+  `disable_functions` (včetně `proc_open` a `putenv`).
+- Proxy má dvě vrstvy, protože Caddy `file_server` následuje symlinky i mimo root:
+  - `panel-proxy` (edge) drží TLS klíče, ale `/srv` nevidí vůbec
+    (`InaccessiblePaths`). Na web tier jen předává požadavky přes Unix socket.
+  - `panel-web` obsluhuje statiku a FastCGI. Nemá žádná tajemství a přes ACL
+    smí číst jen adresáře `public/`. Symlink, který si web nastrčí, tak vede
+    nanejvýš k souborům, které jsou veřejné i tak.
+- Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
+  uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
+  svého webu). Příkaz určuje framework, panel ho zadat nemůže.
+- Firewall (UFW): porty SSH, 80 a 443 nejde z panelu zakázat ani smazat.
+  Služby, na kterých běží panel, nejde z panelu zastavit.
+
+
+## Izolace webů
+
+- **Vlastní uživatel** `web_<doména>`, adresář `0750`. Ostatní weby ani web tier
+  do něj nevidí, web tier smí číst jen `public/` (ACL).
+- **PHP:**
+  - `open_basedir` jen na adresář webu,
+  - vlastní `/tmp` a sessions,
+  - `disable_functions` (spouštění příkazů, `putenv`, `dl`).
+- **Workery, Node, worker režim a každý krok deploye** běží jako systemd unity
+  se sandboxem:
+  - `ProtectSystem=strict`, zapisovat smí jen do svého webu,
+  - `NoNewPrivileges`,
+  - prázdný `CapabilityBoundingSet`,
+  - `SocketBindDeny`, takže nesmí poslouchat na portech,
+  - nevidí konfiguraci ani stav agenta a proxy.
+- **SSH/SFTP:** bez tunelů a forwardingu, klíče spravuje jen panel, hesla
+  jsou volitelná a hlídá je fail2ban.
+- **Databáze:** každá má vlastního uživatele s právy jen na ni. Dočasné
+  přístupy phpMyAdmin/Adminer platí 30 minut a jen pro jednu databázi.
+- **Pošta:**
+  - web posílá jen za svou doménu (SMTP přihlášení +
+    `reject_sender_login_mismatch`, pro sendmail `local_login_sender_maps`),
+  - DKIM se podepisuje podle ověřeného odesílatele,
+  - zachycené zprávy v Mailpitu se zobrazují s CSP sandboxem.
+
+## Porty aplikací
+
+Node SSR a Reverb dostávají porty 600–999 na `127.0.0.1`. Porty pod 1024 může
+bindovat jen proces s `CAP_NET_BIND_SERVICE`, takže si port restartující se
+aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
+- Provisioning nastaví `net.ipv4.ip_unprivileged_port_start=1024`. Kontejnery
+  ho často mají na 0.
+- Unita aplikace dostane capability a `SocketBindAllow` jen na svůj port.
+- Agent si vynucení `SocketBindDeny` (cgroup BPF) ověří sondou. Když vynucené
+  není, Node a Reverb odmítne. Výjimka `--allow-unenforced-socket-bind` je jen
+  pro Docker Desktop.
+
+
+## Panel a jeho přístupy
+
+- Panel běží jako uživatel `panel` bez sudo. Vše privilegované jde přes agenta,
+  který zná jen pevný seznam operací (`agent/internal/ops/ops.go`) a každou
+  zapíše do auditu.
+- **Webhooky** se ověřují podpisem (HMAC / token) a mají ochranu proti
+  přehrání. **CI token** je oddělený od secretu webhooku, uložený jen jako
+  hash a jde zrušit.
+- **CI artefakty:**
+  - agent je otevírá s `O_NOFOLLOW` a ověří, že je zapsal panel,
+  - rozbaluje je pod uživatelem webu s limitem 4 GB.
+- Tokeny Cloudflare, secrety webhooků a hesla relaye jsou v databázi panelu
+  šifrovaně (`APP_KEY`), resp. jen na serveru s právy roota.
+
+## Docker Desktop (jen vývoj)
+
+Docker Desktop na Macu nevynucuje cgroup BPF `SocketBindDeny`. Dev kontejner
+proto běží s `--allow-unenforced-socket-bind`. Na skutečném serveru agent
+vynucení ověří a bez něj Node/Reverb weby odmítne.

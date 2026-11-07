@@ -434,6 +434,8 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=' /srv/panel/shared/.env || echo "APP_LOCALE=cs" >> /srv/panel/shared/.env
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
+  # Documentation shown in the panel (Nápověda).
+  if [[ -d "$HERE/../docs" ]]; then rsync -a --delete "$HERE/../docs/" "$release/resources/docs/"; fi
   ln -sfn /srv/panel/shared/.env "$release/.env"
   rm -rf "$release/storage" && ln -sfn /srv/panel/shared/storage "$release/storage"
   chown -h panel:panel "$release/.env" "$release/storage"

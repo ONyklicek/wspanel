@@ -2,3 +2,24 @@
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
+
+/* Documentation pages (Nápověda) */
+.wsp-doc { @apply max-w-4xl text-sm leading-relaxed text-gray-700 dark:text-gray-300; }
+.wsp-doc h1 { @apply mb-4 text-2xl font-semibold text-gray-950 dark:text-white; }
+.wsp-doc h2 { @apply mt-8 mb-3 border-b border-gray-200 pb-1 text-lg font-semibold text-gray-950 dark:border-white/10 dark:text-white; }
+.wsp-doc h3 { @apply mt-6 mb-2 font-semibold text-gray-950 dark:text-white; }
+.wsp-doc .heading-permalink { @apply ms-2 text-gray-300 no-underline opacity-0 dark:text-gray-600; }
+.wsp-doc h2:hover .heading-permalink, .wsp-doc h3:hover .heading-permalink { @apply opacity-100; }
+.wsp-doc p, .wsp-doc ul, .wsp-doc ol, .wsp-doc pre, .wsp-doc table, .wsp-doc blockquote { @apply my-3; }
+.wsp-doc ul { @apply list-disc ps-6; }
+.wsp-doc ol { @apply list-decimal ps-6; }
+.wsp-doc li { @apply my-1; }
+.wsp-doc a { @apply text-primary-600 underline decoration-primary-600/30 hover:decoration-primary-600 dark:text-primary-400; }
+.wsp-doc code { @apply rounded bg-gray-100 px-1 py-0.5 font-mono text-[0.85em] text-gray-900 dark:bg-white/10 dark:text-gray-100; }
+.wsp-doc pre { @apply overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100; }
+.wsp-doc pre code { @apply bg-transparent p-0 text-gray-100; }
+.wsp-doc table { @apply w-full border-collapse text-left; }
+.wsp-doc th { @apply border-b border-gray-300 py-2 pe-4 font-semibold text-gray-950 dark:border-white/20 dark:text-white; }
+.wsp-doc td { @apply border-b border-gray-100 py-2 pe-4 align-top dark:border-white/5; }
+.wsp-doc blockquote { @apply border-s-4 border-warning-400 bg-warning-50 px-4 py-2 dark:bg-warning-400/10; }
+.wsp-doc strong { @apply font-semibold text-gray-950 dark:text-white; }
