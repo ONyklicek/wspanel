@@ -53,6 +53,7 @@ type Config struct {
 	// Per-site Valkey: runtime dir parent (systemd RuntimeDirectory) and binary.
 	ValkeyRunDir    string `json:"valkey_run_dir"`
 	ValkeyServerBin string `json:"valkey_server_bin"`
+	ValkeyCLIBin    string `json:"valkey_cli_bin"`
 	TmpfilesDir     string `json:"tmpfiles_dir"`
 	ProxyGroup      string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
 	NodeDir         string `json:"node_dir"`      // fnm node-versions dir
@@ -151,6 +152,7 @@ func Defaults() Config {
 		SiteRunDir:      "/run/wspanel-sites",
 		ValkeyRunDir:    "/run/wspanel-valkey",
 		ValkeyServerBin: "/usr/bin/valkey-server",
+		ValkeyCLIBin:    "/usr/bin/valkey-cli",
 		TmpfilesDir:     "/etc/tmpfiles.d",
 		ProxyGroup:      "panel-proxy",
 		NodeDir:         "/opt/fnm/node-versions",

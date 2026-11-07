@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"wspanel/agent/internal/executor"
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 	"wspanel/agent/internal/validate"
@@ -229,7 +230,7 @@ func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if states, err := unitStates(ctx, env, []string{v.Unit}); err == nil && len(states) == 1 {
 		out["active"] = states[0].Active
 	}
-	if res, err := env.Exec.Run(ctx, "valkey-cli", "-s", v.Socket, "INFO"); err == nil {
+	if res, err := valkeyCLI(ctx, env, l, v.Socket, "INFO"); err == nil {
 		for _, m := range valkeyInfoRe.FindAllStringSubmatch(res.Stdout, -1) {
 			n, _ := strconv.ParseInt(m[2], 10, 64)
 			out[m[1]] = n
@@ -249,7 +250,7 @@ func valkeyFlush(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	if _, err := env.Exec.Run(ctx, "valkey-cli", "-s", valkeyPaths(env, l).Socket, "FLUSHALL"); err != nil {
+	if _, err := valkeyCLI(ctx, env, l, valkeyPaths(env, l).Socket, "FLUSHALL"); err != nil {
 		return nil, err
 	}
 	return map[string]any{"domain": st.Domain, "flushed": true}, nil
@@ -281,6 +282,13 @@ func valkeySite(env *Env, raw json.RawMessage) (siteState, siteLayout, error) {
 		return st, l, protocol.Conflict("site " + p.Domain + " has no Valkey (valkey.set first)")
 	}
 	return st, l, nil
+}
+
+// valkeyCLI talks to the site's server as the site user: the socket's
+// directory belongs to that user, who could put a link to another site's
+// socket in its place; as root the panel would then act on the other site.
+func valkeyCLI(ctx context.Context, env *Env, l siteLayout, socket string, args ...string) (executor.Result, error) {
+	return env.Exec.Run(ctx, "setpriv", append(append(userCreds(l.User), env.Cfg.ValkeyCLIBin, "-s", socket), args...)...)
 }
 
 // removeSiteValkey is part of deleting a site.

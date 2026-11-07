@@ -86,7 +86,7 @@ func TestValkeyStatusReadsInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	dr.Responder = func(c executor.Call) (executor.Result, error) {
-		if c.Name == "valkey-cli" {
+		if c.Name == "setpriv" && strings.Contains(c.String(), "valkey-cli -s") && strings.HasSuffix(c.String(), "INFO") {
 			return executor.Result{Stdout: "# Memory\r\nused_memory:1048576\r\nmaxmemory:67108864\r\n# Keyspace\r\ndb0:keys=12,expires=0\r\ndb1:keys=3,expires=1\r\n"}, nil
 		}
 		return executor.Result{}, nil
@@ -98,5 +98,30 @@ func TestValkeyStatusReadsInfo(t *testing.T) {
 	m := out.(map[string]any)
 	if m["used_memory"] != int64(1048576) || m["keys"] != int64(15) || m["policy"] != "noeviction" || m["persist"] != true {
 		t.Errorf("status %v", m)
+	}
+}
+
+func TestValkeyFlushRunsAsTheSiteUser(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeyFlush, map[string]string{"domain": "kv.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(dr, "setpriv --reuid=web_kv_example_com") || hasCall(dr, "valkey-cli") {
+		t.Errorf("flush must go through setpriv as the site user:\n%s", strings.Join(callLines(dr), "\n"))
+	}
+	found := false
+	for _, c := range callLines(dr) {
+		if strings.HasPrefix(c, "setpriv --reuid=web_kv_example_com") && strings.HasSuffix(c, "FLUSHALL") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no FLUSHALL as the site user")
 	}
 }
