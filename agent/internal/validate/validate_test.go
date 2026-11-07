@@ -45,3 +45,9 @@ func TestOneOf(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+func TestPanelInternalHostIsReserved(t *testing.T) {
+	if err := Domain("wspanel-panel.internal"); err == nil {
+		t.Error("the panel's internal host must not be a site")
+	}
+}

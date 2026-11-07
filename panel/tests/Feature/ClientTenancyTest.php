@@ -377,4 +377,23 @@ class ClientTenancyTest extends TestCase
 
         $this->assertSame($alice->id, $site->fresh()->client_id);
     }
+
+    public function test_a_client_never_gets_the_panels_host_name_even_with_the_panel_on_its_own_port(): void
+    {
+        config(['app.url' => 'https://example.com:8443', 'panel.port' => 8443]);
+        $this->signInAs(Client::factory()->create());
+
+        $this->assertTrue(Site::hostTaken('example.com'));
+        $this->assertTrue(Site::hostTaken('wspanel-panel.internal'));
+    }
+
+    public function test_an_admin_site_may_share_the_panels_host_name_when_the_panel_has_its_own_port(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        config(['app.url' => 'https://example.com:8443', 'panel.port' => 8443]);
+        $this->assertFalse(Site::hostTaken('example.com'));
+        config(['app.url' => 'https://example.com', 'panel.port' => 443]);
+        $this->assertTrue(Site::hostTaken('example.com'));
+    }
 }

@@ -49,8 +49,14 @@ func Domain(d string) error {
 	if !tldRe.MatchString(labels[len(labels)-1]) {
 		return protocol.Invalid("domain: invalid top-level label")
 	}
+	if d == PanelInternalHost {
+		return protocol.Invalid("domain: reserved for the panel")
+	}
 	return nil
 }
+
+// PanelInternalHost is the name the web tier knows the panel by; no site may have it.
+const PanelInternalHost = "wspanel-panel.internal"
 
 // OneOf checks that v is one of allowed.
 func OneOf(field, v string, allowed []string) error {

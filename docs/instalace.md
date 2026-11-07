@@ -113,5 +113,11 @@ Panel nemusí mít vlastní subdoménu:
 | jen port, bez domény | `--panel-port=8443` | `https://<IP serveru>:8443` s certifikátem vlastní CA panelu (prohlížeč ji nezná, dokud si nenainstalujete kořenový certifikát: SSL → Kořenový certifikát) |
 
 Instalace port panelu otevře ve firewallu a chrání ho proti zablokování.
+
+**Pozor u sdílené domény:** prohlížeče posílají cookies podle domény, ne
+podle portu. Web na stejné doméně (`example.com` na 443) tak dostává
+i přihlašovací cookie panelu. Proto na doméně panelu smí běžet jen web
+správce (klient ji nezaloží ani jako alias) a má to být web, kterému
+věříte. Pro hostování cizích webů dejte panelu vlastní subdoménu nebo IP.
 Edge předává panel web tieru pod interním jménem, takže panel nikdy
 nekoliduje s webem téže domény; odkazy panel skládá z `APP_URL`.

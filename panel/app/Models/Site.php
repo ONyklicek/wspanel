@@ -8,6 +8,7 @@ use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
 use App\Models\Concerns\OwnedByClient;
 use App\Support\AgentMessages;
+use App\Support\CurrentClient;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -47,8 +48,12 @@ class Site extends Model
     public static function hostTaken(string $host, ?int $exceptSiteId = null): bool
     {
         $host = strtolower($host);
-        // The panel's domain is taken only when the panel listens on 443 itself.
-        if ((int) config('panel.port', 443) === 443 && strcasecmp($host, (string) parse_url((string) config('app.url'), PHP_URL_HOST)) === 0) {
+        // The panel's host name: browsers send the panel's cookies (the admin's
+        // session) to every port of it, so no client may serve a site there.
+        // Only an administrator's own site may share it, with the panel on its own port.
+        $panelHost = (string) parse_url((string) config('app.url'), PHP_URL_HOST);
+        if ($host === 'wspanel-panel.internal'
+            || (strcasecmp($host, $panelHost) === 0 && ((int) config('panel.port', 443) === 443 || CurrentClient::restricted()))) {
             return true;
         }
 
