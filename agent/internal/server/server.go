@@ -201,7 +201,7 @@ func (s *Server) Dispatch(ctx context.Context, req protocol.Request, peer int64)
 	}
 
 	entry := audit.Entry{
-		Time: start.UTC(), Op: req.Op, Params: req.Params, PeerUID: peer, OK: err == nil,
+		Time: start.UTC(), Op: req.Op, Params: audit.Redact(req.Op, req.Params), PeerUID: peer, OK: err == nil,
 		DurationMS: time.Since(start).Milliseconds(), DryRun: s.Env.Cfg.DryRun,
 	}
 	if !ok {
@@ -256,7 +256,7 @@ func (s *Server) startJob(ctx context.Context, op ops.Op, req protocol.Request, 
 			j.Status, j.Output = "done", out
 		}
 		s.jobsMu.Unlock()
-		entry := audit.Entry{Time: j.Started, Op: op.Name, Params: req.Params, PeerUID: peer, OK: err == nil,
+		entry := audit.Entry{Time: j.Started, Op: op.Name, Params: audit.Redact(op.Name, req.Params), PeerUID: peer, OK: err == nil,
 			DurationMS: j.Finished.Sub(j.Started).Milliseconds(), DryRun: s.Env.Cfg.DryRun, Error: j.Error}
 		if s.Audit != nil {
 			_ = s.Audit.Write(entry)

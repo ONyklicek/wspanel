@@ -89,6 +89,7 @@ func Registry() map[string]Op {
 		{"deploy.rollback", true, deployRollback},
 		{"env.get", false, envGet},
 		{"env.set", true, envSet},
+		{"audit.tail", false, auditTail},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},
