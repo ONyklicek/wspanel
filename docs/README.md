@@ -47,6 +47,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Síť a pošta → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
 | **Síť a pošta → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
 | **Síť a pošta → Pošta** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, log |
+| **Server → Zálohy mimo server** | kopie všech záloh do úložiště S3 (Amazon S3, R2, B2, Wasabi, MinIO) |
 | **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |

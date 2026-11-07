@@ -37,7 +37,9 @@ const (
 	MaxCompress   = 2 << 30 // everything put into one archive
 )
 
-// MaxRestore caps what a site backup being restored may expand to.
+// MaxRestore caps what a site backup may hold (counted by apparent size, so
+// a sparse file cannot be blown up to fill the backup disk) and what a backup
+// being restored may expand to.
 const MaxRestore = 50 << 30
 
 type Request struct {
@@ -525,6 +527,15 @@ func tarStream(root *os.Root, paths []string) (io.ReadCloser, error) {
 	pr, pw := io.Pipe()
 	go func() {
 		tw := tar.NewWriter(pw)
+		var total int64 // apparent sizes: a sparse file counts in full
+		add := func(name string, fi fs.FileInfo) error {
+			if fi.Mode().IsRegular() {
+				if total += fi.Size(); total > MaxRestore {
+					return fail("too_large", "the site holds more than %d GB, too much for a backup", MaxRestore>>30)
+				}
+			}
+			return tarEntry(root, tw, name, fi)
+		}
 		err := func() error {
 			for _, raw := range paths {
 				p := Clean(raw)
@@ -533,7 +544,7 @@ func tarStream(root *os.Root, paths []string) (io.ReadCloser, error) {
 					return err
 				}
 				if li.Mode()&fs.ModeSymlink != 0 {
-					if err := tarEntry(root, tw, p, li); err != nil {
+					if err := add(p, li); err != nil {
 						return err
 					}
 					continue
@@ -546,7 +557,7 @@ func tarStream(root *os.Root, paths []string) (io.ReadCloser, error) {
 					if err != nil {
 						return err
 					}
-					return tarEntry(root, tw, name, info)
+					return add(name, info)
 				}); err != nil {
 					return err
 				}

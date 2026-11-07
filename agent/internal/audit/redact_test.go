@@ -33,3 +33,10 @@ func TestEditedFileContentIsRedacted(t *testing.T) {
 		t.Fatalf("not redacted: %s", out)
 	}
 }
+
+func TestOffsiteSecretIsRedacted(t *testing.T) {
+	out := string(Redact("offsite.set", json.RawMessage(`{"bucket":"b","access_key":"AK","secret_key":"very-secret"}`)))
+	if strings.Contains(out, "very-secret") || !strings.Contains(out, `"bucket":"b"`) {
+		t.Fatal(out)
+	}
+}

@@ -528,6 +528,31 @@ check "backup timer removed" test ! -e /etc/systemd/system/wspanel-sitebackup-we
 rm -rf /srv/sites/shop.localhost/shared.before-restore-*
 
 # ----------------------------------------------------------------------------
+section "Backups outside the server (S3-compatible storage)"
+pkill -f dev-fake-s3 2>/dev/null
+/opt/wspanel/build/dev-fake-s3-linux-$(dpkg --print-architecture) -listen 127.0.0.1:9000 >"$W/fake-s3.log" 2>&1 &
+fakes3=$!
+sleep 1
+off() { php "try { echo json_encode(app(App\\Actions\\Server\\ManageOffsite::class)->$1); } catch (Throwable \$e) { echo 'ERR '.\$e->getMessage(); }" | tail -1; }
+offcfg="'enabled' => true, 'endpoint' => 'http://127.0.0.1:9000', 'region' => 'us-east-1', 'bucket' => 'e2e', 'prefix' => 'srv', 'path_style' => true, 'keep_days' => 30"
+contains "wrong credentials are refused by the test upload" "$(off "save([$offcfg, 'access_key' => 'WRONG', 'secret_key' => 'x'])")" "Přístup odepřen"
+off "save([$offcfg, 'access_key' => 'E2EKEY', 'secret_key' => 'e2e-secret'])" >/dev/null
+contains "storage set up, the secret is not handed back" "$(off 'status()')" '"has_secret":true'
+check "the secret is only in the root-only state" bash -c 'stat -c "%U %a" /var/lib/panel-agent/offsite.json | grep -qx "root 600" && ! grep -rq e2e-secret /srv/panel/current/storage /var/log/panel-agent'
+sb 'echo json_encode($m->backupNow($s));' >/dev/null
+sbnew=$(ls -t "$sbdir" | grep -v pre-restore | head -1)
+contains "a new site backup is copied off-site" "$(off "siteCopies(App\\Models\\Site::where('domain','shop.localhost')->sole())")" "$sbnew"
+php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); app(App\\Actions\\Databases\\ManageDatabases::class)->backupNow(\$db);" >/dev/null
+dbnew=$(ls -t /var/backups/wspanel/mariadb/shop_db | grep -v pre-restore | head -1)
+contains "a database backup is copied off-site" "$(php "echo json_encode(app(App\\Services\\Agent\\AgentClient::class)->call('offsite.list', ['engine' => 'mariadb', 'name' => 'shop_db']));" | tail -1)" "$dbnew"
+cp "$sbdir/$sbnew" "$W/original.tar.gz" && rm -f "$sbdir/$sbnew"
+off "fetchSiteBackup(App\\Models\\Site::where('domain','shop.localhost')->sole(), '$sbnew')" >/dev/null
+check "a lost backup comes back from the storage, byte for byte" cmp "$sbdir/$sbnew" "$W/original.tar.gz"
+expect "and with the same owner and mode" "$(stat -c '%U:%G %a' "$sbdir/$sbnew")" "root:panel 640"
+off "save([$offcfg, 'enabled' => false, 'access_key' => 'E2EKEY', 'secret_key' => ''])" >/dev/null
+kill $fakes3 2>/dev/null
+
+# ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"
 php "$(site app.localhost) app(App\\Actions\\ManageCronJobs::class)->create(\$s, ['kind' => 'artisan', 'command' => 'optimize', 'schedule' => '* * * * *']);" >/dev/null
 check "task timer active" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer

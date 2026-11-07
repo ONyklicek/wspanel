@@ -106,7 +106,31 @@ Soubory čte agent jako systémový uživatel webu, root je neotevírá.
     nejsou, se vynechají.
 
 Zálohy zůstávají i po smazání webu, maže se jen jejich plán. Ukládají se na
-stejný disk jako web; pro ochranu před ztrátou serveru si je stahujte jinam.
+stejný disk jako web; proti ztrátě serveru nastavte [zálohy mimo
+server](#zálohy-mimo-server).
+
+### Zálohy mimo server
+
+**Server → Zálohy mimo server** nastaví úložiště kompatibilní s S3 (Amazon
+S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO, Hetzner…). Pak se každá nová
+záloha webu i databáze, ruční i plánovaná, hned nahraje i tam:
+
+- `<složka>/sites/<doména>/…` a `<složka>/db/<engine>/<databáze>/…`;
+- kopie starší než nastavený počet dní se mažou, nejnovější zůstává vždy;
+- zálohy pořízené před obnovou se nenahrávají.
+
+Při uložení panel do úložiště zkusí zapsat a smazat zkušební soubor; uloží se
+jen funkční nastavení. Secret key zná jen agent (root, 0600), panel ho zpět
+nedostane.
+
+Na záložce **Zálohy** u webu sloupec *Mimo server* ukazuje, co tam je.
+Starší zálohu nahrajete tlačítkem **Nahrát mimo server**. Zálohu, která už na
+serveru není (*Jen mimo server*), stáhnete akcí **Stáhnout na server** a pak ji
+obnovíte jako každou jinou. Když nahrání selže, místní záloha zůstává a
+plánovaná záloha skončí chybou, aby to bylo vidět.
+
+Zálohy obsahují `.env` a data webů: použijte soukromý bucket s klíčem jen pro
+něj, ideálně se šifrováním a verzováním zapnutým na straně úložiště.
 
 ## Domény a přístup
 

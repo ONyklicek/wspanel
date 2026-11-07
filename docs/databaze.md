@@ -93,7 +93,9 @@ Detail databáze:
 - **Stáhnout:** záloha jako soubor (`.sql.gz` / PostgreSQL custom formát).
 - **Obnovit:** před obnovou se automaticky udělá záloha aktuálního stavu.
 
-Zálohy jsou na stejném serveru. Pro skutečnou ochranu dat je kopírujte i jinam.
+Zálohy jsou na stejném serveru. Kopie mimo server zapnete v **Server → Zálohy
+mimo server** (viz [Weby → Zálohy mimo server](weby.md#zálohy-mimo-server));
+pak se tam nahraje i každý nový dump databáze.
 
 ## Změna hesla
 

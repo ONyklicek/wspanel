@@ -262,3 +262,23 @@ func TestTarUntarRoundTripKeepsLinksInsideTheHome(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestASparseFileCannotBlowUpABackup(t *testing.T) {
+	home := site(t)
+	f, err := os.Create(filepath.Join(home, "shared/huge.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(MaxRestore + 1); err != nil {
+		t.Skip("no sparse files here")
+	}
+	f.Close()
+	line, _ := json.Marshal(Request{Action: "tar", Paths: []string{"shared"}})
+	var out bytes.Buffer
+	if err := Serve(home, bytes.NewReader(append(line, '\n')), &out); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Fatalf("a %d GB sparse file was archived: %v", (MaxRestore+1)>>30, err)
+	}
+	if out.Len() > 1<<20 {
+		t.Fatalf("%d bytes written before the cap", out.Len())
+	}
+}

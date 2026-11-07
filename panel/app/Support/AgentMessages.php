@@ -49,6 +49,28 @@ final class AgentMessages
         $cs = fn (string $s) => self::cs($s);
 
         return [
+            // Backups of sites, off-site storage
+            '/^off-site storage is not set up$/' => 'Úložiště mimo server není nastavené (Server → Zálohy mimo server).',
+            '/^the storage refused a test upload: (.+)$/s' => fn ($m) => 'Úložiště odmítlo zkušební nahrání: '.$cs($m[1]),
+            '/^upload to (\S+) failed: (.+)$/s' => fn ($m) => 'Nahrání do bucketu '.$m[1].' selhalo: '.$cs($m[2]),
+            '/^AccessDenied: .*$/s' => 'Přístup odepřen: zkontrolujte access key, secret key a oprávnění k bucketu.',
+            '/^NoSuchBucket: .*$/s' => 'Bucket neexistuje (zkontrolujte název, region a adresování path-style).',
+            '/^SignatureDoesNotMatch: .*$/s' => 'Podpis nesedí: zkontrolujte secret key a region.',
+            '/^InvalidAccessKeyId: .*$/s' => 'Access key úložiště nezná.',
+            '/^(\S+) is already on the server$/' => 'Záloha $1 už na serveru je.',
+            '/^file: not a backup of this site or database$/' => 'Tohle není záloha tohoto webu ani databáze.',
+            '/^the site holds more than (\d+) GB, too much for a backup$/' => 'Web má víc než $1 GB, na zálohu je to příliš.',
+            '/^choose files, databases or both$/' => 'Zvolte soubory, databáze nebo obojí.',
+            '/^the backup belongs to another site$/' => 'Záloha patří jinému webu.',
+            '/^not a site backup.*$/' => 'Soubor není záloha webu.',
+            '/^the backup holds no files$/' => 'Záloha neobsahuje soubory.',
+            '/^backup before restore failed, nothing restored: (.+)$/s' => fn ($m) => 'Zálohu před obnovou se nepodařilo vytvořit, nic se neobnovilo: '.$cs($m[1]),
+            '/^restore failed, nothing changed \(backup before restore: (\S+)\): (.+)$/s' => fn ($m) => 'Obnova selhala, nic se nezměnilo (záloha před obnovou: '.$m[1].'): '.$cs($m[2]),
+            '/^restore of database (\S+) failed \(backup before restore: (\S+)\): (.+)$/s' => fn ($m) => 'Obnova databáze '.$m[1].' selhala (záloha před obnovou: '.$m[2].'): '.$cs($m[3]),
+            '/^reading the site\'s files failed: (.+)$/s' => fn ($m) => 'Čtení souborů webu selhalo: '.$cs($m[1]),
+            '/^endpoint: https is required.*$/' => 'Adresa úložiště musí být https (http jen na tomto serveru).',
+            '/^download failed: (.+)$/s' => fn ($m) => 'Stažení selhalo: '.$cs($m[1]),
+
             // Deploy
             '/^the new release did not answer; switched back$/' => 'Nová verze neodpovídala, web běží dál na předchozí.',
             '/^(.+) failed$/' => fn ($m) => isset(self::STEPS[$m[1]])

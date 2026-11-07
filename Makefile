@@ -51,6 +51,7 @@ dev-demo:
 
 ## Full end-to-end test inside the dev container (after dev-provision).
 dev-e2e:
+	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o ../build/dev-fake-s3-linux-$(ARCH) ./cmd/dev-fake-s3
 	$(DEV) exec devserver /opt/wspanel/dev/e2e.sh
 
 dev-shell:

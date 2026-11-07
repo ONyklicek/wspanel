@@ -171,6 +171,7 @@ func runSiteBackup(ctx context.Context, env *Env, domain string, dbs []dbRef, su
 		// The site's files, re-wrapped under files/ as they stream past.
 		if err := siteFileOp(ctx, env, l, fileop.Request{Action: "tar", Paths: paths}, nil, func(r io.Reader) error {
 			tr := tar.NewReader(r)
+			var total int64 // root's own cap, whatever the worker says
 			for {
 				hdr, err := tr.Next()
 				if errors.Is(err, io.EOF) {
@@ -179,11 +180,14 @@ func runSiteBackup(ctx context.Context, env *Env, domain string, dbs []dbRef, su
 				if err != nil {
 					return err
 				}
+				if total += hdr.Size; total > fileop.MaxRestore {
+					return fmt.Errorf("the site holds more than %d GB, too much for a backup", fileop.MaxRestore>>30)
+				}
 				hdr.Name = "files/" + hdr.Name
 				if err := tw.WriteHeader(hdr); err != nil {
 					return err
 				}
-				if _, err := io.Copy(tw, tr); err != nil {
+				if _, err := io.Copy(tw, io.LimitReader(tr, hdr.Size)); err != nil {
 					return err
 				}
 			}
@@ -359,7 +363,11 @@ func siteBackup(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	defer release()
-	return runSiteBackup(ctx, env, p.Domain, p.Databases, "")
+	b, err := runSiteBackup(ctx, env, p.Domain, p.Databases, "")
+	if err != nil {
+		return nil, err
+	}
+	return withOffsite(ctx, env, siteTarget(env, p.Domain), b), nil
 }
 
 func siteBackups(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -788,5 +796,10 @@ func RunScheduledSiteBackup(ctx context.Context, env *Env, domain string) (any, 
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"backup": b.File, "size": b.Size, "pruned": pruneSiteBackups(env, domain, st.Backup.Keep)}, nil
+	b = withOffsite(ctx, env, siteTarget(env, domain), b)
+	out := map[string]any{"backup": b.File, "size": b.Size, "pruned": pruneSiteBackups(env, domain, st.Backup.Keep), "offsite": b.Offsite}
+	if b.OffsiteError != "" {
+		return out, errors.New(b.OffsiteError) // the unit fails, so it shows
+	}
+	return out, nil
 }

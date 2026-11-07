@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -46,6 +47,10 @@ type backupInfo struct {
 	Size    int64     `json:"size"`
 	Created time.Time `json:"created"`
 	Path    string    `json:"path"`
+	// Offsite: key of the copy in off-site storage; OffsiteError when the
+	// copy failed (the backup itself is fine).
+	Offsite      string `json:"offsite,omitempty"`
+	OffsiteError string `json:"offsite_error,omitempty"`
 }
 
 func runBackup(ctx context.Context, env *Env, engine, name, suffix string) (backupInfo, error) {
@@ -168,7 +173,11 @@ func dbBackup(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := p.validate(env); err != nil {
 		return nil, err
 	}
-	return runBackup(ctx, env, p.Engine, p.Name, "")
+	b, err := runBackup(ctx, env, p.Engine, p.Name, "")
+	if err != nil {
+		return nil, err
+	}
+	return withOffsite(ctx, env, dbTarget(env, p.Engine, p.Name), b), nil
 }
 
 func dbBackups(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -361,5 +370,10 @@ func RunScheduledBackup(ctx context.Context, env *Env, spec string, keep int) (a
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"backup": b.File, "size": b.Size, "pruned": pruneBackups(env, engine, name, keep)}, nil
+	b = withOffsite(ctx, env, dbTarget(env, engine, name), b)
+	out := map[string]any{"backup": b.File, "size": b.Size, "pruned": pruneBackups(env, engine, name, keep), "offsite": b.Offsite}
+	if b.OffsiteError != "" {
+		return out, errors.New(b.OffsiteError) // the unit fails, so it shows
+	}
+	return out, nil
 }

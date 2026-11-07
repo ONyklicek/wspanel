@@ -7,6 +7,7 @@ use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -40,6 +41,8 @@ class SiteBackupsTest extends TestCase
         ])->byDefault();
         $this->agent->shouldReceive('call')->with('job.status', Mockery::any())->andReturn(['status' => 'done', 'output' => []])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn([])->byDefault();
+        $this->agent->shouldReceive('call')->with('offsite.list', Mockery::any())
+            ->andThrow(new AgentException('conflict', 'off-site storage is not set up', 'offsite.list'))->byDefault();
         $this->app->instance(AgentClient::class, $this->agent);
         $this->actingAs(User::factory()->create());
         $this->site = Site::create(['domain' => 'app.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active', 'system_user' => 'web_app_example_com']);
@@ -113,5 +116,33 @@ class SiteBackupsTest extends TestCase
         $this->get("/sites/{$this->site->id}/backups/other.com-20261107T023000Z.tar.gz")->assertNotFound();
         $this->get("/sites/{$this->site->id}/backups/app.example.com-20261107T023000Z.tar.gz.x")->assertNotFound();
         $this->get("/sites/{$this->site->id}/backups/..%2F..%2Fetc%2Fshadow.tar.gz")->assertNotFound();
+    }
+
+    public function test_without_offsite_storage_it_points_to_the_setup(): void
+    {
+        $this->list()->assertSee('Zálohy jsou jen na tomto serveru')->assertDontSeeHtml('data-testid="table-cell-offsite_label"');
+    }
+
+    public function test_offsite_copies_are_marked_and_a_lost_backup_can_be_fetched_back(): void
+    {
+        $remoteOnly = 'app.example.com-20261101T023000Z.tar.gz';
+        $this->agent->shouldReceive('call')->with('offsite.list', ['domain' => 'app.example.com'])->andReturn(['objects' => [
+            ['file' => self::FILE, 'size' => 2_500_000, 'modified' => '2026-11-07T02:31:00Z'],
+            ['file' => $remoteOnly, 'size' => 1_000_000, 'modified' => '2026-11-01T02:31:00Z'],
+        ]]);
+        $b = $this->list()->assertSee('Mimo server')->assertSee('Jen mimo server')->assertSee($remoteOnly)
+            ->assertSeeHtml("act-{$remoteOnly}-fetch")->assertDontSeeHtml("act-{$remoteOnly}-restore")
+            ->assertSeeHtml('act-'.self::FILE.'-restore')->assertDontSeeHtml('act-'.self::FILE.'-upload');
+
+        $this->agent->shouldReceive('call')->once()->with('offsite.fetch', ['domain' => 'app.example.com', 'file' => $remoteOnly])->andReturn(['job_id' => 'j3']);
+        $this->tableAction($b, $remoteOnly, 'fetch')->assertNotified('Záloha je zpět na serveru');
+    }
+
+    public function test_a_broken_storage_is_reported_not_hidden(): void
+    {
+        $this->agent->shouldReceive('call')->with('offsite.list', Mockery::any())
+            ->andThrow(new AgentException('op_failed', 'AccessDenied: Access Denied (HTTP 403)', 'offsite.list'));
+
+        $this->list()->assertSee('Kopie mimo server se nepodařilo načíst')->assertSee('Přístup odepřen')->assertSee(self::FILE);
     }
 }

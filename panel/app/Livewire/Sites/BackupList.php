@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Sites;
 
+use App\Actions\Server\ManageOffsite;
 use App\Actions\Sites\ManageSiteBackups;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Number;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\Action;
@@ -28,6 +30,12 @@ class BackupList extends Component
     public int $site;
 
     public ?string $error = null;
+
+    /** Off-site copies are on (the agent answered the listing). */
+    public bool $offsite = false;
+
+    /** Why the off-site copies could not be listed, if they could not. */
+    public ?string $offsiteError = null;
 
     /** @var array{frequency: string, keep: int, databases: bool} */
     public array $schedule = ['frequency' => 'off', 'keep' => 7, 'databases' => true];
@@ -54,14 +62,62 @@ class BackupList extends Component
             return [];
         }
         $this->schedule = $out['schedule'];
+        $copies = $this->copies();
 
-        return array_map(fn (array $b) => [
+        $rows = array_map(fn (array $b) => [
             'id' => $b['file'],
             'file' => $b['file'],
+            'created' => $b['created']->getTimestamp(),
             'created_label' => $b['created']->format('j. n. Y H:i'),
             'kind' => $b['pre_restore'] ? 'Před obnovou' : 'Záloha',
             'size_label' => Number::fileSize($b['size'], 1),
+            'local' => true,
+            'offsite_label' => $b['pre_restore'] ? '—' : (isset($copies[$b['file']]) ? 'ano' : 'ne'),
         ], $out['backups']);
+
+        // Copies whose local backup is gone (pruned, or a new server).
+        $local = array_column($rows, 'file');
+        foreach ($copies as $file => $copy) {
+            if (in_array($file, $local, true)) {
+                continue;
+            }
+            $created = preg_match('/-(\d{8}T\d{6}Z)\.tar\.gz$/', $file, $m)
+                ? Carbon::createFromFormat('Ymd\THis\Z', $m[1], 'UTC')->timezone(config('app.timezone'))
+                : $copy['modified'];
+            $rows[] = [
+                'id' => $file,
+                'file' => $file,
+                'created' => $created->getTimestamp(),
+                'created_label' => $created->format('j. n. Y H:i'),
+                'kind' => 'Jen mimo server',
+                'size_label' => Number::fileSize($copy['size'], 1),
+                'local' => false,
+                'offsite_label' => 'ano',
+            ];
+        }
+        usort($rows, fn ($a, $b) => $b['created'] <=> $a['created']);
+
+        return $rows;
+    }
+
+    /** @return array<string, array{size: int, modified: Carbon}> */
+    private function copies(): array
+    {
+        $this->offsite = false;
+        $this->offsiteError = null;
+        try {
+            $copies = app(ManageOffsite::class)->siteCopies($this->getSite());
+            $this->offsite = true;
+
+            return $copies;
+        } catch (AgentException $e) {
+            if ($e->errorCode !== 'conflict') { // conflict = not set up
+                $this->offsite = true;
+                $this->offsiteError = $e->getMessage();
+            }
+
+            return [];
+        }
     }
 
     private function attempt(string $failure, callable $fn): void
@@ -99,13 +155,34 @@ class BackupList extends Component
             ->columns([
                 TextColumn::make('created_label')->label('Vytvořeno')->weight('medium')
                     ->description(fn ($record) => $record->file),
-                BadgeColumn::make('kind')->label('Druh')->colors(['Záloha' => 'success', 'Před obnovou' => 'warning']),
+                BadgeColumn::make('kind')->label('Druh')->colors(['Záloha' => 'success', 'Před obnovou' => 'warning', 'Jen mimo server' => 'info']),
                 TextColumn::make('size_label')->label('Velikost'),
+                BadgeColumn::make('offsite_label')->label('Mimo server')->colors(['ano' => 'success', 'ne' => 'gray', '—' => 'gray'])
+                    ->visible($this->offsite),
             ])
             ->actions([
                 Action::make('download')->label('Stáhnout')->icon('outline:arrow-down-tray')->color('gray')->onlyIcon()->tooltip('Stáhnout')
+                    ->visible(fn ($record) => (bool) $record->local)
                     ->url(fn ($record) => route('site-backups.download', [$this->site, $record->file]), true),
+                Action::make('fetch')->label('Stáhnout na server')->icon('outline:cloud-arrow-down')->color('info')
+                    ->visible(fn ($record) => ! $record->local)
+                    ->requiresConfirmation()
+                    ->modalHeading(fn ($record) => 'Stáhnout zálohu z '.$record->created_label.' na server?')
+                    ->modalDescription('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout.')
+                    ->action(fn ($record) => $this->attempt('Stažení na server selhalo', function () use ($record) {
+                        app(ManageOffsite::class)->fetchSiteBackup($this->getSite(), $record->file)
+                            ? Toast::success('Záloha je zpět na serveru', 'Teď ji můžete obnovit.')
+                            : Toast::warning('Stahování běží na pozadí', 'Záloha se objeví v seznamu, až se stáhne.');
+                    })),
+                Action::make('upload')->label('Nahrát mimo server')->icon('outline:cloud-arrow-up')->color('gray')->onlyIcon()->tooltip('Nahrát mimo server')
+                    ->visible(fn ($record) => $this->offsite && $this->offsiteError === null && $record->local && $record->offsite_label === 'ne')
+                    ->action(fn ($record) => $this->attempt('Nahrání mimo server selhalo', function () use ($record) {
+                        app(ManageOffsite::class)->uploadSiteBackup($this->getSite(), $record->file)
+                            ? Toast::success('Záloha nahrána mimo server')
+                            : Toast::warning('Nahrávání běží na pozadí');
+                    })),
                 Action::make('restore')->label('Obnovit')->icon('outline:arrow-uturn-left')->color('warning')
+                    ->visible(fn ($record) => (bool) $record->local)
                     ->modalHeading(fn ($record) => 'Obnovit zálohu z '.$record->created_label.'?')
                     ->modalDescription('Před obnovou se uloží záloha současného stavu. Soubory se obnoví jako nový release (dosavadní zůstane k návratu přes Deploy), současná složka shared se ponechá vedle jako shared.before-restore-…. Databáze se přepíšou obsahem zálohy.')
                     ->form([
@@ -147,9 +224,10 @@ class BackupList extends Component
                             : Toast::error('Záloha obnovena, web ale neodpovídá', implode("\n", $notes));
                     })),
                 Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->tooltip('Smazat')
+                    ->visible(fn ($record) => (bool) $record->local)
                     ->requiresConfirmation()
                     ->modalHeading(fn ($record) => 'Smazat zálohu z '.$record->created_label.'?')
-                    ->modalDescription('Nejde to vrátit.')
+                    ->modalDescription(fn ($record) => $record->offsite_label === 'ano' ? 'Smaže se jen ze serveru; kopie mimo server zůstane.' : 'Nejde to vrátit.')
                     ->action(fn ($record) => $this->attempt('Smazání selhalo', function () use ($record) {
                         $this->backups()->delete($this->getSite(), $record->file);
                         Toast::success('Záloha smazána');

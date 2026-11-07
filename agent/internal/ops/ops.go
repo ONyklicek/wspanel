@@ -48,7 +48,8 @@ type Op struct {
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true,
-	"php.extension": true, "php.install": true, "site.backup": true, "site.restore": true}
+	"php.extension": true, "php.install": true, "site.backup": true, "site.restore": true,
+	"offsite.upload": true, "offsite.fetch": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -98,6 +99,11 @@ func Registry() map[string]Op {
 		{"site.backup_delete", true, siteBackupDelete},
 		{"site.backup_schedule", true, siteBackupSchedule},
 		{"site.restore", false, siteRestore}, // async; locks Mutate only to switch
+		{"offsite.get", false, offsiteGet},
+		{"offsite.set", true, offsiteSet},
+		{"offsite.list", false, offsiteList},
+		{"offsite.upload", false, offsiteUpload},
+		{"offsite.fetch", false, offsiteFetch},
 		{"php.status", false, phpStatus},
 		{"php.extension", true, phpExtension},
 		{"php.install", true, phpInstall},
