@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Sites;
 
 use App\Filament\Resources\Sites\Pages\CreateSite;
+use App\Filament\Resources\Sites\Pages\DeploySite;
 use App\Filament\Resources\Sites\Pages\ListSites;
 use App\Filament\Resources\Sites\Schemas\SiteForm;
 use App\Filament\Resources\Sites\Tables\SitesTable;
@@ -40,6 +41,7 @@ class SiteResource extends Resource
         return [
             'index' => ListSites::route('/'),
             'create' => CreateSite::route('/create'),
+            'deploy' => DeploySite::route('/{record}/deploy'),
         ];
     }
 }

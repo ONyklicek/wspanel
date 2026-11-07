@@ -78,6 +78,7 @@ type Config struct {
 	DBAccessTTLm int    `json:"dbtools_access_minutes"`
 
 	ProxyStorage string `json:"proxy_storage"` // Caddy data dir of the edge (certificates)
+	DeployLogDir string `json:"deploy_log_dir"`
 	PanelDomain  string `json:"panel_domain"`
 
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
@@ -136,6 +137,7 @@ func Defaults() Config {
 		DBAccessTTLm:      30,
 		BackupGroup:       "panel",
 		ProxyStorage:      "/var/lib/panel-proxy/caddy",
+		DeployLogDir:      "/var/log/panel-agent/deploys",
 		SystemdDir:        "/etc/systemd/system",
 		PHPCLIBinary:      "/usr/bin/php{version}",
 		UFWBinary:         "/usr/sbin/ufw",

@@ -218,6 +218,9 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if err != nil {
 		return nil, err
 	}
+	if deployInProgress(p.Domain) {
+		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	}
 	if p.Mode == old.Mode {
 		return nil, protocol.Invalid("mode: site already runs in " + old.Mode + " mode (use site.set_version to change the version)")
 	}

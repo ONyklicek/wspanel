@@ -12,6 +12,7 @@ use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
 use App\Filament\Resources\Databases\Pages\ListDatabases;
 use App\Filament\Resources\Sites\Schemas\SiteForm;
+use App\Filament\Resources\Sites\SiteResource;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -72,6 +73,11 @@ class SitesTable
             ])
             ->poll('30s')
             ->recordActions([
+                Action::make('deploy')
+                    ->label('Deploy')
+                    ->icon(Heroicon::OutlinedRocketLaunch)
+                    ->visible(fn (Site $record) => $record->status === SiteStatus::Active)
+                    ->url(fn (Site $record) => SiteResource::getUrl('deploy', ['record' => $record])),
                 ActionGroup::make([
                     Action::make('switchMode')
                         ->label('Změnit režim')

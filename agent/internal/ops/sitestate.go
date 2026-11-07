@@ -15,14 +15,15 @@ import (
 // dir. The panel's database is not trusted for anything that decides which
 // command runs or which port is used; this is.
 type siteState struct {
-	Domain      string `json:"domain"`
-	Framework   string `json:"framework"`
-	Mode        string `json:"mode"`
-	PHPVersion  string `json:"php_version,omitempty"`  // classic: FPM version; worker: FrankenPHP's PHP (informational)
-	NodeVersion string `json:"node_version,omitempty"` // node: major version
-	Port        int    `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent
-	ReverbPort  int    `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
-	SSHAccess   string `json:"ssh_access,omitempty"`   // off | sftp | shell
+	Domain      string        `json:"domain"`
+	Framework   string        `json:"framework"`
+	Mode        string        `json:"mode"`
+	PHPVersion  string        `json:"php_version,omitempty"`  // classic: FPM version; worker: FrankenPHP's PHP (informational)
+	NodeVersion string        `json:"node_version,omitempty"` // node: major version
+	Port        int           `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent
+	ReverbPort  int           `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
+	SSHAccess   string        `json:"ssh_access,omitempty"`   // off | sftp | shell
+	Deploy      *deployConfig `json:"deploy,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

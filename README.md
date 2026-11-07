@@ -131,6 +131,34 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
   - upozornění na novou verzi FrankenPHP (binárka se neaktualizuje sama a má v
     sobě OpenSSL i PHP).
 
+## Deploy
+
+V panelu: web → **Deploy**.
+- **Nastavení:** repozitář (SSH s deploy klíčem, nebo veřejné https), větev,
+  migrace, assety, automatický rollback a počet držených releasů.
+- **Deploy klíč** (ed25519) se vytvoří v `~/.ssh` uživatele webu. Veřejnou část
+  přidejte k repozitáři jen pro čtení.
+- **Kód z repozitáře nikdy neběží jako root.** Každý krok (git, composer, npm,
+  artisan/console) spouští agent jako dočasnou systemd unitu pod uživatelem
+  webu se sandboxem. Výstup jde do logu, který může zapsat jen root, a panel ho
+  čte živě.
+- **Postup:**
+  1. `git clone` do `releases/<UTC čas>`,
+  2. propojení `shared/` (`.env`, `storage` nebo `var/log`),
+  3. composer,
+  4. npm install a build,
+  5. Laravel: `migrate`, `storage:link`, `optimize`;
+     Symfony: Doctrine migrace, `asset-map:compile`, `cache:warmup`,
+  6. atomické přepnutí `current`,
+  7. reload FPM, nebo restart aplikace (worker režim, Node), a restart workerů
+     (Horizon, Reverb, Pulse, Messenger…),
+  8. kontrola, že web odpovídá; když ne, návrat na předchozí release,
+  9. smazání starých releasů.
+- **Když build selže,** `current` se nepřepne a nový release se smaže. Web
+  nemá výpadek.
+- **Rollback** jde na kterýkoli z držených releasů. **`.env`** se edituje
+  přímo na stránce Deploy (čte i zapisuje se jako uživatel webu).
+
 ## Struktura webu
 
 ```
@@ -190,3 +218,6 @@ později jen doinstalovat (Fáze 4).
   Reverb a Pulse.
 - **Fáze 4:** databáze se zálohami, phpMyAdmin a Adminer, SSL přehled,
   naplánované úlohy a monitoring.
+- **Deploy pipeline:** git a deploy klíč, build v sandboxu pod uživatelem webu,
+  atomické přepnutí, restart služeb, health-check, automatický rollback, editor
+  `.env`.

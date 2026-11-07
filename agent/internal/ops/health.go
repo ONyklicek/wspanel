@@ -23,10 +23,15 @@ func siteHealth(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	return probeSite(ctx, env, l), nil
+}
+
+// probeSite sends one HTTP request straight to the site's backend.
+func probeSite(ctx context.Context, env *Env, l siteLayout) map[string]any {
 	out := map[string]any{"domain": l.Domain, "mode": l.Mode, "upstream": l.Upstream}
 	if env.Cfg.DryRun {
 		out["ok"], out["status"], out["dry_run"] = true, 200, true
-		return out, nil
+		return out
 	}
 
 	network, addr := "tcp", l.Upstream
@@ -51,10 +56,10 @@ func siteHealth(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	out["ms"] = time.Since(start).Milliseconds()
 	if err != nil {
 		out["ok"], out["error"] = false, err.Error()
-		return out, nil
+		return out
 	}
 	resp.Body.Close()
 	out["status"] = resp.StatusCode
 	out["ok"] = resp.StatusCode < 500
-	return out, nil
+	return out
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os/user"
 	"strconv"
+	"sync"
 	"text/template"
 
 	"wspanel/agent/internal/config"
@@ -29,6 +30,10 @@ type Env struct {
 	Exec       executor.Executor
 	FS         *fsx.FS
 	ConfigPath string // to persist config changes (engine.install)
+	// Mutate is the server's lock for mutating operations. Long async jobs
+	// (deploys) are not mutating as a whole and take it only for the short
+	// privileged part. Nil in tests.
+	Mutate *sync.Mutex
 }
 
 type Handler func(ctx context.Context, env *Env, params json.RawMessage) (any, error)
@@ -42,7 +47,7 @@ type Op struct {
 
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
-var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true}
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -76,6 +81,14 @@ func Registry() map[string]Op {
 		{"cron.add", true, cronAdd},
 		{"cron.edit", true, cronEdit},
 		{"cron.remove", true, cronRemove},
+		{"deploy.config", true, deployConfigure},
+		{"deploy.key", true, deployKey},
+		{"deploy.run", false, deployRun}, // async; locks Mutate only to activate
+		{"deploy.log", false, deployLog},
+		{"deploy.history", false, deployHistory},
+		{"deploy.rollback", true, deployRollback},
+		{"env.get", false, envGet},
+		{"env.set", true, envSet},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},

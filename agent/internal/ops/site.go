@@ -454,6 +454,9 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if p.Confirm != p.Domain {
 		return nil, protocol.Invalid("confirm: must equal domain")
 	}
+	if deployInProgress(p.Domain) {
+		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	}
 	l, err := layout(env.Cfg, siteState{Domain: p.Domain})
 	if err != nil {
 		return nil, err

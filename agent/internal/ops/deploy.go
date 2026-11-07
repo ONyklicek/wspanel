@@ -1,0 +1,718 @@
+package ops
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"wspanel/agent/internal/fsx"
+	"wspanel/agent/internal/protocol"
+	"wspanel/agent/internal/validate"
+)
+
+// Deploy pipeline. Everything that runs code from the repository (git hooks,
+// composer scripts, npm scripts, artisan, bin/console) runs as the site user
+// in a sandboxed transient systemd unit, never as root. The agent itself only
+// does the privileged part: switching the release, reloading/restarting the
+// site's services, health check and rollback.
+//
+//	releases/<UTC timestamp>  new release (git clone)
+//	shared/                   linked into it (.env, storage / var/log)
+//	current -> releases/...   switched atomically after a successful build
+
+type deployConfig struct {
+	Repo         string `json:"repo"`
+	Branch       string `json:"branch"`
+	Migrate      bool   `json:"migrate"`       // run database migrations
+	Assets       bool   `json:"assets"`        // npm ci + npm run build when package.json exists
+	AutoRollback bool   `json:"auto_rollback"` // switch back when the new release does not answer
+	Keep         int    `json:"keep"`          // releases to keep
+}
+
+var (
+	repoHTTPSRe = regexp.MustCompile(`^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/[A-Za-z0-9._~/-]+$`)
+	repoSCPRe   = regexp.MustCompile(`^git@[A-Za-z0-9.-]+:[A-Za-z0-9._~/-]+$`)
+	repoSSHRe   = regexp.MustCompile(`^ssh://git@[A-Za-z0-9.-]+(:[0-9]{1,5})?/[A-Za-z0-9._~/-]+$`)
+	branchRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$`)
+)
+
+func (c *deployConfig) validate() error {
+	if !(repoHTTPSRe.MatchString(c.Repo) || repoSCPRe.MatchString(c.Repo) || repoSSHRe.MatchString(c.Repo)) || strings.Contains(c.Repo, "..") {
+		return protocol.Invalid("repo: https://host/path, git@host:path or ssh://git@host/path (no credentials in the URL; use the deploy key)")
+	}
+	if !branchRe.MatchString(c.Branch) || strings.Contains(c.Branch, "..") || strings.HasSuffix(c.Branch, ".lock") {
+		return protocol.Invalid("branch: invalid name")
+	}
+	if c.Keep < 2 || c.Keep > 20 {
+		return protocol.Invalid("keep: 2-20")
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------- per-site guard
+
+var deploying = struct {
+	sync.Mutex
+	sites map[string]bool
+}{sites: map[string]bool{}}
+
+func beginDeploy(domain string) bool {
+	deploying.Lock()
+	defer deploying.Unlock()
+	if deploying.sites[domain] {
+		return false
+	}
+	deploying.sites[domain] = true
+	return true
+}
+
+func endDeploy(domain string) {
+	deploying.Lock()
+	delete(deploying.sites, domain)
+	deploying.Unlock()
+}
+
+// deployInProgress is checked by operations that would pull the site away
+// under a running build (delete, mode switch).
+func deployInProgress(domain string) bool {
+	deploying.Lock()
+	defer deploying.Unlock()
+	return deploying.sites[domain]
+}
+
+func withMutate(env *Env, f func() error) error {
+	if env.Mutate != nil {
+		env.Mutate.Lock()
+		defer env.Mutate.Unlock()
+	}
+	return f()
+}
+
+// ---------------------------------------------------------------- operations
+
+func deployConfigure(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+		deployConfig
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := p.deployConfig.validate(); err != nil {
+		return nil, err
+	}
+	st, _, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	cfg := p.deployConfig
+	st.Deploy = &cfg
+	if err := saveSiteState(env, st); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// deployKey returns the site's deploy key (created on first use, as the site
+// user, in ~/.ssh): add the public half to the repository as a read-only key.
+func deployKey(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	_, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	key := filepath.Join(l.Home, ".ssh", "deploy_key")
+	pub, err := readSiteFile(ctx, env, l, key+".pub")
+	if err != nil {
+		return nil, err
+	}
+	if pub == "" {
+		if err := asUser(ctx, env, l.User, "/usr/bin/install", "-d", "-m", "0700", filepath.Join(l.Home, ".ssh")); err != nil {
+			return nil, err
+		}
+		if err := asUser(ctx, env, l.User, "/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "wspanel-deploy@"+l.Domain, "-f", key); err != nil {
+			return nil, err
+		}
+		if pub, err = readSiteFile(ctx, env, l, key+".pub"); err != nil {
+			return nil, err
+		}
+	}
+	return map[string]string{"public_key": strings.TrimSpace(pub)}, nil
+}
+
+type deployRecord struct {
+	ID       string    `json:"id"` // = release name
+	Started  time.Time `json:"started"`
+	Finished time.Time `json:"finished,omitzero"`
+	Status   string    `json:"status"` // running | success | failed | rolled_back
+	Commit   string    `json:"commit,omitempty"`
+	Error    string    `json:"error,omitempty"`
+}
+
+func historyPath(env *Env, domain string) string {
+	return filepath.Join(env.Cfg.StateDir, "deploys", domain+".json")
+}
+
+func loadHistory(env *Env, domain string) []deployRecord {
+	var h []deployRecord
+	if b, err := os.ReadFile(historyPath(env, domain)); err == nil {
+		_ = json.Unmarshal(b, &h)
+	}
+	return h
+}
+
+func saveRecord(env *Env, domain string, r deployRecord) {
+	h := loadHistory(env, domain)
+	i := slices.IndexFunc(h, func(x deployRecord) bool { return x.ID == r.ID })
+	if i >= 0 {
+		h[i] = r
+	} else {
+		h = append(h, r)
+	}
+	if len(h) > 50 {
+		h = h[len(h)-50:]
+	}
+	b, _ := json.MarshalIndent(h, "", "  ")
+	_ = env.FS.MkdirAll(filepath.Dir(historyPath(env, domain)), 0o700, fsx.Root)
+	_ = env.FS.WriteFile(historyPath(env, domain), b, 0o600, fsx.Root)
+}
+
+func deployLogPath(env *Env, domain, id string) string {
+	return filepath.Join(env.Cfg.DeployLogDir, domain+"-"+id+".log")
+}
+
+func deployHistory(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	st, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	h := loadHistory(env, p.Domain)
+	if h == nil {
+		h = []deployRecord{}
+	}
+	slices.Reverse(h)
+	current, _ := currentRelease(l)
+	return map[string]any{"deploys": h, "releases": listReleases(l), "current": current, "config": st.Deploy, "running": deployInProgress(p.Domain)}, nil
+}
+
+// deployLog returns the build log from `offset` (the panel polls it live).
+func deployLog(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+		ID     string `json:"id"`
+		Offset int64  `json:"offset"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := validate.Domain(p.Domain); err != nil {
+		return nil, err
+	}
+	if !releaseNameRe.MatchString(p.ID) || p.Offset < 0 {
+		return nil, protocol.Invalid("id/offset")
+	}
+	f, err := os.Open(deployLogPath(env, p.Domain, p.ID))
+	if err != nil {
+		return nil, protocol.NotFound("no log for deploy " + p.ID)
+	}
+	defer f.Close()
+	if _, err := f.Seek(p.Offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+	b, _ := io.ReadAll(io.LimitReader(f, 256<<10))
+	h := loadHistory(env, p.Domain)
+	status := "unknown"
+	if i := slices.IndexFunc(h, func(x deployRecord) bool { return x.ID == p.ID }); i >= 0 {
+		status = h[i].Status
+	}
+	return map[string]any{"content": strings.ToValidUTF8(string(b), "?"), "offset": p.Offset + int64(len(b)), "status": status}, nil
+}
+
+// listReleases: "initial" (the placeholder) first, then timestamps in order.
+func listReleases(l siteLayout) []string {
+	entries, _ := os.ReadDir(filepath.Join(l.Home, "releases"))
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() && releaseNameRe.MatchString(e.Name()) {
+			out = append(out, e.Name())
+		}
+	}
+	slices.SortFunc(out, func(a, b string) int {
+		if a == "initial" {
+			return -1
+		}
+		if b == "initial" {
+			return 1
+		}
+		return strings.Compare(a, b)
+	})
+	if out == nil {
+		out = []string{}
+	}
+	return out
+}
+
+// deployRun is an async job. Build steps run unprivileged and without the
+// global lock; activation takes it.
+func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	st, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if st.Deploy == nil {
+		return nil, protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
+	}
+	if !beginDeploy(p.Domain) {
+		return nil, protocol.Conflict("a deploy of " + p.Domain + " is already running")
+	}
+	defer endDeploy(p.Domain)
+
+	release := time.Now().UTC().Format("20060102T150405Z")
+	rec := deployRecord{ID: release, Started: time.Now().UTC(), Status: "running"}
+	saveRecord(env, p.Domain, rec)
+	if err := env.FS.MkdirAll(env.Cfg.DeployLogDir, 0o700, fsx.Root); err != nil {
+		return nil, err
+	}
+	logf, err := os.OpenFile(deployLogPath(env, p.Domain, release), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	defer logf.Close()
+	d := &deployment{env: env, l: l, cfg: *st.Deploy, release: release, log: logf}
+
+	result, err := d.run(ctx)
+	rec.Finished = time.Now().UTC()
+	rec.Commit = d.commit
+	switch {
+	case err != nil:
+		rec.Status, rec.Error = "failed", err.Error()
+		d.logf("\n✗ deploy failed: %v\n", err)
+	case result == "rolled_back":
+		rec.Status, rec.Error = "rolled_back", "the new release did not answer; switched back"
+		d.logf("\n↩ rolled back to the previous release\n")
+	default:
+		rec.Status = "success"
+		d.logf("\n✓ deployed %s (%s)\n", release, shortCommit(d.commit))
+	}
+	saveRecord(env, p.Domain, rec)
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
+func shortCommit(c string) string {
+	if len(c) > 12 {
+		return c[:12]
+	}
+	return c
+}
+
+type deployment struct {
+	env     *Env
+	l       siteLayout
+	cfg     deployConfig
+	release string
+	log     io.Writer
+	commit  string
+}
+
+func (d *deployment) logf(format string, a ...any) { fmt.Fprintf(d.log, format, a...) }
+
+func (d *deployment) dir() string { return filepath.Join(d.l.Home, "releases", d.release) }
+
+// step runs one command as the site user in a sandboxed transient unit,
+// streaming its output into the log.
+func (d *deployment) step(ctx context.Context, title, workdir string, env []string, argv ...string) error {
+	d.logf("\n==> %s\n$ %s\n", title, strings.Join(argv, " "))
+	l := d.l
+	tools := filepath.Join(d.env.Cfg.ToolsDir, l.User)
+	args := []string{
+		"--wait", "--pipe", "--quiet", "--collect", "--service-type=exec",
+		"--unit=wspanel-" + l.User + "-deploy-" + strconv.FormatInt(time.Now().UnixNano(), 36),
+		"--uid=" + l.User, "--gid=" + l.User,
+		"--working-directory=" + workdir,
+		"-p", "UMask=0027", "-p", "NoNewPrivileges=yes", "-p", "PrivateTmp=yes", "-p", "PrivateDevices=yes",
+		"-p", "ProtectSystem=strict", "-p", "ProtectHome=yes", "-p", "ReadWritePaths=" + l.Home,
+		"-p", "ProtectKernelTunables=yes", "-p", "ProtectKernelModules=yes", "-p", "ProtectControlGroups=yes",
+		"-p", "RestrictSUIDSGID=yes", "-p", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
+		"-p", "SocketBindDeny=any", "-p", "CapabilityBoundingSet=",
+		"-p", "InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent -/var/lib/panel-proxy -/etc/panel-proxy",
+		"-p", "RuntimeMaxSec=1800",
+		"--setenv=HOME=" + l.Home, "--setenv=PATH=" + tools + ":/usr/local/bin:/usr/bin:/bin",
+		"--setenv=COMPOSER_HOME=" + l.Home + "/tmp/composer", "--setenv=npm_config_cache=" + l.Home + "/tmp/npm",
+		"--setenv=COMPOSER_NO_INTERACTION=1", "--setenv=CI=1",
+		"--setenv=GIT_SSH_COMMAND=ssh -i " + l.Home + "/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=" + l.Home + "/.ssh/known_hosts",
+	}
+	for _, e := range env {
+		args = append(args, "--setenv="+e)
+	}
+	args = append(args, "--")
+	args = append(args, argv...)
+	_, err := d.env.Exec.RunLog(ctx, d.log, "systemd-run", args...)
+	if err != nil {
+		return fmt.Errorf("%s failed", title)
+	}
+	return nil
+}
+
+func (d *deployment) exists(rel string) bool {
+	return fsx.Exists(filepath.Join(d.dir(), rel))
+}
+
+func (d *deployment) php() string { return filepath.Join(d.env.Cfg.ToolsDir, d.l.User, "php") }
+
+func (d *deployment) npm() string { return filepath.Join(d.env.Cfg.ToolsDir, d.l.User, "npm") }
+
+func (d *deployment) run(ctx context.Context) (string, error) {
+	l, dir := d.l, d.dir()
+	d.logf("Deploy of %s (%s, %s mode)\nrepository %s, branch %s\n", l.Domain, l.Framework, l.Mode, d.cfg.Repo, d.cfg.Branch)
+
+	cleanup := func() { _ = asUser(context.WithoutCancel(ctx), d.env, l.User, "/usr/bin/rm", "-rf", "--", dir) }
+
+	// 1. Source.
+	if err := d.step(ctx, "Fetch source", filepath.Join(l.Home, "releases"), nil,
+		"/usr/bin/git", "clone", "--depth=1", "--single-branch", "--branch", d.cfg.Branch, "--", d.cfg.Repo, dir); err != nil {
+		cleanup()
+		return "", err
+	}
+	var commit strings.Builder
+	_, _ = d.env.Exec.RunIO(ctx, nil, &commit, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+		"/usr/bin/git", "-c", "safe.directory="+dir, "-C", dir, "rev-parse", "HEAD")
+	d.commit = strings.TrimSpace(commit.String())
+	d.logf("commit %s\n", d.commit)
+
+	// 2. Shared files and directories.
+	if err := d.linkShared(ctx); err != nil {
+		cleanup()
+		return "", err
+	}
+
+	// 3. Build.
+	if err := d.build(ctx); err != nil {
+		cleanup()
+		return "", err
+	}
+
+	// 4. Activate (privileged part, under the global lock).
+	previous, _ := currentRelease(l)
+	result := "success"
+	err := withMutate(d.env, func() error {
+		if l.Mode == "classic" {
+			if err := grantWebAccess(ctx, d.env, l, d.release); err != nil {
+				return err
+			}
+		}
+		if err := d.switchTo(ctx, d.release); err != nil {
+			return err
+		}
+		d.restartServices(ctx)
+		if ok, why := d.healthy(ctx); !ok {
+			d.logf("\nthe new release does not answer: %s\n", why)
+			if d.cfg.AutoRollback && previous != "" && previous != d.release {
+				if err := d.switchTo(ctx, previous); err != nil {
+					return fmt.Errorf("rollback failed: %w", err)
+				}
+				d.restartServices(ctx)
+				result = "rolled_back"
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// 5. Old releases.
+	d.prune(ctx)
+	return result, nil
+}
+
+// linkShared links the persistent parts of shared/ into the release.
+func (d *deployment) linkShared(ctx context.Context) error {
+	l, dir := d.l, d.dir()
+	d.logf("\n==> Link shared files\n")
+	link := func(target, name string) error {
+		_ = asUser(ctx, d.env, l.User, "/usr/bin/rm", "-rf", "--", filepath.Join(dir, name))
+		if err := asUser(ctx, d.env, l.User, "/usr/bin/install", "-d", "-m", "0750", filepath.Dir(filepath.Join(dir, name))); err != nil {
+			return err
+		}
+		return asUser(ctx, d.env, l.User, "/usr/bin/ln", "-s", "--", target, filepath.Join(dir, name))
+	}
+	shared := filepath.Join(l.Home, "shared")
+	var links [][2]string
+	if f := sharedEnvFile(l.Framework); f != "" {
+		links = append(links, [2]string{filepath.Join(shared, f), f})
+	}
+	switch l.Framework {
+	case "laravel":
+		links = append(links, [2]string{filepath.Join(shared, "storage"), "storage"})
+	case "symfony":
+		links = append(links, [2]string{filepath.Join(shared, "var", "log"), "var/log"})
+	}
+	for _, lk := range links {
+		d.logf("%s -> %s\n", lk[1], lk[0])
+		if err := link(lk[0], lk[1]); err != nil {
+			return fmt.Errorf("linking %s failed: %w", lk[1], err)
+		}
+	}
+	return nil
+}
+
+func (d *deployment) build(ctx context.Context) error {
+	l, dir := d.l, d.dir()
+	php := d.php()
+	if l.Framework != "nuxt" && l.Framework != "next" && l.Framework != "node" && d.exists("composer.json") {
+		if err := d.step(ctx, "Composer", dir, nil, php, "/usr/bin/composer", "install", "--no-dev", "--optimize-autoloader", "--no-interaction", "--no-progress", "--prefer-dist"); err != nil {
+			return err
+		}
+	}
+	if (d.cfg.Assets || l.Mode == "node") && d.exists("package.json") {
+		install := []string{d.npm(), "install", "--no-audit", "--no-fund"}
+		if d.exists("package-lock.json") {
+			install = []string{d.npm(), "ci", "--no-audit", "--no-fund"}
+		}
+		if err := d.step(ctx, "npm install", dir, nil, install...); err != nil {
+			return err
+		}
+		if err := d.step(ctx, "npm run build", dir, []string{"NODE_ENV=production"}, d.npm(), "run", "build", "--if-present"); err != nil {
+			return err
+		}
+	}
+	switch l.Framework {
+	case "laravel":
+		if d.cfg.Migrate {
+			if err := d.step(ctx, "Migrations", dir, nil, php, "artisan", "migrate", "--force"); err != nil {
+				return err
+			}
+		}
+		if err := d.step(ctx, "Storage link", dir, nil, php, "artisan", "storage:link", "--force"); err != nil {
+			return err
+		}
+		if err := d.step(ctx, "Optimize", dir, nil, php, "artisan", "optimize"); err != nil {
+			return err
+		}
+	case "symfony":
+		prod := []string{"APP_ENV=prod", "APP_DEBUG=0"}
+		if d.cfg.Migrate && d.exists("config/packages/doctrine_migrations.yaml") {
+			if err := d.step(ctx, "Migrations", dir, prod, php, "bin/console", "doctrine:migrations:migrate", "--no-interaction", "--allow-no-migration"); err != nil {
+				return err
+			}
+		}
+		if d.exists("importmap.php") {
+			if err := d.step(ctx, "Asset map", dir, prod, php, "bin/console", "asset-map:compile"); err != nil {
+				return err
+			}
+		}
+		if err := d.step(ctx, "Cache warmup", dir, prod, php, "bin/console", "cache:warmup"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// switchTo points current at a release atomically (as the site user: the
+// link lives in its home).
+func (d *deployment) switchTo(ctx context.Context, release string) error {
+	l := d.l
+	tmp := filepath.Join(l.Home, "current.wspanel-new")
+	_ = asUser(ctx, d.env, l.User, "/usr/bin/rm", "-f", "--", tmp)
+	if err := asUser(ctx, d.env, l.User, "/usr/bin/ln", "-s", "--", "releases/"+release, tmp); err != nil {
+		return err
+	}
+	if err := asUser(ctx, d.env, l.User, "/usr/bin/mv", "-T", "-f", "--", tmp, filepath.Join(l.Home, "current")); err != nil {
+		return err
+	}
+	d.logf("\n==> current -> releases/%s\n", release)
+	return nil
+}
+
+// restartServices makes the site pick up the release: graceful FPM reload
+// (OPcache, realpath cache), restart of the app (worker / Node keep code in
+// memory) and of the site's workers. Errors are logged, not fatal: the
+// health check decides.
+func (d *deployment) restartServices(ctx context.Context) {
+	l := d.l
+	var units []string
+	switch l.Mode {
+	case "classic":
+		unit := strings.ReplaceAll(d.env.Cfg.FPMUnit, "{version}", l.PHPVersion)
+		if _, err := d.env.Exec.Run(ctx, "systemctl", "reload", unit); err != nil {
+			d.logf("reload %s: %v\n", unit, err)
+		}
+	default:
+		units = append(units, l.AppUnit)
+	}
+	for _, u := range siteWorkerUnits(d.env.Cfg, l.User) {
+		units = append(units, filepath.Base(u))
+	}
+	for _, u := range units {
+		if _, err := d.env.Exec.Run(ctx, "systemctl", "restart", u); err != nil {
+			d.logf("restart %s: %v\n", u, err)
+		} else {
+			d.logf("restarted %s\n", u)
+		}
+	}
+}
+
+func (d *deployment) healthy(ctx context.Context) (bool, string) {
+	var last string
+	for i := 0; i < 10; i++ { // apps need a moment to start after a restart
+		res := probeSite(ctx, d.env, d.l)
+		if res["ok"] == true {
+			d.logf("health: HTTP %v\n", res["status"])
+			return true, ""
+		}
+		last = fmt.Sprintf("%v %v", res["status"], res["error"])
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err().Error()
+		case <-time.After(time.Second):
+		}
+	}
+	return false, strings.TrimSpace(last)
+}
+
+// prune keeps the newest cfg.Keep releases; never the current one.
+func (d *deployment) prune(ctx context.Context) {
+	l := d.l
+	current, _ := currentRelease(l)
+	rels := listReleases(l)
+	for i := 0; i < len(rels)-d.cfg.Keep; i++ {
+		if rels[i] == current {
+			continue
+		}
+		if err := asUser(ctx, d.env, l.User, "/usr/bin/rm", "-rf", "--", filepath.Join(l.Home, "releases", rels[i])); err == nil {
+			d.logf("removed old release %s\n", rels[i])
+		}
+	}
+}
+
+func deployRollback(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain  string `json:"domain"`
+		Release string `json:"release,omitempty"` // default: the one before current
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	st, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if deployInProgress(p.Domain) {
+		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	}
+	current, err := currentRelease(l)
+	if err != nil {
+		return nil, err
+	}
+	rels := listReleases(l)
+	target := p.Release
+	if target == "" {
+		i := slices.Index(rels, current)
+		if i <= 0 {
+			return nil, protocol.Invalid("no release before " + current)
+		}
+		target = rels[i-1]
+	}
+	if !slices.Contains(rels, target) || target == current {
+		return nil, protocol.Invalid("release: not an available release other than the current one")
+	}
+	cfg := deployConfig{Keep: 20}
+	if st.Deploy != nil {
+		cfg = *st.Deploy
+	}
+	var logBuf strings.Builder
+	d := &deployment{env: env, l: l, cfg: cfg, release: target, log: &logBuf}
+	if l.Mode == "classic" {
+		if err := grantWebAccess(ctx, env, l, target); err != nil {
+			return nil, err
+		}
+	}
+	if err := d.switchTo(ctx, target); err != nil {
+		return nil, err
+	}
+	d.restartServices(ctx)
+	ok, why := d.healthy(ctx)
+	return map[string]any{"current": target, "previous": current, "healthy": ok, "health_error": why, "log": logBuf.String()}, nil
+}
+
+// ---------------------------------------------------------------- env file
+
+func envGet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string `json:"domain"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	_, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	path := envFilePath(l)
+	if path == "" {
+		return nil, protocol.NotFound(p.Domain + " has no env file")
+	}
+	content, err := readSiteFile(ctx, env, l, path)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"path": path, "content": content}, nil
+}
+
+func envSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain  string `json:"domain"`
+		Content string `json:"content"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if len(p.Content) > 64<<10 || !utf8.ValidString(p.Content) || strings.ContainsRune(p.Content, 0) {
+		return nil, protocol.Invalid("content: UTF-8 text up to 64 KiB")
+	}
+	_, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	path := envFilePath(l)
+	if path == "" {
+		return nil, protocol.NotFound(p.Domain + " has no env file")
+	}
+	if !strings.HasSuffix(p.Content, "\n") && p.Content != "" {
+		p.Content += "\n"
+	}
+	if err := writeSiteFile(ctx, env, l, path, p.Content); err != nil {
+		return nil, err
+	}
+	return map[string]any{"path": path, "bytes": len(p.Content)}, nil
+}

@@ -62,7 +62,9 @@ const (
 )
 
 func New(env *ops.Env, a *audit.Log, log *slog.Logger) *Server {
-	return &Server{Env: env, Audit: a, Log: log, ops: ops.Registry(), jobs: map[string]*job{}}
+	s := &Server{Env: env, Audit: a, Log: log, ops: ops.Registry(), jobs: map[string]*job{}}
+	env.Mutate = &s.mutate
+	return s
 }
 
 // Listen creates the socket with mode 0660 and group SocketGroup. The umask

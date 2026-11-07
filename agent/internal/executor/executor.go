@@ -27,6 +27,8 @@ type Executor interface {
 	// RunIO is Run with stdin and stdout streams (dumps, restores, file
 	// contents). stdout may be nil to capture it in Result. No timeout beyond ctx.
 	RunIO(ctx context.Context, stdin io.Reader, stdout io.Writer, name string, args ...string) (Result, error)
+	// RunLog streams stdout and stderr, interleaved, into w (build logs).
+	RunLog(ctx context.Context, w io.Writer, name string, args ...string) (Result, error)
 }
 
 // DefaultTimeout bounds every command.
@@ -46,6 +48,29 @@ func (r *Real) Run(ctx context.Context, name string, args ...string) (Result, er
 	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
 	return r.RunIO(ctx, nil, nil, name, args...)
+}
+
+func (r *Real) RunLog(ctx context.Context, w io.Writer, name string, args ...string) (Result, error) {
+	path, ok := r.bins[name]
+	if !ok {
+		return Result{ExitCode: -1}, fmt.Errorf("executor: %q is not an allowed binary", name)
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = r.env
+	cmd.Dir = "/"
+	cmd.Stdout, cmd.Stderr = w, w
+	err := cmd.Run()
+	res := Result{}
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			res.ExitCode = ee.ExitCode()
+		} else {
+			res.ExitCode = -1
+		}
+		return res, fmt.Errorf("%s: %v", name, err)
+	}
+	return res, nil
 }
 
 func (r *Real) RunIO(ctx context.Context, stdin io.Reader, out io.Writer, name string, args ...string) (Result, error) {
@@ -107,6 +132,10 @@ type DryRun struct {
 
 func (d *DryRun) Run(ctx context.Context, name string, args ...string) (Result, error) {
 	return d.RunIO(ctx, nil, nil, name, args...)
+}
+
+func (d *DryRun) RunLog(ctx context.Context, w io.Writer, name string, args ...string) (Result, error) {
+	return d.RunIO(ctx, nil, w, name, args...)
 }
 
 // RunIO records stdin (for tests); Responder output is written to stdout.
