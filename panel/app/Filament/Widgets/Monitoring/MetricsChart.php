@@ -9,7 +9,7 @@ use Filament\Widgets\ChartWidget;
 /** Line chart over the recorded history, with a range filter. */
 abstract class MetricsChart extends ChartWidget
 {
-    public ?string $filter = '24h';
+    public ?string $filter = '1h';
 
     protected ?string $pollingInterval = '60s';
 
