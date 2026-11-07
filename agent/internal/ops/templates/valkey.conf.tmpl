@@ -1,6 +1,7 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
-# The site's own Valkey: unix socket only (no TCP), reachable by the site user.
-port 0
+# The site's own Valkey: 127.0.0.1:{{.Port}} and a unix socket, both behind the site's password.
+bind 127.0.0.1
+port {{.Port}}
 unixsocket {{.Socket}}
 unixsocketperm 700
 protected-mode yes
@@ -17,3 +18,5 @@ save 3600 1 300 100 60 10000
 {{- else}}
 save ""
 {{- end}}
+# requirepass: copied at start from a root-only file into the 0700 runtime dir
+include {{.AuthInclude}}

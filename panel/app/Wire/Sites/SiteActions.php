@@ -604,7 +604,7 @@ final class SiteActions
             ->icon('outline:bolt')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "Valkey pro {$record->domain}")
-            ->modalDescription('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu, jen přes unix socket, takže na něj žádný jiný web nedosáhne. Připojení se zapíše do .env (REDIS_HOST, REDIS_URL).')
+            ->modalDescription('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).')
             ->fillFormUsing(fn (Site $record) => [
                 'enabled' => $record->valkey !== null,
                 'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,

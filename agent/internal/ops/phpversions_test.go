@@ -149,3 +149,14 @@ func TestPHPInstallAddsAVersion(t *testing.T) {
 		t.Fatalf("second install: %v %v", out, err)
 	}
 }
+
+func TestAptRemovalsSeeDependents(t *testing.T) {
+	sim := "Reading package lists...\nRemv php8.4-redis [6.3.0-2]\nRemv php8.4-igbinary [3.2.16-1]\n"
+	got := aptRemovals(sim, "php8.4-igbinary")
+	if len(got) != 1 || got[0] != "php8.4-redis" {
+		t.Fatalf("got %v", got)
+	}
+	if aptRemovals("Remv php8.4-xdebug [3.4]\n", "php8.4-xdebug") != nil {
+		t.Error("only the package itself: nothing else")
+	}
+}

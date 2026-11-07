@@ -152,6 +152,15 @@ func phpExtension(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 		if !slices.Contains(installed, p.Extension) {
 			return map[string]any{"version": p.Version, "extension": p.Extension, "changed": false}, nil
 		}
+		// apt also removes what depends on the package (php-redis needs
+		// igbinary): ask first, and refuse rather than take more than asked.
+		sim, err := env.Exec.Run(ctx, "apt-get", "remove", "--simulate", "-q", pkg)
+		if err != nil {
+			return nil, err
+		}
+		if others := aptRemovals(sim.Stdout, pkg); len(others) > 0 {
+			return nil, protocol.Conflict("extension " + p.Extension + " is needed by " + strings.Join(others, ", ") + "; remove those first")
+		}
 		if _, err := env.Exec.RunIO(ctx, nil, nil, "apt-get", "remove", "-y", "-q", pkg); err != nil {
 			return nil, err
 		}
@@ -273,4 +282,16 @@ func persistConfigKey(env *Env, key string, value any) error {
 		return err
 	}
 	return env.FS.WriteFile(env.ConfigPath, out.Bytes(), 0o600, fsx.Root)
+}
+
+// aptRemovals lists the packages a simulated removal would take besides pkg.
+func aptRemovals(simulated, pkg string) []string {
+	var out []string
+	for _, line := range strings.Split(simulated, "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && f[0] == "Remv" && f[1] != pkg {
+			out = append(out, f[1])
+		}
+	}
+	return out
 }

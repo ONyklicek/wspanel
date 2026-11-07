@@ -24,13 +24,15 @@ func TestValkeyPerSite(t *testing.T) {
 		t.Fatalf("output %v", out)
 	}
 	conf, _ := os.ReadFile(filepath.Join(env.Cfg.SiteConfigDir, "web_kv_example_com.valkey.conf"))
-	for _, want := range []string{"port 0\n", "unixsocket " + socket, "unixsocketperm 700", "maxmemory 64mb", "maxmemory-policy allkeys-lru", `save ""`} {
+	for _, want := range []string{"bind 127.0.0.1\n", "port 30600\n", "unixsocket " + socket, "unixsocketperm 700", "maxmemory 64mb", "maxmemory-policy allkeys-lru", `save ""`, "include /run/wspanel-valkey/web_kv_example_com/auth.conf"} {
 		if !strings.Contains(string(conf), want) {
 			t.Errorf("config missing %q:\n%s", want, conf)
 		}
 	}
 	unit, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_kv_example_com-valkey.service"))
-	for _, want := range []string{"User=web_kv_example_com", "RuntimeDirectory=wspanel-valkey/web_kv_example_com", "RuntimeDirectoryMode=0700", "MemoryMax=160M", "ProtectSystem=strict"} {
+	for _, want := range []string{"User=web_kv_example_com", "RuntimeDirectory=wspanel-valkey/web_kv_example_com", "RuntimeDirectoryMode=0700", "MemoryMax=160M", "ProtectSystem=strict",
+		"ExecStartPre=+/usr/bin/install -m 0400 -o web_kv_example_com " + filepath.Join(env.Cfg.StateDir, "valkey/web_kv_example_com.auth") + " /run/wspanel-valkey/web_kv_example_com/auth.conf",
+		"SocketBindAllow=tcp:30600", "SocketBindDeny=any"} {
 		if !strings.Contains(string(unit), want) {
 			t.Errorf("unit missing %q:\n%s", want, unit)
 		}
@@ -44,8 +46,16 @@ func TestValkeyPerSite(t *testing.T) {
 			env2 = c.Stdin
 		}
 	}
-	if !strings.Contains(env2, `REDIS_HOST="`+socket+`"`) || !strings.Contains(env2, `REDIS_PORT="0"`) {
-		t.Errorf(".env must point to the site's socket:\n%s", env2)
+	auth, _ := os.ReadFile(filepath.Join(env.Cfg.StateDir, "valkey/web_kv_example_com.auth"))
+	pw := strings.TrimSpace(strings.TrimPrefix(string(auth), "requirepass "))
+	if len(pw) != 48 || strings.Contains(string(conf), pw) || strings.Contains(string(unit), pw) {
+		t.Fatalf("the password must exist only in the root-only credential file")
+	}
+	if fi, _ := os.Stat(filepath.Join(env.Cfg.StateDir, "valkey/web_kv_example_com.auth")); fi.Mode().Perm() != 0o600 {
+		t.Errorf("auth file mode %v", fi.Mode().Perm())
+	}
+	if !strings.Contains(env2, `REDIS_HOST="127.0.0.1"`) || !strings.Contains(env2, `REDIS_PORT="30600"`) || !strings.Contains(env2, `REDIS_PASSWORD="`+pw+`"`) {
+		t.Errorf(".env must have host, port and password:\n%s", env2)
 	}
 
 	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": false}); err != nil {
@@ -86,7 +96,7 @@ func TestValkeyStatusReadsInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	dr.Responder = func(c executor.Call) (executor.Result, error) {
-		if c.Name == "setpriv" && strings.Contains(c.String(), "valkey-cli -s") && strings.HasSuffix(c.String(), "INFO") {
+		if c.Name == "setpriv" && strings.Contains(c.String(), "valkey-cli --askpass") && strings.HasSuffix(c.String(), "INFO") {
 			return executor.Result{Stdout: "# Memory\r\nused_memory:1048576\r\nmaxmemory:67108864\r\n# Keyspace\r\ndb0:keys=12,expires=0\r\ndb1:keys=3,expires=1\r\n"}, nil
 		}
 		return executor.Result{}, nil
@@ -145,5 +155,33 @@ func TestSiteProcessesCanBeControlled(t *testing.T) {
 	}
 	if _, err := call(t, env, serviceStop, map[string]string{"service": "task", "domain": "kv.example.com", "worker": "../x"}); code(err) != "invalid_params" {
 		t.Errorf("bad task id: %v", err)
+	}
+}
+
+func TestValkeyKeepsItsPortAndPasswordWhenReconfigured(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	set := func(mb int) {
+		if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": mb}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(64)
+	auth := filepath.Join(env.Cfg.StateDir, "valkey/web_kv_example_com.auth")
+	first, _ := os.ReadFile(auth)
+	set(128)
+	second, _ := os.ReadFile(auth)
+	if string(first) != string(second) {
+		t.Error("reconfiguring must not change the password the app already has")
+	}
+	if st, _, _ := loadSite(env, "kv.example.com"); st.Valkey.Port != 30600 {
+		t.Errorf("port moved to %d", st.Valkey.Port)
+	}
+	for _, c := range dr.Calls() {
+		if strings.Contains(c.String(), strings.TrimSpace(strings.TrimPrefix(string(first), "requirepass "))) {
+			t.Errorf("password in argv: %s", c.String())
+		}
 	}
 }

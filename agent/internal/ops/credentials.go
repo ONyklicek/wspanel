@@ -57,7 +57,7 @@ func siteCredentials(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 		}
 		return m
 	}
-	if m := pick("REDIS_HOST", "REDIS_PORT", "REDIS_URL", "REDIS_SOCKET"); len(m) > 0 {
+	if m := pick("REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_URL"); len(m) > 0 {
 		out["valkey"] = m
 	}
 	if m := pick("MAIL_HOST", "MAIL_PORT", "MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM_ADDRESS", "MAILER_DSN", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"); len(m) > 0 {

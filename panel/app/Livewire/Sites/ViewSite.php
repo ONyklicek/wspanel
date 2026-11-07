@@ -139,7 +139,7 @@ class ViewSite extends ViewPage
             return 'neběží'.(isset($s['active']) ? ' ('.$s['active'].')' : '');
         }
 
-        return Number::fileSize($s['used_memory'] ?? 0, 1).' z '.$site->valkey['maxmemory_mb'].' MB · '
+        return '127.0.0.1:'.($s['port'] ?? $site->valkey['port'] ?? '?').' · '.Number::fileSize($s['used_memory'] ?? 0, 1).' z '.$site->valkey['maxmemory_mb'].' MB · '
             .Number::format($s['keys'] ?? 0).' klíčů'.($site->valkey['persist'] ? ' · ukládá na disk' : '');
     }
 

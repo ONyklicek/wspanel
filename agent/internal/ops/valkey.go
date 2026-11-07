@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,11 +19,16 @@ import (
 )
 
 // A site's own Valkey (Redis-compatible) server: a process under the site
-// user, reachable only through a unix socket in a runtime dir only that user
-// can enter. No TCP port, so no other site and no client of the server's
-// shared instance can reach it; FLUSHALL in one site never touches another.
+// user, on its own privileged port on 127.0.0.1 (what Laravel, Symfony and
+// Node clients expect) and on a unix socket in a runtime dir only that user
+// can enter. Every connection needs the site's password: the port is
+// reachable by any local process. The password is copied (as root, right
+// before start) from a root-only file into the site's 0700 runtime dir, so
+// no other site, not even one of the same client, can read it; never argv.
+// FLUSHALL in one site never touches another.
 
 type valkeyConfig struct {
+	Port        int    `json:"port"`
 	MaxMemoryMB int    `json:"maxmemory_mb"`
 	Policy      string `json:"policy"`  // maxmemory-policy
 	Persist     bool   `json:"persist"` // RDB snapshots in <home>/valkey
@@ -32,10 +39,10 @@ var valkeyPolicies = []string{"allkeys-lru", "allkeys-lfu", "volatile-lru", "noe
 const valkeyMaxMemoryMB = 65536
 
 type valkeyLayout struct {
-	Unit, UnitFile, Config, RunDir, Socket, DataDir string
-	MaxMemoryMB                                     int
-	Policy                                          string
-	Persist                                         bool
+	Unit, UnitFile, Config, RunDir, Socket, DataDir, AuthFile, AuthInclude string
+	Port, MaxMemoryMB                                                      int
+	Policy                                                                 string
+	Persist                                                                bool
 }
 
 func valkeyPaths(env *Env, l siteLayout) valkeyLayout {
@@ -47,19 +54,44 @@ func valkeyPaths(env *Env, l siteLayout) valkeyLayout {
 		RunDir:   run,
 		Socket:   filepath.Join(run, "valkey.sock"),
 		DataDir:  filepath.Join(l.Home, "valkey"),
+		// root-only source; copied into the runtime dir on each start
+		AuthFile:    filepath.Join(env.Cfg.StateDir, "valkey", l.User+".auth"),
+		AuthInclude: filepath.Join(run, "auth.conf"),
 	}
 }
 
-// valkeyEnv: how the framework finds its server (phpredis, Predis, Symfony
-// DSN, Node clients).
-func valkeyEnv(framework, socket string) ([]string, map[string]string) {
+// valkeyPassword is the site's password: kept, or made on first use.
+func valkeyPassword(env *Env, v valkeyLayout) (string, error) {
+	if b, err := os.ReadFile(v.AuthFile); err == nil {
+		if pw, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "requirepass "); ok && pw != "" {
+			return pw, nil
+		}
+	}
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	pw := hex.EncodeToString(buf)
+	if err := env.FS.MkdirAll(filepath.Dir(v.AuthFile), 0o700, fsx.Root); err != nil {
+		return "", err
+	}
+	return pw, env.FS.WriteFile(v.AuthFile, []byte("requirepass "+pw+"\n"), 0o600, fsx.Root)
+}
+
+// valkeyEnv: how the framework finds its server (Laravel's phpredis / Predis,
+// a Symfony DSN, Node clients): 127.0.0.1, the site's port and password.
+func valkeyEnv(framework string, port int, password string) ([]string, map[string]string) {
+	p := strconv.Itoa(port)
+	url := "redis://:" + password + "@127.0.0.1:" + p
 	switch framework {
 	case "symfony":
-		return []string{"REDIS_URL"}, map[string]string{"REDIS_URL": "redis://" + socket}
+		return []string{"REDIS_URL"}, map[string]string{"REDIS_URL": url}
 	case "nuxt", "next", "node":
-		return []string{"REDIS_URL", "REDIS_SOCKET"}, map[string]string{"REDIS_URL": "unix://" + socket, "REDIS_SOCKET": socket}
+		return []string{"REDIS_URL", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"},
+			map[string]string{"REDIS_URL": url, "REDIS_HOST": "127.0.0.1", "REDIS_PORT": p, "REDIS_PASSWORD": password}
 	default: // laravel, plain PHP
-		return []string{"REDIS_CLIENT", "REDIS_HOST", "REDIS_PORT"}, map[string]string{"REDIS_CLIENT": "phpredis", "REDIS_HOST": socket, "REDIS_PORT": "0"}
+		return []string{"REDIS_CLIENT", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"},
+			map[string]string{"REDIS_CLIENT": "phpredis", "REDIS_HOST": "127.0.0.1", "REDIS_PORT": p, "REDIS_PASSWORD": password}
 	}
 }
 
@@ -87,6 +119,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 			}
 		}
 		_ = os.Remove(v.Config)
+		_ = os.Remove(v.AuthFile)
 		st.Valkey = nil
 		if err := saveSiteState(env, st); err != nil {
 			return nil, err
@@ -103,6 +136,15 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		return nil, err
 	}
 	v.MaxMemoryMB, v.Policy, v.Persist = p.MaxMemoryMB, p.Policy, p.Persist
+	if st.Valkey != nil && st.Valkey.Port > 0 {
+		v.Port = st.Valkey.Port
+	} else if v.Port, err = allocatePort(env); err != nil {
+		return nil, err
+	}
+	password, err := valkeyPassword(env, v)
+	if err != nil {
+		return nil, err
+	}
 
 	var rollback undo
 	defer func() {
@@ -143,13 +185,15 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		Home:        l.Home,
 		ExecStart:   env.Cfg.ValkeyServerBin + " " + v.Config,
 		StopTimeout: 30,
-		Extra: []string{
+		Extra: append([]string{
 			"RuntimeDirectory=" + strings.TrimPrefix(v.RunDir, "/run/"),
+			// "+": as root, outside the sandbox, after the runtime dir exists.
+			"ExecStartPre=+/usr/bin/install -m 0400 -o " + l.User + " " + v.AuthFile + " " + v.AuthInclude,
 			"RuntimeDirectoryMode=0700",
 			// The data set may grow past maxmemory by fragmentation and buffers; this is the hard stop.
 			fmt.Sprintf("MemoryMax=%dM", p.MaxMemoryMB*3/2+64),
 			"LimitNOFILE=4096",
-		},
+		}, portUnitExtra(v.Port)...),
 	}
 	if err = installService(ctx, env, v.UnitFile, data, &rollback); err != nil {
 		return nil, err
@@ -159,16 +203,16 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		if err != nil {
 			return nil, err
 		}
-		keys, values := valkeyEnv(l.Framework, v.Socket)
+		keys, values := valkeyEnv(l.Framework, v.Port, password)
 		if err = writeSiteFile(ctx, env, l, f, mergeEnvSection(content, keys, values, "Valkey (written by WSPanel)")); err != nil {
 			return nil, err
 		}
 	}
-	st.Valkey = &valkeyConfig{MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist}
+	st.Valkey = &valkeyConfig{Port: v.Port, MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist}
 	if err = saveSiteState(env, st); err != nil {
 		return nil, err
 	}
-	return map[string]any{"domain": p.Domain, "enabled": true, "socket": v.Socket, "unit": v.Unit}, nil
+	return map[string]any{"domain": p.Domain, "enabled": true, "host": "127.0.0.1", "port": v.Port, "socket": v.Socket, "unit": v.Unit}, nil
 }
 
 // installService writes, checks, enables and (re)starts a unit that does
@@ -225,7 +269,7 @@ func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 		return map[string]any{"domain": p.Domain, "enabled": false}, nil
 	}
 	v := valkeyPaths(env, l)
-	out := map[string]any{"domain": p.Domain, "enabled": true, "socket": v.Socket, "unit": v.Unit,
+	out := map[string]any{"domain": p.Domain, "enabled": true, "host": "127.0.0.1", "port": st.Valkey.Port, "socket": v.Socket, "unit": v.Unit,
 		"maxmemory_mb": st.Valkey.MaxMemoryMB, "policy": st.Valkey.Policy, "persist": st.Valkey.Persist}
 	if states, err := unitStates(ctx, env, []string{v.Unit}); err == nil && len(states) == 1 {
 		out["active"] = states[0].Active
@@ -287,8 +331,14 @@ func valkeySite(env *Env, raw json.RawMessage) (siteState, siteLayout, error) {
 // valkeyCLI talks to the site's server as the site user: the socket's
 // directory belongs to that user, who could put a link to another site's
 // socket in its place; as root the panel would then act on the other site.
+// The password goes in on stdin (--askpass), never in argv.
 func valkeyCLI(ctx context.Context, env *Env, l siteLayout, socket string, args ...string) (executor.Result, error) {
-	return env.Exec.Run(ctx, "setpriv", append(append(userCreds(l.User), env.Cfg.ValkeyCLIBin, "-s", socket), args...)...)
+	pw, err := valkeyPassword(env, valkeyPaths(env, l))
+	if err != nil {
+		return executor.Result{}, err
+	}
+	return env.Exec.RunIO(ctx, strings.NewReader(pw+"\n"), nil, "setpriv",
+		append(append(userCreds(l.User), env.Cfg.ValkeyCLIBin, "--askpass", "--no-auth-warning", "-s", socket), args...)...)
 }
 
 // removeSiteValkey is part of deleting a site.
@@ -300,5 +350,6 @@ func removeSiteValkey(ctx context.Context, env *Env, l siteLayout) error {
 		}
 	}
 	_ = os.Remove(v.Config)
+	_ = os.Remove(v.AuthFile)
 	return nil
 }

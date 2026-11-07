@@ -49,6 +49,8 @@ final class AgentMessages
         $cs = fn (string $s) => self::cs($s);
 
         return [
+            '/^extension (\S+) is needed by (.+); remove those first$/' => 'Rozšíření $1 potřebuje $2. Odeberte nejdřív je (jinak by je apt odebral také).',
+
             // Site web-server rules (site.directives)
             '/^directives: the web server refused them$/' => 'Webserver pravidla odmítl, platí dál předchozí.',
             '/^directives: the web server could not read them$/' => 'Webserver pravidlům nerozumí, platí dál předchozí.',

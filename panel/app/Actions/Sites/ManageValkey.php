@@ -43,7 +43,7 @@ class ManageValkey
         ];
         app(Limits::class)->assertValkey($site->client, $settings['maxmemory_mb']);
         $out = $this->agent->call('valkey.set', ['domain' => $site->domain, 'enabled' => true] + $settings);
-        $site->update(['valkey' => $settings + ['socket' => $out['socket'] ?? null]]);
+        $site->update(['valkey' => $settings + ['host' => $out['host'] ?? '127.0.0.1', 'port' => $out['port'] ?? null, 'socket' => $out['socket'] ?? null]]);
     }
 
     /**

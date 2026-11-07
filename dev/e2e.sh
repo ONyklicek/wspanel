@@ -446,10 +446,12 @@ php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) 
 contains "worker site gets php_ini and its worker count" "$(cat /etc/panel-sites/web_worker_localhost.Caddyfile)" "php_ini memory_limit 512M"
 php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) app(App\Actions\Sites\ManagePhpSettings::class)->set($s, []);' >/dev/null
 contains "PHP status lists FrankenPHP's extensions" "$(php 'echo json_encode(app(App\Actions\Server\ManagePhp::class)->status()["frankenphp"]);')" '"pdo_mysql"'
-expect "an extension installs" "$(php 'var_export(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "install"));' | tail -1)" "true"
-contains "and is loaded by PHP-FPM 8.4" "$(php8.4 -m 2>/dev/null)" "igbinary"
-php 'app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "remove");' >/dev/null
-expect "and is removed again" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-igbinary 2>/dev/null)" "config-files"
+expect "an extension installs" "$(php 'var_export(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "install"));' | tail -1)" "true"
+contains "and is loaded by PHP-FPM 8.4" "$(php8.4 -m 2>/dev/null)" "tidy"
+php 'app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "remove");' >/dev/null
+expect "and is removed again" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-tidy 2>/dev/null)" "config-files"
+contains "an extension others need is not removed" "$(php 'try { app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "remove"); echo "REMOVED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "redis"
+expect "and redis stays" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-redis 2>/dev/null)" "installed"
 
 # ----------------------------------------------------------------------------
 section "Domains and access at the edge"
@@ -705,17 +707,26 @@ expect "site back with the administrator keeps its own group" "$(stat -c %G /srv
 # ----------------------------------------------------------------------------
 section "Valkey per site"
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => true, 'maxmemory_mb' => 32, 'policy' => 'allkeys-lru', 'persist' => false]);" >/dev/null
-vsock=/run/wspanel-valkey/web_shop_localhost/valkey.sock
+vport=$(grep -oP '^REDIS_PORT="\K[0-9]+' /srv/sites/shop.localhost/shared/.env)
+vpass=$(grep -oP '^REDIS_PASSWORD="\K[0-9a-f]+' /srv/sites/shop.localhost/shared/.env)
+for _ in $(seq 1 20); do REDISCLI_AUTH=$vpass valkey-cli -h 127.0.0.1 -p "$vport" PING 2>/dev/null | grep -q PONG && break; sleep 0.5; done
 check "site's Valkey unit active" systemctl is-active --quiet wspanel-web_shop_localhost-valkey.service
-expect "site user reaches its Valkey" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock PING 2>&1)" "PONG"
-check "another site cannot reach it" bash -c "! runuser -u web_sf_localhost -- valkey-cli -s $vsock PING 2>/dev/null | grep -q PONG"
-check "no TCP port opened for it" bash -c "! ss -ltnp | grep -q 'valkey-server.*web_shop'"
-contains ".env points to the socket" "$(cat /srv/sites/shop.localhost/shared/.env)" "REDIS_HOST=\"$vsock\""
-runuser -u web_shop_localhost -- valkey-cli -s $vsock SET e2e:key v >/dev/null
+contains ".env has host, port and password" "$(cat /srv/sites/shop.localhost/shared/.env)" 'REDIS_HOST="127.0.0.1"'
+expect "Laravel's way works: 127.0.0.1, port, password" "$(REDISCLI_AUTH=$vpass valkey-cli -h 127.0.0.1 -p "$vport" PING 2>&1)" "PONG"
+contains "without the password it refuses" "$(valkey-cli -h 127.0.0.1 -p "$vport" GET x 2>&1)" "NOAUTH"
+check "listens only on loopback" bash -c "ss -ltn | grep -q '127.0.0.1:$vport ' && ! ss -ltn | grep -q '0.0.0.0:$vport '"
+contains "the password is in no world-readable unit or config" "$(grep -l "$vpass" /etc/systemd/system/wspanel-web_shop_localhost-valkey.service /etc/panel-sites/web_shop_localhost.valkey.conf 2>&1 || echo none)" "none"
+REDISCLI_AUTH=$vpass valkey-cli -h 127.0.0.1 -p "$vport" SET e2e:key v >/dev/null
 contains "status counts keys" "$(php "$(site shop.localhost) echo json_encode(app(App\\Actions\\Sites\\ManageValkey::class)->status(\$s));")" '"keys":1'
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->flush(\$s);" >/dev/null
-expect "flush empties it" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock DBSIZE)" "0"
-expect "maxmemory from the panel" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock CONFIG GET maxmemory | tail -1)" "33554432"
+expect "flush empties it" "$(REDISCLI_AUTH=$vpass valkey-cli -h 127.0.0.1 -p "$vport" DBSIZE)" "0"
+expect "maxmemory from the panel" "$(REDISCLI_AUTH=$vpass valkey-cli -h 127.0.0.1 -p "$vport" CONFIG GET maxmemory | tail -1)" "33554432"
+if [[ -d /srv/sites/laravel.localhost/current/vendor/laravel ]]; then # demo app (make dev-demo)
+	php "$(site laravel.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => true, 'maxmemory_mb' => 32]);" >/dev/null
+	sleep 1
+	contains "a real Laravel app uses it through phpredis (.env as written)" "$(cd /srv/sites/laravel.localhost/current && runuser -u web_laravel_localhost -- php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); Illuminate\Support\Facades\Redis::set("lv", "ok"); echo Illuminate\Support\Facades\Redis::get("lv");' 2>&1)" "ok"
+	php "$(site laravel.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]);" >/dev/null
+fi
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]);" >/dev/null
 check "disabled: unit gone" test ! -f /etc/systemd/system/wspanel-web_shop_localhost-valkey.service
 

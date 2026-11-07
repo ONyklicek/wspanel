@@ -377,16 +377,18 @@ request_body {
 Každý web si může zapnout **vlastní Valkey server** (plně kompatibilní
 s Redisem): **Další → Valkey (Redis)**.
 
-- Běží pod uživatelem webu, jen přes unix socket
-  `/run/wspanel-valkey/<uživatel>/valkey.sock`, bez TCP portu. Jiný web na něj
-  nedosáhne a `FLUSHALL` v jednom webu nesmaže data jinému.
+- Běží pod uživatelem webu na `127.0.0.1` a vlastním portu (každý web má
+  jiný) a chrání ho heslo. Port je dostupný jen ze serveru, ne z internetu;
+  bez hesla webu se nepřipojí nikdo jiný a `FLUSHALL` v jednom webu nesmaže
+  data jinému. Heslo zná jen web (je v jeho `.env`) a panel.
 - Nastavíte paměť (MB), co dělat při zaplnění (cache maže staré klíče, fronty
   a data nic nemažou) a jestli se data ukládají na disk (`<web>/valkey/`).
 - Připojení se zapíše do `.env`:
-  - Laravel / Čisté PHP: `REDIS_CLIENT=phpredis`, `REDIS_HOST=<socket>`,
-    `REDIS_PORT=0` (rozšíření `redis` je u PHP nainstalované),
-  - Symfony: `REDIS_URL=redis://<socket>`,
-  - Node: `REDIS_URL=unix://<socket>`, `REDIS_SOCKET`.
+  - Laravel / Čisté PHP: `REDIS_CLIENT=phpredis`, `REDIS_HOST=127.0.0.1`,
+    `REDIS_PORT`, `REDIS_PASSWORD`,
+  - Symfony: `REDIS_URL=redis://:<heslo>@127.0.0.1:<port>`,
+  - Node: `REDIS_URL` a `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
+  Ručně je najdete v **Přístupové údaje** webu.
 - Detail webu ukazuje obsazenou paměť a počet klíčů, odtud jde Valkey
   vyprázdnit nebo restartovat.
 - U klientů omezuje paměť balíček (**Valkey na web**, 0 = nepovoleno).
