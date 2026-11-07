@@ -1,0 +1,12 @@
+{
+  "socket": "var/agent.sock",
+  "audit_log": "var/audit.log",
+  "state_dir": "var/state",
+  "dry_run": true,
+  "sites_root": "var/dry-root/srv/sites",
+  "trash_dir": "var/dry-root/srv/sites/.trash",
+  "php_versions": ["8.3", "8.4"],
+  "db_engines": ["mariadb"],
+  "fpm_pool_dir": "var/dry-root/etc/php/{version}/fpm/pool.d",
+  "proxy_sites_dir": "var/dry-root/etc/panel-proxy/sites"
+}

@@ -1,0 +1,19 @@
+# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
+# site: {{.Domain}}  mode: classic  php: {{.PHPVersion}}  framework: {{.Framework}}
+{{.Domain}} {
+	root * {{.Home}}/current/public
+	encode zstd gzip
+
+	@hidden {
+		path */.*
+		not path /.well-known/*
+	}
+	respond @hidden 404
+
+	php_fastcgi unix/{{.Socket}} {
+		resolve_root_symlink
+	}
+	file_server
+
+	log
+}
