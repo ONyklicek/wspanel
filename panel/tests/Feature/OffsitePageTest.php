@@ -63,4 +63,40 @@ class OffsitePageTest extends TestCase
         $this->pageAction(Livewire::test(OffsitePage::class), 'configure', ['bucket' => 'Bad Bucket', 'keep_days' => 0, 'prefix' => '../x'])
             ->assertHasErrors();
     }
+
+    public function test_ftp_storage_sends_only_its_own_fields(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('offsite.set', [
+            'enabled' => true, 'type' => 'ftp', 'prefix' => 'srv1', 'keep_days' => 30,
+            'host' => 'nas.example.com', 'port' => 21, 'username' => 'backup', 'password' => 'pw',
+            'ftp_tls' => 'explicit', 'tls_pin' => '',
+        ])->andReturn([]);
+
+        $this->pageAction(Livewire::test(OffsitePage::class), 'configure', ['type' => 'ftp', 'host' => 'nas.example.com', 'port' => 21, 'username' => 'backup', 'password' => 'pw', 'ftp_tls' => 'explicit'])
+            ->assertHasNoErrors()->assertNotified('Úložiště funguje');
+    }
+
+    public function test_smb_storage_requires_a_share(): void
+    {
+        $this->agent->shouldNotReceive('call')->with('offsite.set', Mockery::any());
+
+        $this->pageAction(Livewire::test(OffsitePage::class), 'configure', ['type' => 'smb', 'host' => 'nas', 'username' => 'u', 'password' => 'p', 'share' => ''])
+            ->assertHasErrors();
+    }
+
+    public function test_an_untrusted_certificate_names_its_fingerprint(): void
+    {
+        $this->agent->shouldReceive('call')->with('offsite.set', Mockery::any())->andThrow(new AgentException('invalid_params',
+            "the storage refused a test upload: connecting to the storage failed: the server's certificate is not trusted (x509: certificate signed by unknown authority); its SHA-256 fingerprint is AB:CD:EF", 'offsite.set'));
+
+        $this->pageAction(Livewire::test(OffsitePage::class), 'configure', ['type' => 'ftp', 'host' => 'nas', 'username' => 'u', 'password' => 'p', 'ftp_tls' => 'explicit'])
+            ->assertNotified('AB:CD:EF');
+    }
+
+    public function test_the_signing_key_can_be_shown_to_keep_it(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('offsite.signing_key')->andReturn(['signing_key' => str_repeat('ab', 32)]);
+
+        $this->pageAction(Livewire::test(OffsitePage::class), 'signingKey')->assertNotified(str_repeat('ab', 32));
+    }
 }

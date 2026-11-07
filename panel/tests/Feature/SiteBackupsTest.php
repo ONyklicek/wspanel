@@ -83,7 +83,7 @@ class SiteBackupsTest extends TestCase
         $b->assertHasErrors();
 
         $this->agent->shouldReceive('call')->once()
-            ->with('site.restore', ['domain' => 'app.example.com', 'backup' => self::FILE, 'files' => true, 'databases' => true, 'confirm' => 'app.example.com'])
+            ->with('site.restore', ['domain' => 'app.example.com', 'backup' => self::FILE, 'files' => true, 'databases' => [['engine' => 'mariadb', 'name' => 'app']], 'confirm' => 'app.example.com'])
             ->andReturn(['job_id' => 'j2']);
         $this->agent->shouldReceive('call')->with('job.status', ['id' => 'j2'])->andReturn(['status' => 'done', 'output' => [
             'release' => '20261107T100000Z', 'healthy' => true, 'databases' => ['app'], 'skipped_databases' => [],
@@ -136,6 +136,9 @@ class SiteBackupsTest extends TestCase
 
         $this->agent->shouldReceive('call')->once()->with('offsite.fetch', ['domain' => 'app.example.com', 'file' => $remoteOnly])->andReturn(['job_id' => 'j3']);
         $this->tableAction($b, $remoteOnly, 'fetch')->assertNotified('Záloha je zpět na serveru');
+
+        $this->agent->shouldReceive('call')->once()->with('offsite.fetch', ['domain' => 'app.example.com', 'file' => $remoteOnly, 'unverified' => true])->andReturn(['job_id' => 'j4']);
+        $this->tableAction($b, $remoteOnly, 'fetch', ['unverified' => true])->assertNotified('Záloha je zpět na serveru');
     }
 
     public function test_a_broken_storage_is_reported_not_hidden(): void

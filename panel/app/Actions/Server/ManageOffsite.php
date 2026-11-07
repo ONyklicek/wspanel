@@ -65,27 +65,61 @@ class ManageOffsite
         }
     }
 
+    public const TYPES = ['s3' => 'S3 (Amazon S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO)', 'ftp' => 'FTP / FTPS', 'smb' => 'SMB (Windows / NAS sdílená složka)'];
+
+    public const FTP_TLS = ['explicit' => 'FTPS – explicitní TLS (port 21)', 'implicit' => 'FTPS – implicitní TLS (port 990)', 'none' => 'Bez šifrování (nedoporučeno)'];
+
     /**
      * Saves the storage; the agent tests it with an upload first. An empty
-     * secret keeps the stored one.
+     * secret / password keeps the stored one.
      *
-     * @param  array{enabled: bool, endpoint: string, region: ?string, bucket: string, prefix: ?string, path_style: bool, access_key: string, secret_key: ?string, keep_days: int}  $data
+     * @param  array<string, mixed>  $data  form data (fields of the chosen type)
      *
      * @throws AgentException
      */
     public function save(array $data): void
     {
-        $this->agent->call('offsite.set', [
-            'enabled' => (bool) $data['enabled'],
-            'endpoint' => trim($data['endpoint']),
-            'region' => trim((string) ($data['region'] ?? '')),
-            'bucket' => trim($data['bucket']),
+        $type = (string) ($data['type'] ?? 's3');
+        $params = [
+            'enabled' => (bool) ($data['enabled'] ?? false),
+            'type' => $type,
             'prefix' => trim((string) ($data['prefix'] ?? '')),
-            'path_style' => (bool) $data['path_style'],
-            'access_key' => trim($data['access_key']),
-            'secret_key' => (string) ($data['secret_key'] ?? ''),
-            'keep_days' => (int) $data['keep_days'],
-        ]);
+            'keep_days' => (int) ($data['keep_days'] ?? 30),
+        ];
+        if ($type === 's3') {
+            $params += [
+                'endpoint' => trim((string) ($data['endpoint'] ?? '')),
+                'region' => trim((string) ($data['region'] ?? '')),
+                'bucket' => trim((string) ($data['bucket'] ?? '')),
+                'path_style' => (bool) ($data['path_style'] ?? true),
+                'access_key' => trim((string) ($data['access_key'] ?? '')),
+                'secret_key' => (string) ($data['secret_key'] ?? ''),
+            ];
+        } else {
+            $params += [
+                'host' => trim((string) ($data['host'] ?? '')),
+                'port' => (int) ($data['port'] ?? 0),
+                'username' => trim((string) ($data['username'] ?? '')),
+                'password' => (string) ($data['password'] ?? ''),
+            ];
+            $params += $type === 'ftp'
+                ? ['ftp_tls' => (string) ($data['ftp_tls'] ?? 'explicit'), 'tls_pin' => trim((string) ($data['tls_pin'] ?? ''))]
+                : ['share' => trim((string) ($data['share'] ?? '')), 'smb_domain' => trim((string) ($data['smb_domain'] ?? '')), 'smb_encrypt' => (bool) ($data['smb_encrypt'] ?? true)];
+        }
+        if (trim((string) ($data['signing_key'] ?? '')) !== '') {
+            $params['signing_key'] = trim((string) $data['signing_key']);
+        }
+        $this->agent->call('offsite.set', $params);
+    }
+
+    /**
+     * The key backups are signed with: keep it to verify them on a new server.
+     *
+     * @throws AgentException
+     */
+    public function signingKey(): string
+    {
+        return (string) ($this->agent->call('offsite.signing_key')['signing_key'] ?? '');
     }
 
     /**
@@ -115,9 +149,9 @@ class ManageOffsite
     }
 
     /** @throws AgentException */
-    public function fetchSiteBackup(Site $site, string $file): bool
+    public function fetchSiteBackup(Site $site, string $file, bool $unverified = false): bool
     {
-        $job = $this->agent->call('offsite.fetch', ['domain' => $site->domain, 'file' => $file]);
+        $job = $this->agent->call('offsite.fetch', array_filter(['domain' => $site->domain, 'file' => $file, 'unverified' => $unverified]));
 
         return $this->jobs->await($job['job_id'], 60) !== null;
     }

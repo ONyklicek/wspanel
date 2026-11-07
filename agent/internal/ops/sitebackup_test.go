@@ -154,10 +154,10 @@ func TestSiteRestoreMakesANewReleaseAndKeepsTheOldState(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(home, "shared/.env"), []byte("APP_KEY=two\n"), 0o640)
 	_ = os.WriteFile(filepath.Join(home, "releases/20260101T000000Z/public/index.php"), []byte("broken"), 0o640)
 
-	if _, err := call(t, env, siteRestore, map[string]any{"domain": "app.example.com", "backup": backup, "files": true, "databases": true, "confirm": "nope"}); code(err) != protocol.CodeInvalidParams {
+	if _, err := call(t, env, siteRestore, map[string]any{"domain": "app.example.com", "backup": backup, "files": true, "databases": []map[string]string{{"engine": "mariadb", "name": "app"}}, "confirm": "nope"}); code(err) != protocol.CodeInvalidParams {
 		t.Fatal("restore without confirmation")
 	}
-	res, err := call(t, env, siteRestore, map[string]any{"domain": "app.example.com", "backup": backup, "files": true, "databases": true, "confirm": "app.example.com"})
+	res, err := call(t, env, siteRestore, map[string]any{"domain": "app.example.com", "backup": backup, "files": true, "databases": []map[string]string{{"engine": "mariadb", "name": "app"}}, "confirm": "app.example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}

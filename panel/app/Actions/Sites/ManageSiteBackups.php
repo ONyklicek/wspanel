@@ -76,8 +76,11 @@ class ManageSiteBackups
      */
     public function restore(Site $site, string $file, bool $files, bool $databases): ?array
     {
+        // Only the site's own databases: the agent restores nothing else from
+        // the archive, whatever its manifest says.
         $job = $this->agent->call('site.restore', [
-            'domain' => $site->domain, 'backup' => $file, 'files' => $files, 'databases' => $databases, 'confirm' => $site->domain,
+            'domain' => $site->domain, 'backup' => $file, 'files' => $files,
+            'databases' => $databases ? $this->databases($site) : [], 'confirm' => $site->domain,
         ]);
 
         return $this->jobs->await($job['job_id'], 120);

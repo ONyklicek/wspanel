@@ -549,8 +549,74 @@ cp "$sbdir/$sbnew" "$W/original.tar.gz" && rm -f "$sbdir/$sbnew"
 off "fetchSiteBackup(App\\Models\\Site::where('domain','shop.localhost')->sole(), '$sbnew')" >/dev/null
 check "a lost backup comes back from the storage, byte for byte" cmp "$sbdir/$sbnew" "$W/original.tar.gz"
 expect "and with the same owner and mode" "$(stat -c '%U:%G %a' "$sbdir/$sbnew")" "root:panel 640"
-off "save([$offcfg, 'enabled' => false, 'access_key' => 'E2EKEY', 'secret_key' => ''])" >/dev/null
 kill $fakes3 2>/dev/null
+
+# FTPS: a real vsftpd (no MLSD, TLS session reuse required on the data connection).
+if ! command -v vsftpd >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends vsftpd >/dev/null 2>&1; fi
+id ftpbackup >/dev/null 2>&1 || useradd -m -s /usr/sbin/nologin ftpbackup
+echo 'ftpbackup:Ftp-e2e-pass' | chpasswd
+grep -qx /usr/sbin/nologin /etc/shells || echo /usr/sbin/nologin >>/etc/shells
+[[ -f "$W/ftp.pem" ]] || openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=ftp.e2e -keyout "$W/ftp.pem" -out "$W/ftp.pem" >/dev/null 2>&1
+cat >"$W/vsftpd.conf" <<CONF
+listen=YES
+listen_port=2121
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+chroot_local_user=YES
+allow_writeable_chroot=YES
+pasv_min_port=40000
+pasv_max_port=40100
+ssl_enable=YES
+force_local_logins_ssl=YES
+force_local_data_ssl=YES
+rsa_cert_file=$W/ftp.pem
+secure_chroot_dir=/var/run/vsftpd/empty
+seccomp_sandbox=NO
+CONF
+mkdir -p /var/run/vsftpd/empty
+pkill -f "vsftpd $W/vsftpd.conf" 2>/dev/null
+vsftpd "$W/vsftpd.conf" &
+sleep 1
+ftpcfg="'enabled' => true, 'type' => 'ftp', 'host' => '127.0.0.1', 'port' => 2121, 'username' => 'ftpbackup', 'password' => 'Ftp-e2e-pass', 'ftp_tls' => 'explicit', 'prefix' => 'srv', 'keep_days' => 30"
+ftpout=$(off "save([$ftpcfg])")
+contains "an untrusted FTPS certificate is refused and its fingerprint shown" "$ftpout" "otisk SHA-256"
+fp=$(openssl x509 -in "$W/ftp.pem" -noout -fingerprint -sha256 | cut -d= -f2)
+contains "with the fingerprint pinned the storage works" "$(off "save([$ftpcfg, 'tls_pin' => '$fp'])"; off 'status()')" '"type":"ftp"'
+sb 'echo json_encode($m->backupNow($s));' >/dev/null
+ftpnew=$(ls -t "$sbdir" | grep -v pre-restore | head -1)
+check "a site backup lands on the FTP server with its signature" test -s "/home/ftpbackup/srv/sites/shop.localhost/$ftpnew" -a -s "/home/ftpbackup/srv/sites/shop.localhost/$ftpnew.sig"
+contains "and is listed" "$(off "siteCopies(App\\Models\\Site::where('domain','shop.localhost')->sole())")" "$ftpnew"
+rm -f "$sbdir/$ftpnew"
+off "fetchSiteBackup(App\\Models\\Site::where('domain','shop.localhost')->sole(), '$ftpnew')" >/dev/null
+check "fetched back from FTP, byte for byte" cmp "$sbdir/$ftpnew" "/home/ftpbackup/srv/sites/shop.localhost/$ftpnew"
+# Someone changes the copy on the storage: it is refused.
+rm -f "$sbdir/$ftpnew"
+printf x >>"/home/ftpbackup/srv/sites/shop.localhost/$ftpnew"
+contains "a changed copy is refused" "$(off "fetchSiteBackup(App\\Models\\Site::where('domain','shop.localhost')->sole(), '$ftpnew')")" "Podpis kopie nesedí"
+check "and nothing was kept" test ! -e "$sbdir/$ftpnew"
+pkill -f "vsftpd $W/vsftpd.conf" 2>/dev/null
+
+# SMB: a real Samba share; the agent installs smbclient itself.
+if ! command -v smbd >/dev/null; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends samba >/dev/null 2>&1; fi
+id smbbackup >/dev/null 2>&1 || useradd -M -s /usr/sbin/nologin smbbackup
+mkdir -p /srv/smbtest && chown smbbackup /srv/smbtest
+grep -q '^\[zalohy\]' /etc/samba/smb.conf || printf '[zalohy]\n   path = /srv/smbtest\n   read only = no\n   valid users = smbbackup\n' >>/etc/samba/smb.conf
+printf 'Smb-e2e-pass\nSmb-e2e-pass\n' | smbpasswd -s -a smbbackup >/dev/null
+systemctl restart smbd 2>/dev/null || (pkill smbd; smbd -D)
+sleep 1
+smbcfg="'enabled' => true, 'type' => 'smb', 'host' => '127.0.0.1', 'share' => 'zalohy', 'username' => 'smbbackup', 'smb_encrypt' => true, 'prefix' => 'srv', 'keep_days' => 30"
+contains "a wrong SMB password is refused" "$(off "save([$smbcfg, 'password' => 'wrong'])")" "odmítl přihlášení"
+contains "SMB share works (SMB3, encrypted)" "$(off "save([$smbcfg, 'password' => 'Smb-e2e-pass'])"; off 'status()')" '"type":"smb"'
+check "smbclient was installed by the agent" test -x /usr/bin/smbclient
+sb 'echo json_encode($m->backupNow($s));' >/dev/null
+smbnew=$(ls -t "$sbdir" | grep -v pre-restore | head -1)
+check "a site backup lands on the share with its signature" test -s "/srv/smbtest/srv/sites/shop.localhost/$smbnew" -a -s "/srv/smbtest/srv/sites/shop.localhost/$smbnew.sig"
+rm -f "$sbdir/$smbnew"
+off "fetchSiteBackup(App\\Models\\Site::where('domain','shop.localhost')->sole(), '$smbnew')" >/dev/null
+check "fetched back from SMB, byte for byte" cmp "$sbdir/$smbnew" "/srv/smbtest/srv/sites/shop.localhost/$smbnew"
+check "no SMB password on disk outside the agent's state" bash -c "! grep -rqs Smb-e2e-pass /var/lib/panel-agent/offsite-tmp /srv/panel/current/storage /var/log/panel-agent"
+off "save([$smbcfg, 'enabled' => false, 'password' => ''])" >/dev/null
 
 # ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"

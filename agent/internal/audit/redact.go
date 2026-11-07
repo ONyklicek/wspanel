@@ -12,9 +12,9 @@ import (
 // whole env file (passwords, keys) and anything named like a secret.
 var sensitive = map[string]map[string]bool{
 	"env.set":     {"content": true},
-	"site.tls":    {"key": true, "cert": true}, // private key; the chain is just bulky
-	"site.files":  {"content": true},           // edited files (.env, configs) may hold secrets
-	"offsite.set": {"secret_key": true},        // S3 credentials
+	"site.tls":    {"key": true, "cert": true},               // private key; the chain is just bulky
+	"site.files":  {"content": true},                         // edited files (.env, configs) may hold secrets
+	"offsite.set": {"secret_key": true, "signing_key": true}, // storage credentials, backup signing key
 	"*":           {"password": true, "secret": true, "token": true, "key": true, "private_key": true},
 }
 

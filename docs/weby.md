@@ -111,26 +111,56 @@ server](#zálohy-mimo-server).
 
 ### Zálohy mimo server
 
-**Server → Zálohy mimo server** nastaví úložiště kompatibilní s S3 (Amazon
-S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO, Hetzner…). Pak se každá nová
-záloha webu i databáze, ruční i plánovaná, hned nahraje i tam:
+**Server → Zálohy mimo server** nastaví úložiště mimo server. Pak se tam každá
+nová záloha webu i databáze, ruční i plánovaná, hned nahraje.
 
-- `<složka>/sites/<doména>/…` a `<složka>/db/<engine>/<databáze>/…`;
+Typy úložiště:
+
+- **S3**: Amazon S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO, Hetzner
+  Object Storage…
+- **FTP / FTPS**: šifrování explicitním TLS (port 21) nebo implicitním TLS
+  (port 990). Nešifrované FTP jde zvolit jen výslovně, pro důvěryhodnou
+  vnitřní síť. NAS s vlastním certifikátem: při testu panel ukáže otisk
+  certifikátu (SHA-256). Když ho ověříte, vložte ho do pole *Otisk
+  certifikátu* a panel bude věřit právě tomuto certifikátu.
+- **SMB**: sdílená složka NASu, Windows nebo Hetzner Storage Boxu. Šifrování
+  SMB3 je ve výchozím stavu vyžadované. Klienta `smbclient` (Samba) agent
+  doinstaluje sám.
+
+Jak kopie fungují:
+
+- leží v `<složka>/sites/<doména>/…` a `<složka>/db/<engine>/<databáze>/…`;
 - kopie starší než nastavený počet dní se mažou, nejnovější zůstává vždy;
 - zálohy pořízené před obnovou se nenahrávají.
 
-Při uložení panel do úložiště zkusí zapsat a smazat zkušební soubor; uloží se
-jen funkční nastavení. Secret key zná jen agent (root, 0600), panel ho zpět
-nedostane.
+Při uložení panel do úložiště zkusí zapsat, přečíst a smazat zkušební soubor;
+uloží se jen funkční nastavení. Hesla a klíče zná jen agent (root, 0600), panel
+je zpět nedostane a do auditu se nezapisují.
 
-Na záložce **Zálohy** u webu sloupec *Mimo server* ukazuje, co tam je.
-Starší zálohu nahrajete tlačítkem **Nahrát mimo server**. Zálohu, která už na
-serveru není (*Jen mimo server*), stáhnete akcí **Stáhnout na server** a pak ji
-obnovíte jako každou jinou. Když nahrání selže, místní záloha zůstává a
-plánovaná záloha skončí chybou, aby to bylo vidět.
+**Podpis záloh.** Ke každé kopii se ukládá podpis `<soubor>.sig` (HMAC-SHA256
+klíčem, který zná jen tento server). Zpět na server se stáhne jen kopie
+s platným podpisem. Kdo má přístup k úložišti, tedy nemůže podstrčit
+pozměněnou zálohu, která by se pak obnovila. Tlačítkem **Klíč pro ověření
+záloh** si klíč zobrazíte; uložte si ho mimo server (správce hesel). Na novém
+serveru ho vložte do nastavení úložiště a staré zálohy půjde ověřit. Kopii bez
+platného podpisu stáhnete jen výslovně (*Přijmout i kopii bez platného
+podpisu*).
 
-Zálohy obsahují `.env` a data webů: použijte soukromý bucket s klíčem jen pro
-něj, ideálně se šifrováním a verzováním zapnutým na straně úložiště.
+Obnova webu sahá jen na databáze, které k webu patří v panelu, ať archiv
+obsahuje cokoli.
+
+Na záložce **Zálohy** u webu:
+
+- sloupec *Mimo server* ukazuje, co tam je;
+- starší zálohu nahrajete tlačítkem **Nahrát mimo server**;
+- zálohu, která už na serveru není (*Jen mimo server*), stáhnete akcí
+  **Stáhnout na server** a obnovíte ji jako každou jinou.
+
+Když nahrání selže, místní záloha zůstává a plánovaná záloha skončí chybou,
+aby to bylo vidět.
+
+Zálohy obsahují `.env` a data webů. Použijte proto úložiště nebo účet jen pro
+zálohy, ideálně se šifrováním a verzováním na straně úložiště.
 
 ## Domény a přístup
 

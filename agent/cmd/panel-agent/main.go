@@ -203,6 +203,7 @@ func binaries(cfg config.Config) map[string]string {
 		"mariadb":          "/usr/bin/mariadb",
 		"mariadb-dump":     "/usr/bin/mariadb-dump",
 		"apt-get":          "/usr/bin/apt-get",
+		"smbclient":        "/usr/bin/smbclient",
 		"journalctl":       "/usr/bin/journalctl",
 		"dpkg-query":       "/usr/bin/dpkg-query",
 		"apt-cache":        "/usr/bin/apt-cache",

@@ -166,11 +166,15 @@ class BackupList extends Component
                     ->url(fn ($record) => route('site-backups.download', [$this->site, $record->file]), true),
                 Action::make('fetch')->label('Stáhnout na server')->icon('outline:cloud-arrow-down')->color('info')
                     ->visible(fn ($record) => ! $record->local)
-                    ->requiresConfirmation()
                     ->modalHeading(fn ($record) => 'Stáhnout zálohu z '.$record->created_label.' na server?')
-                    ->modalDescription('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout.')
-                    ->action(fn ($record) => $this->attempt('Stažení na server selhalo', function () use ($record) {
-                        app(ManageOffsite::class)->fetchSiteBackup($this->getSite(), $record->file)
+                    ->modalDescription('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout. Přijme se jen kopie s platným podpisem tohoto serveru.')
+                    ->form([
+                        Toggle::make('unverified')->label('Přijmout i kopii bez platného podpisu')
+                            ->helperText('Jen pro zálohy jiného serveru, jehož klíč nemáte. Kopii bez podpisu mohl kdokoli s přístupem k úložišti podvrhnout nebo změnit – obnovte ji, jen když jí věříte.'),
+                    ])
+                    ->modalSubmitActionLabel('Stáhnout')
+                    ->action(fn ($record, array $data) => $this->attempt('Stažení na server selhalo', function () use ($record, $data) {
+                        app(ManageOffsite::class)->fetchSiteBackup($this->getSite(), $record->file, (bool) ($data['unverified'] ?? false))
                             ? Toast::success('Záloha je zpět na serveru', 'Teď ji můžete obnovit.')
                             : Toast::warning('Stahování běží na pozadí', 'Záloha se objeví v seznamu, až se stáhne.');
                     })),

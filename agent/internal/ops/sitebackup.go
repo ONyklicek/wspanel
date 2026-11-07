@@ -430,11 +430,14 @@ func readManifest(path string) (siteManifest, error) {
 // chosen databases. A backup of the current state is taken first.
 func siteRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
-		Domain    string `json:"domain"`
-		Backup    string `json:"backup"`
-		Files     bool   `json:"files"`
-		Databases bool   `json:"databases"`
-		Confirm   string `json:"confirm"`
+		Domain string `json:"domain"`
+		Backup string `json:"backup"`
+		Files  bool   `json:"files"`
+		// Databases to restore: only these, and only when the backup holds
+		// them (the panel sends the site's own; an archive that came back from
+		// off-site storage cannot point the restore at another database).
+		Databases []dbRef `json:"databases"`
+		Confirm   string  `json:"confirm"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -442,8 +445,11 @@ func siteRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if p.Confirm != p.Domain {
 		return nil, protocol.Invalid("confirm: must equal domain")
 	}
-	if !p.Files && !p.Databases {
+	if !p.Files && len(p.Databases) == 0 {
 		return nil, protocol.Invalid("choose files, databases or both")
+	}
+	if err := validDBRefs(env, p.Databases); err != nil {
+		return nil, err
 	}
 	path, err := siteBackupFile(env, p.Domain, p.Backup)
 	if err != nil {
@@ -463,14 +469,16 @@ func siteRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	// Databases: those of the backup that still exist (others are reported).
 	var restoreDBs []manifestDB
 	var skipped []string
-	if p.Databases {
-		for _, d := range man.Databases {
-			if (dbParams{Engine: d.Engine, Name: d.Name}).validateOnly(env) != nil || !strings.HasPrefix(d.File, "db/") {
-				skipped = append(skipped, d.Name)
-				continue
-			}
-			restoreDBs = append(restoreDBs, d)
+	for _, d := range man.Databases {
+		if !slices.Contains(p.Databases, dbRef{Engine: d.Engine, Name: d.Name}) {
+			continue // not asked for, or not one of the site's
 		}
+		e, err := engineFor(env, d.Engine)
+		if err != nil || (dbParams{Engine: d.Engine, Name: d.Name}).validateOnly(env) != nil || d.File != "db/"+d.Engine+"-"+d.Name+e.ext() {
+			skipped = append(skipped, d.Name)
+			continue
+		}
+		restoreDBs = append(restoreDBs, d)
 	}
 
 	release, err := claimSite(p.Domain)
