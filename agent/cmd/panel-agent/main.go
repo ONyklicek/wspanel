@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -32,13 +33,18 @@ func main() {
 		return
 	}
 	if *probeBind != "" {
+		// Only EACCES/EPERM count as "denied"; anything else (port in use, ...)
+		// is reported as an error so the caller fails closed.
 		ln, err := net.Listen("tcp", *probeBind)
-		if err != nil {
+		switch {
+		case err == nil:
+			ln.Close()
+			fmt.Println("bound")
+		case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM):
 			fmt.Println("denied")
-			return
+		default:
+			fmt.Println("error: " + err.Error())
 		}
-		ln.Close()
-		fmt.Println("bound")
 		return
 	}
 
@@ -103,7 +109,6 @@ func binaries(cfg config.Config) map[string]string {
 		"useradd":          "/usr/sbin/useradd",
 		"userdel":          "/usr/sbin/userdel",
 		"usermod":          "/usr/sbin/usermod",
-		"pkill":            "/usr/bin/pkill",
 		"setpriv":          "/usr/bin/setpriv", // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",

@@ -135,9 +135,10 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if _, err := env.Exec.Run(ctx, "usermod", "--groups", group, "--shell", shell, l.User); err != nil {
 		return nil, err
 	}
-	if p.Access != "shell" {
-		// Close any open shell sessions when shell access is taken away.
-		_, _ = env.Exec.Run(ctx, "pkill", "--uid", l.User, "--exact", "sshd-session")
+	// Any change ends existing sessions and everything started from them, so
+	// revoked access cannot linger in a nohup/screen process.
+	if err := killSessionProcesses(env, l.User); err != nil {
+		return nil, fmt.Errorf("access set, but ending existing sessions failed: %w", err)
 	}
 	st.SSHAccess = p.Access
 	if err := saveSiteState(env, st); err != nil {

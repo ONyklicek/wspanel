@@ -126,35 +126,53 @@ func checkPrivilegedPorts(env *Env) error {
 }
 
 var bindProbe struct {
-	sync.Once
-	ok  bool
-	err error
+	sync.Mutex
+	ok bool
 }
 
-// socketBindEnforced checks once that systemd really enforces SocketBindDeny:
-// a transient unit with the same rules as an app unit tries to bind a port it
-// is not allowed to. It must fail.
+// socketBindEnforced checks that systemd really enforces SocketBindDeny. Two
+// transient units with the same rules as an app unit (allowed port A) try to
+// bind A (control: must bind, proves the capability works) and B (must be
+// denied with EACCES/EPERM). Both ports are confirmed free first. Anything
+// else is an error: the check fails closed. A positive result is cached.
 func socketBindEnforced(env *Env) (bool, error) {
-	bindProbe.Do(func() {
-		allowed, probe := env.Cfg.NodePortMin, env.Cfg.NodePortMax
-		args := []string{"--wait", "--quiet", "--collect", "--pipe",
-			"-p", "User=nobody", "-p", "AmbientCapabilities=CAP_NET_BIND_SERVICE",
-			"-p", "SocketBindAllow=tcp:" + strconv.Itoa(allowed), "-p", "SocketBindDeny=any",
-			env.Cfg.AgentBinary, "-probe-bind", "127.0.0.1:" + strconv.Itoa(probe)}
-		res, err := env.Exec.Run(context.Background(), "systemd-run", args...)
-		out := strings.TrimSpace(res.Stdout)
-		switch {
-		case out == "denied":
-			bindProbe.ok = true
-		case out == "bound":
-			bindProbe.ok = false
-		case err != nil:
-			bindProbe.err = fmt.Errorf("socket bind probe failed: %w", err)
-		default:
-			bindProbe.err = fmt.Errorf("socket bind probe: unexpected output %q", out)
+	bindProbe.Lock()
+	defer bindProbe.Unlock()
+	if bindProbe.ok {
+		return true, nil
+	}
+	var free []int
+	for p := env.Cfg.NodePortMax; p >= env.Cfg.NodePortMin && len(free) < 2; p-- {
+		if ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(p)); err == nil {
+			ln.Close()
+			free = append(free, p)
 		}
-	})
-	return bindProbe.ok, bindProbe.err
+	}
+	if len(free) < 2 {
+		return false, fmt.Errorf("socket bind probe: no two free ports in %d-%d", env.Cfg.NodePortMin, env.Cfg.NodePortMax)
+	}
+	allowed, other := free[0], free[1]
+	probe := func(port int) (string, error) {
+		res, err := env.Exec.Run(context.Background(), "systemd-run", "--wait", "--quiet", "--collect", "--pipe",
+			"-p", "User=nobody", "-p", "AmbientCapabilities=CAP_NET_BIND_SERVICE",
+			"-p", "SocketBindAllow=tcp:"+strconv.Itoa(allowed), "-p", "SocketBindDeny=any",
+			env.Cfg.AgentBinary, "-probe-bind", "127.0.0.1:"+strconv.Itoa(port))
+		return strings.TrimSpace(res.Stdout), err
+	}
+	control, err := probe(allowed)
+	if err != nil || control != "bound" {
+		return false, fmt.Errorf("socket bind probe: control bind on allowed port %d gave %q (%v)", allowed, control, err)
+	}
+	denied, err := probe(other)
+	switch {
+	case err == nil && denied == "denied":
+		bindProbe.ok = true
+		return true, nil
+	case err == nil && denied == "bound":
+		return false, nil
+	default:
+		return false, fmt.Errorf("socket bind probe: bind on port %d gave %q (%v)", other, denied, err)
+	}
 }
 
 // portUnitExtra lets a unit bind exactly one privileged port and nothing else.

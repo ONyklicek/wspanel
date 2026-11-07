@@ -478,6 +478,10 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		}
 	}
 	if _, err := lookupOwner(env, l.User); err == nil {
+		// SSH sessions and anything started from them; userdel refuses otherwise.
+		if err := killSessionProcesses(env, l.User); err != nil {
+			return nil, err
+		}
 		if _, err := env.Exec.Run(ctx, "userdel", l.User); err != nil {
 			return nil, err
 		}
