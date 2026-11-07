@@ -62,6 +62,23 @@ func SiteUser(domain string) string {
 	return name[:25] + "_" + hex.EncodeToString(sum[:])[:6]
 }
 
+var dbNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{1,47}$`)
+
+var reservedDBNames = map[string]bool{
+	"mysql": true, "information_schema": true, "performance_schema": true, "sys": true, "root": true,
+	"postgres": true, "template0": true, "template1": true, "public": true, "pg_signal_backend": true,
+	"mariadb": true, "debian_sys_maint": true, "panel": true,
+}
+
+// DBName validates a database / database user name (same rules for both,
+// valid unquoted in MariaDB and PostgreSQL).
+func DBName(field, n string) error {
+	if !dbNameRe.MatchString(n) || strings.HasPrefix(n, "pg_") || reservedDBNames[n] {
+		return protocol.Invalid(field + ": must match ^[a-z][a-z0-9_]{1,47}$ and not be a reserved name")
+	}
+	return nil
+}
+
 // Frameworks by family. PHP frameworks run in classic (PHP-FPM) or worker
 // (FrankenPHP) mode, Node frameworks in node mode.
 var (

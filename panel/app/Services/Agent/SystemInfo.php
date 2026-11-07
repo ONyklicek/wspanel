@@ -2,6 +2,7 @@
 
 namespace App\Services\Agent;
 
+use App\Enums\DatabaseEngine;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -74,6 +75,18 @@ class SystemInfo
         }
 
         return collect($majors)->sortDesc()->mapWithKeys(fn (string $v) => [$v => "Node {$v}"])->all();
+    }
+
+    /** @return list<DatabaseEngine> engines installed on the server */
+    public function dbEngines(): array
+    {
+        try {
+            $engines = $this->versions()['db_engines'] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(fn (string $e) => DatabaseEngine::tryFrom($e), $engines)));
     }
 
     public function defaultPhpVersion(): ?string

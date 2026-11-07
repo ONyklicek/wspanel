@@ -7,9 +7,15 @@ use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
 {
+    public function databases(): HasMany
+    {
+        return $this->hasMany(Database::class);
+    }
+
     protected $fillable = [
         'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys',
         'system_user', 'home', 'doc_root', 'status', 'last_error',

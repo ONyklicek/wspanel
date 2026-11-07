@@ -10,6 +10,7 @@ use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
+use App\Filament\Resources\Databases\Pages\ListDatabases;
 use App\Filament\Resources\Sites\Schemas\SiteForm;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
@@ -123,6 +124,9 @@ class SitesTable
                                 ? Notification::make()->title("{$record->domain} odpovídá ({$record->health_status})")->success()->send()
                                 : Notification::make()->title("{$record->domain} neodpovídá")->body($record->health_error)->danger()->send();
                         }),
+                    ListDatabases::createAction()
+                        ->icon(Heroicon::OutlinedCircleStack)
+                        ->visible(fn (Site $record) => $record->status === SiteStatus::Active && app(SystemInfo::class)->dbEngines() !== []),
                     Action::make('ssh')
                         ->label('SSH / SFTP')
                         ->icon(Heroicon::OutlinedCommandLine)

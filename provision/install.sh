@@ -194,6 +194,8 @@ install -d -m 0755 /etc/panel-proxy /etc/panel-proxy/sites /etc/panel-web /etc/p
 echo "d /run/wspanel-sites 0755 root root -" > /etc/tmpfiles.d/wspanel.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/wspanel.conf
 install -d -m 0700 /etc/panel-agent
+# Database dumps: root-written, readable by the panel (downloads).
+install -d -m 0750 -o root -g panel /var/backups/wspanel
 
 # ---------------------------------------------------------------- agent
 log "Agent"

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"wspanel/agent/internal/audit"
 	"wspanel/agent/internal/config"
@@ -27,6 +29,8 @@ func main() {
 	cfgPath := flag.String("config", "/etc/panel-agent/agent.json", "config file")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	probeBind := flag.String("probe-bind", "", "internal: try to bind addr, print bound/denied (socket-bind enforcement probe)")
+	backup := flag.String("backup", "", "run a scheduled backup of engine/name and exit (used by backup timers)")
+	keep := flag.Int("keep", 7, "with -backup: number of backups to keep")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(ops.Version)
@@ -49,6 +53,13 @@ func main() {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if *backup != "" {
+		if err := runBackupMode(*cfgPath, *backup, *keep, log); err != nil {
+			log.Error("backup failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*cfgPath, log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
@@ -102,6 +113,31 @@ func run(cfgPath string, log *slog.Logger) error {
 	return srv.Serve(ctx, ln)
 }
 
+// runBackupMode runs one scheduled backup (from a systemd timer) with the same
+// executor allowlist as the daemon, and records it in the audit log.
+func runBackupMode(cfgPath, spec string, keep int, log *slog.Logger) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	a, err := audit.Open(cfg.AuditLog)
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	env := &ops.Env{Cfg: cfg, Exec: executor.NewReal(binaries(cfg), []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}), FS: &fsx.FS{DryRun: cfg.DryRun}}
+	start := time.Now()
+	out, err := ops.RunScheduledBackup(context.Background(), env, spec, keep)
+	params, _ := json.Marshal(map[string]any{"backup": spec, "keep": keep})
+	entry := audit.Entry{Time: start.UTC(), Op: "db.backup.scheduled", Params: params, PeerUID: 0, OK: err == nil, DurationMS: time.Since(start).Milliseconds()}
+	if err != nil {
+		entry.Error = err.Error()
+	}
+	_ = a.Write(entry)
+	log.Info("scheduled backup", "spec", spec, "result", out)
+	return err
+}
+
 // binaries is the executor allowlist: logical name -> absolute path.
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
@@ -113,6 +149,8 @@ func binaries(cfg config.Config) map[string]string {
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
 		"systemd-run":      "/usr/bin/systemd-run",
+		"mariadb":          "/usr/bin/mariadb",
+		"mariadb-dump":     "/usr/bin/mariadb-dump",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
 	}

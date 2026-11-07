@@ -67,6 +67,10 @@ type Config struct {
 	SFTPGroup         string `json:"sftp_group"` // SFTP only
 	ToolsDir          string `json:"tools_dir"`  // per-user php/node links put first on PATH
 
+	// Databases: dumps live here, readable by the panel group (download).
+	BackupDir   string `json:"backup_dir"`
+	BackupGroup string `json:"backup_group"`
+
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
 	UFWBinary      string `json:"ufw_binary"`
@@ -116,6 +120,8 @@ func Defaults() Config {
 		SSHGroup:          "wspanel-ssh",
 		SFTPGroup:         "wspanel-sftp",
 		ToolsDir:          "/etc/panel-sites/bin",
+		BackupDir:         "/var/backups/wspanel",
+		BackupGroup:       "panel",
 		SystemdDir:        "/etc/systemd/system",
 		PHPCLIBinary:      "/usr/bin/php{version}",
 		UFWBinary:         "/usr/sbin/ufw",
