@@ -9,8 +9,10 @@ use App\Livewire\Sites\ListCronJobs;
 use App\Models\CronJob;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\CronDescription;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
+use Illuminate\Support\Carbon;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
 use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
@@ -91,21 +93,25 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
             ->stackedOnMobile()
             ->query(CronJob::query()->with('site'))
             ->columns([
-                TextColumn::make('site_domain')->label('Web')->state(fn (CronJob $record) => $record->site?->domain),
-                TextColumn::make('command')->label('Příkaz')->state(fn (CronJob $record) => $record->commandLine())->fontFamily('mono'),
-                TextColumn::make('schedule')->label('Rozvrh')->fontFamily('mono')->description(fn (CronJob $record) => $record->calendar),
+                TextColumn::make('command')->label('Úloha')->state(fn (CronJob $record) => $record->commandLine())->fontFamily('mono')->weight('medium')
+                    ->description(fn (CronJob $record) => $record->site?->domain),
+                TextColumn::make('schedule')->label('Rozvrh')
+                    ->state(fn (CronJob $record) => CronDescription::cs($record->schedule) ?? $record->schedule)
+                    ->description(fn (CronJob $record) => CronDescription::cs($record->schedule) !== null ? $record->schedule : $record->calendar),
                 BadgeColumn::make('last')->label('Poslední běh')
                     ->state(fn (CronJob $record) => $record->last_run && $record->last_run !== 'n/a' ? ($record->last_result === 'success' ? 'OK' : ($record->last_result ?? '?')) : 'zatím neběžela')
                     ->colors(['OK' => 'success', 'zatím neběžela' => 'gray'])
                     ->color('danger')
-                    ->description(fn (CronJob $record) => $record->last_run && $record->last_run !== 'n/a' ? $record->last_run : null),
-                TextColumn::make('next_run')->label('Další běh')->placeholder('—'),
+                    ->description(fn (CronJob $record) => self::when($record->last_run)?->diffForHumans()),
+                TextColumn::make('next_run')->label('Další běh')->placeholder('—')
+                    ->state(fn (CronJob $record) => self::when($record->next_run)?->format('j. n. H:i'))
+                    ->description(fn (CronJob $record) => self::when($record->next_run)?->diffForHumans()),
             ])
             ->filters([
                 SelectFilter::make('site_id')->label('Web')->options(fn () => Site::query()->orderBy('domain')->pluck('domain', 'id')->all()),
             ])
             ->actions([
-                Action::make('edit')->label('Upravit')->icon('outline:pencil-square')
+                Action::make('edit')->label('Upravit')->icon('outline:pencil-square')->color('gray')->onlyIcon()->tooltip('Upravit')
                     ->fillFormUsing(fn (CronJob $record) => ['site_id' => $record->site_id, 'kind' => $record->kind, 'command' => implode(' ', $record->args), 'schedule' => $record->schedule])
                     ->form(self::fields(editing: true))
                     ->action(function (CronJob $record, array $data) {
@@ -116,7 +122,7 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
                             Toast::error('Úpravu se nepodařilo uložit', $e->getMessage());
                         }
                     }),
-                Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->requiresConfirmation()
+                Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->tooltip('Smazat')->requiresConfirmation()
                     ->action(function (CronJob $record) {
                         try {
                             app(ManageCronJobs::class)->delete($record);
@@ -127,5 +133,18 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
                     }),
             ])
             ->emptyState('Žádné naplánované úlohy', 'Laravel plánovač (schedule:work) přidáte jako worker u webu; sem patří samostatné úlohy podle cronu.', 'outline:clock');
+    }
+
+    /** systemd prints "Sat 2026-11-07 17:43:00 UTC"; null for n/a or nothing. */
+    private static function when(?string $systemd): ?Carbon
+    {
+        if ($systemd === null || $systemd === '' || $systemd === 'n/a') {
+            return null;
+        }
+        try {
+            return Carbon::parse((string) preg_replace('/^\w{3} /', '', $systemd))->timezone(config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

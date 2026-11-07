@@ -77,6 +77,13 @@ type Config struct {
 	DBTokenDir   string `json:"dbtools_token_dir"`
 	DBAccessTTLm int    `json:"dbtools_access_minutes"`
 
+	// Database servers reachable from the internet (db.remote): engine config
+	// drop-ins, the TLS certificate MariaDB serves, and fail2ban jails.
+	MariaDBConfDir string `json:"mariadb_conf_dir"`
+	PostgresEtcDir string `json:"postgres_etc_dir"` // contains <version>/main
+	DBTLSDir       string `json:"db_tls_dir"`
+	Fail2banDir    string `json:"fail2ban_dir"`
+
 	ProxyStorage string `json:"proxy_storage"`  // Caddy data dir of the edge (certificates)
 	ProxyCertDir string `json:"proxy_cert_dir"` // uploaded certificates (custom TLS)
 	DeployLogDir string `json:"deploy_log_dir"`
@@ -157,6 +164,10 @@ func Defaults() Config {
 		DBToolsUser:       "dbtools",
 		DBTokenDir:        "/run/wspanel-dbtools",
 		DBAccessTTLm:      30,
+		MariaDBConfDir:    "/etc/mysql/mariadb.conf.d",
+		PostgresEtcDir:    "/etc/postgresql",
+		DBTLSDir:          "/etc/wspanel-db-tls",
+		Fail2banDir:       "/etc/fail2ban",
 		BackupGroup:       "panel",
 		ProxyStorage:      "/var/lib/panel-proxy/caddy",
 		ProxyCertDir:      "/etc/panel-proxy/certs",

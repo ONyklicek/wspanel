@@ -31,7 +31,6 @@ use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesRelationManagers;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesResourceTable;
-use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
 use NyonCode\WireTable\Table;
 
@@ -88,17 +87,15 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             ->stackedOnMobile()
             ->query(Database::query()->with('site')->withCount('backups'))
             ->columns([
-                TextColumn::make('name')->label('Název')->searchable()->sortable()->fontFamily('mono')->weight('medium'),
-                BadgeColumn::make('engine')->label('Engine')->formatStateUsing(fn ($state) => $state instanceof DatabaseEngine ? $state->getLabel() : $state),
-                TextColumn::make('site_domain')->label('Web')->state(fn (Database $record) => $record->site?->domain ?? '—'),
+                TextColumn::make('name')->label('Databáze')->searchable()->sortable()->fontFamily('mono')->weight('medium')
+                    ->description(fn (Database $record) => $record->engine->getLabel().' · '.($record->site?->domain ?? 'bez webu')),
                 TextColumn::make('size')->label('Velikost')->sortable()->formatStateUsing(fn ($state) => $state === null ? '—' : Number::fileSize((int) $state, 1)),
-                TextColumn::make('backups_count')->label('Zálohy'),
-                BadgeColumn::make('backup_frequency')->label('Plán záloh')
-                    ->formatStateUsing(fn ($state) => ['daily' => 'denně', 'weekly' => 'týdně'][$state] ?? 'vypnuto')
-                    ->colors(['daily' => 'success', 'weekly' => 'success', 'off' => 'gray']),
+                TextColumn::make('backups_count')->label('Zálohy')
+                    ->formatStateUsing(fn ($state) => (int) $state === 0 ? 'žádná' : $state.' '.((int) $state === 1 ? 'záloha' : ((int) $state < 5 ? 'zálohy' : 'záloh')))
+                    ->description(fn (Database $record) => ['daily' => 'automaticky denně', 'weekly' => 'automaticky týdně'][$record->backup_frequency] ?? 'automatické zálohy vypnuté'),
             ])
             ->recordUrl(fn (Database $record) => self::url('view', $record))
-            ->actions([...self::toolActions(), ActionGroup::make([self::resetPasswordAction(), self::dropAction()])])
+            ->actions([self::openAction(), ActionGroup::make([...self::toolActions(), self::resetPasswordAction(), self::dropAction()])])
             ->emptyState('Zatím žádná databáze', 'Vytvořte ji tlačítkem Nová databáze, nebo u webu (Další → Nová databáze).', 'outline:circle-stack')
             ->defaultSort('name');
     }
@@ -127,6 +124,18 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
     public function relationManagers(): array
     {
         return [DatabaseBackups::class];
+    }
+
+    /** The one button of a row: phpMyAdmin for MariaDB, Adminer for PostgreSQL (or whichever is installed). */
+    public static function openAction(): Action
+    {
+        $tools = app(SystemInfo::class)->dbTools();
+        $tool = fn (Database $record) => $record->engine === DatabaseEngine::MariaDb && in_array('phpmyadmin', $tools, true) ? 'phpmyadmin' : 'adminer';
+
+        return Action::make('open')->label('Otevřít')->icon('outline:arrow-top-right-on-square')->color('gray')
+            ->tooltip(fn (Database $record) => $tool($record) === 'phpmyadmin' ? 'V phpMyAdminu' : 'V Admineru')
+            ->visible(fn (Database $record) => in_array($tool($record), $tools, true))
+            ->url(fn (Database $record) => route('dbtools.open', [$record, $tool($record)]), true);
     }
 
     /** @return list<Action> phpMyAdmin (MariaDB) and Adminer: a new tab, a temporary login for this one database. */

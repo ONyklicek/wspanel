@@ -71,8 +71,9 @@ func randomHex(n int) string {
 
 type accessParams struct {
 	Engine string `json:"engine"`
-	Name   string `json:"name"`
+	Name   string `json:"name,omitempty"`
 	Tool   string `json:"tool"`
+	Scope  string `json:"scope,omitempty"` // "" = the named database, "all" = every database (superuser)
 }
 
 func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -80,7 +81,19 @@ func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	e, err := (dbParams{Engine: p.Engine, Name: p.Name}).resolve(env)
+	if err := validate.OneOf("scope", p.Scope, []string{"", "all"}); err != nil {
+		return nil, err
+	}
+	var e dbEngine
+	var err error
+	if p.Scope == "all" {
+		if p.Name != "" {
+			return nil, protocol.Invalid("name: not accepted with scope all")
+		}
+		e, err = engineFor(env, p.Engine)
+	} else {
+		e, err = (dbParams{Engine: p.Engine, Name: p.Name}).resolve(env)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -93,12 +106,14 @@ func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if !toolInstalled(env, p.Tool) {
 		return nil, protocol.NotFound(p.Tool + " is not installed")
 	}
-	existing, err := e.list(ctx, env)
-	if err != nil {
-		return nil, err
-	}
-	if !env.Cfg.DryRun && !slices.ContainsFunc(existing, func(d dbInfo) bool { return d.Name == p.Name }) {
-		return nil, protocol.NotFound("database " + p.Name + " does not exist")
+	if p.Scope == "" {
+		existing, err := e.list(ctx, env)
+		if err != nil {
+			return nil, err
+		}
+		if !env.Cfg.DryRun && !slices.ContainsFunc(existing, func(d dbInfo) bool { return d.Name == p.Name }) {
+			return nil, protocol.NotFound("database " + p.Name + " does not exist")
+		}
 	}
 
 	user := "wsptmp_" + randomHex(5)
@@ -132,7 +147,11 @@ func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	return map[string]any{"tool": p.Tool, "token": token, "signon_path": path, "user": user, "expires": expires}, nil
 }
 
+// createTempUser: db "" = every database (the "all" scope), as a superuser.
 func createTempUser(ctx context.Context, env *Env, engine, db, user, pw string, expires time.Time) error {
+	if db == "" {
+		return createTempSuperuser(ctx, env, engine, user, pw, expires)
+	}
 	switch engine {
 	case "mariadb":
 		_, err := mariadb{}.sql(ctx, env, fmt.Sprintf(
@@ -149,6 +168,21 @@ func createTempUser(ctx context.Context, env *Env, engine, db, user, pw string, 
 	}
 }
 
+func createTempSuperuser(ctx context.Context, env *Env, engine, user, pw string, expires time.Time) error {
+	if engine == "mariadb" {
+		_, err := mariadb{}.sql(ctx, env, fmt.Sprintf(
+			"CREATE USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; CREATE USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s'; "+
+				"GRANT ALL PRIVILEGES ON *.* TO '%[1]s'@'localhost', '%[1]s'@'127.0.0.1' WITH GRANT OPTION;", user, pw))
+		return err
+	}
+	// Acts as postgres (a member using its role): whatever it creates is owned
+	// by postgres, so the login can be dropped cleanly when it expires.
+	_, err := postgres{}.psql(ctx, env, "postgres", fmt.Sprintf(
+		`CREATE ROLE "%[1]s" LOGIN PASSWORD '%[2]s' VALID UNTIL '%[3]s' IN ROLE postgres; ALTER ROLE "%[1]s" SET role = 'postgres'`,
+		user, pw, expires.Format(time.RFC3339)))
+	return err
+}
+
 func dropTempUser(ctx context.Context, env *Env, a tempAccess) error {
 	switch a.Engine {
 	case "mariadb":
@@ -156,7 +190,9 @@ func dropTempUser(ctx context.Context, env *Env, a tempAccess) error {
 		return err
 	default:
 		pg := postgres{}
-		_, _ = pg.psql(ctx, env, a.DB, fmt.Sprintf(`REASSIGN OWNED BY "%[1]s" TO "%[2]s"; DROP OWNED BY "%[1]s"`, a.User, a.DB))
+		if a.DB != "" {
+			_, _ = pg.psql(ctx, env, a.DB, fmt.Sprintf(`REASSIGN OWNED BY "%[1]s" TO "%[2]s"; DROP OWNED BY "%[1]s"`, a.User, a.DB))
+		}
 		_, err := pg.psql(ctx, env, "postgres", fmt.Sprintf(`DROP ROLE IF EXISTS "%s"`, a.User))
 		return err
 	}

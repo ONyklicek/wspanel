@@ -57,7 +57,7 @@ class ViewDatabase extends ViewPage
                 ->fillFormUsing(fn (Database $record) => ['frequency' => $record->backup_frequency, 'keep' => $record->backup_keep])
                 ->form([
                     Select::make('frequency')->rules([Options::rule()])->label('Frekvence')->options(['off' => 'Vypnuto', 'daily' => 'Denně (kolem 3:00)', 'weekly' => 'Týdně (v neděli kolem 3:00)'])->required(),
-                    TextInput::make('keep')->label('Držet záloh')->integer()->minValue(1)->maxValue(90)->required(),
+                    TextInput::make('keep')->label('Držet záloh')->integer()->minValue(1)->maxValue(90)->rules(['integer', 'between:1,90'])->required(),
                 ])
                 ->action(function (Database $record, array $data) {
                     try {

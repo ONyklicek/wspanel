@@ -2,11 +2,19 @@
 
 namespace App\Models;
 
+use App\Support\AgentMessages;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class Certificate extends Model
 {
     protected $fillable = ['domain', 'mode', 'issuer', 'not_before', 'not_after', 'status', 'last_error', 'synced_at'];
+
+    /** The agent's English text, shown in Czech (stored as it came). */
+    protected function lastError(): Attribute
+    {
+        return Attribute::get(fn (?string $value) => AgentMessages::cs($value));
+    }
 
     protected function casts(): array
     {

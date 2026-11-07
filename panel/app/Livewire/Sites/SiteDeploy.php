@@ -399,7 +399,7 @@ class SiteDeploy extends ViewPage
                     return ['content' => ''];
                 }
             })
-            ->form([Textarea::make('content')->label('Obsah')->rows(20)->maxLength(65536)->extraInputAttributes(['class' => 'font-mono text-xs'])])
+            ->form([Textarea::make('content')->label('Obsah')->rows(20)->maxLength(65536)->rules(['max:65536'])->extraInputAttributes(['class' => 'font-mono text-xs'])])
             ->action(function (array $data) {
                 try {
                     app(ManageDeploys::class)->envSet($this->site(), (string) $data['content']);

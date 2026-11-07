@@ -171,4 +171,12 @@ class ServicesAndFirewallTest extends TestCase
         $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'messenger'])
             ->assertHasNoErrors();
     }
+
+    public function test_firewall_port_range_is_checked_on_the_server(): void
+    {
+        $this->agent->shouldNotReceive('call')->with('fw.allow', Mockery::any());
+
+        $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'add', ['action' => 'allow', 'port' => '70000', 'proto' => 'tcp', 'from' => ''])
+            ->assertHasErrors();
+    }
 }

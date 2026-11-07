@@ -26,11 +26,64 @@ V řádku databáze: **phpMyAdmin** (jen MariaDB) nebo **Adminer** (obojí).
 - Odkaz je jednorázový. Přihlašovací formulář nástrojů je vypnutý, ručně se
   přihlásit nejde.
 
-Pro práci z vlastního počítače (TablePlus, DBeaver…) použijte SSH tunel přes
-účet správce serveru (ne přes účet webu, ten tunely nesmí):
+**Všechny databáze najednou:** Databáze → **Servery** → *phpMyAdmin / Adminer ·
+všechny databáze*. Dočasný uživatel má práva superuživatele (správa uživatelů,
+všechny databáze), platí 30 minut a pak se sám smaže.
+
+## Databázové servery, root a přístup z internetu
+
+Databáze → **Servery** ukazuje každý engine (MariaDB, PostgreSQL): verzi, port,
+kdo se smí připojit a stav superuživatele.
+
+### Heslo superuživatele (root / postgres)
+
+Po instalaci nemá `root` (MariaDB) ani `postgres` (PostgreSQL) heslo: přihlásit
+se jde jen přímo na serveru. **Nastavit heslo** vygeneruje silné heslo (zobrazí
+se jednou), nebo zadáte vlastní (16–128 znaků, bez uvozovek, zpětného lomítka a
+mezer). Heslo jde kdykoli změnit nebo zrušit.
+
+- Panel heslo neukládá. Agent se k databázím připojuje dál přes socket, takže
+  správa serveru na hesle nezávisí a jeho únik ji nerozbije.
+- Superuživatel smí všechno: zakládat a mazat databáze i uživatele. Heslo
+  chraňte stejně jako přístup na server.
+
+### Přístup z internetu
+
+Tlačítko **Přístup z internetu**:
+
+| Volba | Co se stane |
+|---|---|
+| **Jen tento server** (výchozí) | port 3306 / 5432 je zavřený, server poslouchá jen lokálně |
+| **Vybrané adresy** | firewall otevře port jen pro zadané IP adresy a sítě (kancelář, VPN, CI) |
+| **Kdokoli z internetu** | port je otevřený všem; panel to ukazuje jako upozornění na Přehledu |
+
+V obou otevřených režimech:
+- připojení jde **jen šifrovaně (TLS)**; nešifrované přihlášení po síti server
+  odmítne,
+- přihlásit se mohou **vlastníci databází** (stejné jméno a heslo jako v `.env`
+  webu) a **root / postgres**, pokud má heslo,
+- opakovaně chybná přihlášení blokuje **fail2ban** (5 pokusů za 10 minut →
+  hodina),
+- weby na serveru se připojují dál lokálně (`127.0.0.1`), změna je neovlivní.
+
+Připojení z klienta (adresa je doména panelu):
+```
+mariadb -h panel.example.com -u root -p --ssl
+psql "host=panel.example.com user=postgres dbname=postgres sslmode=require"
+```
+MariaDB používá vlastní certifikát (self-signed); jeho otisk SHA-256 je na
+stránce Servery. Klienti jako DBeaver nebo TablePlus: zapněte SSL, ověření
+certifikátu podle otisku, nebo „require“ bez ověření.
+
+### Bez otevření do internetu: SSH tunel
+
+Pro práci z vlastního počítače (TablePlus, DBeaver…) bez otevření portu
+použijte SSH tunel přes účet správce serveru (ne přes účet webu, ten tunely
+nesmí):
 ```
 ssh -L 3306:127.0.0.1:3306 root@server
 ```
+a v klientovi server `127.0.0.1`. Superuživatel pak potřebuje heslo (viz výše).
 
 ## Zálohy
 

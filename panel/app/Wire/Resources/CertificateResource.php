@@ -61,11 +61,11 @@ final class CertificateResource implements DescribesResource, ProvidesNavigation
                 TextColumn::make('domain')->label('Doména')->searchable()->sortable()->weight('medium'),
                 BadgeColumn::make('status')->label('Stav')
                     ->formatStateUsing(fn ($state) => ['valid' => 'platný', 'expiring' => 'brzy vyprší', 'expired' => 'vypršel', 'missing' => 'chybí'][$state] ?? $state)
-                    ->colors(['valid' => 'success', 'expiring' => 'warning', 'expired' => 'danger', 'missing' => 'danger'])
+                    ->colors(['platný' => 'success', 'brzy vyprší' => 'warning', 'vypršel' => 'danger', 'chybí' => 'danger'])
                     ->tooltip(fn (Certificate $record) => $record->last_error),
-                BadgeColumn::make('mode')->label('Typ')->color('gray')
-                    ->formatStateUsing(fn ($state) => ['auto' => "Let's Encrypt", 'internal' => 'interní CA', 'custom' => 'vlastní'][$state] ?? $state),
-                TextColumn::make('issuer')->label('Vydavatel')->state(fn (Certificate $record) => $record->issuerLabel()),
+                TextColumn::make('mode')->label('Typ')
+                    ->formatStateUsing(fn ($state) => ['auto' => "Let's Encrypt", 'internal' => 'interní CA', 'custom' => 'vlastní certifikát'][$state] ?? $state)
+                    ->description(fn (Certificate $record) => 'vydal '.$record->issuerLabel()),
                 TextColumn::make('not_after')->label('Platí do')->date('j. n. Y')->sortable()
                     ->description(fn (Certificate $record) => $record->not_after?->diffForHumans()),
             ])
@@ -91,6 +91,7 @@ final class CertificateResource implements DescribesResource, ProvidesNavigation
                             : Toast::warning("{$record->domain}: něco chybí", $lines.(! $r['dns_points_here'] ? ' · '.$r['note'] : ''));
                     }),
             ])
+            ->perPage(25)
             ->defaultSort('domain');
     }
 }

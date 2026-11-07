@@ -104,4 +104,13 @@ class SshAndWorkersTest extends TestCase
             ->assertHasNoErrors()
             ->assertNotified();
     }
+
+    public function test_own_password_length_is_checked_on_the_server(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldNotReceive('call')->with('ssh.set', Mockery::any());
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'password_mode' => 'set', 'password' => 'short', 'keys' => ''])
+            ->assertHasErrors();
+    }
 }

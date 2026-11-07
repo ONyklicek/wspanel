@@ -13,4 +13,5 @@ $_SESSION['PMA_single_signon_host'] = '127.0.0.1';
 $_SESSION['PMA_single_signon_port'] = '3306';
 session_write_close();
 
-header('Location: index.php?route=/database/structure&db='.rawurlencode($data['db']));
+// An empty db = the server-wide sign-on (every database).
+header('Location: '.($data['db'] === '' ? 'index.php' : 'index.php?route=/database/structure&db='.rawurlencode($data['db'])));

@@ -108,7 +108,7 @@ class DeployPollerTest extends TestCase
             ->andThrow(new AgentException('op_failed', 'git ls-remote failed: Permission denied (publickey)', 'deploy.remote_ref'));
 
         $this->assertNull(app(DeployPoller::class)->poll($this->site));
-        $this->assertStringContainsString('Permission denied', $this->site->refresh()->deploy_poll_error);
+        $this->assertStringContainsString('Přidejte deploy klíč', $this->site->refresh()->deploy_poll_error);
     }
 
     public function test_a_deploy_that_fails_to_start_is_tried_again_next_minute(): void

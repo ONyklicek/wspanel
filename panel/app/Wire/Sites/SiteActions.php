@@ -189,7 +189,7 @@ final class SiteActions
                     ->default(app(SystemInfo::class)->dbEngines()[0]->value ?? null),
                 TextInput::make('name')->label('Název (i uživatel)')->required()->maxLength(32)
                     ->default(substr(preg_replace('/[^a-z0-9]+/', '_', $record->domain), 0, 32))
-                    ->rules(['regex:/^[a-z][a-z0-9_]{0,31}$/'])
+                    ->rules(['max:32', 'regex:/^[a-z][a-z0-9_]{0,31}$/'])
                     ->validationMessages(['regex' => 'Malá písmena, číslice a podtržítko, začíná písmenem.']),
             ])
             ->action(fn (Site $record, array $data) => self::attempt('Databázi se nepodařilo vytvořit', function () use ($record, $data) {
@@ -225,7 +225,7 @@ final class SiteActions
                     ->revealable()
                     ->minLength(12)
                     ->maxLength(128)
-                    ->rules(['regex:/^[\x20-\x39\x3b-\x7e]+$/'])
+                    ->rules(['min:12', 'max:128', 'regex:/^[\x20-\x39\x3b-\x7e]+$/'])
                     ->validationMessages(['regex' => 'Jen tisknutelné ASCII znaky bez dvojtečky.'])
                     ->helperText('Alespoň 12 znaků.')
                     ->visible(fn ($get) => $get('password_mode') === 'set' && $get('access') !== SshAccess::Off->value)

@@ -68,15 +68,12 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
                 TextColumn::make('name')->label('Služba')->weight('medium')
                     ->state(fn (Service $record) => $record->label())
                     ->description(fn (Service $record) => $record->unit),
-                BadgeColumn::make('type')->label('Typ')->color('gray')
-                    ->formatStateUsing(fn ($state) => $state instanceof ServiceType ? $state->getLabel() : $state),
                 BadgeColumn::make('state')->label('Stav')
                     ->state(fn (Service $record) => self::STATES[$record->active_state] ?? $record->active_state)
                     ->colors(['běží' => 'success', 'chyba' => 'danger', 'zastaveno' => 'gray', 'startuje' => 'warning', 'zastavuje se' => 'warning', 'načítá' => 'warning'])
                     ->tooltip(fn (Service $record) => $record->sub_state),
                 TextColumn::make('boot')->label('Po startu serveru')->textColor('gray')
                     ->state(fn (Service $record) => $record->enabled_state === 'enabled' ? 'spustí se' : ($record->enabled_state ?? '—')),
-                TextColumn::make('synced_at')->label('Ověřeno')->since()->textColor('gray'),
             ])
             ->filters([
                 SelectFilter::make('type')->label('Typ')->options(collect(ServiceType::cases())->mapWithKeys(fn (ServiceType $t) => [$t->value => $t->getLabel()])->all()),
@@ -113,6 +110,7 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
                 ]),
             ])
             ->poll('15s')
+            ->perPage(25)
             ->defaultSort('type');
     }
 

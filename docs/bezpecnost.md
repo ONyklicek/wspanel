@@ -100,6 +100,16 @@ VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
 - Totéž jde nastavit při instalaci: `install.sh --panel-allow=10.8.0.0/24,203.0.113.7`.
 - Omezení se týká i Mailpitu a phpMyAdminu/Admineru (běží pod doménou panelu).
 
+## Databáze z internetu
+
+Ve výchozím stavu poslouchají MariaDB a PostgreSQL jen lokálně. Otevřít je jde
+v Databáze → Servery (viz [Databáze](databaze.md#přístup-z-internetu)): po síti
+pak jde jen přihlášení přes TLS (`REQUIRE SSL`, `hostssl`), port se ve firewallu
+otevře jen pro allowlist (nebo všem, s upozorněním na Přehledu) a fail2ban
+blokuje hádání hesel. Hesla superuživatelů panel neukládá; agent uchovává jen
+hash hesla MariaDB root (v souboru čitelném jen pro root), aby mohl vytvořit
+síťový účet.
+
 ## Docker Desktop (jen vývoj)
 
 Docker Desktop na Macu nevynucuje cgroup BPF `SocketBindDeny`. Dev kontejner

@@ -2,13 +2,16 @@
 
 namespace App\Support;
 
+use App\Actions\Databases\ManageDatabaseServers;
 use App\Actions\Monitoring\ServerMetrics;
 use App\Enums\SiteStatus;
+use App\Livewire\Pages\DatabaseServersPage;
 use App\Models\Certificate;
 use App\Models\Deployment;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use Illuminate\Support\Number;
 
 /**
  * What needs the operator's attention right now, most serious first.
@@ -38,7 +41,9 @@ final class Attention
         }
         foreach (Certificate::query()->whereIn('status', ['expired', 'missing', 'expiring'])->get() as $c) {
             $add($c->status === 'expiring' ? 'warning' : 'danger',
-                match ($c->status) { 'expired' => "Certifikát vypršel: {$c->domain}", 'missing' => "Chybí certifikát: {$c->domain}", default => "Certifikát brzy vyprší: {$c->domain}" },
+                match ($c->status) {
+                    'expired' => "Certifikát vypršel: {$c->domain}", 'missing' => "Chybí certifikát: {$c->domain}", default => "Certifikát brzy vyprší: {$c->domain}"
+                },
                 (string) ($c->last_error ?? ($c->not_after ? 'platí do '.$c->not_after->format('j. n. Y') : '')));
         }
         foreach (Deployment::query()->with('site')->whereIn('status', ['failed', 'rolled_back'])->where('started_at', '>=', now()->subDay())->latest('started_at')->limit(5)->get() as $d) {
@@ -49,7 +54,7 @@ final class Attention
             foreach ($m['filesystems'] ?? [] as $f) {
                 $pct = $f['total'] > 0 ? 100 * $f['used'] / $f['total'] : 0;
                 if ($pct >= 85) {
-                    $add($pct >= 95 ? 'danger' : 'warning', "Disk {$f['mount']} je zaplněný z ".round($pct).' %', 'Volno '.\Illuminate\Support\Number::fileSize($f['free'], 1));
+                    $add($pct >= 95 ? 'danger' : 'warning', "Disk {$f['mount']} je zaplněný z ".round($pct).' %', 'Volno '.Number::fileSize($f['free'], 1));
                 }
             }
             $mem = $m['memory'] ?? [];
@@ -61,6 +66,16 @@ final class Attention
             }
         } catch (AgentException $e) {
             $add('danger', 'Agent neodpovídá', $e->getMessage());
+        }
+        try {
+            foreach (app(ManageDatabaseServers::class)->status() as $engine => $db) {
+                if (($db['remote'] ?? false) && ($db['anywhere'] ?? false)) {
+                    $add('warning', DatabaseServersPage::engineLabel($engine).' je přístupná z celého internetu',
+                        "Port {$db['port']} je otevřený všem. Bezpečnější je povolit jen vybrané adresy.", DatabaseServersPage::url());
+                }
+            }
+        } catch (AgentException) {
+            // reported above when the agent is down
         }
         foreach (Site::query()->where('enabled', false)->get() as $site) {
             $add('info', "{$site->domain} je vypnutý", 'Návštěvníci vidí stránku 503.');

@@ -8,7 +8,7 @@
 <body style="font-family: system-ui; margin: 3rem">
     <form id="signon" method="post" action="{{ $action }}">
         <input type="hidden" name="token" value="{{ $token }}">
-        <p>Otevírám databázi <strong>{{ $database->name }}</strong>…</p>
+        <p>Otevírám <strong>{{ $label ?? 'databázi '.$database->name }}</strong>…</p>
         <noscript><button type="submit">Pokračovat</button></noscript>
     </form>
     <script>document.getElementById('signon').submit();</script>

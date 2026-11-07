@@ -42,6 +42,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Přehled** | co vyžaduje pozornost (spadlé služby, neodpovídající weby, certifikáty, chyby deploye, plný disk), zátěž, poslední deploye |
 | **Hosting → Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi, záložka Deploy |
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
+| **Hosting → Databáze → Servery** | heslo root / postgres, přístup k databázím z internetu, phpMyAdmin / Adminer přes všechny databáze |
 | **Hosting → Naplánované úlohy** | cron úlohy webů |
 | **Síť a pošta → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
 | **Síť a pošta → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |

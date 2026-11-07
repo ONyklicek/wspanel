@@ -123,7 +123,8 @@ class RuntimeModesTest extends TestCase
 
         $site->refresh();
         $this->assertFalse($site->health_ok);
-        $this->assertStringContainsString('connection refused', $site->health_error);
+        $this->assertSame('Server spojení odmítl (nic na portu neposlouchá).', $site->health_error);
+        $this->assertStringContainsString('connection refused', $site->getRawOriginal('health_error'));
     }
 
     public function test_app_units_are_mirrored_as_app_services(): void

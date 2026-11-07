@@ -39,6 +39,7 @@ https() { # https HOST PATH -> body
 	curl -sk --max-time 15 --resolve "$1:443:127.0.0.1" "https://$1$2"
 }
 code() { curl -sk --max-time 15 -o /dev/null -w '%{http_code}' --resolve "$1:443:127.0.0.1" "https://$1$2"; }
+me=$(hostname -I | awk '{print $1}') # a non-loopback address of this host = an outsider
 wait_body() { # wait_body HOST PATH NEEDLE -> last body (retries ~3 min)
 	local b=""
 	for _ in $(seq 1 90); do
@@ -385,7 +386,6 @@ contains "mismatched key is refused" "$(php '$s = App\Models\Site::where("domain
 check "custom key is not in the audit log" bash -c '! grep -q "BEGIN PRIVATE KEY" /var/log/panel-agent/audit.log'
 php '$s = App\Models\Site::where("domain","intra.lan")->sole(); app(App\Actions\Sites\ManageTls::class)->set($s, "internal");' >/dev/null
 
-me=$(hostname -I | awk '{print $1}') # a non-loopback address of this host = an outsider
 outside() { curl -sk --max-time 15 -o /dev/null -w '%{http_code}' --resolve "panel.localhost:443:$me" "https://panel.localhost$1"; }
 contains "refuses a list without the admin's address" "$(php 'try { app(App\Actions\ManagePanelAccess::class)->set(["10.99.0.0/24"], true, "203.0.113.5"); echo "SAVED"; } catch (InvalidArgumentException $e) { echo "REFUSED"; }')" "REFUSED"
 php 'app(App\Actions\ManagePanelAccess::class)->set(["10.99.0.0/24"], true, null);' >/dev/null
@@ -398,6 +398,37 @@ contains "sites are not affected" "$(curl -sk --max-time 15 --resolve "app.local
 php 'app(App\Actions\ManagePanelAccess::class)->set([], true, null);' >/dev/null
 sleep 2
 expect "panel is public again" "$(outside /login)" "200"
+
+# ----------------------------------------------------------------------------
+section "Database servers: root password and access from the internet"
+dbs() { php "echo json_encode(app(App\\Actions\\Databases\\ManageDatabaseServers::class)->$1);" | tail -1; }
+mpw=$(php 'echo app(App\Actions\Databases\ManageDatabaseServers::class)->setRootPassword("mariadb");' | tail -1)
+ppw=$(php 'echo app(App\Actions\Databases\ManageDatabaseServers::class)->setRootPassword("postgresql");' | tail -1)
+expect "generated root passwords are 32 characters" "${#mpw}/${#ppw}" "32/32"
+expect "agent still reaches MariaDB over the socket" "$(mariadb -N -e 'select 1' 2>&1)" "1"
+shop_pw=$(sed -n 's/^DB_PASSWORD="\(.*\)"$/\1/p' /srv/sites/shop.localhost/shared/.env)
+dbs "setAccess('mariadb', 'allowlist', ['$me'])" >/dev/null
+dbs "setAccess('postgresql', 'allowlist', ['$me'])" >/dev/null
+sleep 2
+contains "root reaches MariaDB from the allowlist over TLS" "$(mariadb -h "$me" -u root -p"$mpw" --ssl --ssl-verify-server-cert=0 -N -e "select variable_value from information_schema.session_status where variable_name='Ssl_cipher'" 2>&1)" "TLS_"
+contains "MariaDB refuses a network login without TLS" "$(mariadb -h "$me" -u root -p"$mpw" --skip-ssl -N -e 'select 1' 2>&1)" "Access denied"
+expect "a site's database owner reaches it from the allowlist" "$(mariadb -h "$me" -u shop_db -p"$shop_pw" --ssl --ssl-verify-server-cert=0 -N -e 'select database()' shop_db 2>&1)" "shop_db"
+contains "postgres reaches PostgreSQL over TLS" "$(PGPASSWORD="$ppw" psql "host=$me user=postgres dbname=postgres sslmode=require" -Atc 'select ssl from pg_stat_ssl where pid=pg_backend_pid()' 2>&1)" "t"
+contains "PostgreSQL refuses a network login without TLS" "$(PGPASSWORD="$ppw" psql "host=$me user=postgres dbname=postgres sslmode=disable" -Atc 'select 1' 2>&1)" "no encryption"
+expect "sites still connect locally without TLS" "$(mariadb -h 127.0.0.1 -u shop_db -p"$shop_pw" --skip-ssl -N -e 'select 1' shop_db 2>&1)" "1"
+contains "firewall opens 3306 for the allowlist only" "$(ufw status | grep '# wspanel-db-mariadb')" "$me"
+contains "fail2ban guards both engines" "$(fail2ban-client status 2>&1)" "mysqld-auth, sshd, wspanel-postgres"
+mariadb -h "$me" -u root -pwrong --ssl --ssl-verify-server-cert=0 -e 'select 1' >/dev/null 2>&1
+sleep 3
+contains "a failed MariaDB login is seen by fail2ban" "$(fail2ban-client status mysqld-auth 2>&1)" "Total failed:	1"
+contains "server-wide phpMyAdmin access" "$(php 'echo json_encode(app(App\Services\Agent\AgentClient::class)->call("db.access", ["engine" => "mariadb", "tool" => "phpmyadmin", "scope" => "all"]));')" '"token":"'
+dbs "setAccess('mariadb', 'local')" >/dev/null
+dbs "setAccess('postgresql', 'local')" >/dev/null
+sleep 2
+expect "both engines listen on loopback only again" "$(ss -ltn | grep -cE '0.0.0.0:(3306|5432)|\*:(3306|5432)|\[::\]:(3306|5432)')" "0"
+expect "no database rule left in the firewall" "$(ufw status | grep -c 'wspanel-db-')" "0"
+php 'app(App\Actions\Databases\ManageDatabaseServers::class)->removeRootPassword("mariadb"); app(App\Actions\Databases\ManageDatabaseServers::class)->removeRootPassword("postgresql");' >/dev/null
+contains "root without a password refuses TCP again" "$(mariadb -h 127.0.0.1 -u root -p"$mpw" --skip-ssl -N -e 'select 1' 2>&1)" "denied"
 
 # ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"

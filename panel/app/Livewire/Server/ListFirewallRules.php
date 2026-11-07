@@ -58,7 +58,7 @@ class ListFirewallRules extends ListPage
                 ->form([
                     Grid::make()->columns(3)->schema([
                         Select::make('action')->rules([Options::rule()])->label('Akce')->options(['allow' => 'Povolit', 'deny' => 'Zakázat'])->default('allow')->required(),
-                        TextInput::make('port')->label('Port')->integer()->minValue(1)->maxValue(65535)->required(),
+                        TextInput::make('port')->label('Port')->integer()->minValue(1)->maxValue(65535)->rules(['integer', 'between:1,65535'])->required(),
                         Select::make('proto')->rules([Options::rule()])->label('Protokol')->options(['tcp' => 'TCP', 'udp' => 'UDP'])->default('tcp')->required(),
                     ]),
                     TextInput::make('from')->label('Odkud (IP nebo síť)')->placeholder('odkudkoli')
@@ -68,7 +68,7 @@ class ListFirewallRules extends ListPage
                                 $fail('Zadejte IP adresu nebo síť v CIDR.');
                             }
                         }]),
-                    TextInput::make('description')->label('Popis')->maxLength(100),
+                    TextInput::make('description')->label('Popis')->maxLength(100)->rules(['max:100']),
                 ])
                 ->action(function (array $data) {
                     try {

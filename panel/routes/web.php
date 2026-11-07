@@ -3,6 +3,7 @@
 use App\Actions\Sites\ManageTls;
 use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\ForwardAuthController;
+use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +16,11 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
         ->middleware('throttle:30,1')
         ->name('dbtools.open');
+    Route::get('/db-open-server/{engine}/{tool}', OpenDatabaseServerToolController::class)
+        ->whereIn('engine', ['mariadb', 'postgresql'])
+        ->whereIn('tool', ['phpmyadmin', 'adminer'])
+        ->middleware('throttle:30,1')
+        ->name('dbtools.server');
     Route::get('/ssl/root-ca.crt', function () {
         return response(app(ManageTls::class)->rootCa()['pem'], 200, [
             'Content-Type' => 'application/x-x509-ca-cert',

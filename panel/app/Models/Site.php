@@ -6,6 +6,8 @@ use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
+use App\Support\AgentMessages;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -34,6 +36,18 @@ class Site extends Model
     ];
 
     protected $hidden = ['webhook_secret', 'ci_token_hash'];
+
+    /** The agent's English text, shown in Czech (stored as it came). */
+    protected function lastError(): Attribute
+    {
+        return Attribute::get(fn (?string $value) => AgentMessages::cs($value));
+    }
+
+    /** The agent's English text, shown in Czech (stored as it came). */
+    protected function healthError(): Attribute
+    {
+        return Attribute::get(fn (?string $value) => AgentMessages::cs($value));
+    }
 
     protected function casts(): array
     {
