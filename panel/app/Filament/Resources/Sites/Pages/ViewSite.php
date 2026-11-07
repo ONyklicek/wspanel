@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Sites\Pages;
 
+use App\Actions\Sites\ManageDeploys;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -30,6 +31,13 @@ use Illuminate\Contracts\Support\Htmlable;
 class ViewSite extends ViewRecord
 {
     protected static string $resource = SiteResource::class;
+
+    public function mount(int|string $record): void
+    {
+        parent::mount($record);
+        // Fresh deploy state for the overview (the agent is the source of truth).
+        rescue(fn () => app(ManageDeploys::class)->history($this->record), report: false);
+    }
 
     public function getTitle(): string|Htmlable
     {

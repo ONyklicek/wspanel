@@ -112,6 +112,9 @@ if curl -sk --resolve wordpress.localhost:443:127.0.0.1 https://wordpress.localh
 		'https://wordpress.localhost/wp-admin/install.php?step=2' && echo "    WordPress installed (admin / Demo-heslo-123)"
 fi
 
+# The installer ran inside the container (port 443); the browser uses :8443.
+mariadb wordpress_demo -e "UPDATE wp_options SET option_value='https://wordpress.localhost:8443' WHERE option_name IN ('siteurl','home')" 2>/dev/null
+
 php "Artisan::call('panel:sync');" >/dev/null
 log "Done"
 for d in laravel symfony wordpress; do

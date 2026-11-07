@@ -432,7 +432,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
-  grep -q '^APP_LOCALE=' /srv/panel/shared/.env || echo "APP_LOCALE=cs" >> /srv/panel/shared/.env
+  grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
   # Documentation shown in the panel (Nápověda).
   if [[ -d "$HERE/../docs" ]]; then rsync -a --delete "$HERE/../docs/" "$release/resources/docs/"; fi
