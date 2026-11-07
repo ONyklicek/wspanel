@@ -117,7 +117,8 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     }),
                 BadgeColumn::make('ssh_access')
                     ->label('SSH')
-                    ->formatStateUsing(fn ($state) => $state instanceof SshAccess ? $state->getLabel() : $state),
+                    // "Vypnuto" beside "Běží" reads as a stopped site on a phone card, where the header is not shown.
+                    ->formatStateUsing(fn ($state) => $state === SshAccess::Off ? 'bez SSH' : ($state instanceof SshAccess ? $state->getLabel() : $state)),
                 TextColumn::make('created_at')->label('Založeno')->date('j. n. Y')->sortable()->toggleable(),
             ])
             ->recordUrl(fn (Site $record) => self::url('view', $record))
