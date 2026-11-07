@@ -156,6 +156,7 @@ func binaries(cfg config.Config) map[string]string {
 		"journalctl":       "/usr/bin/journalctl",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
+		"frankenphp-new":   cfg.FrankenPHPBin + ".new", // update candidate, checked before the swap
 	}
 	for _, v := range cfg.PHPVersions {
 		b["php-fpm"+v] = config.ForVersion(cfg.FPMBinary, v)

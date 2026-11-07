@@ -170,6 +170,22 @@ V panelu: web → **Deploy**.
 - **Rollback** jde na kterýkoli z držených releasů. **`.env`** se edituje
   přímo na stránce Deploy (čte i zapisuje se jako uživatel webu).
 
+## Provoz
+
+- **Audit (menu Audit):** posledních 500 operací agenta s filtrem podle oblasti.
+  Citlivé parametry (obsah `.env`, hesla, tokeny) agent do logu nezapisuje,
+  jen délku a otisk.
+- **Produkční OPcache (Deploy → Nastavení, classic weby):** PHP nekontroluje
+  změny souborů. Kód se načte při deployi (reload FPM). Ruční úpravy přes
+  SFTP se pak projeví až po reloadu.
+- **Aktualizace FrankenPHP (Služby → Aktualizovat):**
+  1. Agent stáhne release z GitHubu a ověří ho otiskem sha256, který GitHub
+     k binárce zveřejňuje.
+  2. Novou binárkou zkontroluje všechny konfigurace.
+  3. Vymění binárku (stará zůstane jako `.prev`) a restartuje proxy, web tier
+     a worker weby. Všechny weby jsou pár sekund nedostupné.
+  4. Když něco nenaběhne, vrátí původní binárku.
+
 ## Struktura webu
 
 ```

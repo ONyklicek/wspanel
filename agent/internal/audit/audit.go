@@ -2,6 +2,7 @@
 package audit
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -37,13 +38,15 @@ func Open(path string) (*Log, error) {
 }
 
 func (l *Log) Write(e Entry) error {
-	b, err := json.Marshal(e)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // keep "<redacted …>" readable
+	if err := enc.Encode(e); err != nil {
 		return err
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, err = l.f.Write(append(b, '\n'))
+	_, err := l.f.Write(buf.Bytes())
 	return err
 }
 

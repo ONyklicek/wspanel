@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Resources\Services\ServiceResource;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\FrankenPhpRelease;
@@ -49,7 +50,7 @@ class ServerResources extends StatsOverviewWidget
         $franken = app(FrankenPhpRelease::class);
         $installed = $franken->installed();
         $stats[] = $franken->updateAvailable()
-            ? Stat::make('FrankenPHP', 'v'.$installed)->description('Dostupná v'.$franken->latest().' – binárka se neaktualizuje sama (OpenSSL a PHP jsou v ní). Spusťte install.sh s novou verzí.')->color('warning')
+            ? Stat::make('FrankenPHP', 'v'.$installed)->description('Dostupná v'.$franken->latest().' – binárka se neaktualizuje sama (OpenSSL a PHP jsou v ní). Aktualizujte na stránce Služby.')->color('warning')->url(ServiceResource::getUrl())
             : Stat::make('FrankenPHP', $installed ? 'v'.$installed : '?')->description($franken->latest() ? 'aktuální' : 'nejnovější verzi nelze ověřit')->color('success');
 
         return $stats;

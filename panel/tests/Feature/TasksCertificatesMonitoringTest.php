@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Filament\Resources\Certificates\Pages\ListCertificates;
 use App\Filament\Resources\CronJobs\Pages\ListCronJobs;
+use App\Filament\Resources\Services\Pages\ListServices;
 use App\Models\Certificate;
 use App\Models\CronJob;
 use App\Models\Site;
@@ -91,6 +92,27 @@ class TasksCertificatesMonitoringTest extends TestCase
         Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.14.0'])]);
         $this->assertTrue(app(FrankenPhpRelease::class)->updateAvailable());
         $this->assertSame('1.13.5', app(FrankenPhpRelease::class)->installed());
+    }
+
+    public function test_frankenphp_update_from_the_services_page(): void
+    {
+        Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.14.0'])]);
+        $this->agent->shouldReceive('call')->with('sys.services')->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('frankenphp.update', ['version' => 'v1.14.0'])->andReturn(['job_id' => 'abcdef0123456789']);
+        $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => ['changed' => true]]);
+
+        Livewire::test(ListServices::class)
+            ->assertActionVisible('updateFrankenphp')
+            ->callAction('updateFrankenphp')
+            ->assertNotified('FrankenPHP aktualizován na v1.14.0');
+    }
+
+    public function test_no_update_action_when_current(): void
+    {
+        Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.13.5'])]);
+        $this->agent->shouldReceive('call')->with('sys.services')->andReturn([]);
+
+        Livewire::test(ListServices::class)->assertActionHidden('updateFrankenphp');
     }
 
     public function test_no_update_when_github_is_unreachable(): void
