@@ -81,14 +81,12 @@ class Site extends Model
         };
     }
 
+    /** Badge colour per state label. */
+    public const STATE_COLORS = ['Běží' => 'success', 'Vypnutý' => 'gray', 'Zakládá se' => 'warning', 'Neodpovídá' => 'danger', 'Chyba' => 'danger'];
+
     public function stateColor(): string
     {
-        return match ($this->stateLabel()) {
-            'Běží' => 'success',
-            'Vypnutý' => 'gray',
-            'Zakládá se' => 'warning',
-            default => 'danger',
-        };
+        return self::STATE_COLORS[$this->stateLabel()] ?? 'danger';
     }
 
     public function isOperational(): bool

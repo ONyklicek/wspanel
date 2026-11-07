@@ -162,7 +162,7 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Features::registration(), — single-admin panel: accounts only via `php artisan wire:user` or the Users screen
         Features::resetPasswords(),
         // Features::emailVerification(),
         Features::updateProfileInformation(),

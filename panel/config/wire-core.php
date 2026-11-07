@@ -266,9 +266,7 @@ return [
     |   ],
     |
     */
-    'dashboards' => [
-        \App\Dashboards\OverviewDashboard::class,
-    ],
+    'dashboards' => [],
 
     /*
     |--------------------------------------------------------------------------
@@ -292,9 +290,9 @@ return [
     |
     */
     'discover' => [
-        'resources' => [],
-        'dashboards' => [],
-        'pages' => [],
+        'resources' => ['App\\Wire\\Resources' => app_path('Wire/Resources')],
+        'dashboards' => ['App\\Dashboards' => app_path('Dashboards')],
+        'pages' => ['App\\Livewire\\Pages' => app_path('Livewire/Pages')],
     ],
 
     /*
