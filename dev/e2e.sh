@@ -206,7 +206,7 @@ contains "assets built and served by the web tier" "$(https app.localhost /build
 check "env.set content is redacted in the audit log" bash -c '! grep "\"op\":\"env.set\"" /var/log/panel-agent/audit.log | grep -q APP_KEY=base64'
 
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageWebhook::class)->enable(\$s); file_put_contents('$W/hook', App\\Actions\\Sites\\ManageWebhook::url(\$s).PHP_EOL.\$s->webhook_secret);" >/dev/null
-url=$(sed -n 1p "$W/hook"); secret=$(sed -n 2p "$W/hook")
+url=$(sed -n 1p "$W/hook" | sed -E 's#^(https://[^/:]+):[0-9]+#\1#'); secret=$(sed -n 2p "$W/hook") # public port -> in-container 443
 echo v2 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v2 && gitc push -q /home/git/app.git main
 body="{\"ref\":\"refs/heads/main\",\"after\":\"$(gitc rev-parse HEAD)\"}"
 sig="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
@@ -223,6 +223,32 @@ contains "v2 is live" "$(https app.localhost /)" "deploy-test-app v2"
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->rollback(\$s);" >/dev/null
 contains "rollback brings v1 back" "$(https app.localhost /)" "deploy-test-app v1"
 
+# CI: a release tag through the API, then a build artifact
+ci_token=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageCiToken::class)->generate(\$s);" | tr -d '[:space:]')
+api=$(php "$(site app.localhost) echo route('api.deploy.trigger', ['hook' => \$s->refresh()->ci_id]);" | tr -d '[:space:]' | sed -E 's#^(https://[^/:]+):[0-9]+#\1#')
+echo v3 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v3 && gitc tag v3 && gitc push -q /home/git/app.git main v3
+ci_wait() { # ci_wait JSON -> final status
+	local su st=running
+	su=$(echo "$1" | sed -E 's/.*"status_url":"([^"]+)".*/\1/; s#\\/#/#g' | sed -E 's#^(https://[^/:]+):[0-9]+#\1#')
+	for _ in $(seq 1 90); do
+		st=$(pc -H "Authorization: Bearer $ci_token" "$su" | sed -E 's/.*"status":"([^"]+)".*/\1/')
+		[[ "$st" != running ]] && break
+		sleep 2
+	done
+	echo "$st"
+}
+expect "CI API refuses the webhook secret" "$(pc -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $secret" "$api")" "404"
+out=$(pc -X POST -H "Authorization: Bearer $ci_token" -H 'Content-Type: application/json' -d '{"ref":"v3"}' "$api")
+expect "CI deploy of tag v3 succeeds" "$(ci_wait "$out")" "success"
+contains "tag v3 is live" "$(https app.localhost /)" "deploy-test-app v3"
+rm -rf "$W/artifact" && cp -r "$W/app" "$W/artifact" && rm -rf "$W/artifact/.git" && echo v4-ci >"$W/artifact/VERSION"
+mkdir -p "$W/artifact/public/build" && echo '{"built":"in-ci"}' >"$W/artifact/public/build/manifest.json"
+tar -czf "$W/build.tar.gz" -C "$W/artifact" .
+out=$(pc -X POST -H "Authorization: Bearer $ci_token" -F "artifact=@$W/build.tar.gz" -F ref=v4 -F commit=abcdef1 "$api/artifact")
+expect "CI artifact deploy succeeds" "$(ci_wait "$out")" "success"
+contains "artifact is live (no build on the server)" "$(https app.localhost /build/manifest.json)" "in-ci"
+check "artifact file removed after the deploy" bash -c '[ -z "$(ls -A /var/lib/wspanel-artifacts)" ]'
+
 # ----------------------------------------------------------------------------
 section "SSH / SFTP"
 rm -f "$W/key" "$W/key.pub" && ssh-keygen -q -t ed25519 -N "" -C e2e -f "$W/key"
@@ -230,7 +256,14 @@ php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\
 SSH=(ssh -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes)
 contains "SSH shell as the site user with its PHP" "$("${SSH[@]}" web_shop_localhost@127.0.0.1 'id -un; php -r "echo PHP_VERSION;"')" "web_shop_localhost"
 contains "composer and node available" "$("${SSH[@]}" web_shop_localhost@127.0.0.1 'composer --version; node -v')" "Composer version"
-check "password login is disabled" bash -c "! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password web_shop_localhost@127.0.0.1 true"
+command -v sshpass >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q sshpass >/dev/null
+PWSSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PubkeyAuthentication=no -o PreferredAuthentications=password)
+check "password login refused without a password set" bash -c "! SSHPASS=wrong-password-123 sshpass -e \"\${@}\" web_shop_localhost@127.0.0.1 true" _ "${PWSSH[@]}"
+pw=$(php "$(site shop.localhost) echo app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'shell', file_get_contents('$W/key.pub'), 'generate');" | tr -d '[:space:]')
+contains "password login works once a password is set" "$(SSHPASS=$pw sshpass -e "${PWSSH[@]}" web_shop_localhost@127.0.0.1 'id -un' 2>&1)" "web_shop_localhost"
+expect "root never logs in with a password" "$(sshd -T -C user=root,host=x,addr=127.0.0.1 | awk '/^passwordauthentication/ {print $2}')" "no"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'shell', file_get_contents('$W/key.pub'), 'remove');" >/dev/null
+check "removed password no longer works" bash -c "! SSHPASS='$pw' sshpass -e \"\${@}\" web_shop_localhost@127.0.0.1 true" _ "${PWSSH[@]}"
 "${SSH[@]}" -N -L 13306:127.0.0.1:3306 web_shop_localhost@127.0.0.1 2>"$W/tun.err" &
 tun=$!
 sleep 2
@@ -242,6 +275,65 @@ check "SFTP-only refuses a shell" bash -c "! \"\${@}\" web_shop_localhost@127.0.
 contains "SFTP works" "$(printf 'ls\n' | sftp -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -b - web_shop_localhost@127.0.0.1 2>&1)" "releases"
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'off', '');" >/dev/null
 check "access off removes the key" test ! -f /etc/ssh/authorized_keys/web_shop_localhost
+
+# ----------------------------------------------------------------------------
+section "Site on/off, restart, processes"
+php "$(site other.localhost) app(App\\Actions\\Sites\\ControlSite::class)->disable(\$s);" >/dev/null
+expect "disabled site answers 503" "$(code other.localhost /)" "503"
+contains "disabled site shows the notice" "$(https other.localhost /)" "dočasně vypnutý"
+php "$(site other.localhost) app(App\\Actions\\Sites\\ControlSite::class)->enable(\$s);" >/dev/null
+expect "enabled site answers again" "$(code other.localhost /)" "200"
+contains "restart reloads PHP-FPM" "$(php "$(site other.localhost) echo implode(',', app(App\\Actions\\Sites\\ControlSite::class)->restart(\$s));")" "fpm"
+contains "processes of a site are listed" "$(php "$(site shop.localhost) echo json_encode(app(App\\Actions\\Sites\\ControlSite::class)->processes(\$s));")" '"name":"horizon"'
+
+# ----------------------------------------------------------------------------
+section "Mail"
+mp_auth="Authorization: Basic $(cat /etc/mailpit/ui-basic)"
+mailpit() { curl -s -H "$mp_auth" "http://127.0.0.1:8025/mailpit/api/v1/$1"; }
+curl -s -X DELETE -H "$mp_auth" http://127.0.0.1:8025/mailpit/api/v1/messages >/dev/null
+for u in postfix opendkim mailpit; do check "$u active" systemctl is-active --quiet "$u"; done
+expect "Mailpit UI needs the panel login" "$(pc -o /dev/null -w '%{http_code}' https://panel.localhost/mailpit/)" "302"
+# capture: PHP mail() of a site lands in Mailpit (shop.localhost is in capture mode in dev)
+php "$(site shop.localhost) app(App\\Actions\\Mail\\ManageMail::class)->setSiteMode(\$s, 'capture');" >/dev/null
+runuser -u web_shop_localhost -- sh -c 'cat > /srv/sites/shop.localhost/current/public/e2e-mail.php' <<'PHPEOF'
+<?php echo mail('someone@example.com', 'e2e capture', 'hello') ? 'sent' : 'failed';
+PHPEOF
+contains "PHP mail() of a capture site succeeds" "$(https shop.localhost /e2e-mail.php)" "sent"
+sleep 1
+contains "the message is in Mailpit" "$(mailpit messages)" "e2e capture"
+rm -f /srv/sites/shop.localhost/current/public/e2e-mail.php
+# send: each site may only send as its own domain
+php "$(site other.localhost) app(App\\Actions\\Mail\\ManageMail::class)->setSiteMode(\$s, 'send'); app(App\\Actions\\Mail\\ManageMail::class)->dkim('other.localhost');" >/dev/null
+envf=/srv/sites/other.localhost/shared/.env
+mu=$(sed -n 's/^MAIL_USERNAME="\(.*\)"$/\1/p' "$envf"); mpw=$(sed -n 's/^MAIL_PASSWORD="\(.*\)"$/\1/p' "$envf")
+postconf -e defer_transports=smtp && postfix reload >/dev/null 2>&1 # keep test mail in the queue
+printf 'From: noreply@other.localhost\r\nTo: x@example.com\r\nSubject: e2e\r\n\r\nhi\r\n' >"$W/msg"
+smtp() { curl -s --max-time 10 smtp://127.0.0.1:25 --mail-rcpt x@example.com -T "$W/msg" "$@"; }
+refused() { ! "$@"; }
+check "SMTP without login is refused" refused smtp --mail-from noreply@other.localhost
+check "site login may send as its own domain" smtp --user "$mu:$mpw" --mail-from noreply@other.localhost
+check "site login may not send as another site" refused smtp --user "$mu:$mpw" --mail-from noreply@shop.localhost
+check "sendmail as a site user may not use another domain" bash -c "! runuser -u web_other_localhost -- /usr/sbin/sendmail -f x@shop.localhost x@example.com < $W/msg"
+sleep 2
+qid=$(postqueue -j | grep -m1 '"sender": *"noreply@other.localhost"' | sed -E 's/.*"queue_id": *"([^"]+)".*/\1/')
+contains "outgoing mail is DKIM-signed" "$( [[ -n $qid ]] && postcat -hq "$qid")" "d=other.localhost;"
+postsuper -d ALL >/dev/null 2>&1
+postconf -e defer_transports= && postfix reload >/dev/null 2>&1
+php "$(site other.localhost) app(App\\Actions\\Mail\\ManageMail::class)->setSiteMode(\$s, 'capture'); app(App\\Actions\\Mail\\ManageMail::class)->dkim('other.localhost', 'delete');" >/dev/null
+
+# ----------------------------------------------------------------------------
+section "DNS (PowerDNS)"
+command -v dig >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q bind9-dnsutils >/dev/null
+php 'App\Models\DnsZone::where("domain","e2e-zone.test")->delete(); rescue(fn () => app(App\Services\Dns\LocalDns::class)->deleteZone("e2e-zone.test"), report: false);
+app(App\Actions\Dns\ManageDnsZones::class)->create(["domain" => "e2e-zone.test", "provider" => "local", "nameservers" => ["ns1.panel.localhost", "ns2.panel.localhost"], "recommended" => true]);
+app(App\Services\Dns\LocalDns::class)->set("e2e-zone.test", "www.e2e-zone.test", "CNAME", 300, ["e2e-zone.test"]);' >/dev/null
+check "pdns active" systemctl is-active --quiet pdns
+expect "zone answers A with the server address" "$(dig +short @127.0.0.1 e2e-zone.test A)" "$(grep '^PANEL_PUBLIC_IPV4=' /srv/panel/shared/.env | cut -d= -f2)"
+contains "CNAME added in the panel answers" "$(dig +short @127.0.0.1 www.e2e-zone.test CNAME)" "e2e-zone.test."
+contains "SPF and DMARC suggested" "$(dig +short @127.0.0.1 _dmarc.e2e-zone.test TXT)" "v=DMARC1"
+check "no recursion for other domains" bash -c "! dig +short @127.0.0.1 example.org A | grep -q ."
+php 'app(App\Actions\Dns\ManageDnsZones::class)->delete(App\Models\DnsZone::where("domain","e2e-zone.test")->sole(), true);' >/dev/null
+check "deleted zone is gone" bash -c "! dig @127.0.0.1 e2e-zone.test SOA | grep -q 'status: NOERROR'"
 
 # ----------------------------------------------------------------------------
 section "Mode and version switching"

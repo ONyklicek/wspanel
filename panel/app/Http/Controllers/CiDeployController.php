@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Sites\ManageCiToken;
 use App\Actions\Sites\ManageDeploys;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
@@ -11,7 +12,7 @@ use Illuminate\Support\Str;
 
 /**
  * Deploy API for CI (GitHub Actions, GitLab CI…), authenticated with the
- * site's deploy token (Authorization: Bearer …):
+ * site's CI token (Authorization: Bearer …, created in the panel):
  *
  *   POST /api/deploy/{hook}            {"ref": "v1.2.3"}       deploy a tag/branch/commit
  *   POST /api/deploy/{hook}/artifact   multipart artifact=@build.tar.gz [ref, commit]
@@ -92,18 +93,15 @@ class CiDeployController
         return response()->json([
             'release' => $release,
             'status' => 'running',
-            'status_url' => route('api.deploy.status', ['hook' => $site->webhook_id, 'release' => $release]),
+            'status_url' => route('api.deploy.status', ['hook' => $site->ci_id, 'release' => $release]),
         ], 202);
     }
 
-    /** Same token as the webhook secret; unknown, disabled or wrong token = 404. */
+    /** The site's CI token; unknown id, no token or a wrong one = 404. */
     private function site(Request $request, string $hook): Site
     {
-        $site = preg_match('/^[a-f0-9]{32}$/', $hook)
-            ? Site::query()->where('webhook_id', $hook)->where('webhook_enabled', true)->first()
-            : null;
-        $token = (string) $request->bearerToken();
-        abort_if($site === null || blank($site->webhook_secret) || $token === '' || ! hash_equals($site->webhook_secret, $token), 404);
+        $site = preg_match('/^[a-f0-9]{32}$/', $hook) ? Site::query()->where('ci_id', $hook)->first() : null;
+        abort_if($site === null || ! ManageCiToken::check($site, (string) $request->bearerToken()), 404);
 
         return $site;
     }

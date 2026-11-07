@@ -9,9 +9,9 @@
 @endphp
 <div class="space-y-4 text-sm">
     @unless ($enabled)
-        <p class="rounded-lg bg-warning-50 p-3 text-warning-700 dark:bg-warning-400/10 dark:text-warning-400">Nejdřív zapněte <strong>Webhook</strong>: jeho URL a secret slouží i jako přístup pro CI.</p>
+        <p class="rounded-lg bg-warning-50 p-3 text-warning-700 dark:bg-warning-400/10 dark:text-warning-400">CI zatím nemá přístup: tlačítkem <strong>Vytvořit CI token</strong> dole ho vytvoříte (je oddělený od secretu webhooku a zobrazí se jen jednou).</p>
     @endunless
-    <p>Do repozitáře přidejte secret <code>WSPANEL_TOKEN</code> (hodnota = <strong>Secret</strong> z okna Webhook) a jeden z workflow do <code>.github/workflows/deploy.yml</code>. Workflow počká na výsledek: když deploy selže nebo se vrátí zpět, selže i Action.</p>
+    <p>Do repozitáře přidejte secret <code>WSPANEL_TOKEN</code> (hodnota = CI token) a jeden z workflow do <code>.github/workflows/deploy.yml</code>. Workflow počká na výsledek: když deploy selže nebo se vrátí zpět, selže i Action.</p>
 
     <div>
         <h3 class="font-medium">A) Release → server nasadí tag (build běží na serveru)</h3>

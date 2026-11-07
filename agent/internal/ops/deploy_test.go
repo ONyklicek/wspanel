@@ -1,7 +1,10 @@
 package ops
 
 import (
+	"bytes"
+	"compress/gzip"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -367,7 +370,11 @@ func TestDeployTagAndCommit(t *testing.T) {
 func TestDeployArtifactSkipsTheBuild(t *testing.T) {
 	env := deployEnv(t, "laravel")
 	env.Cfg.ArtifactDir = t.TempDir()
-	if err := os.WriteFile(filepath.Join(env.Cfg.ArtifactDir, "build-1.tar.gz"), []byte("tgz"), 0o600); err != nil {
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, _ = zw.Write([]byte("tar-bytes"))
+	_ = zw.Close()
+	if err := os.WriteFile(filepath.Join(env.Cfg.ArtifactDir, "build-1.tar.gz"), gz.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	dr := env.Exec.(*executor.DryRun)
@@ -389,7 +396,7 @@ func TestDeployArtifactSkipsTheBuild(t *testing.T) {
 			t.Errorf("artifact deploy must not fetch or build: %s", j)
 		}
 		if c.Name == "setpriv" && strings.Contains(j, "/usr/bin/tar") {
-			if c.Args[0] != "--reuid=web_app_example_com" || c.Stdin != "tgz" {
+			if c.Args[0] != "--reuid=web_app_example_com" || c.Stdin != "tar-bytes" {
 				t.Errorf("tar must run as the site user reading stdin: %v", c)
 			}
 		}
@@ -405,5 +412,17 @@ func TestDeployArtifactSkipsTheBuild(t *testing.T) {
 	}
 	if _, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com", "artifact": "../x.tar.gz"}); code(err) != protocol.CodeInvalidParams {
 		t.Errorf("path in artifact name: %v", err)
+	}
+}
+
+func TestCapReader(t *testing.T) {
+	c := &capReader{r: strings.NewReader("0123456789"), left: 5}
+	b, err := io.ReadAll(c)
+	if err == nil || !c.exceeded || len(b) > 6 {
+		t.Fatalf("read %q, err %v, exceeded %v", b, err, c.exceeded)
+	}
+	c = &capReader{r: strings.NewReader("01234"), left: 5}
+	if b, err := io.ReadAll(c); err != nil || string(b) != "01234" || c.exceeded {
+		t.Fatalf("exact size: %q %v", b, err)
 	}
 }

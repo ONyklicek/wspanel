@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Sites\Pages;
 
+use App\Actions\Sites\ManageCiToken;
 use App\Actions\Sites\ManageDeploys;
 use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
@@ -24,6 +25,7 @@ use Filament\Schemas\Components\Text;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 
 /**
  * @property-read Site $record
@@ -281,10 +283,33 @@ class DeploySite extends Page
                 ->modalCancelActionLabel('Zavřít')
                 ->modalHeading('Deploy z CI (GitHub Actions, GitLab CI…)')
                 ->modalContent(fn () => view('filament.resources.sites.pages.deploy-ci', [
-                    'enabled' => $this->record->webhook_enabled,
-                    'base' => $this->record->webhook_id ? route('api.deploy.trigger', ['hook' => $this->record->webhook_id]) : null,
+                    'enabled' => $this->record->ci_token_hash !== null,
+                    'base' => $this->record->ci_id ? route('api.deploy.trigger', ['hook' => $this->record->ci_id]) : null,
                     'framework' => $this->record->framework,
-                ])),
+                ]))
+                ->extraModalFooterActions([
+                    Action::make('ciToken')
+                        ->label(fn () => $this->record->ci_token_hash ? 'Nový token' : 'Vytvořit CI token')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn () => $this->record->ci_token_hash ? 'Starý token okamžitě přestane platit.' : 'Token může nasadit libovolný tag, commit nebo hotový build. Uložte ho jen jako secret v CI.')
+                        ->action(function () {
+                            $token = app(ManageCiToken::class)->generate($this->record);
+                            Notification::make()
+                                ->title('CI token (zobrazí se jen teď)')
+                                ->body(new HtmlString('Uložte ho v GitHubu jako secret <code>WSPANEL_TOKEN</code>:<br><code style="user-select:all;word-break:break-all">'.e($token).'</code>'))
+                                ->success()->persistent()->send();
+                        }),
+                    Action::make('ciRevoke')
+                        ->label('Zrušit token')
+                        ->color('danger')
+                        ->visible(fn () => $this->record->ci_token_hash !== null)
+                        ->requiresConfirmation()
+                        ->action(function () {
+                            app(ManageCiToken::class)->revoke($this->record);
+                            Notification::make()->title('CI token zrušen')->success()->send();
+                        }),
+                ]),
             Action::make('deployKey')
                 ->label('Deploy klíč')
                 ->icon(Heroicon::OutlinedKey)

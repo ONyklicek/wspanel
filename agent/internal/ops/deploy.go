@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -917,12 +918,52 @@ func (d *deployment) unpackArtifact(ctx context.Context) error {
 	if err := asUser(ctx, d.env, l.User, "/usr/bin/install", "-d", "-m", "0750", "--", dir); err != nil {
 		return err
 	}
+	// Decompress here, capped: a small archive must not expand into a full disk.
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("artifact is not gzip: %w", err)
+	}
+	capped := &capReader{r: zr, left: maxArtifactExpanded}
 	var out strings.Builder
-	_, err = d.env.Exec.RunIO(ctx, f, &out, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
-		"/usr/bin/tar", "--extract", "--gzip", "--file=-", "--directory="+dir, "--no-same-owner", "--no-same-permissions", "--no-overwrite-dir")
+	_, err = d.env.Exec.RunIO(ctx, capped, &out, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+		"/usr/bin/tar", "--extract", "--file=-", "--directory="+dir, "--no-same-owner", "--no-same-permissions", "--no-overwrite-dir")
 	d.logf("%s", out.String())
+	if capped.exceeded {
+		return fmt.Errorf("artifact expands to more than %d GB", maxArtifactExpanded>>30)
+	}
 	if err != nil {
 		return fmt.Errorf("unpacking the artifact failed: %w", err)
 	}
 	return nil
+}
+
+const maxArtifactExpanded = 4 << 30
+
+// capReader fails once more than left bytes were read.
+type capReader struct {
+	r        io.Reader
+	left     int64
+	exceeded bool
+}
+
+func (c *capReader) Read(p []byte) (int, error) {
+	if c.left <= 0 { // at the limit: fine only if the stream ends here
+		var probe [1]byte
+		n, err := c.r.Read(probe[:])
+		if n == 0 && err != nil {
+			return 0, err
+		}
+		c.exceeded = true
+		return 0, fmt.Errorf("size limit exceeded")
+	}
+	if int64(len(p)) > c.left {
+		p = p[:c.left+1] // one byte over tells "exceeded" from "exactly at the limit"
+	}
+	n, err := c.r.Read(p)
+	c.left -= int64(n)
+	if c.left < 0 {
+		c.exceeded = true
+		return n, fmt.Errorf("size limit exceeded")
+	}
+	return n, err
 }
