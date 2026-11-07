@@ -363,6 +363,11 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = writeToolLinks(env, l); err != nil {
 		return nil, err
 	}
+	if st.Group != "" {
+		if err = isolateHome(ctx, env, l, true); err != nil {
+			return nil, err
+		}
+	}
 	return siteOutput(l, started), nil
 }
 
@@ -460,7 +465,7 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner, smtpPassword string) er
 // controls that tree and may have planted symlinks, which then lead only
 // where the user could write or chmod anyway — never where root could.
 func asUser(ctx context.Context, env *Env, user, bin string, args ...string) error {
-	full := append([]string{"--reuid=" + user, "--regid=" + user, "--init-groups", "--reset-env", "--", bin}, args...)
+	full := append(append(userCreds(user), bin), args...)
 	_, err := env.Exec.Run(ctx, "setpriv", full...)
 	return err
 }

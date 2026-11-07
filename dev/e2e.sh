@@ -662,6 +662,12 @@ check "client group exists on the server" getent group "$ga"
 expect "site user's primary group is the client's" "$(id -gn web_shop_localhost)" "$ga"
 expect "site files moved to the client's group" "$(stat -c %G /srv/sites/shop.localhost/shared)" "$ga"
 expect "site still answers after the move" "$(code shop.localhost /)" "200"
+# A second site of the same client (an administrator may go past the limit): same group, still isolated.
+php 'app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "sibling.localhost", "framework" => "php", "php_version" => "8.4", "client_id" => App\Models\Client::where("name","e2e-a")->value("id")]);' >/dev/null
+expect "sibling site shares the client's group" "$(id -gn web_sibling_localhost)" "$ga"
+check "sibling site cannot read the other site's home" bash -c '! runuser -u web_sibling_localhost -- ls /srv/sites/shop.localhost'
+expect "web tier still serves the moved site" "$(code shop.localhost /)" "200"
+php '$s = App\Models\Site::where("domain","sibling.localhost")->sole(); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null
 contains "disk limit reported as measured only here (overlay, no quota)" "$(php 'echo json_encode(App\Models\Client::where("name","e2e-a")->value("disk_enforced"));')" "false"
 panel_login a@e2e.local E2e-heslo-12345 "$W/a.jar"
 panel_login b@e2e.local E2e-heslo-12345 "$W/b.jar"
@@ -677,6 +683,17 @@ expect "suspended client is signed out" "$(pcode "$W/a.jar" /sites)" "302"
 php 'app(App\Actions\Clients\ManageClients::class)->resume(App\Models\Client::where("name","e2e-a")->sole());' >/dev/null
 expect "resumed client site answers again" "$(code shop.localhost /)" "200"
 php 'app(App\Actions\Clients\ManageClients::class)->assignSite(App\Models\Site::where("domain", "shop.localhost")->sole(), null);' >/dev/null
+# A site created by the client itself: its user has no group of its own.
+php 'auth()->login(App\Models\User::where("email","b@e2e.local")->sole());
+$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "client-b.localhost", "framework" => "laravel", "php_version" => "8.4"]);
+app(App\Actions\Databases\ManageDatabases::class)->create("mariadb", "app", $s);' >/dev/null
+gb=$(php 'echo App\Models\Client::where("name","e2e-b")->value("linux_group");' | tr -d '[:space:]')
+expect "client's own site is in the client's group" "$(id -gn web_client-b_localhost 2>/dev/null || id -gn web_client_b_localhost)" "$gb"
+expect "client's own site answers" "$(code client-b.localhost /)" "200"
+contains "database credentials written into its .env (as the site user)" "$(cat /srv/sites/client-b.localhost/shared/.env)" "DB_DATABASE=\"c"
+contains "file manager lists the client's site" "$(php '$s = App\Models\Site::where("domain","client-b.localhost")->sole(); echo json_encode(app(App\Actions\Sites\ManageFiles::class)->list($s, ""));')" "releases"
+php '$s = App\Models\Site::where("domain","client-b.localhost")->sole(); foreach ($s->databases as $d) { app(App\Actions\Databases\ManageDatabases::class)->drop($d); } app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null
+check "client's site removed" bash -c '! id web_client_b_localhost 2>/dev/null && ! id web_client-b_localhost 2>/dev/null'
 expect "site back with the administrator keeps its own group" "$(stat -c %G /srv/sites/shop.localhost/shared)" "web_shop_localhost"
 
 # ----------------------------------------------------------------------------

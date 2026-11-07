@@ -104,7 +104,7 @@ func siteFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	args := []string{"--reuid=" + l.User, "--regid=" + l.User, "--init-groups", "--reset-env", "--", env.Cfg.AgentBinary, "-fileop", l.Home}
+	args := append(userCreds(l.User), env.Cfg.AgentBinary, "-fileop", l.Home)
 	if _, err := env.Exec.RunIO(ctx, stdin, sink, "setpriv", args...); err != nil && len(sink.head) == 0 {
 		cleanupDownload(env, dlName)
 		return nil, fmt.Errorf("file manager failed: %w", err)

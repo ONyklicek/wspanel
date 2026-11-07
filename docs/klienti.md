@@ -54,7 +54,8 @@ pochází: z balíčku, nebo z výjimky.
 
 - Každý klient má na serveru Linuxovou skupinu `wsc_<číslo>`. Je to primární
   skupina uživatelů všech jeho webů, takže soubory webů klienta patří jeho
-  skupině. Weby téhož klienta na sebe vidí (sdílená skupina), cizí ne.
+  skupině. Weby zůstávají izolované i mezi sebou: skupina nemá do domova
+  webu přístup (ACL `g::---`), slouží jen kvótě.
 - **Místo na disku** vynucuje jádro jako kvótu této skupiny: zápis přes limit
   selže hned, bez přesčasu. Detail klienta ukáže, jestli kvótu vynucuje jádro,
   nebo jen měří panel.

@@ -475,7 +475,7 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 			return "", err
 		}
 		var commit strings.Builder
-		_, _ = d.env.Exec.RunIO(ctx, nil, &commit, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+		_, _ = d.env.Exec.RunIO(ctx, nil, &commit, "setpriv", "--reuid="+l.User, "--regid="+primaryGroup(l.User), "--init-groups", "--reset-env", "--",
 			"/usr/bin/git", "-c", "safe.directory="+dir, "-C", dir, "rev-parse", "HEAD")
 		d.commit = strings.TrimSpace(commit.String())
 		d.logf("commit %s\n", d.commit)
@@ -930,7 +930,7 @@ func (d *deployment) unpackArtifact(ctx context.Context) error {
 	}
 	capped := &capReader{r: zr, left: maxArtifactExpanded}
 	var out strings.Builder
-	_, err = d.env.Exec.RunIO(ctx, capped, &out, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+	_, err = d.env.Exec.RunIO(ctx, capped, &out, "setpriv", "--reuid="+l.User, "--regid="+primaryGroup(l.User), "--init-groups", "--reset-env", "--",
 		"/usr/bin/tar", "--extract", "--file=-", "--directory="+dir, "--no-same-owner", "--no-same-permissions", "--no-overwrite-dir")
 	d.logf("%s", out.String())
 	if capped.exceeded {

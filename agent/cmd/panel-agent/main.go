@@ -193,7 +193,8 @@ func binaries(cfg config.Config) map[string]string {
 		"usermod":          "/usr/sbin/usermod",
 		"groupadd":         "/usr/sbin/groupadd",
 		"groupdel":         "/usr/sbin/groupdel",
-		"chown":            "/usr/bin/chown", // a site moving between clients (-h, never follows links)
+		"chown":            "/usr/bin/chown",   // a site moving between clients (-h, never follows links)
+		"setfacl":          "/usr/bin/setfacl", // root: only the owning-group entry of a site home (no -R)
 		"findmnt":          "/usr/bin/findmnt",
 		"quotaon":          "/usr/sbin/quotaon", // -p only: is the group quota on
 		"setquota":         "/usr/sbin/setquota",

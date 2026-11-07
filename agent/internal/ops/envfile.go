@@ -14,7 +14,7 @@ import (
 // planted symlink cannot make root disclose another file. Missing = "".
 func readSiteFile(ctx context.Context, env *Env, l siteLayout, path string) (string, error) {
 	var out strings.Builder
-	res, err := env.Exec.RunIO(ctx, nil, &out, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env", "--",
+	res, err := env.Exec.RunIO(ctx, nil, &out, "setpriv", "--reuid="+l.User, "--regid="+primaryGroup(l.User), "--init-groups", "--reset-env", "--",
 		"/usr/bin/cat", path)
 	if err != nil {
 		if strings.Contains(res.Stderr, "No such file") {
@@ -29,7 +29,7 @@ func readSiteFile(ctx context.Context, env *Env, l siteLayout, path string) (str
 // written to a temp file next to it, then renamed (atomic for readers).
 func writeSiteFile(ctx context.Context, env *Env, l siteLayout, path, content string) error {
 	tmp := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".wspanel-tmp")
-	user := []string{"--reuid=" + l.User, "--regid=" + l.User, "--init-groups", "--reset-env", "--"}
+	user := userCreds(l.User)
 	// tee reads the inherited stdin descriptor; re-opening /dev/stdin by path
 	// would fail, as the pipe belongs to root. The agent's umask (0077) makes
 	// the new file 0600.

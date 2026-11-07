@@ -341,7 +341,7 @@ func siteLogs(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		out["missing"] = true
 		return out, nil
 	}
-	res, err := env.Exec.Run(ctx, "setpriv", "--reuid="+l.User, "--regid="+l.User, "--init-groups", "--reset-env",
+	res, err := env.Exec.Run(ctx, "setpriv", "--reuid="+l.User, "--regid="+primaryGroup(l.User), "--init-groups", "--reset-env",
 		"--", "/usr/bin/tail", "--lines", n, "--", file)
 	if err != nil {
 		return nil, err

@@ -270,7 +270,7 @@ func siteFileOp(ctx context.Context, env *Env, l siteLayout, req fileop.Request,
 			done <- err
 		}()
 	}
-	args := []string{"--reuid=" + l.User, "--regid=" + l.User, "--init-groups", "--reset-env", "--", env.Cfg.AgentBinary, "-fileop", l.Home}
+	args := append(userCreds(l.User), env.Cfg.AgentBinary, "-fileop", l.Home)
 	_, runErr := env.Exec.RunIO(ctx, in, sink, "setpriv", args...)
 	var consumeErr error
 	if pw != nil {

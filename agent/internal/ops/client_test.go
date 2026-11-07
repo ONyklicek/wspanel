@@ -32,6 +32,9 @@ func TestClientSiteUsesTheClientGroupAndFPMLimit(t *testing.T) {
 	if _, err := call(t, env, siteCreate, map[string]any{"domain": "a.example.com", "framework": "laravel", "php_version": "8.3", "group": "wsc_7", "fpm_children": 4}); err != nil {
 		t.Fatal(err)
 	}
+	if !hasCall(dr, "setfacl -m g::--- "+filepath.Join(env.Cfg.SitesRoot, "a.example.com")) {
+		t.Error("sites sharing the client's group must not read each other's home")
+	}
 	if !hasCall(dr, "useradd --system --gid wsc_7 --no-create-home") || hasCall(dr, "useradd --system --user-group") {
 		t.Fatalf("site user must get the client's group as primary:\n%s", strings.Join(callLines(dr), "\n"))
 	}
@@ -126,6 +129,7 @@ func TestSiteMovesToAClientGroup(t *testing.T) {
 		"usermod --gid wsc_9 web_e_example_com",
 		"chown -R -h --from=:web_e_example_com :wsc_9 " + home,
 		"systemctl reload php8.3-fpm",
+		"setfacl -m g::--- " + home,
 	} {
 		if !hasCall(dr, want) {
 			t.Errorf("missing %q in:\n%s", want, strings.Join(callLines(dr), "\n"))

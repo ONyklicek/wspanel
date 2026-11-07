@@ -27,6 +27,21 @@ const (
 // them to step out of the client's quota, so they get a quota of one block.
 var quotaTrapGroups = []string{"wspanel-ssh", "wspanel-sftp"}
 
+// isolateHome takes the owning group's access off a site home. The client's
+// group is shared by all its sites (for the quota), so without this one site
+// could read another's code. setfacl, not chmod: with the web tier's ACL on
+// the home, chmod g-rwx would set the ACL mask and cut the web tier off too.
+// The home is created by root under the root-owned sites root, so it is
+// never a link; no -R.
+func isolateHome(ctx context.Context, env *Env, l siteLayout, shared bool) error {
+	perm := "r-x"
+	if shared {
+		perm = "---"
+	}
+	_, err := env.Exec.Run(ctx, "setfacl", "-m", "g::"+perm, l.Home)
+	return err
+}
+
 // checkClientGroup: empty (no client) or an existing wsc_<id> group.
 func checkClientGroup(env *Env, g string) error {
 	if g == "" {
@@ -178,6 +193,9 @@ func siteSetGroup(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if _, err := env.Exec.Run(ctx, "chown", "-R", "-h", "--from=:"+from, ":"+to, l.Home); err != nil {
 		return nil, err
 	}
+	if err := isolateHome(ctx, env, l, p.Group != ""); err != nil {
+		return nil, err
+	}
 	if fsx.Exists(l.InstanceConfig) {
 		if _, err := env.Exec.Run(ctx, "chown", "-h", ":"+to, l.InstanceConfig); err != nil {
 			return nil, err
@@ -246,4 +264,19 @@ func siteLimits(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	return map[string]any{"domain": p.Domain, "fpm_children": l.FPMChildren}, nil
+}
+
+// primaryGroup is the numeric primary group of a site user: its own group,
+// or its client's (wsc_<id>) where no group named after the user exists.
+func primaryGroup(name string) string {
+	if u, err := user.Lookup(name); err == nil {
+		return u.Gid
+	}
+	return name
+}
+
+// userCreds are setpriv's arguments to run as a site user (uid, primary
+// group, supplementary groups, clean environment).
+func userCreds(name string) []string {
+	return []string{"--reuid=" + name, "--regid=" + primaryGroup(name), "--init-groups", "--reset-env", "--"}
 }
