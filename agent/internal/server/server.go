@@ -109,6 +109,7 @@ func (s *Server) housekeeping(ctx context.Context) {
 	defer tick.Stop()
 	for {
 		s.mutate.Lock()
+		ops.CleanupTransfers(s.Env)
 		if err := ops.CleanupDBAccess(ctx, s.Env); err != nil {
 			s.Log.Warn("db access cleanup", "err", err)
 		}

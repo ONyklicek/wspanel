@@ -476,6 +476,29 @@ sleep 1
 expect "clearing the settings opens the site again" "$(ec other.localhost /admin/)" "200"
 
 # ----------------------------------------------------------------------------
+section "File manager (as the site user, inside its home)"
+fm() { php "try { echo json_encode(app(App\Actions\Sites\ManageFiles::class)->$1); } catch (Throwable \$e) { echo 'ERR '.\$e->getMessage(); }" | tail -1; }
+fsite='App\Models\Site::where("domain","other.localhost")->sole()'
+fm "write($fsite, 'current/public/fm.txt', \"Ahoj\\n\")" >/dev/null
+expect "a file written from the panel belongs to the site user" "$(stat -c %U /srv/sites/other.localhost/current/public/fm.txt)" "web_other_localhost"
+contains "and is served" "$(https other.localhost /fm.txt)" "Ahoj"
+contains "reading it back" "$(fm "read($fsite, 'current/public/fm.txt')")" "Ahoj"
+contains "the shared .env is editable" "$(fm "read($fsite, 'shared/.env')")" '"content"'
+contains "nothing outside the home (..)" "$(fm "read($fsite, '../../../etc/shadow')")" "ERR"
+ln -sf /etc/shadow /srv/sites/other.localhost/current/public/sh
+contains "nothing outside the home (symlink)" "$(fm "read($fsite, 'current/public/sh')")" "ERR"
+rm -f /srv/sites/other.localhost/current/public/sh
+contains "another site's home is out of reach" "$(fm "list($fsite, '../app.localhost')")" "ERR"
+fm "compress($fsite, ['current/public/fm.txt'], 'current/public/fm.zip')" >/dev/null
+fm "extract($fsite, 'current/public/fm.zip', 'current/public/fmx')" >/dev/null
+expect "zip and unzip" "$(cat /srv/sites/other.localhost/current/public/fmx/current/public/fm.txt 2>/dev/null)" "Ahoj"
+dl=$(php "echo app(App\Actions\Sites\ManageFiles::class)->download($fsite, 'current/public/fm.txt');" | tail -1)
+expect "a download is handed to the panel user only" "$(stat -c '%U %a' "$dl" 2>/dev/null)" "panel 600"
+rm -f "$dl"
+fm "delete($fsite, 'current/public/fmx')" >/dev/null; fm "delete($fsite, 'current/public/fm.zip')" >/dev/null; fm "delete($fsite, 'current/public/fm.txt')" >/dev/null
+check "deleted again" test ! -e /srv/sites/other.localhost/current/public/fm.txt
+
+# ----------------------------------------------------------------------------
 section "Scheduled tasks, firewall, SSL, monitoring, audit"
 php "$(site app.localhost) app(App\\Actions\\ManageCronJobs::class)->create(\$s, ['kind' => 'artisan', 'command' => 'optimize', 'schedule' => '* * * * *']);" >/dev/null
 check "task timer active" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer

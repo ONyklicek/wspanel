@@ -9,6 +9,7 @@ use App\Enums\SshAccess;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteDeploy;
+use App\Livewire\Sites\SiteFiles;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Site;
 use App\Wire\Sites\SiteActions;
@@ -62,6 +63,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             'create' => CreateSitePage::class,
             'view' => RoutePage::make(ViewSite::class)->label('Přehled')->icon('outline:squares-2x2')->sort(10),
             'deploy' => RoutePage::make(SiteDeploy::class)->uri('{record}/deploy')->label('Deploy')->icon('outline:rocket-launch')->sort(20),
+            'files' => RoutePage::make(SiteFiles::class)->uri('{record}/files')->label('Soubory')->icon('outline:folder')->sort(30),
         ];
     }
 

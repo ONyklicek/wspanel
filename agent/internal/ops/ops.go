@@ -92,6 +92,7 @@ func Registry() map[string]Op {
 		{"db.server_status", false, dbServerStatus},
 		{"site.php", true, sitePHP},
 		{"site.edge", true, siteEdge},
+		{"site.files", true, siteFiles},
 		{"php.status", false, phpStatus},
 		{"php.extension", true, phpExtension},
 		{"php.install", true, phpInstall},

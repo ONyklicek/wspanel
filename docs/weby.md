@@ -50,6 +50,32 @@ Soukromý klíč vlastního certifikátu je jen na serveru (čitelný pro proxy)
 auditu se nezapisuje. Vlastní certifikát hlídá panel na stránce SSL; obnovit ho
 musíte sami (nahrát nový).
 
+## Soubory
+
+Detail webu → záložka **Soubory**. Správce souborů pracuje jako systémový
+uživatel webu a jen v jeho domovské složce `/srv/sites/<doména>`, nikam jinam
+se nedostane (ani přes symlinky nebo `..`).
+
+- Procházení složek, **nahrání** (víc souborů najednou, každý do 512 MB),
+  **stažení**, nový soubor a složka, přejmenování a přesun, oprávnění
+  (např. 644/755), smazání.
+- **Editor kódu** jako v IDE: zvýraznění syntaxe (PHP, JS, CSS, HTML, JSON,
+  YAML, Markdown, SQL, `.env`…), čísla řádků, sbalování bloků, hledání a
+  nahrazování (Ctrl/⌘ F), víc kurzorů. Tlačítko **Naformátovat** (Shift+Alt+F)
+  srovná kód: PHP do stylu PSR-12, dále JS, CSS, HTML, JSON, YAML, Markdown.
+- **Upravit .env** otevře sdílený `.env` webu (u Symfony `.env.local`) ve
+  složce `shared`. Platí pro všechny releasy; proces aplikace a workery ho
+  načtou po restartu webu.
+- Když soubor mezitím změnil někdo jiný (deploy, SFTP), uložení se odmítne,
+  aby se jeho změna nepřepsala.
+- **Zip:** vybrané soubory zabalíte do archivu, `.zip` rozbalíte do složky.
+- Upravovat jde soubory do 2 MB a uložit do 900 kB; větší soubory a velké
+  přenosy jsou pohodlnější přes SFTP.
+
+Aplikace běží ze složky `current` (odkaz na aktuální release). Ruční úpravy v
+`current` přepíše příští deploy; trvalé změny patří do Gitu, data a `.env` do
+`shared`.
+
 ## Domény a přístup
 
 Detail webu → **Další → Domény a přístup**. Vše zpracuje proxy ještě před

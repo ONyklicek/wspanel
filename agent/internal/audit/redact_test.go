@@ -26,3 +26,10 @@ func TestSiteTLSKeyIsRedacted(t *testing.T) {
 		t.Fatalf("not redacted: %s", out)
 	}
 }
+
+func TestEditedFileContentIsRedacted(t *testing.T) {
+	out := string(Redact("site.files", json.RawMessage(`{"domain":"a.cz","action":"write","path":"shared/.env","content":"DB_PASSWORD=SECRET"}`)))
+	if strings.Contains(out, "SECRET") || !strings.Contains(out, `"path":"shared/.env"`) {
+		t.Fatalf("not redacted: %s", out)
+	}
+}

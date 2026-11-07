@@ -31,9 +31,22 @@ func main() {
 	probeBind := flag.String("probe-bind", "", "internal: try to bind addr, print bound/denied (socket-bind enforcement probe)")
 	backup := flag.String("backup", "", "run a scheduled backup of engine/name and exit (used by backup timers)")
 	keep := flag.Int("keep", 7, "with -backup: number of backups to keep")
+	fileopHome := flag.String("fileop", "", "internal: serve one file-manager request inside this site home (run as the site user)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(ops.Version)
+		return
+	}
+	if *fileopHome != "" {
+		// Started by the agent through setpriv as the site user; never as root.
+		if os.Geteuid() == 0 {
+			fmt.Fprintln(os.Stderr, "fileop must not run as root")
+			os.Exit(2)
+		}
+		if err := ops.RunFileOp(*fileopHome); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 	if *probeBind != "" {
