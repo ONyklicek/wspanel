@@ -521,8 +521,12 @@ final class SiteActions
             ->action(function (Site $record, array $data) {
                 abort_unless(Gate::allows('admin'), 403);
                 $client = filled($data['client_id'] ?? null) ? Client::findOrFail($data['client_id']) : null;
-                app(ManageClients::class)->assignSite($record, $client);
-                Toast::success('Vlastník změněn', $client ? "Web teď patří klientovi {$client->name}." : 'Web teď patří správci.');
+                try {
+                    app(ManageClients::class)->assignSite($record, $client);
+                    Toast::success('Vlastník změněn', $client ? "Web teď patří klientovi {$client->name}." : 'Web teď patří správci.');
+                } catch (AgentException $e) {
+                    Toast::error('Vlastníka se nepodařilo změnit', $e->getMessage());
+                }
             });
     }
 

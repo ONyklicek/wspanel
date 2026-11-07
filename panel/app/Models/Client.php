@@ -20,7 +20,7 @@ class Client extends Model
     /** @use HasFactory<ClientFactory> */
     use HasFactory;
 
-    protected $fillable = ['name', 'company', 'email', 'phone', 'package_id', 'overrides', 'linux_group', 'suspended_at', 'suspended_sites', 'notes'];
+    protected $fillable = ['name', 'company', 'email', 'phone', 'package_id', 'overrides', 'linux_group', 'suspended_at', 'suspended_sites', 'notes', 'disk_enforced'];
 
     protected function casts(): array
     {
@@ -28,6 +28,7 @@ class Client extends Model
             'overrides' => 'array',
             'suspended_at' => 'datetime',
             'suspended_sites' => 'array',
+            'disk_enforced' => 'boolean',
         ];
     }
 

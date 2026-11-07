@@ -2,10 +2,12 @@
 
 namespace App\Wire\Resources;
 
+use App\Actions\Clients\ManageClients;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Livewire\Clients\ListPackages;
 use App\Models\Package;
+use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
@@ -149,7 +151,17 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
                     ->form(self::formSchema())
                     ->action(function (Package $record, array $data) {
                         $record->update(self::normalize($data));
-                        Toast::success('Balíček uložen', 'Změna platí hned pro všechny jeho klienty.');
+                        $failed = [];
+                        foreach ($record->clients as $client) {
+                            try {
+                                app(ManageClients::class)->applyToServer($client);
+                            } catch (AgentException $e) {
+                                $failed[] = $client->name.': '.$e->getMessage();
+                            }
+                        }
+                        $failed === []
+                            ? Toast::success('Balíček uložen', 'Změna platí hned pro všechny jeho klienty.')
+                            : Toast::warning('Balíček uložen, u některých klientů se server nepodařilo upravit', implode("\n", $failed));
                     }),
                 Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->tooltip('Smazat balíček')
                     ->visible(fn (Package $record) => $record->clients_count === 0)

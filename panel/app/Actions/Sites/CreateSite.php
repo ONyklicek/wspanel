@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sites;
 
+use App\Actions\Clients\ManageClients;
 use App\Enums\SiteStatus;
 use App\Exceptions\LimitReachedException;
 use App\Models\Client;
@@ -40,6 +41,16 @@ class CreateSite
         $tls = $data['tls'] ?? (Domains::isInternal($data['domain']) ? 'internal' : 'auto');
         if (in_array($tls, ['auto', 'internal'], true)) {
             $params['tls'] = $tls;
+        }
+
+        if ($owner !== null) {
+            if ($owner->linux_group === null) {
+                CurrentClient::unrestricted(fn () => app(ManageClients::class)->applyToServer($owner));
+            }
+            $params['group'] = $owner->linux_group;
+            if ($owner->limit('fpm_children') !== null) {
+                $params['fpm_children'] = (int) $owner->limit('fpm_children');
+            }
         }
 
         $site = Site::create([

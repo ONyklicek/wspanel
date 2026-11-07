@@ -49,3 +49,23 @@ pochází: z balíčku, nebo z výjimky.
   takže se názvy klientů nikdy nepotkají.
 - Doména je jedinečná přes všechny klienty: obsazenou doménu nezaloží nikdo
   další.
+
+## Na serveru: skupina a kvóta klienta
+
+- Každý klient má na serveru Linuxovou skupinu `wsc_<číslo>`. Je to primární
+  skupina uživatelů všech jeho webů, takže soubory webů klienta patří jeho
+  skupině. Weby téhož klienta na sebe vidí (sdílená skupina), cizí ne.
+- **Místo na disku** vynucuje jádro jako kvótu této skupiny: zápis přes limit
+  selže hned, bez přesčasu. Detail klienta ukáže, jestli kvótu vynucuje jádro,
+  nebo jen měří panel.
+- Instalace zapne kvóty sama na ext4 (`/srv` nebo kořenový disk): nejraději
+  vestavěnou funkci ext4 `quota`, jinak kvótové soubory. Na XFS je potřeba
+  přidat `grpquota` do `/etc/fstab` a restartovat. Na souborových systémech
+  bez kvót (např. overlay v Dockeru) panel místo jen měří a nové weby nad
+  limit nedovolí založit.
+- Skupiny `wspanel-ssh` a `wspanel-sftp` mají kvótu jeden blok, takže soubory
+  nejde „schovat“ před kvótou změnou skupiny.
+- **Souběžné PHP procesy na web** (`pm.max_children`) se berou z balíčku,
+  výchozí je 10.
+- Přiřazení webu jinému klientovi přesune soubory i běžící procesy do skupiny
+  nového klienta (u velkých webů to chvíli trvá).

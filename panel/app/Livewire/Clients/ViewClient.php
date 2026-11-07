@@ -63,6 +63,11 @@ class ViewClient extends ViewPage
                 TextEntry::make('package')->label('Balíček')->state(fn () => $client->package?->name ?? 'bez balíčku (neomezeno)'),
                 TextEntry::make('company')->label('Firma')->state(fn () => $client->company ?: '—'),
                 TextEntry::make('contact')->label('Kontakt')->state(fn () => trim(($client->email ?? '').' '.($client->phone ?? '')) ?: '—'),
+                TextEntry::make('disk')->label('Limit disku')->state(fn () => match ($client->disk_enforced) {
+                    true => 'vynucuje jádro (kvóta skupiny '.$client->linux_group.')',
+                    false => 'jen měří panel (souborový systém nemá kvóty)',
+                    default => 'zatím nenastaveno na serveru',
+                }),
                 TextEntry::make('ssh')->label('SSH / SFTP')->state(fn () => $client->sshLimit()->getLabel()),
                 TextEntry::make('notes')->label('Poznámka')->state(fn () => $client->notes ?: '—'),
             ]),

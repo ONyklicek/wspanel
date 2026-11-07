@@ -31,6 +31,7 @@ type siteLayout struct {
 
 	OpcacheProduction bool
 	Disabled          bool
+	FPMChildren       int    // classic: pm.max_children
 	TLS               string // effective: auto | internal | custom
 	TLSDirective      string // edge "tls …" line, empty for auto
 	MailMode          string // effective: send | capture
@@ -95,6 +96,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		OpcacheProduction: st.OpcacheProduction,
 		Disabled:          st.Disabled,
+		FPMChildren:       defaultFPMChildren,
 		User:              user,
 		Home:              filepath.Join(cfg.SitesRoot, st.Domain),
 
@@ -114,6 +116,9 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		DisplayErrors:  st.PHPSettings["display_errors"] == "on",
 
 		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
+	}
+	if st.FPMChildren > 0 {
+		l.FPMChildren = st.FPMChildren
 	}
 	l.TLS = st.TLS
 	if l.TLS == "" {
@@ -202,6 +207,9 @@ type siteParams struct {
 	PHPVersion  string `json:"php_version,omitempty"`
 	NodeVersion string `json:"node_version,omitempty"`
 	TLS         string `json:"tls,omitempty"` // create only: auto | internal (default by domain)
+	// create only: the client's group (wsc_<id>) and the FPM process limit
+	Group       string `json:"group,omitempty"`
+	FPMChildren int    `json:"fpm_children,omitempty"`
 }
 
 // resolve validates params against the mode and the server, and returns the
@@ -267,6 +275,13 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err != nil {
 		return nil, err
 	}
+	if err := checkClientGroup(env, p.Group); err != nil {
+		return nil, err
+	}
+	if p.FPMChildren < 0 || p.FPMChildren > maxFPMChildren {
+		return nil, protocol.Invalid(fmt.Sprintf("fpm_children: must be 1-%d", maxFPMChildren))
+	}
+	st.Group, st.FPMChildren = p.Group, p.FPMChildren
 	st.TLS = p.TLS
 	if st.TLS == "" && isInternalDomain(p.Domain) {
 		st.TLS = "internal" // no public CA can issue for these
@@ -297,8 +312,13 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	}()
 
 	// 1. System user (no login shell; SSH access is a separate, later step).
-	if _, err = env.Exec.Run(ctx, "useradd", "--system", "--user-group", "--no-create-home",
-		"--home-dir", l.Home, "--shell", "/usr/sbin/nologin", "--comment", "WSPanel site "+l.Domain, l.User); err != nil {
+	// A client's site has the client's group as its primary group (quota).
+	groupArgs := []string{"--user-group"}
+	if st.Group != "" {
+		groupArgs = []string{"--gid", st.Group}
+	}
+	if _, err = env.Exec.Run(ctx, "useradd", append(append([]string{"--system"}, groupArgs...), "--no-create-home",
+		"--home-dir", l.Home, "--shell", "/usr/sbin/nologin", "--comment", "WSPanel site "+l.Domain, l.User)...); err != nil {
 		return nil, err
 	}
 	rollback.add(func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "userdel", l.User) })

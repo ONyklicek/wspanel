@@ -18,6 +18,16 @@ var (
 	tldRe   = regexp.MustCompile(`^([a-z]{2,63}|xn--[a-z0-9-]{1,59})$`)
 )
 
+var clientGroupRe = regexp.MustCompile(`^wsc_[1-9][0-9]{0,8}$`)
+
+// ClientGroup accepts a client's Linux group name: wsc_<id>.
+func ClientGroup(field, g string) error {
+	if !clientGroupRe.MatchString(g) {
+		return protocol.Invalid(field + ": must be wsc_<number>")
+	}
+	return nil
+}
+
 // Domain accepts a lowercase ASCII hostname with at least two labels.
 // IDNs must be passed in punycode (the panel converts them).
 func Domain(d string) error {

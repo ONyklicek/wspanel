@@ -41,6 +41,11 @@ type siteState struct {
 	Edge *edgeSettings `json:"edge,omitempty"`
 	// Backup: the whole-site backup schedule.
 	Backup *siteBackupConfig `json:"backup,omitempty"`
+	// Group: the client's group (wsc_<id>), the site user's primary group, so
+	// the client's disk quota counts the site's files. Empty = the site's own group.
+	Group string `json:"group,omitempty"`
+	// FPMChildren: classic mode, pm.max_children (0 = default).
+	FPMChildren int `json:"fpm_children,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

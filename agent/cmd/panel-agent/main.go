@@ -191,6 +191,12 @@ func binaries(cfg config.Config) map[string]string {
 		"useradd":          "/usr/sbin/useradd",
 		"userdel":          "/usr/sbin/userdel",
 		"usermod":          "/usr/sbin/usermod",
+		"groupadd":         "/usr/sbin/groupadd",
+		"groupdel":         "/usr/sbin/groupdel",
+		"chown":            "/usr/bin/chown", // a site moving between clients (-h, never follows links)
+		"findmnt":          "/usr/bin/findmnt",
+		"quotaon":          "/usr/sbin/quotaon", // -p only: is the group quota on
+		"setquota":         "/usr/sbin/setquota",
 		"chpasswd":         "/usr/sbin/chpasswd", // password on stdin only
 		"postconf":         "/usr/sbin/postconf",
 		"postmap":          "/usr/sbin/postmap",

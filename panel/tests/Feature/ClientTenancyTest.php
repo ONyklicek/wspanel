@@ -42,6 +42,9 @@ class ClientTenancyTest extends TestCase
             'php_default' => '8.4', 'db_engines' => ['mariadb'],
         ])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.site_disk')->andReturn(['sizes' => []])->byDefault();
+        $this->agent->shouldReceive('call')->with('client.create', Mockery::any())->andReturn(['created' => true])->byDefault();
+        $this->agent->shouldReceive('call')->with('client.quota', Mockery::any())->andReturn(['enforced' => false])->byDefault();
+        $this->agent->shouldReceive('call')->with('site.limits', Mockery::any())->andReturn([])->byDefault();
         $this->app->instance(AgentClient::class, $this->agent);
     }
 
@@ -334,5 +337,44 @@ class ClientTenancyTest extends TestCase
 
         $this->expectExceptionMessage('Limit balíčku: Další domény webů 0 z 1.');
         app(ManageEdge::class)->set($site, ['aliases' => ['a.example.com', 'b.example.com']]);
+    }
+
+    public function test_a_new_client_gets_its_group_and_disk_quota_on_the_server(): void
+    {
+        $package = Package::factory()->create(['disk_quota_mb' => 2048]);
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()->with('client.create', ['group' => 'wsc_1'])->andReturn(['created' => true]);
+        $this->agent->shouldReceive('call')->once()->with('client.quota', ['group' => 'wsc_1', 'mb' => 2048])->andReturn(['enforced' => true]);
+
+        $client = app(ManageClients::class)->create(['name' => 'Alice', 'package_id' => $package->id, 'login_email' => 'alice@example.com', 'login_password' => 'Heslo-12345678']);
+
+        $this->assertSame('wsc_1', $client->linux_group);
+        $this->assertTrue($client->disk_enforced);
+        $this->assertSame($client->id, User::where('email', 'alice@example.com')->value('client_id'));
+    }
+
+    public function test_a_client_site_is_created_in_the_client_group_with_its_process_limit(): void
+    {
+        $alice = Client::factory()->for(Package::factory()->state(['fpm_children' => 4]))->create(['linux_group' => 'wsc_1']);
+        $this->signInAs($alice);
+        $this->agent->shouldReceive('call')->once()->with('site.create', Mockery::on(fn ($p) => $p['group'] === 'wsc_1' && $p['fpm_children'] === 4))
+            ->andReturn(['mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'system_user' => 'web_g_example_com', 'home' => '/srv/sites/g.example.com', 'doc_root' => '/srv/sites/g.example.com/current/public']);
+
+        app(\App\Actions\Sites\CreateSite::class)->handle(['domain' => 'g.example.com', 'framework' => 'laravel', 'php_version' => '8.4']);
+
+        $this->assertSame($alice->id, Site::acrossClients()->where('domain', 'g.example.com')->value('client_id'));
+    }
+
+    public function test_assigning_a_site_moves_its_files_to_the_client_group(): void
+    {
+        $alice = Client::factory()->create(['linux_group' => 'wsc_1']);
+        $site = $this->site('move.example.com');
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()->with('site.set_group', ['domain' => 'move.example.com', 'group' => 'wsc_1'])->andReturn(['job_id' => 'j1']);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'j1'])->andReturn(['status' => 'done', 'output' => ['changed' => true]]);
+
+        app(ManageClients::class)->assignSite($site, $alice);
+
+        $this->assertSame($alice->id, $site->fresh()->client_id);
     }
 }

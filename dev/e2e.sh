@@ -654,8 +654,15 @@ foreach (["e2e-a" => "a", "e2e-b" => "b"] as $name => $k) {
     $c = App\Models\Client::firstOrCreate(["name" => $name], ["package_id" => $p->id]);
     App\Models\User::updateOrCreate(["email" => "$k@e2e.local"], ["name" => $name, "password" => "E2e-heslo-12345", "role" => "client", "client_id" => $c->id]);
 }
+foreach (App\Models\Client::whereIn("name", ["e2e-a", "e2e-b"])->get() as $c) { app(App\Actions\Clients\ManageClients::class)->applyToServer($c); }
 $a = App\Models\Client::where("name", "e2e-a")->sole();
-App\Models\Site::where("domain", "shop.localhost")->update(["client_id" => $a->id]);' >/dev/null
+app(App\Actions\Clients\ManageClients::class)->assignSite(App\Models\Site::where("domain", "shop.localhost")->sole(), $a);' >/dev/null
+ga=$(php 'echo App\Models\Client::where("name","e2e-a")->value("linux_group");' | tr -d '[:space:]')
+check "client group exists on the server" getent group "$ga"
+expect "site user's primary group is the client's" "$(id -gn web_shop_localhost)" "$ga"
+expect "site files moved to the client's group" "$(stat -c %G /srv/sites/shop.localhost/shared)" "$ga"
+expect "site still answers after the move" "$(code shop.localhost /)" "200"
+contains "disk limit reported as measured only here (overlay, no quota)" "$(php 'echo json_encode(App\Models\Client::where("name","e2e-a")->value("disk_enforced"));')" "false"
 panel_login a@e2e.local E2e-heslo-12345 "$W/a.jar"
 panel_login b@e2e.local E2e-heslo-12345 "$W/b.jar"
 shop_id=$(php 'echo App\Models\Site::where("domain","shop.localhost")->value("id");' | tr -d '[:space:]')
@@ -669,7 +676,8 @@ expect "suspended client site answers 503" "$(code shop.localhost /)" "503"
 expect "suspended client is signed out" "$(pcode "$W/a.jar" /sites)" "302"
 php 'app(App\Actions\Clients\ManageClients::class)->resume(App\Models\Client::where("name","e2e-a")->sole());' >/dev/null
 expect "resumed client site answers again" "$(code shop.localhost /)" "200"
-php 'App\Models\Site::where("domain", "shop.localhost")->update(["client_id" => null]);' >/dev/null
+php 'app(App\Actions\Clients\ManageClients::class)->assignSite(App\Models\Site::where("domain", "shop.localhost")->sole(), null);' >/dev/null
+expect "site back with the administrator keeps its own group" "$(stat -c %G /srv/sites/shop.localhost/shared)" "web_shop_localhost"
 
 # ----------------------------------------------------------------------------
 section "Delete cleans up"

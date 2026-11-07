@@ -127,7 +127,7 @@ log "Base packages"
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
   ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw \
-  openssh-server fail2ban mc nano xz-utils iproute2
+  openssh-server fail2ban mc nano xz-utils iproute2 quota
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
@@ -232,6 +232,13 @@ systemd-tmpfiles --create /etc/tmpfiles.d/wspanel.conf
 install -d -m 0700 /etc/panel-agent
 # Database dumps: root-written, readable by the panel (downloads).
 install -d -m 0750 -o root -g panel /var/backups/wspanel
+
+# ---------------------------------------------------------------- disk quotas
+# Clients' disk limits are group quotas on the filesystem of the sites.
+# shellcheck source=quota.sh
+source "$HERE/quota.sh"
+QUOTA_STATE=$(enable_group_quota /srv/sites)
+log "Client disk quotas: $QUOTA_STATE"
 
 # ---------------------------------------------------------------- mail
 # Outgoing only: Postfix on loopback relays the sites' mail (directly or via a

@@ -8,6 +8,7 @@ use App\Enums\SshAccess;
 use App\Models\Client;
 use App\Models\Package;
 use App\Models\User;
+use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\ClientResource;
@@ -59,7 +60,13 @@ final class ClientActions
                 ]),
             ])
             ->action(function (array $data, $component) {
-                $client = app(ManageClients::class)->create($data);
+                try {
+                    $client = app(ManageClients::class)->create($data);
+                } catch (AgentException $e) {
+                    Toast::error('Klienta se nepodařilo založit na serveru', $e->getMessage());
+
+                    return;
+                }
                 Toast::success("Klient {$client->name} založen", 'Přihlásí se e-mailem '.$data['login_email'].'.');
                 $component->redirect(ClientResource::url('view', $client));
             });
@@ -75,8 +82,12 @@ final class ClientActions
             ->fillFormUsing(fn (Client $record) => $record->only(['name', 'company', 'email', 'phone', 'package_id', 'notes']))
             ->form(self::contactFields())
             ->action(function (Client $record, array $data) {
-                app(ManageClients::class)->update($record, $data);
-                Toast::success('Údaje uloženy');
+                try {
+                    app(ManageClients::class)->update($record, $data);
+                    Toast::success('Údaje uloženy');
+                } catch (AgentException $e) {
+                    Toast::error('Údaje uloženy, ale server se nepodařilo upravit', $e->getMessage());
+                }
             });
     }
 
@@ -124,8 +135,12 @@ final class ClientActions
                 if (filled($data['ssh'] ?? null)) {
                     $overrides['ssh'] = $data['ssh'];
                 }
-                app(ManageClients::class)->setOverrides($record, $overrides);
-                Toast::success('Limity uloženy');
+                try {
+                    app(ManageClients::class)->setOverrides($record, $overrides);
+                    Toast::success('Limity uloženy');
+                } catch (AgentException $e) {
+                    Toast::error('Limity uloženy, ale server se nepodařilo upravit', $e->getMessage());
+                }
             });
     }
 
@@ -208,7 +223,7 @@ final class ClientActions
                     app(ManageClients::class)->delete($record);
                     Toast::success('Klient smazán');
                     $component->redirect(ClientResource::url('index'));
-                } catch (RuntimeException $e) {
+                } catch (AgentException|RuntimeException $e) {
                     Toast::error('Klienta nelze smazat', $e->getMessage());
                 }
             });
