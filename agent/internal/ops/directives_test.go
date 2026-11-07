@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"wspanel/agent/internal/executor"
 )
 
 func TestDirectivesAllowed(t *testing.T) {
@@ -124,5 +126,36 @@ func TestAdaptErrorsShowOnlyTheRulesLine(t *testing.T) {
 	}
 	if adaptError("panic: something /etc/panel-proxy/sites/other.caddy", file) != "the web server could not read them" {
 		t.Error("anything not about the rules file must not be shown")
+	}
+}
+
+func TestSiteCredentialsReadTheEnvFile(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "wp.example.com", "framework": "php", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.Name == "setpriv" && strings.Contains(c.String(), "/usr/bin/cat") {
+			return executor.Result{Stdout: "APP_NAME=x\nDB_HOST=\"127.0.0.1\"\nDB_DATABASE=\"c1_wp\"\nDB_USERNAME=\"c1_wp\"\nDB_PASSWORD=\"p\\\"w\\$d\"\nREDIS_HOST=\"/run/s.sock\"\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	out, err := call(t, env, siteCredentials, map[string]string{"domain": "wp.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := out.(map[string]any)["database"].(map[string]string)
+	if db["database"] != "c1_wp" || db["password"] != `p"w$d` || out.(map[string]any)["valkey"].(map[string]string)["REDIS_HOST"] != "/run/s.sock" {
+		t.Errorf("credentials %v", out)
+	}
+	if !hasCall(dr, "setpriv --reuid=web_wp_example_com") {
+		t.Error("the env file must be read as the site user")
+	}
+}
+
+func TestDatabaseURLIsSplit(t *testing.T) {
+	v := parseDotenv(`DATABASE_URL="mysql://shop:s3cr%40t@127.0.0.1:3306/shop?serverVersion=11"`)
+	if v["DATABASE_URL"] == "" {
+		t.Fatal("not parsed")
 	}
 }

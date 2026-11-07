@@ -32,8 +32,10 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
+use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Foundation\Schema\Tab;
 use NyonCode\WireCore\Foundation\Schema\Tabs;
+use NyonCode\WireCore\Infolists\Components\TextEntry;
 use NyonCode\WireForms\Components\CodeEditor;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Repeater;
@@ -511,6 +513,58 @@ final class SiteActions
             }));
     }
 
+    /**
+     * What an application configured by hand needs (WordPress, an installer):
+     * SFTP, database, Valkey and outgoing mail, read from the site's env file.
+     */
+    public static function credentials(): Action
+    {
+        return Action::make('credentials')
+            ->label('Přístupové údaje')
+            ->icon('outline:key')
+            ->color('gray')
+            ->visible(fn (Site $record) => $record->isOperational())
+            ->modalHeading(fn (Site $record) => "Přístupové údaje: {$record->domain}")
+            ->modalDescription('Pro aplikace, které se nastavují ručně (WordPress, instalátory). Údaje panel čte z .env webu, nikde jinde je neukládá.')
+            ->modalWidth('3xl')
+            ->modalSubmitActionLabel('Zavřít')
+            ->infolist(function (Site $record) {
+                try {
+                    $c = app(ControlSite::class)->credentials($record);
+                } catch (AgentException $e) {
+                    return [TextEntry::make('error')->label('Chyba')->state(fn () => $e->getMessage())];
+                }
+                $entry = fn (string $key, string $label, ?string $value) => TextEntry::make($key)->label($label)->state(fn () => $value ?? '—')->copyable($value !== null);
+                $db = $c['database'] ?? null;
+                $sections = [
+                    Section::make('sftp')->label('SFTP / SSH')->columns(2)->schema([
+                        $entry('sftp_host', 'Server', (string) (config('panel.ssh_host') ?: request()->getHost())),
+                        $entry('sftp_port', 'Port', (string) config('panel.ssh_port', 22)),
+                        $entry('sftp_user', 'Uživatel', $record->system_user),
+                        $entry('sftp_auth', 'Přihlášení', $record->ssh_access === SshAccess::Off ? 'vypnuto (Další → SSH / SFTP)' : ($record->ssh_password ? 'klíč nebo heslo' : 'jen klíč')),
+                    ]),
+                ];
+                $sections[] = Section::make('db')->label('Databáze')->columns(2)->schema($db === null
+                    ? [TextEntry::make('db_none')->label('')->state(fn () => 'Web zatím nemá databázi v .env (Další → Nová databáze ji vytvoří a zapíše).')]
+                    : [
+                        $entry('db_host', 'Server (host)', ($db['host'] ?? '127.0.0.1').(($db['port'] ?? '') !== '' ? ':'.$db['port'] : '')),
+                        $entry('db_name', 'Databáze', $db['database'] ?? null),
+                        $entry('db_user', 'Uživatel', $db['username'] ?? null),
+                        $entry('db_password', 'Heslo', $db['password'] ?? null),
+                    ]);
+                if (isset($c['valkey'])) {
+                    $sections[] = Section::make('valkey')->label('Valkey (Redis)')->columns(2)->schema(collect($c['valkey'])
+                        ->map(fn ($v, $k) => $entry('valkey_'.strtolower($k), $k, (string) $v))->values()->all());
+                }
+                if (isset($c['mail'])) {
+                    $sections[] = Section::make('mail')->label('Odchozí pošta (SMTP)')->columns(2)->schema(collect($c['mail'])
+                        ->map(fn ($v, $k) => $entry('mail_'.strtolower($k), $k, (string) $v))->values()->all());
+                }
+
+                return $sections;
+            });
+    }
+
     /** The site's own web-server rules, with a converter from nginx / .htaccess. */
     public static function webRules(): Action
     {
@@ -625,7 +679,7 @@ final class SiteActions
     public static function more(): array
     {
         return [
-            self::restart(), self::enable(), self::disable(),
+            self::credentials(), self::restart(), self::enable(), self::disable(),
             self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::webRules(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::assignClient(), self::delete(),

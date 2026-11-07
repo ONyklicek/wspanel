@@ -200,6 +200,10 @@ func siteProcesses(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		return nil, err
 	}
 	units := append(siteUnits(env, l), siteTimers(env, l)...)
+	valkey := valkeyPaths(env, l)
+	if fsx.Exists(valkey.UnitFile) {
+		units = append(units, valkey.Unit)
+	}
 	procs, err := processStates(ctx, env, units)
 	if err != nil {
 		return nil, err
@@ -209,6 +213,8 @@ func siteProcesses(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		switch {
 		case u == l.AppUnit:
 			procs[i].Kind, procs[i].Name = "app", "app"
+		case u == valkey.Unit:
+			procs[i].Kind, procs[i].Name = "valkey", "valkey"
 		case strings.HasSuffix(u, ".timer"):
 			procs[i].Kind = "task"
 			procs[i].Name = strings.TrimSuffix(strings.TrimPrefix(u, "wspanel-"+l.User+"-cron-"), ".timer")

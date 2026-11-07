@@ -105,6 +105,26 @@ class SiteControlTest extends TestCase
         $this->tableAction($list, 'wspanel-web_app_example_com-queue.service', 'restart')->assertNotified(type: 'success');
     }
 
+    public function test_a_crash_looping_worker_can_be_stopped_and_reset_and_a_task_paused(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->with('site.processes', ['domain' => 'app.example.com'])->andReturn(['processes' => [
+            ['unit' => 'wspanel-web_app_example_com-queue.service', 'kind' => 'worker', 'name' => 'queue', 'active' => 'activating', 'sub' => 'auto-restart', 'enabled' => 'enabled', 'restarts' => 14],
+            ['unit' => 'wspanel-web_app_example_com-cron-3.timer', 'kind' => 'task', 'name' => '3', 'active' => 'active', 'sub' => 'waiting', 'enabled' => 'enabled', 'restarts' => 0],
+            ['unit' => 'wspanel-web_app_example_com-valkey.service', 'kind' => 'valkey', 'name' => 'valkey', 'active' => 'failed', 'sub' => 'failed', 'enabled' => 'enabled', 'restarts' => 0],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('service.stop', ['service' => 'worker', 'domain' => 'app.example.com', 'worker' => 'queue'])->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('service.reset', ['service' => 'worker', 'domain' => 'app.example.com', 'worker' => 'queue'])->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('service.stop', ['service' => 'task', 'domain' => 'app.example.com', 'worker' => '3'])->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('service.reset', ['service' => 'site-valkey', 'domain' => 'app.example.com'])->andReturn([]);
+
+        $list = Livewire::test(SiteProcesses::class, ['site' => $site->id])->assertSee('Valkey (Redis)');
+        $this->tableAction($list, 'wspanel-web_app_example_com-queue.service', 'stop')->assertNotified(type: 'success');
+        $this->tableAction($list, 'wspanel-web_app_example_com-queue.service', 'reset')->assertNotified(type: 'success');
+        $this->tableAction($list, 'wspanel-web_app_example_com-cron-3.timer', 'stop')->assertNotified(type: 'success');
+        $this->tableAction($list, 'wspanel-web_app_example_com-valkey.service', 'reset')->assertNotified(type: 'success');
+    }
+
     public function test_logs_widget_reads_the_selected_source(): void
     {
         $site = $this->site();

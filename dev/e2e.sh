@@ -637,6 +637,12 @@ for _ in $(seq 1 35); do
 	sleep 2
 done
 contains "scheduled task ran successfully" "$(systemctl show -p Result,ExecMainStartTimestamp wspanel-web_app_localhost-cron-1.service | tr '\n' ' ')" "Result=success"
+php "$(site app.localhost) app(App\\Actions\\Sites\\ControlSite::class)->control(\$s, 'task', '1', 'stop');" >/dev/null
+check "task paused from the panel" bash -c '! systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer'
+php "$(site app.localhost) app(App\\Actions\\Sites\\ControlSite::class)->control(\$s, 'task', '1', 'start');" >/dev/null
+check "task scheduled again" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer
+contains "credentials show the site's database" "$(php "$(site shop.localhost) echo json_encode(app(App\\Actions\\Sites\\ControlSite::class)->credentials(\$s));")" '"database"'
+
 
 # ----------------------------------------------------------------------------
 section "Clients and packages"

@@ -92,7 +92,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
     {
         return $table
             ->stackedOnMobile()
-            ->query(Site::query()->with(['services', 'client']))
+            ->query(Site::query()->with(['services', 'client', 'databases']))
             ->columns([
                 TextColumn::make('domain')
                     ->label('Web')
@@ -122,6 +122,15 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
 
                         return $services->where('active_state', 'active')->count().' / '.$services->count().' běží'.($failed ? " · {$failed} chyba" : '');
                     }),
+                TextColumn::make('databases_list')
+                    ->label('Databáze')
+                    ->state(fn (Site $record) => $record->databases->pluck('name')->join(', ') ?: '—')
+                    ->toggleable(),
+                BadgeColumn::make('valkey_state')
+                    ->label('Valkey')
+                    ->state(fn (Site $record) => $record->valkey === null ? 'ne' : $record->valkey['maxmemory_mb'].' MB')
+                    ->colorUsing(fn ($state) => $state === 'ne' ? 'gray' : 'success')
+                    ->toggleable(),
                 BadgeColumn::make('ssh_access')
                     ->label('SSH')
                     // "Vypnuto" beside "Běží" reads as a stopped site on a phone card, where the header is not shown.

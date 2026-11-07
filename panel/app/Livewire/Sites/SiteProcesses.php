@@ -13,7 +13,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Number;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\Action;
-use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
@@ -56,6 +55,7 @@ class SiteProcesses extends Component
             'label' => match ($p['kind']) {
                 'app' => 'Aplikace ('.$site->runtimeLabel().')',
                 'task' => 'Úloha #'.$p['name'],
+                'valkey' => 'Valkey (Redis)',
                 default => SiteActions::WORKER_LABELS[$p['name']] ?? $p['name'],
             },
             'state_label' => self::stateLabel($p),
@@ -73,10 +73,10 @@ class SiteProcesses extends Component
             ->columns([
                 TextColumn::make('label')->label('Proces')->weight('medium')->description(fn ($record) => $record->unit),
                 BadgeColumn::make('kind')->label('Druh')->color('gray')
-                    ->formatStateUsing(fn ($state) => ['app' => 'aplikace', 'worker' => 'worker', 'task' => 'úloha'][$state] ?? $state),
+                    ->formatStateUsing(fn ($state) => ['app' => 'aplikace', 'worker' => 'worker', 'task' => 'úloha', 'valkey' => 'Valkey'][$state] ?? $state),
                 BadgeColumn::make('state_label')->label('Stav')->colors([
                     'běží' => 'success', 'naplánováno' => 'success', 'chyba' => 'danger', 'padá a restartuje se' => 'danger',
-                    'čeká na deploy / zastaveno' => 'warning', 'zastaveno' => 'gray',
+                    'čeká na deploy / zastaveno' => 'warning', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
                 ]),
                 TextColumn::make('since_label')->label('Od'),
                 TextColumn::make('memory_label')->label('Paměť'),
@@ -84,19 +84,19 @@ class SiteProcesses extends Component
                 TextColumn::make('boot_label')->label('Po startu serveru')->textColor('gray'),
             ])
             ->actions([
+                $this->control('start', fn ($r) => $r->kind === 'task' ? 'Obnovit plánování' : 'Spustit', 'outline:play', 'success')
+                    ->visible(fn ($record) => ! in_array($record->active, ['active', 'activating', 'reloading'], true)),
+                $this->control('restart', 'Restartovat', 'outline:arrow-path', 'warning')
+                    ->visible(fn ($record) => $record->kind !== 'task' && $record->active === 'active'),
+                $this->control('reset', 'Reset po chybách a spustit', 'outline:wrench-screwdriver', 'warning')
+                    ->visible(fn ($record) => $record->kind !== 'task' && ($record->active === 'failed' || $record->active === 'activating' || (int) $record->restarts > 0)),
+                $this->control('stop', fn ($r) => $r->kind === 'task' ? 'Pozastavit plánování' : 'Zastavit', 'outline:stop', 'danger')
+                    ->visible(fn ($record) => in_array($record->active, ['active', 'activating', 'reloading'], true))
+                    ->requiresConfirmation()
+                    ->modalDescription(fn ($record) => $record->kind === 'task'
+                        ? 'Úloha se nebude spouštět, dokud plánování neobnovíte (nebo do restartu serveru).'
+                        : 'Proces se zastaví do příštího restartu webu nebo serveru. Natrvalo ho vypnete odebráním workeru nebo vypnutím webu.'),
                 $this->logAction(),
-                ActionGroup::make([
-                    $this->control('start', 'Spustit', 'outline:play', 'success')
-                        ->visible(fn ($record) => $record->kind !== 'task' && $record->active !== 'active'),
-                    $this->control('restart', 'Restartovat', 'outline:arrow-path', 'warning')
-                        ->visible(fn ($record) => $record->kind !== 'task' && $record->active === 'active'),
-                    $this->control('reset', 'Reset po chybě a spustit', 'outline:wrench', 'warning')
-                        ->visible(fn ($record) => $record->kind !== 'task' && $record->active === 'failed'),
-                    $this->control('stop', 'Zastavit', 'outline:stop', 'danger')
-                        ->visible(fn ($record) => $record->kind !== 'task' && $record->active === 'active')
-                        ->requiresConfirmation()
-                        ->modalDescription('Proces se zastaví do příštího restartu webu nebo serveru. Natrvalo ho vypnete odebráním workeru nebo vypnutím webu.'),
-                ]),
             ])
             ->emptyState(
                 $this->agentError ? 'Stav se nepodařilo načíst' : 'Žádné samostatné procesy',
@@ -108,13 +108,16 @@ class SiteProcesses extends Component
             ->poll('10s');
     }
 
-    private function control(string $verb, string $label, string $icon, string $color): Action
+    private function control(string $verb, string|\Closure $label, string $icon, string $color): Action
     {
         return Action::make($verb)
             ->label($label)
+            ->tooltip($label)
+            ->onlyIcon()
             ->icon($icon)
             ->color($color)
             ->action(function ($record) use ($verb, $label) {
+                $label = $label instanceof \Closure ? $label($record) : $label;
                 try {
                     app(ControlSite::class)->control($this->getSite(), $record->kind, $record->name, $verb);
                     Toast::success("{$record->label}: {$label} – hotovo");

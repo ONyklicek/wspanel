@@ -5,6 +5,7 @@ namespace App\Actions\Sites;
 use App\Actions\Services\SyncServices;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 
 /**
  * Switching a site off and on, restarting it, and reading what runs for it
@@ -25,6 +26,18 @@ class ControlSite
         private readonly AgentClient $agent,
         private readonly SyncServices $sync,
     ) {}
+
+    /**
+     * Database, Valkey and mail settings from the site's env file.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws AgentException
+     */
+    public function credentials(Site $site): array
+    {
+        return $this->agent->call('site.credentials', ['domain' => $site->domain]);
+    }
 
     public function enable(Site $site): void
     {
@@ -68,9 +81,12 @@ class ControlSite
     public function control(Site $site, string $kind, string $name, string $action): void
     {
         abort_unless(in_array($action, ['start', 'stop', 'restart', 'reset'], true), 400);
-        $params = $kind === 'app'
-            ? ['service' => 'app', 'domain' => $site->domain]
-            : ['service' => 'worker', 'domain' => $site->domain, 'worker' => $name];
+        $params = match ($kind) {
+            'app' => ['service' => 'app', 'domain' => $site->domain],
+            'valkey' => ['service' => 'site-valkey', 'domain' => $site->domain],
+            'task' => ['service' => 'task', 'domain' => $site->domain, 'worker' => $name],
+            default => ['service' => 'worker', 'domain' => $site->domain, 'worker' => $name],
+        };
         try {
             $this->agent->call("service.{$action}", $params);
         } finally {

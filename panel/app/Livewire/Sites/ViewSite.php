@@ -53,6 +53,7 @@ class ViewSite extends ViewPage
     {
         return [
             SiteActions::open(),
+            SiteActions::credentials(),
             SiteActions::deploy(),
             ActionGroup::make(SiteActions::more())->label('Další')->icon('outline:ellipsis-vertical'),
         ];

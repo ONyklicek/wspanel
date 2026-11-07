@@ -125,3 +125,25 @@ func TestValkeyFlushRunsAsTheSiteUser(t *testing.T) {
 		t.Error("no FLUSHALL as the site user")
 	}
 }
+
+func TestSiteProcessesCanBeControlled(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, serviceStop, map[string]string{"service": "site-valkey", "domain": "kv.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(dr, "systemctl stop wspanel-web_kv_example_com-valkey.service") {
+		t.Errorf("site Valkey stop:\n%s", strings.Join(callLines(dr), "\n"))
+	}
+	if _, err := call(t, env, serviceStop, map[string]string{"service": "task", "domain": "kv.example.com", "worker": "7"}); code(err) != "not_found" {
+		t.Errorf("unknown task: %v", err)
+	}
+	if _, err := call(t, env, serviceStop, map[string]string{"service": "task", "domain": "kv.example.com", "worker": "../x"}); code(err) != "invalid_params" {
+		t.Errorf("bad task id: %v", err)
+	}
+}

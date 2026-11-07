@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"wspanel/agent/internal/config"
@@ -15,13 +16,16 @@ import (
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker", "app"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker", "app", "task", "site-valkey"}
+
+// siteServices take a domain; "worker" also a worker type, "task" a task id.
+var siteServices = []string{"worker", "app", "task", "site-valkey"}
 
 type serviceParams struct {
 	Service string `json:"service"`
 	Version string `json:"version,omitempty"` // php-fpm only
 	Domain  string `json:"domain,omitempty"`  // worker and app only
-	Worker  string `json:"worker,omitempty"`  // worker only
+	Worker  string `json:"worker,omitempty"`  // worker: its type; task: its id
 }
 
 // unit maps validated params to a systemd unit name.
@@ -32,11 +36,11 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 	if p.Service != "php-fpm" && p.Version != "" {
 		return "", protocol.Invalid("version: only valid for php-fpm")
 	}
-	if p.Service != "worker" && p.Worker != "" {
-		return "", protocol.Invalid("worker: only valid for service worker")
+	if p.Service != "worker" && p.Service != "task" && p.Worker != "" {
+		return "", protocol.Invalid("worker: only valid for service worker or task")
 	}
-	if p.Service != "worker" && p.Service != "app" && p.Domain != "" {
-		return "", protocol.Invalid("domain: only valid for worker and app")
+	if !slices.Contains(siteServices, p.Service) && p.Domain != "" {
+		return "", protocol.Invalid("domain: only valid for a site's services")
 	}
 	switch p.Service {
 	case "app": // the site's own process in worker or node mode
@@ -58,6 +62,28 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 		name := workerUnit(validate.SiteUser(p.Domain), p.Worker)
 		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
 			return "", protocol.NotFound("worker " + p.Worker + " does not exist for " + p.Domain)
+		}
+		return name, nil
+	case "task": // a scheduled task's timer: stop = paused, start = scheduled again
+		if err := validate.Domain(p.Domain); err != nil {
+			return "", err
+		}
+		id, err := strconv.Atoi(p.Worker)
+		if err != nil || id < 1 || id > 999999 {
+			return "", protocol.Invalid("worker: task id")
+		}
+		name := cronUnitBase(validate.SiteUser(p.Domain), id) + ".timer"
+		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
+			return "", protocol.NotFound("task " + p.Worker + " does not exist for " + p.Domain)
+		}
+		return name, nil
+	case "site-valkey":
+		if err := validate.Domain(p.Domain); err != nil {
+			return "", err
+		}
+		name := "wspanel-" + validate.SiteUser(p.Domain) + "-valkey.service"
+		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
+			return "", protocol.NotFound(p.Domain + " has no Valkey")
 		}
 		return name, nil
 	case "php-fpm":
@@ -129,7 +155,7 @@ func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action st
 	if action == "stop" && slices.Contains(env.Cfg.PanelUnits(), unit) {
 		return nil, protocol.Forbidden(unit + " runs the panel itself and cannot be stopped from it; use restart")
 	}
-	if action == "reload" && (p.Service == "worker" || p.Service == "valkey" || p.Service == "app") {
+	if action == "reload" && (slices.Contains(siteServices, p.Service) || p.Service == "valkey") {
 		return nil, protocol.Invalid("reload: not supported for " + p.Service + ", use restart")
 	}
 	// A broken config is never (re)loaded.
