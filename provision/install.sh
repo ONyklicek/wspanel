@@ -24,6 +24,12 @@ PMA_VERSION="5.2.3"
 PMA_SHA256="57881348297c4412f86c410547cf76b4d8a236574dd2c6b7d6a2beebe7fc44e3"
 ADMINER_VERSION="6.2.0"
 ADMINER_SHA256="9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16"
+MAILPIT_VERSION="v1.33.0"
+declare -A MAILPIT_ASSET=([x86_64]="mailpit-linux-amd64.tar.gz" [aarch64]="mailpit-linux-arm64.tar.gz")
+declare -A MAILPIT_SHA256=(
+  [x86_64]="d0ec50080cbf3e7c1fa2cda2ee68125d7894175811084b1f8f47c6cfc6f487c8"
+  [aarch64]="1d27c819e1a5dd2761ed9fd07022443e35a47793b2e92de5b49cf3656a649ef9"
+)
 PANEL_PHP="8.4" # the panel itself always runs on this version
 
 DB="none"
@@ -37,8 +43,11 @@ LOCAL_CERTS=0
 SSH_PORT=22
 PUBLIC_SSH_PORT=""   # as clients see it (port forwarding / NAT); defaults to --ssh-port
 PUBLIC_HTTPS_PORT=443
+PUBLIC_IPV4=""       # server's public addresses for suggested DNS records; detected when empty
+PUBLIC_IPV6=""
 ROOT_LOGIN="prohibit-password"
 UNENFORCED_BIND=false
+MAIL_DEFAULT="send" # new sites: send (Postfix) | capture (Mailpit, nothing leaves the server)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -56,8 +65,11 @@ for arg in "$@"; do
     --ssh-port=*) SSH_PORT="${arg#*=}" ;;
     --public-ssh-port=*) PUBLIC_SSH_PORT="${arg#*=}" ;;     # dev container: 2222
     --public-https-port=*) PUBLIC_HTTPS_PORT="${arg#*=}" ;; # dev container: 8443
+    --public-ipv4=*) PUBLIC_IPV4="${arg#*=}" ;; # behind NAT: the public address
+    --public-ipv6=*) PUBLIC_IPV6="${arg#*=}" ;;
     --allow-unenforced-socket-bind) UNENFORCED_BIND=true ;; # dev containers only (no cgroup BPF)
     --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
+    --mail=*) MAIL_DEFAULT="${arg#*=}" ;;
     --local-certs) LOCAL_CERTS=1 ;; # dev only: Caddy internal CA instead of Let's Encrypt
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) die "unknown argument: $arg" ;;
@@ -73,6 +85,7 @@ done
 [[ -n "$AGENT_BIN" && -x "$AGENT_BIN" ]] || die "--agent-bin must point to the built panel-agent binary"
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${PANEL_DOMAIN}"
+[[ "$MAIL_DEFAULT" == send || "$MAIL_DEFAULT" == capture ]] || die "--mail must be send or capture"
 [[ -z "$PUBLIC_SSH_PORT" ]] && PUBLIC_SSH_PORT="$SSH_PORT"
 [[ "$PUBLIC_SSH_PORT" =~ ^[0-9]+$ && "$PUBLIC_HTTPS_PORT" =~ ^[0-9]+$ ]] || die "invalid --public-*-port"
 PANEL_URL="https://$PANEL_DOMAIN"
@@ -108,8 +121,8 @@ export DEBIAN_FRONTEND=noninteractive
 log "Base packages"
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
-  ca-certificates curl gnupg acl sqlite3 unzip git rsync composer valkey-server ufw \
-  openssh-server fail2ban mc nano xz-utils
+  ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw \
+  openssh-server fail2ban mc nano xz-utils iproute2
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
@@ -213,6 +226,64 @@ install -d -m 0700 /etc/panel-agent
 # Database dumps: root-written, readable by the panel (downloads).
 install -d -m 0750 -o root -g panel /var/backups/wspanel
 
+# ---------------------------------------------------------------- mail
+# Outgoing only: Postfix on loopback relays the sites' mail (directly or via a
+# smarthost set in the panel), OpenDKIM signs it. Nothing is received from
+# outside. Mailpit catches mail of sites in "capture" mode (tests, staging).
+log "Mail (Postfix, OpenDKIM, Mailpit)"
+echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections
+echo "postfix postfix/mailname string $PANEL_DOMAIN" | debconf-set-selections
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends postfix opendkim
+postconf -e "myhostname=$PANEL_DOMAIN" "myorigin=\$myhostname" "inet_interfaces=loopback-only" \
+  "mydestination=" "local_transport=error:local delivery is disabled" "mynetworks=127.0.0.0/8 [::1]/128" \
+  "smtpd_milters=inet:127.0.0.1:8891" "non_smtpd_milters=inet:127.0.0.1:8891" "milter_default_action=accept" \
+  "smtp_tls_security_level=may" "smtp_tls_CApath=/etc/ssl/certs" "message_size_limit=26214400"
+install -d -m 0755 /etc/opendkim
+install -d -m 0750 -o opendkim -g opendkim /etc/opendkim/keys
+[[ -f /etc/opendkim/KeyTable ]] || printf '# Managed by WSPanel agent.\n' > /etc/opendkim/KeyTable
+[[ -f /etc/opendkim/SigningTable ]] || printf '# Managed by WSPanel agent.\n' > /etc/opendkim/SigningTable
+cat > /etc/opendkim.conf <<'CONF'
+# Managed by WSPanel install.sh. Signing only; keys are created by the panel agent.
+Syslog                  yes
+UMask                   007
+Mode                    s
+Canonicalization        relaxed/simple
+OversignHeaders         From
+Socket                  inet:8891@127.0.0.1
+PidFile                 /run/opendkim/opendkim.pid
+UserID                  opendkim
+KeyTable                refile:/etc/opendkim/KeyTable
+SigningTable            refile:/etc/opendkim/SigningTable
+InternalHosts           127.0.0.1, ::1
+TrustAnchorFile         /usr/share/dns/root.key
+CONF
+systemctl enable opendkim postfix >/dev/null
+systemctl restart opendkim postfix
+
+if ! /usr/local/bin/mailpit version 2>/dev/null | grep -q "${MAILPIT_VERSION}"; then
+  tmp="$(mktemp -d)"
+  curl -fsSLo "$tmp/mailpit.tgz" "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/${MAILPIT_ASSET[$ARCH]}"
+  echo "${MAILPIT_SHA256[$ARCH]}  $tmp/mailpit.tgz" | sha256sum -c - >/dev/null || die "mailpit checksum mismatch"
+  tar -xzf "$tmp/mailpit.tgz" -C "$tmp" mailpit
+  install -m 0755 "$tmp/mailpit" /usr/local/bin/mailpit
+  rm -rf "$tmp"
+fi
+id mailpit &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/mailpit --shell /usr/sbin/nologin mailpit
+# The web UI sits behind the panel login (edge forward_auth) and, since site
+# processes can reach loopback too, additionally behind basic auth whose
+# credentials only the edge proxy knows.
+install -d -m 0750 -o root -g mailpit /etc/mailpit
+if [[ ! -f /etc/mailpit/ui-auth ]]; then
+  MAILPIT_UI_PASS="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+  printf 'panel:%s\n' "$(openssl passwd -apr1 "$MAILPIT_UI_PASS")" > /etc/mailpit/ui-auth
+  printf '%s' "$(printf 'panel:%s' "$MAILPIT_UI_PASS" | base64 -w0)" > /etc/mailpit/ui-basic
+  chmod 0640 /etc/mailpit/ui-auth; chgrp mailpit /etc/mailpit/ui-auth; chmod 0600 /etc/mailpit/ui-basic
+fi
+install -m 0644 "$HERE/files/mailpit.service" /etc/systemd/system/mailpit.service
+systemctl daemon-reload
+systemctl enable mailpit >/dev/null
+systemctl restart mailpit
+
 # ---------------------------------------------------------------- agent
 log "Agent"
 install -m 0755 "$AGENT_BIN" /usr/local/sbin/panel-agent
@@ -229,6 +300,7 @@ cat > /etc/panel-agent/agent.json <<JSON
   "db_engines": $(json_list "${DB_ENGINES[@]}"),
   "panel_domain": "$PANEL_DOMAIN",
   "protected_ports": [$SSH_PORT, 80, 443],
+  "mail_default": "$MAIL_DEFAULT",
   "allow_unenforced_socket_bind": $UNENFORCED_BIND
 }
 JSON
@@ -246,7 +318,9 @@ install -m 0644 "$HERE/files/panel-agent.service" /etc/systemd/system/panel-agen
 # ---------------------------------------------------------------- proxy
 log "Reverse proxy"
 sed -e "s|__PANEL_DOMAIN__|$PANEL_DOMAIN|" -e "s|__ACME_EMAIL__|$ACME_EMAIL|" \
+  -e "s|__MAILPIT_BASIC__|$(cat /etc/mailpit/ui-basic)|" \
   "$HERE/files/Caddyfile.tmpl" > /etc/panel-proxy/Caddyfile
+chmod 0640 /etc/panel-proxy/Caddyfile; chgrp panel-proxy /etc/panel-proxy/Caddyfile
 if [[ $LOCAL_CERTS -eq 1 ]]; then
   sed -i 's|^\temail .*|\tlocal_certs|' /etc/panel-proxy/Caddyfile
 fi
@@ -288,6 +362,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   }
   set_panel_env APP_URL "$PANEL_URL"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
+  [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
+  set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=' /srv/panel/shared/.env || echo "APP_LOCALE=cs" >> /srv/panel/shared/.env
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
   ln -sfn /srv/panel/shared/.env "$release/.env"

@@ -76,6 +76,54 @@ class DeploySite extends Page
         return Deployment::query()->where('site_id', $this->record->id)->latest('started_at')->limit(20)->get();
     }
 
+    /**
+     * What a deploy of this site does, step by step (mirrors the agent's pipeline).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function pipeline(): array
+    {
+        $f = $this->record->framework;
+        $c = $this->config ?? ['migrate' => true, 'assets' => true, 'auto_rollback' => true, 'branch' => 'main', 'keep' => 5];
+        $steps = [
+            ['Stažení kódu', 'git clone větve '.($c['branch'] ?? 'main').' do nové složky releases/<čas>. Běžící web se zatím nemění.'],
+            ['Sdílené soubory', match (true) {
+                $f === Framework::Laravel => 'Do releasu se nalinkují .env a storage/ ze shared/, takže data a nahrané soubory přežívají deploye.',
+                $f === Framework::Symfony => 'Do releasu se nalinkují .env.local a var/ ze shared/.',
+                $f->isNode() => 'Do releasu se nalinkuje .env ze shared/.',
+                default => 'Plain PHP: nic se nelinkuje, release obsahuje jen kód z repozitáře (kořen webu je jeho složka public/).',
+            }],
+        ];
+        if (! $f->isNode()) {
+            $steps[] = ['Composer', 'composer install --no-dev, pokud repozitář obsahuje composer.json.'];
+        }
+        if ($f->isNode() || ($c['assets'] ?? false)) {
+            $steps[] = ['Build assetů', 'npm ci / install a npm run build (Vite, Nuxt, Next…), pokud je v repozitáři package.json.'];
+        }
+        if ($f === Framework::Laravel) {
+            if ($c['migrate'] ?? false) {
+                $steps[] = ['Migrace', 'php artisan migrate --force.'];
+            }
+            $steps[] = ['Optimalizace', 'storage:link a artisan optimize (cache configu, rout a views).'];
+        }
+        if ($f === Framework::Symfony) {
+            if ($c['migrate'] ?? false) {
+                $steps[] = ['Migrace', 'doctrine:migrations:migrate.'];
+            }
+            $steps[] = ['Cache', 'asset-map:compile (je-li AssetMapper) a cache:warmup pro prod.'];
+        }
+        $steps[] = ['Přepnutí', 'Symlink current/ se atomicky přepne na nový release. '.match ($this->record->mode) {
+            SiteMode::Classic => 'PHP-FPM se plynule znovu načte.',
+            default => 'Proces aplikace se restartuje.',
+        }.' Workery se restartují, aby běžely s novým kódem.'];
+        $steps[] = ['Kontrola', ($c['auto_rollback'] ?? false)
+            ? 'Panel ověří, že web odpovídá. Když ne, vrátí předchozí release automaticky.'
+            : 'Panel ověří, že web odpovídá (automatický rollback je vypnutý).'];
+        $steps[] = ['Úklid', 'Ponechá se posledních '.($c['keep'] ?? 5).' releasů pro rychlý rollback.'];
+
+        return $steps;
+    }
+
     /** @return Collection<int, WebhookDelivery> */
     public function deliveries(): Collection
     {

@@ -29,6 +29,8 @@ type siteState struct {
 	OpcacheProduction bool `json:"opcache_production,omitempty"`
 	// Disabled: the edge answers 503, app/workers/tasks are stopped.
 	Disabled bool `json:"disabled,omitempty"`
+	// MailMode: send (Postfix) | capture (Mailpit); empty = server default.
+	MailMode string `json:"mail_mode,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

@@ -8,7 +8,7 @@ PHP     ?= 8.3,8.4
 LDFLAGS := -s -w -X wspanel/agent/internal/ops.Version=$(VERSION)
 DEV     := docker compose -f dev/compose.yaml
 
-.PHONY: test agent-test panel-test agent-build agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
+.PHONY: dev-demo test agent-test panel-test agent-build agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
 
 test: agent-test panel-test
 
@@ -42,8 +42,12 @@ dev-provision: agent-build
 		--db=$(DB) --php=$(PHP) --panel-domain=panel.localhost \
 		--agent-bin=/opt/wspanel/build/panel-agent-linux-$(ARCH) \
 		--panel-source=/opt/wspanel/panel --local-certs \
-		--public-https-port=8443 --public-ssh-port=2222 \
+		--public-https-port=8443 --public-ssh-port=2222 --mail=capture \
 		--allow-unenforced-socket-bind # Docker Desktop: no cgroup BPF socket-bind
+
+## Real demo apps (Laravel, Symfony Demo, WordPress over SFTP) in the dev container.
+dev-demo:
+	$(DEV) exec devserver /opt/wspanel/dev/demo.sh
 
 ## Full end-to-end test inside the dev container (after dev-provision).
 dev-e2e:

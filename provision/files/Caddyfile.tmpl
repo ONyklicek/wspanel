@@ -13,7 +13,21 @@
 
 __PANEL_DOMAIN__ {
 	encode zstd gzip
-	reverse_proxy unix//run/panel-web/web.sock
+
+	# Mailpit (captured test mail): only for users logged in to the panel.
+	# The panel answers /auth/check with 204 (or redirects to its login).
+	handle /mailpit* {
+		forward_auth unix//run/panel-web/web.sock {
+			uri /auth/check
+		}
+		reverse_proxy 127.0.0.1:8025 {
+			header_up Authorization "Basic __MAILPIT_BASIC__"
+		}
+	}
+
+	handle {
+		reverse_proxy unix//run/panel-web/web.sock
+	}
 	header {
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff

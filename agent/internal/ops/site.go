@@ -30,6 +30,8 @@ type siteLayout struct {
 
 	OpcacheProduction bool
 	Disabled          bool
+	MailMode          string // effective: send | capture
+	SendmailPath      string // PHP mail() for this mode
 	Home              string
 
 	// classic
@@ -94,6 +96,11 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
 	}
+	l.MailMode = st.MailMode
+	if l.MailMode == "" {
+		l.MailMode = cfg.MailDefault
+	}
+	l.SendmailPath = sendmailPath(cfg, l)
 	l.AppSocket = filepath.Join(l.RunDir, "http.sock")
 	if st.Mode == "classic" && st.PHPVersion != "" {
 		l.Socket = filepath.Join(cfg.FPMSocketDir, "php"+st.PHPVersion+"-"+user+".sock")
@@ -133,7 +140,8 @@ func sharedDirs(framework string) []string {
 // sharedEnvFile is where DB credentials etc. go for each framework.
 func sharedEnvFile(framework string) string {
 	switch framework {
-	case "laravel", "nuxt", "next", "node":
+	case "laravel", "nuxt", "next", "node", "php":
+		// php: plain sites read DB credentials from ~/shared/.env (outside the docroot).
 		return ".env"
 	case "symfony":
 		return ".env.local"
@@ -329,7 +337,8 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 		}
 	}
 	if f := sharedEnvFile(l.Framework); f != "" {
-		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), nil, 0o600, o); err != nil {
+		keys, values := mailEnv(env.Cfg, l)
+		if err := env.FS.WriteFile(filepath.Join(l.Home, "shared", f), []byte(mergeEnv("", keys, values)), 0o600, o); err != nil {
 			return err
 		}
 	}

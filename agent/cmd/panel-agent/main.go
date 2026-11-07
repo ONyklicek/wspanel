@@ -147,7 +147,10 @@ func binaries(cfg config.Config) map[string]string {
 		"userdel":          "/usr/sbin/userdel",
 		"usermod":          "/usr/sbin/usermod",
 		"chpasswd":         "/usr/sbin/chpasswd", // password on stdin only
-		"setpriv":          "/usr/bin/setpriv",   // runs fixed binaries as a site user
+		"postconf":         "/usr/sbin/postconf",
+		"postmap":          "/usr/sbin/postmap",
+		"postqueue":        "/usr/sbin/postqueue",
+		"setpriv":          "/usr/bin/setpriv", // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
 		"systemd-run":      "/usr/bin/systemd-run",

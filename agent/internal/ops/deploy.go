@@ -524,7 +524,12 @@ func (d *deployment) build(ctx context.Context) error {
 	l, dir := d.l, d.dir()
 	php := d.php()
 	if l.Framework != "nuxt" && l.Framework != "next" && l.Framework != "node" && d.exists("composer.json") {
-		if err := d.step(ctx, "Composer", dir, nil, php, "/usr/bin/composer", "install", "--no-dev", "--optimize-autoloader", "--no-interaction", "--no-progress", "--prefer-dist"); err != nil {
+		// Symfony's composer scripts (cache:clear) boot the kernel: in prod, per the Symfony deployment docs.
+		var composerEnv []string
+		if l.Framework == "symfony" {
+			composerEnv = []string{"APP_ENV=prod", "APP_DEBUG=0"}
+		}
+		if err := d.step(ctx, "Composer", dir, composerEnv, php, "/usr/bin/composer", "install", "--no-dev", "--optimize-autoloader", "--no-interaction", "--no-progress", "--prefer-dist"); err != nil {
 			return err
 		}
 	}

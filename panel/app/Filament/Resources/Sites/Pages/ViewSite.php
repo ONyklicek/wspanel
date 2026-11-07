@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Sites\Pages;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
+use App\Filament\Pages\Mail;
 use App\Filament\Resources\Databases\DatabaseResource;
 use App\Filament\Resources\Sites\SiteActions;
 use App\Filament\Resources\Sites\SiteResource;
@@ -129,6 +130,12 @@ class ViewSite extends ViewRecord
                         ->url(fn (Site $record) => $record->databases->count() === 1
                             ? DatabaseResource::getUrl('view', ['record' => $record->databases->first()])
                             : DatabaseResource::getUrl('index')),
+                    TextEntry::make('mail_mode')
+                        ->label('Pošta')
+                        ->badge()
+                        ->state(fn (Site $record) => $record->mail_mode === 'capture' ? 'zachytává se v Mailpitu' : 'odesílá se')
+                        ->color(fn (Site $record) => $record->mail_mode === 'capture' ? 'warning' : 'success')
+                        ->url(Mail::getUrl()),
                     TextEntry::make('deploy')
                         ->label('Poslední deploy')
                         ->state(function (Site $record) {

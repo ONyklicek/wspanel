@@ -86,6 +86,15 @@ type Config struct {
 	UFWBinary      string `json:"ufw_binary"`
 	ProtectedPorts []int  `json:"protected_ports"` // never denied or deleted (lockout protection)
 
+	// Mail: sites send through the local Postfix (DKIM via OpenDKIM) or, in
+	// "capture" mode, into Mailpit, where nothing leaves the server.
+	MailDefault  string `json:"mail_default"` // send | capture, for new sites
+	MailpitBin   string `json:"mailpit_bin"`
+	MailpitSMTP  string `json:"mailpit_smtp"`
+	PostfixSASL  string `json:"postfix_sasl"`
+	DKIMDir      string `json:"dkim_dir"`
+	DKIMSelector string `json:"dkim_selector"`
+
 	allowedUIDs []uint32
 }
 
@@ -142,6 +151,12 @@ func Defaults() Config {
 		PHPCLIBinary:      "/usr/bin/php{version}",
 		UFWBinary:         "/usr/sbin/ufw",
 		ProtectedPorts:    []int{22, 80, 443},
+		MailDefault:       "send",
+		MailpitBin:        "/usr/local/bin/mailpit",
+		MailpitSMTP:       "127.0.0.1:1025",
+		PostfixSASL:       "/etc/postfix/sasl_passwd",
+		DKIMDir:           "/etc/opendkim",
+		DKIMSelector:      "wspanel",
 	}
 }
 

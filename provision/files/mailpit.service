@@ -1,0 +1,30 @@
+# Managed by WSPanel install.sh. Catches mail of sites in "capture" mode.
+[Unit]
+Description=Mailpit (test mail catcher for WSPanel)
+After=network.target
+
+[Service]
+Type=simple
+User=mailpit
+Group=mailpit
+StateDirectory=mailpit
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/mailpit \
+  --listen 127.0.0.1:8025 --webroot /mailpit/ --ui-auth-file /etc/mailpit/ui-auth \
+  --smtp 127.0.0.1:1025 --smtp-auth-accept-any --smtp-auth-allow-insecure \
+  --database /var/lib/mailpit/mailpit.db --max 5000 --disable-version-check
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/mailpit
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/srv -/etc/panel-agent -/var/lib/panel-agent
+
+[Install]
+WantedBy=multi-user.target

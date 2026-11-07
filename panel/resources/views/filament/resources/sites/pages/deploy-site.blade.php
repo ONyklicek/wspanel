@@ -1,6 +1,27 @@
 <x-filament-panels::page>
     <div @if ($running || $logStatus === 'running') wire:poll.2s="refreshLog" @endif class="grid gap-6 lg:grid-cols-3">
         <div class="flex flex-col gap-6">
+            <x-filament::section heading="Jak deploy funguje" :collapsible="true" :collapsed="$config !== null"
+                description="Nasazení nové verze aplikace z Gitu bez výpadku. Každý krok buildu běží pod uživatelem webu v izolaci, nikdy jako root.">
+                <ol class="flex flex-col gap-3 text-sm">
+                    @foreach ($this->pipeline() as $i => [$title, $desc])
+                        <li class="flex gap-3">
+                            <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-400/10 dark:text-primary-400">{{ $i + 1 }}</span>
+                            <span><span class="font-medium">{{ $title }}</span><span class="block text-gray-500 dark:text-gray-400">{{ $desc }}</span></span>
+                        </li>
+                    @endforeach
+                </ol>
+                @if ($this->record->framework === \App\Enums\Framework::Php)
+                    <p class="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600 dark:bg-white/5 dark:text-gray-300">
+                        <strong>Deploy nepotřebujete?</strong> U čistého PHP stačí nahrát soubory přes SFTP do složky <code>public_html/</code>.
+                    </p>
+                @endif
+                <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                    Postup: <strong>1.</strong> Nastavení → adresa repozitáře a větev, <strong>2.</strong> u privátního repozitáře přidejte <strong>Deploy klíč</strong> do Gitu,
+                    <strong>3.</strong> doplňte <strong>.env</strong>, <strong>4.</strong> tlačítko <strong>Deploy</strong>. Automatické nasazení po pushi zapnete přes <strong>Webhook</strong>.
+                </p>
+            </x-filament::section>
+
             <x-filament::section heading="Nastavení">
                 @if ($config)
                     <dl class="grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
