@@ -4,13 +4,13 @@ namespace App\Livewire;
 
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Support\RowsDataSource;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Livewire\Component;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
 use NyonCode\WireTable\Concerns\WithTable;
+use NyonCode\WireTable\Data\CollectionDataSource;
 use NyonCode\WireTable\Filters\SelectFilter;
 use NyonCode\WireTable\Table;
 
@@ -53,7 +53,7 @@ class AuditTable extends Component
     {
         return $table
             ->stackedOnMobile()
-            ->dataSource(new RowsDataSource($this->rows()))
+            ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
                 TextColumn::make('time')->label('Čas')->description(fn ($r) => $r->ago),
                 TextColumn::make('op')->label('Operace')->fontFamily('mono')->weight('medium')->searchable(),

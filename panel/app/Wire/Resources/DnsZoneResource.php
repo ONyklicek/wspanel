@@ -94,7 +94,7 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                     TextInput::make('domain')->label('Doména')->placeholder('example.com')->required()
                         ->datalist(Site::query()->pluck('domain')->all())
                         ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
-                        ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
+                        ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                             if (! Domains::isValid($value)) {
                                 $fail('Neplatná doména.');
                             } elseif (DnsZone::query()->where('domain', Domains::normalize($value))->exists()) {

@@ -63,7 +63,7 @@ class ListFirewallRules extends ListPage
                     ]),
                     TextInput::make('from')->label('Odkud (IP nebo síť)')->placeholder('odkudkoli')
                         ->helperText('Např. 203.0.113.10 nebo 10.0.0.0/24. Prázdné = odkudkoli.')
-                        ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
+                        ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                             if (filled($value) && ! self::isIpOrCidr(trim((string) $value))) {
                                 $fail('Zadejte IP adresu nebo síť v CIDR.');
                             }

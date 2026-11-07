@@ -238,7 +238,7 @@ final class SiteActions
                     ->hiddenWhen('access', SshAccess::Off->value)
                     ->required(fn ($get) => ! in_array($get('password_mode') ?? 'keep', ['generate', 'set'], true)
                         && ! ($record->ssh_password && ($get('password_mode') ?? 'keep') === 'keep'))
-                    ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
+                    ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                         if (trim((string) $value) !== '' && ManageSsh::parseKeys((string) $value) === []) {
                             $fail('Nenašel jsem žádný platný klíč.');
                         }

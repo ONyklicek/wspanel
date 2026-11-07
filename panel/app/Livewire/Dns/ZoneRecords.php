@@ -4,7 +4,6 @@ namespace App\Livewire\Dns;
 
 use App\Models\DnsZone;
 use App\Services\Dns\DnsException;
-use App\Support\RowsDataSource;
 use App\Support\Toast;
 use App\Wire\Dns\RecordForm;
 use Illuminate\Contracts\View\View;
@@ -14,6 +13,7 @@ use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
 use NyonCode\WireTable\Concerns\WithTable;
+use NyonCode\WireTable\Data\CollectionDataSource;
 use NyonCode\WireTable\Table;
 
 /** The zone's records, live from its provider (PowerDNS through the agent, or Cloudflare). */
@@ -66,7 +66,7 @@ class ZoneRecords extends Component
 
         return $table
             ->stackedOnMobile()
-            ->dataSource(new RowsDataSource($this->rows()))
+            ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
                 TextColumn::make('short')->label('Název')->fontFamily('mono')->searchable()->sortable(),
                 BadgeColumn::make('type')->label('Typ')->color('gray')->sortable(),

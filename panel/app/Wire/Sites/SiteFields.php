@@ -28,7 +28,7 @@ final class SiteFields
             ->required()
             ->maxLength(253)
             ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
-            ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
+            ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                 if (! Domains::isValid($value)) {
                     $fail('Neplatná doména.');
                 }

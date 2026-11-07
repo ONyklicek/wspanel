@@ -6,7 +6,6 @@ use App\Actions\Sites\ControlSite;
 use App\Enums\SiteMode;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
-use App\Support\RowsDataSource;
 use App\Support\Toast;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Contracts\View\View;
@@ -19,6 +18,7 @@ use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
 use NyonCode\WireTable\Concerns\WithTable;
+use NyonCode\WireTable\Data\CollectionDataSource;
 use NyonCode\WireTable\Table;
 
 /**
@@ -69,7 +69,7 @@ class SiteProcesses extends Component
     {
         return $table
             ->stackedOnMobile()
-            ->dataSource(new RowsDataSource($this->rows()))
+            ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
                 TextColumn::make('label')->label('Proces')->weight('medium')->description(fn ($record) => $record->unit),
                 BadgeColumn::make('kind')->label('Druh')->color('gray')
