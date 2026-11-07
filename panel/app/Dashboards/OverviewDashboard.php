@@ -1,107 +1,175 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Dashboards;
 
+use App\Actions\Monitoring\ServerMetrics;
+use App\Enums\SiteStatus;
 use App\Livewire\Dashboards\ShowOverview;
-use App\Models\User;
+use App\Models\Certificate;
+use App\Models\Deployment;
+use App\Models\ServerMetric;
+use App\Models\Service;
+use App\Models\Site;
+use App\Services\Agent\AgentException;
+use App\Support\Attention;
+use App\Wire\Resources\SiteResource;
+use Illuminate\Support\Number;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ConfiguresRoutes;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ProvidesPages;
 use NyonCode\WireCore\Widgets\Dashboard;
+use NyonCode\WireCore\Widgets\ListItem;
+use NyonCode\WireCore\Widgets\ListWidget;
 use NyonCode\WireCore\Widgets\Stat;
 use NyonCode\WireCore\Widgets\StatsOverviewWidget;
-use NyonCode\WireCore\Widgets\Widget;
 
-/**
- * The page this admin opens on, and it is yours to edit.
- *
- * Written by `php artisan wire-admin:install` because an admin needs somewhere
- * to land. Without one the shell's own address has nothing of its own to show,
- * so it forwards to whichever screen happens to sort first in the sidebar — a
- * new installation signed you in and opened the media library.
- *
- * It is application code on purpose: a dashboard counts *your* rows, and no
- * package can know what those are. The one widget below counts the users in the
- * database, which is the only thing every application has; replace it.
- *
- * ## Why it sits at the admin's own address
- *
- * `routePrefix()` of `ConfiguresRoutes::ROOT` adds no URI segment, so this
- * dashboard's `index` page lands on the panel's own path — `/admin` — rather
- * than under it. Only one thing can claim that path, and claiming it is what
- * makes signing in open a dashboard rather than a redirect.
- *
- * Delete the three route methods and it becomes an ordinary page at
- * `/admin/overview`, with the shell's address going back to forwarding.
- *
- * ## Adding to it
- *
- *   StatsOverviewWidget, ChartWidget, BarChartWidget, ProgressWidget,
- *   ListWidget and TableWidget are the shipped kinds; `php artisan
- *   make:wire-widget` writes one of your own.
- *
- * Let each person rearrange it by adding `customisable()` returning true — then
- * every widget needs its own `key()`, which the one below already has.
- */
+/** The panel's landing page: what needs attention, the server, the sites. */
 class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesNavigation, ProvidesPages
 {
-    /**
-     * The widgets on this dashboard, in the order they are laid out.
-     *
-     * @return array<int, Widget>
-     */
+    public static function key(): string
+    {
+        return 'overview';
+    }
+
+    public static function label(): string
+    {
+        return 'Přehled';
+    }
+
     public function widgets(): array
     {
         return [
-            StatsOverviewWidget::make()
-                ->key('accounts')
-                ->heading('Accounts')
-                // As wide as the grid, so the row reads as a row rather than as
-                // one card with the page empty beside it.
+            ListWidget::make()
+                ->key('attention')
+                ->heading('Vyžaduje pozornost')
                 ->columnSpan(2)
-                ->columns(3)
-                ->stats([
-                    Stat::make('Users', (string) User::query()->count())
-                        ->icon('users')
-                        ->color('primary'),
-                    Stat::make('Verified', (string) User::query()->whereNotNull('email_verified_at')->count())
-                        ->description('confirmed their address')
-                        ->icon('check-badge')
-                        ->color('success'),
-                    Stat::make('New this week', (string) User::query()->where('created_at', '>=', now()->subWeek())->count())
-                        ->icon('user-plus'),
-                ]),
+                ->pollingInterval('30s')
+                ->items(fn () => array_map(fn (array $i) => ListItem::make($i['title'])
+                    ->description($i['detail'] ?: null)
+                    ->icon(['danger' => 'outline:exclamation-circle', 'warning' => 'outline:exclamation-triangle', 'info' => 'outline:information-circle'][$i['level']])
+                    ->color($i['level'])
+                    ->url($i['url']), Attention::items()))
+                ->emptyState('Vše v pořádku: služby běží, weby odpovídají, certifikáty platí.'),
+
+            StatsOverviewWidget::make()
+                ->key('server')
+                ->heading('Server')
+                ->columnSpan(2)
+                ->columns(4)
+                ->pollingInterval('15s')
+                ->stats($this->serverStats()),
+
+            StatsOverviewWidget::make()
+                ->key('hosting')
+                ->heading('Hosting')
+                ->columnSpan(2)
+                ->columns(4)
+                ->stats($this->hostingStats()),
+
+            ListWidget::make()
+                ->key('deploys')
+                ->heading('Poslední deploye')
+                ->items(fn () => Deployment::query()->with('site')->latest('started_at')->limit(6)->get()
+                    ->map(fn (Deployment $d) => ListItem::make($d->site?->domain ?? '?')
+                        ->description(trim(($d->ref ? $d->ref.' · ' : '').($d->commit ? substr($d->commit, 0, 10) : '').($d->source === 'artifact' ? ' · build z CI' : '')))
+                        ->meta($d->started_at?->diffForHumans())
+                        ->icon('outline:rocket-launch')
+                        ->color($d->statusColor())
+                        ->url($d->site ? SiteResource::url('deploy', $d->site) : null))
+                    ->all())
+                ->emptyState('Zatím žádný deploy.'),
+
+            ListWidget::make()
+                ->key('sites')
+                ->heading('Weby')
+                ->items(fn () => Site::query()->orderBy('domain')->limit(8)->get()
+                    ->map(fn (Site $s) => ListItem::make($s->domain)
+                        ->description($s->framework->getLabel().' · '.$s->runtimeLabel())
+                        ->meta($s->stateLabel())
+                        ->icon('outline:globe-alt')
+                        ->color($s->stateColor())
+                        ->url(SiteResource::url('view', $s)))
+                    ->all())
+                ->emptyState('Zatím žádný web. Založte ho v sekci Weby.'),
         ];
     }
 
-    /** Columns in the grid. */
+    /** @return list<Stat> */
+    private function serverStats(): array
+    {
+        try {
+            $m = app(ServerMetrics::class)->now();
+        } catch (AgentException $e) {
+            return [Stat::make('Server', 'agent nedostupný')->description($e->getMessage())->color('danger')];
+        }
+        $history = ServerMetric::query()->where('recorded_at', '>=', now()->subHour())->orderBy('recorded_at')->get();
+        $cpus = max(1, (int) ($m['cpus'] ?? 1));
+        $mem = $m['memory'] ?? [];
+        $memPct = ($mem['total'] ?? 0) > 0 ? 100 * $mem['used'] / $mem['total'] : 0;
+        $fullest = collect($m['filesystems'] ?? [])->filter(fn ($f) => $f['total'] > 0)->sortByDesc(fn ($f) => $f['used'] / $f['total'])->first();
+        $disk = $fullest ? 100 * $fullest['used'] / $fullest['total'] : 0;
+        $level = fn (float $v, float $w, float $d) => $v >= $d ? 'danger' : ($v >= $w ? 'warning' : 'success');
+
+        return [
+            Stat::make('CPU', Number::format($m['cpu']['percent'] ?? 0, 1).' %')
+                ->description("{$cpus} jader · zátěž ".Number::format($m['load'][0] ?? 0, 2))
+                ->icon('outline:cpu-chip')->color($level((float) ($m['cpu']['percent'] ?? 0), 70, 90))
+                ->chart($history->pluck('cpu')->map(fn ($v) => (float) $v)->all()),
+            Stat::make('Paměť', Number::format($memPct, 0).' %')
+                ->description(Number::fileSize($mem['used'] ?? 0, 1).' z '.Number::fileSize($mem['total'] ?? 0, 1))
+                ->icon('outline:circle-stack')->color($level($memPct, 80, 92))
+                ->chart($history->map(fn ($r) => $r->mem_total > 0 ? round(100 * $r->mem_used / $r->mem_total, 1) : 0)->all()),
+            Stat::make('Disk', Number::format($disk, 0).' %')
+                ->description($fullest ? $fullest['mount'].' · volno '.Number::fileSize($fullest['free'], 1) : '—')
+                ->icon('outline:server')->color($level($disk, 80, 90)),
+            Stat::make('Síť', '↓ '.Number::fileSize((int) ($m['net']['rx_bps'] ?? 0), 1).'/s')
+                ->description('↑ '.Number::fileSize((int) ($m['net']['tx_bps'] ?? 0), 1).'/s')
+                ->icon('outline:arrows-up-down')->color('gray')
+                ->chart($history->pluck('net_rx')->map(fn ($v) => (int) $v)->all()),
+        ];
+    }
+
+    /** @return list<Stat> */
+    private function hostingStats(): array
+    {
+        $sites = Site::query()->where('status', SiteStatus::Active)->get();
+        $failing = $sites->where('enabled', true)->where('health_ok', false)->count();
+        $services = Service::query()->get();
+        $certs = Certificate::query()->get();
+        $badCerts = $certs->whereIn('status', ['expired', 'missing', 'expiring'])->count();
+
+        return [
+            Stat::make('Weby', (string) $sites->count())
+                ->description($failing ? "{$failing} neodpovídá" : 'všechny odpovídají')
+                ->icon('outline:globe-alt')->color($failing ? 'danger' : 'success'),
+            Stat::make('Služby', $services->where('active_state', 'active')->count().' / '.$services->count())
+                ->description($services->where('active_state', 'failed')->count() ? $services->where('active_state', 'failed')->count().' v chybě' : 'běží')
+                ->icon('outline:server-stack')->color($services->where('active_state', 'failed')->count() ? 'danger' : 'success'),
+            Stat::make('Certifikáty', (string) $certs->count())
+                ->description($badCerts ? "{$badCerts} vyžaduje pozornost" : 'všechny platí')
+                ->icon('outline:lock-closed')->color($badCerts ? 'warning' : 'success'),
+            Stat::make('Deploye dnes', (string) Deployment::query()->where('started_at', '>=', now()->startOfDay())->count())
+                ->description(Deployment::query()->where('started_at', '>=', now()->startOfDay())->whereIn('status', ['failed', 'rolled_back'])->count().' neúspěšných')
+                ->icon('outline:rocket-launch')->color('gray'),
+        ];
+    }
+
     public function columns(): int
     {
         return 2;
     }
 
-    /**
-     * The page that renders it.
-     *
-     * @return array<string, class-string>
-     */
     public static function pages(): array
     {
         return ['index' => ShowOverview::class];
     }
 
-    /** No segment of its own: this lands on the panel's own path. */
     public static function routePrefix(): ?string
     {
         return self::ROOT;
     }
 
-    /**
-     * @return array<int, string>
-     */
     public static function routeMiddleware(): array
     {
         return [];
@@ -112,15 +180,8 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
         return null;
     }
 
-    /**
-     * The menu entry.
-     *
-     * In no group, which is what puts it above every group the modules declare:
-     * an ungrouped entry renders first and without a heading, the way an
-     * overview reads.
-     */
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Overview')->icon('outline:home');
+        return NavigationItem::make('Přehled')->icon('outline:home')->sort(1);
     }
 }
