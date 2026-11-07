@@ -1,12 +1,14 @@
 [Unit]
-Description=WSPanel reverse proxy (FrankenPHP/Caddy)
-After=network-online.target
+Description=WSPanel edge proxy (TLS, FrankenPHP/Caddy)
+After=network-online.target panel-web.service
 Wants=network-online.target
 
 [Service]
 Type=notify
 User=panel-proxy
 Group=panel-proxy
+# Membership in panel-web grants access to the web tier's socket directory.
+SupplementaryGroups=panel-web
 ExecStart=/usr/local/bin/frankenphp run --config /etc/panel-proxy/Caddyfile --adapter caddyfile
 ExecReload=/usr/local/bin/frankenphp reload --config /etc/panel-proxy/Caddyfile --adapter caddyfile --address unix//run/panel-proxy/admin.sock --force
 Restart=on-failure
@@ -23,6 +25,8 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
+# The edge never needs site files or other components' secrets.
+InaccessiblePaths=-/srv -/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent
 
 [Install]
 WantedBy=multi-user.target

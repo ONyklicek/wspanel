@@ -1,8 +1,7 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// The DB mirrors of services and firewall rules are refreshed from the agent;
+// the panel never assumes state it did not verify.
+Schedule::command('panel:sync')->everyMinute()->withoutOverlapping();

@@ -34,6 +34,26 @@ class SystemInfo
             ->all();
     }
 
+    /** Units the panel runs on: never stoppable from the UI (the agent refuses too). @return list<string> */
+    public function panelUnits(): array
+    {
+        try {
+            return $this->versions()['panel_units'] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
+    /** @return list<string> worker types available for a framework */
+    public function workerTypes(string $framework): array
+    {
+        try {
+            return $this->versions()['workers'][$framework] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
     public function defaultPhpVersion(): ?string
     {
         try {

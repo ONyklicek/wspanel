@@ -1,0 +1,30 @@
+# Managed by WSPanel install.sh. Web tier: serves static files and routes PHP
+# to FPM. Plain HTTP on a Unix socket reachable only by the edge proxy. It
+# holds no secrets, and its user may read only public/ dirs: Caddy follows
+# symlinks, so this is what keeps a site from exposing anything else.
+{
+	admin unix//run/panel-web/admin.sock
+	auto_https off
+	default_bind unix//run/panel-web/web.sock|0220
+	servers {
+		protocols h1
+	}
+}
+
+http://__PANEL_DOMAIN__ {
+	root * /srv/panel/current/public
+	@hidden {
+		path */.*
+		not path /.well-known/*
+	}
+	respond @hidden 404
+	php_fastcgi unix//run/php/php8.4-panel.sock {
+		resolve_root_symlink
+		env HTTPS on
+		env SERVER_PORT 443
+		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+	}
+	file_server
+}
+
+import /etc/panel-web/sites/*.caddy

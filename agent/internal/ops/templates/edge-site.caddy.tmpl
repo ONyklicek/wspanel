@@ -1,0 +1,7 @@
+# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
+# Edge (TLS) for {{.Domain}}. Holds certificates, never touches site files.
+{{.Domain}} {
+	encode zstd gzip
+	reverse_proxy unix/{{.WebSocket}}
+	log
+}

@@ -87,11 +87,13 @@ func run(cfgPath string, log *slog.Logger) error {
 // binaries is the executor allowlist: logical name -> absolute path.
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
-		"systemctl":  "/usr/bin/systemctl",
-		"useradd":    "/usr/sbin/useradd",
-		"userdel":    "/usr/sbin/userdel",
-		"setfacl":    "/usr/bin/setfacl",
-		"frankenphp": cfg.FrankenPHPBin,
+		"systemctl":       "/usr/bin/systemctl",
+		"useradd":         "/usr/sbin/useradd",
+		"userdel":         "/usr/sbin/userdel",
+		"setfacl":         "/usr/bin/setfacl",
+		"systemd-analyze": "/usr/bin/systemd-analyze",
+		"ufw":             cfg.UFWBinary,
+		"frankenphp":      cfg.FrankenPHPBin,
 	}
 	for _, v := range cfg.PHPVersions {
 		b["php-fpm"+v] = config.ForVersion(cfg.FPMBinary, v)
@@ -112,6 +114,10 @@ func dryResponder(c executor.Call) (executor.Result, error) {
 				out += "Id=" + a + "\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\n"
 			}
 			return executor.Result{Stdout: out}, nil
+		}
+	case "ufw":
+		if len(c.Args) > 0 && c.Args[0] == "status" {
+			return executor.Result{Stdout: "Status: active\n\nTo                         Action      From\n--                         ------      ----\n22/tcp                     ALLOW       Anywhere\n80/tcp                     ALLOW       Anywhere\n443                        ALLOW       Anywhere\n22/tcp (v6)                ALLOW       Anywhere (v6)\n"}, nil
 		}
 	case "frankenphp":
 		if len(c.Args) > 0 && c.Args[0] == "version" {

@@ -4,20 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"wspanel/agent/internal/config"
+	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 	"wspanel/agent/internal/validate"
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "mariadb", "postgresql", "valkey"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "valkey", "worker"}
 
 type serviceParams struct {
 	Service string `json:"service"`
 	Version string `json:"version,omitempty"` // php-fpm only
+	Domain  string `json:"domain,omitempty"`  // worker only
+	Worker  string `json:"worker,omitempty"`  // worker only
 }
 
 // unit maps validated params to a systemd unit name.
@@ -28,7 +32,22 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 	if p.Service != "php-fpm" && p.Version != "" {
 		return "", protocol.Invalid("version: only valid for php-fpm")
 	}
+	if p.Service != "worker" && (p.Domain != "" || p.Worker != "") {
+		return "", protocol.Invalid("domain/worker: only valid for worker")
+	}
 	switch p.Service {
+	case "worker":
+		if err := validate.Domain(p.Domain); err != nil {
+			return "", err
+		}
+		if err := validate.OneOf("worker", p.Worker, WorkerTypes); err != nil {
+			return "", err
+		}
+		name := workerUnit(validate.SiteUser(p.Domain), p.Worker)
+		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
+			return "", protocol.NotFound("worker " + p.Worker + " does not exist for " + p.Domain)
+		}
+		return name, nil
 	case "php-fpm":
 		if err := validate.OneOf("version", p.Version, cfg.PHPVersions); err != nil {
 			return "", err
@@ -36,6 +55,8 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 		return config.ForVersion(cfg.FPMUnit, p.Version), nil
 	case "proxy":
 		return cfg.ProxyUnit, nil
+	case "web":
+		return cfg.WebUnit, nil
 	case "mariadb", "postgresql":
 		if !slices.Contains(cfg.DBEngines, p.Service) {
 			return "", protocol.NotFound(p.Service + " is not installed on this server")
@@ -63,12 +84,25 @@ func serviceStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	return st[0], nil
 }
 
+func serviceStart(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	return serviceAction(ctx, env, raw, "start")
+}
+
+func serviceStop(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	return serviceAction(ctx, env, raw, "stop")
+}
+
 func serviceReload(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	return serviceAction(ctx, env, raw, "reload")
 }
 
 func serviceRestart(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	return serviceAction(ctx, env, raw, "restart")
+}
+
+// serviceReset clears a failed state (and the start rate limit) and restarts.
+func serviceReset(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	return serviceAction(ctx, env, raw, "reset")
 }
 
 func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action string) (any, error) {
@@ -80,6 +114,12 @@ func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action st
 	if err != nil {
 		return nil, err
 	}
+	if action == "stop" && slices.Contains(env.Cfg.PanelUnits(), unit) {
+		return nil, protocol.Forbidden(unit + " runs the panel itself and cannot be stopped from it; use restart")
+	}
+	if action == "reload" && (p.Service == "worker" || p.Service == "valkey") {
+		return nil, protocol.Invalid("reload: not supported for " + p.Service + ", use restart")
+	}
 	// A broken config is never (re)loaded.
 	switch p.Service {
 	case "php-fpm":
@@ -87,9 +127,19 @@ func serviceAction(ctx context.Context, env *Env, raw json.RawMessage, action st
 			return nil, err
 		}
 	case "proxy":
-		if err := validateProxy(ctx, env); err != nil {
+		if err := validateEdge(ctx, env); err != nil {
 			return nil, err
 		}
+	case "web":
+		if err := validateWeb(ctx, env); err != nil {
+			return nil, err
+		}
+	}
+	if action == "reset" {
+		if _, err := env.Exec.Run(ctx, "systemctl", "reset-failed", unit); err != nil {
+			return nil, err
+		}
+		action = "restart"
 	}
 	if _, err := env.Exec.Run(ctx, "systemctl", action, unit); err != nil {
 		return nil, err
@@ -149,11 +199,19 @@ func validateFPM(ctx context.Context, env *Env, version string) error {
 	return nil
 }
 
-func validateProxy(ctx context.Context, env *Env) error {
-	if _, err := env.Exec.Run(ctx, "frankenphp", "validate", "--config", env.Cfg.ProxyConfig, "--adapter", "caddyfile"); err != nil {
-		return fmt.Errorf("proxy config invalid, not reloading: %w", err)
+func validateCaddy(ctx context.Context, env *Env, name, path string) error {
+	if _, err := env.Exec.Run(ctx, "frankenphp", "validate", "--config", path, "--adapter", "caddyfile"); err != nil {
+		return fmt.Errorf("%s config invalid, not reloading: %w", name, err)
 	}
 	return nil
+}
+
+func validateEdge(ctx context.Context, env *Env) error {
+	return validateCaddy(ctx, env, "proxy", env.Cfg.ProxyConfig)
+}
+
+func validateWeb(ctx context.Context, env *Env) error {
+	return validateCaddy(ctx, env, "web", env.Cfg.WebConfig)
 }
 
 type configValidateParams struct {
@@ -166,7 +224,7 @@ func configValidate(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := validate.OneOf("type", p.Type, []string{"php-fpm", "proxy"}); err != nil {
+	if err := validate.OneOf("type", p.Type, []string{"php-fpm", "proxy", "web"}); err != nil {
 		return nil, err
 	}
 	var err error
@@ -175,8 +233,10 @@ func configValidate(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 			return nil, err
 		}
 		err = validateFPM(ctx, env, p.Version)
+	} else if p.Type == "proxy" {
+		err = validateEdge(ctx, env)
 	} else {
-		err = validateProxy(ctx, env)
+		err = validateWeb(ctx, env)
 	}
 	if err != nil {
 		return nil, err

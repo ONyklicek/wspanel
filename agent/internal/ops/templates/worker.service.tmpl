@@ -1,0 +1,43 @@
+# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
+[Unit]
+Description=WSPanel {{.Type}} worker for {{.Domain}}
+After=network.target valkey-server.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User={{.User}}
+Group={{.User}}
+WorkingDirectory={{.Home}}/current
+ExecStart={{.Command}}
+Restart=always
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec={{.StopTimeout}}
+Environment=TMPDIR={{.Home}}/tmp
+UMask=0027
+
+# Sandbox: the worker runs arbitrary application code, so it gets as little
+# of the system as possible. Writable: only its own site.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{.Home}}
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

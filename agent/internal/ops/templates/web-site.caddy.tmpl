@@ -1,8 +1,7 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
 # site: {{.Domain}}  mode: classic  php: {{.PHPVersion}}  framework: {{.Framework}}
-{{.Domain}} {
+http://{{.Domain}} {
 	root * {{.Home}}/current/public
-	encode zstd gzip
 
 	@hidden {
 		path */.*
@@ -12,8 +11,10 @@
 
 	php_fastcgi unix/{{.Socket}} {
 		resolve_root_symlink
+		# Only the edge reaches this server; it terminates TLS.
+		env HTTPS on
+		env SERVER_PORT 443
+		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
 	}
 	file_server
-
-	log
 }

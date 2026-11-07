@@ -3,6 +3,10 @@
 namespace App\Filament\Resources\Sites\Tables;
 
 use App\Actions\Sites\DeleteSite;
+use App\Actions\Sites\ManageWorkers;
+use App\Enums\SiteStatus;
+use App\Services\Agent\SystemInfo;
+use Filament\Forms\Components\Select;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use Filament\Actions\Action;
@@ -37,6 +41,39 @@ class SitesTable
                 TextColumn::make('created_at')->label('Založeno')->dateTime('j. n. Y H:i')->sortable(),
             ])
             ->recordActions([
+                Action::make('addWorker')
+                    ->label('Přidat worker')
+                    ->icon(Heroicon::OutlinedCpuChip)
+                    ->color('gray')
+                    ->visible(fn (Site $record) => $record->status === SiteStatus::Active
+                        && app(SystemInfo::class)->workerTypes($record->framework->value) !== [])
+                    ->modalDescription('Worker běží jako systemd služba pod uživatelem webu, se sandboxem. Před prvním deployem se jen zaregistruje a spustí se, až bude aplikace nasazená.')
+                    ->schema(fn (Site $record) => [
+                        Select::make('worker')
+                            ->label('Typ')
+                            ->options(collect(app(SystemInfo::class)->workerTypes($record->framework->value))
+                                ->mapWithKeys(fn (string $t) => [$t => match ($t) {
+                                    'horizon' => 'Horizon (artisan horizon)',
+                                    'queue' => 'Fronta (artisan queue:work)',
+                                    'scheduler' => $record->framework->value === 'laravel'
+                                        ? 'Plánovač (artisan schedule:work)'
+                                        : 'Plánovač (messenger:consume scheduler_default)',
+                                    'messenger' => 'Messenger (messenger:consume async)',
+                                    default => $t,
+                                }]))
+                            ->required(),
+                    ])
+                    ->action(function (Site $record, array $data) {
+                        try {
+                            $out = app(ManageWorkers::class)->create($record, $data['worker']);
+                            Notification::make()
+                                ->title('Worker přidán')
+                                ->body(($out['started'] ?? false) ? 'Běží.' : 'Zaregistrován, spustí se po prvním deployi.')
+                                ->success()->send();
+                        } catch (AgentException $e) {
+                            Notification::make()->title('Worker se nepodařilo přidat')->body($e->getMessage())->danger()->persistent()->send();
+                        }
+                    }),
                 Action::make('delete')
                     ->label('Smazat')
                     ->icon(Heroicon::OutlinedTrash)

@@ -25,7 +25,10 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.TrashDir = filepath.Join(cfg.SitesRoot, ".trash")
 	cfg.FPMPoolDir = filepath.Join(root, "etc/php/{version}/fpm/pool.d")
 	cfg.ProxySitesDir = filepath.Join(root, "etc/panel-proxy/sites")
-	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir} {
+	cfg.WebSitesDir = filepath.Join(root, "etc/panel-web/sites")
+	cfg.StateDir = filepath.Join(root, "var/lib/panel-agent")
+	cfg.SystemdDir = filepath.Join(root, "etc/systemd/system")
+	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -78,9 +81,16 @@ func TestSiteCreateLaravel(t *testing.T) {
 			t.Errorf("pool missing %q", want)
 		}
 	}
-	site, _ := os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "shop.example.com.caddy"))
-	if !strings.Contains(string(site), "root * "+home+"/current/public") || !strings.Contains(string(site), "resolve_root_symlink") {
-		t.Errorf("proxy config:\n%s", site)
+	web, _ := os.ReadFile(filepath.Join(env.Cfg.WebSitesDir, "shop.example.com.caddy"))
+	if !strings.Contains(string(web), "root * "+home+"/current/public") || !strings.Contains(string(web), "resolve_root_symlink") {
+		t.Errorf("web config:\n%s", web)
+	}
+	edge, _ := os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "shop.example.com.caddy"))
+	if !strings.Contains(string(edge), "reverse_proxy unix//run/panel-web/web.sock") || strings.Contains(string(edge), "/srv") || strings.Contains(string(edge), home) {
+		t.Errorf("edge must only forward, never serve files:\n%s", edge)
+	}
+	if !strings.Contains(string(pool), "proc_open") || !strings.Contains(string(pool), "putenv") {
+		t.Error("pool must disable proc_open and putenv")
 	}
 
 	// Validation must precede every reload.
@@ -91,16 +101,26 @@ func TestSiteCreateLaravel(t *testing.T) {
 	joined := strings.Join(seq, "\n")
 	iv := strings.Index(joined, "php-fpm8.3 -t")
 	ir := strings.Index(joined, "systemctl reload php8.3-fpm.service")
-	pv := strings.Index(joined, "frankenphp validate")
+	wv := strings.Index(joined, "frankenphp validate --config /etc/panel-web/Caddyfile")
+	wr := strings.Index(joined, "systemctl reload panel-web.service")
+	pv := strings.Index(joined, "frankenphp validate --config /etc/panel-proxy/Caddyfile")
 	pr := strings.Index(joined, "systemctl reload panel-proxy.service")
-	if iv < 0 || ir < iv || pv < 0 || pr < pv {
+	if iv < 0 || ir < iv || wv < ir || wr < wv || pv < wr || pr < pv {
 		t.Errorf("bad order:\n%s", joined)
 	}
-	if !strings.Contains(joined, "setfacl -R -P -m u:panel-proxy:rX,d:u:panel-proxy:rX "+home+"/shared/storage/app/public") {
-		t.Errorf("laravel public storage ACL missing:\n%s", joined)
+	// The web user may read only public dirs; everything else is traverse-only.
+	var readGrants []string
+	for _, c := range dr.Calls() {
+		if c.Name == "setfacl" && strings.Contains(strings.Join(c.Args, " "), ":rX") {
+			readGrants = append(readGrants, c.Args[len(c.Args)-1])
+		}
 	}
-	if strings.Contains(joined, "-R -P -m u:panel-proxy:rX,d:u:panel-proxy:rX "+home+"/shared\n") {
-		t.Error("proxy must not get read access to shared/")
+	want := []string{home + "/releases/initial/public", home + "/shared/storage/app/public"}
+	if strings.Join(readGrants, ",") != strings.Join(want, ",") {
+		t.Errorf("read ACLs on %v, want exactly %v", readGrants, want)
+	}
+	if strings.Contains(joined, "panel-proxy:") {
+		t.Error("edge proxy user must not get any ACL on site files")
 	}
 
 	// Second create conflicts.
@@ -146,7 +166,7 @@ func TestSiteCreateRejectsBadParams(t *testing.T) {
 func TestSiteCreateRollsBackOnInvalidProxyConfig(t *testing.T) {
 	env, dr := testEnv(t)
 	dr.Responder = func(c executor.Call) (executor.Result, error) {
-		if c.Name == "frankenphp" && c.Args[0] == "validate" {
+		if c.Name == "frankenphp" && c.Args[0] == "validate" && strings.Contains(c.Args[2], "panel-proxy") {
 			return executor.Result{ExitCode: 1}, errors.New("broken")
 		}
 		return executor.Result{}, nil
@@ -158,6 +178,7 @@ func TestSiteCreateRollsBackOnInvalidProxyConfig(t *testing.T) {
 	for _, p := range []string{
 		filepath.Join(env.Cfg.SitesRoot, "a.example.com"),
 		filepath.Join(env.Cfg.ProxySitesDir, "a.example.com.caddy"),
+		filepath.Join(env.Cfg.WebSitesDir, "a.example.com.caddy"),
 		filepath.Join(config.ForVersion(env.Cfg.FPMPoolDir, "8.4"), "web_a_example_com.conf"),
 	} {
 		if fsx.Exists(p) {
@@ -170,7 +191,8 @@ func TestSiteCreateRollsBackOnInvalidProxyConfig(t *testing.T) {
 	}
 	joined := strings.Join(calls, "\n")
 	wantTail := "frankenphp validate --config /etc/panel-proxy/Caddyfile --adapter caddyfile\n" +
-		"systemctl reload panel-proxy.service\nsystemctl reload php8.4-fpm.service\nuserdel web_a_example_com"
+		"systemctl reload panel-proxy.service\nsystemctl reload panel-web.service\n" +
+		"systemctl reload php8.4-fpm.service\nuserdel web_a_example_com"
 	if !strings.HasSuffix(joined, wantTail) {
 		t.Errorf("rollback calls:\n%s", joined)
 	}
@@ -188,7 +210,8 @@ func TestSiteDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fsx.Exists(filepath.Join(env.Cfg.SitesRoot, "del.example.com")) || fsx.Exists(filepath.Join(env.Cfg.ProxySitesDir, "del.example.com.caddy")) {
+	if fsx.Exists(filepath.Join(env.Cfg.SitesRoot, "del.example.com")) || fsx.Exists(filepath.Join(env.Cfg.ProxySitesDir, "del.example.com.caddy")) ||
+		fsx.Exists(filepath.Join(env.Cfg.WebSitesDir, "del.example.com.caddy")) || fsx.Exists(siteStatePath(env.Cfg, "del.example.com")) {
 		t.Fatal("site not removed")
 	}
 	if !fsx.Exists(out.(map[string]string)["trashed_to"]) {

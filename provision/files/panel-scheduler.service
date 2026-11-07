@@ -1,0 +1,22 @@
+[Unit]
+Description=WSPanel scheduler (syncs service and firewall state from the agent)
+After=panel-agent.service
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/srv/panel/current
+ExecStart=/usr/bin/php8.4 artisan schedule:work
+Restart=always
+RestartSec=5s
+Environment=HOME=/srv/panel/tmp
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/panel/shared /srv/panel/tmp
+InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/lib/panel-proxy
+
+[Install]
+WantedBy=multi-user.target

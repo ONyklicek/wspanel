@@ -30,12 +30,27 @@ type Config struct {
 	FPMUnit      string `json:"fpm_unit"`     // may contain {version}
 	FPMSocketDir string `json:"fpm_socket_dir"`
 
-	ProxyUser     string `json:"proxy_user"`
+	// Edge proxy: terminates TLS and holds the certificates. It has no access
+	// to site files; it forwards to the web tier over a Unix socket.
 	ProxyUnit     string `json:"proxy_unit"`
 	ProxyConfig   string `json:"proxy_config"`
 	ProxySitesDir string `json:"proxy_sites_dir"`
+
+	// Web tier: serves static files and routes PHP to FPM. Holds no secrets
+	// and may read only the public/ directories of sites (Caddy follows
+	// symlinks, so whatever this user can read, a site could expose).
+	WebUser       string `json:"web_user"`
+	WebUnit       string `json:"web_unit"`
+	WebConfig     string `json:"web_config"`
+	WebSitesDir   string `json:"web_sites_dir"`
+	WebSocket     string `json:"web_socket"`
 	FrankenPHPBin string `json:"frankenphp_bin"`
 	DefaultPHPVer string `json:"default_php_version"`
+
+	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
+	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
+	UFWBinary      string `json:"ufw_binary"`
+	ProtectedPorts []int  `json:"protected_ports"` // never denied or deleted (lockout protection)
 
 	allowedUIDs []uint32
 }
@@ -55,12 +70,21 @@ func Defaults() Config {
 		FPMBinary:     "/usr/sbin/php-fpm{version}",
 		FPMUnit:       "php{version}-fpm.service",
 		FPMSocketDir:  "/run/php",
-		ProxyUser:     "panel-proxy",
 		ProxyUnit:     "panel-proxy.service",
 		ProxyConfig:   "/etc/panel-proxy/Caddyfile",
 		ProxySitesDir: "/etc/panel-proxy/sites",
+		WebUser:       "panel-web",
+		WebUnit:       "panel-web.service",
+		WebConfig:     "/etc/panel-web/Caddyfile",
+		WebSitesDir:   "/etc/panel-web/sites",
+		WebSocket:     "/run/panel-web/web.sock",
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",
+
+		SystemdDir:     "/etc/systemd/system",
+		PHPCLIBinary:   "/usr/bin/php{version}",
+		UFWBinary:      "/usr/sbin/ufw",
+		ProtectedPorts: []int{22, 80, 443},
 	}
 }
 
@@ -96,6 +120,12 @@ func (c *Config) resolve() error {
 }
 
 func (c *Config) AllowedUIDs() []uint32 { return c.allowedUIDs }
+
+// PanelUnits are units the panel itself depends on: they may be restarted or
+// reloaded, but never stopped from the panel (it would cut off its own access).
+func (c *Config) PanelUnits() []string {
+	return []string{c.ProxyUnit, c.WebUnit, ForVersion(c.FPMUnit, c.DefaultPHPVer)}
+}
 
 // ForVersion substitutes {version} in a path template.
 func ForVersion(tmpl, version string) string {

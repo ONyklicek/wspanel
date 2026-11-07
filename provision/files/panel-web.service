@@ -1,0 +1,34 @@
+[Unit]
+Description=WSPanel web tier (static files + FastCGI routing, FrankenPHP/Caddy)
+After=network.target
+
+[Service]
+Type=notify
+User=panel-web
+Group=panel-web
+ExecStart=/usr/local/bin/frankenphp run --config /etc/panel-web/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/frankenphp reload --config /etc/panel-web/Caddyfile --adapter caddyfile --address unix//run/panel-web/admin.sock --force
+Restart=on-failure
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+Environment=XDG_DATA_HOME=/var/lib/panel-web XDG_CONFIG_HOME=/var/lib/panel-web/config
+StateDirectory=panel-web
+StateDirectoryMode=0700
+# 0750 + group panel-web: only the edge proxy can reach web.sock.
+RuntimeDirectory=panel-web
+RuntimeDirectoryMode=0750
+UMask=0007
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent -/var/lib/panel-proxy -/etc/panel-proxy
+
+[Install]
+WantedBy=multi-user.target

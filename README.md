@@ -21,8 +21,19 @@ dev/        Debian 13 kontejner se systemd jako PID 1 (náhrada VM na Macu)
 - Před každým reloadem ověří config (`php-fpm -t`, `frankenphp validate`).
   Když selže, provedené kroky se vrátí zpět.
 - Každá operace se zapíše do `/var/log/panel-agent/audit.log` (JSON lines).
-- Každý web má vlastního systémového uživatele, `open_basedir` a FPM pool.
-  Proxy čte jen `releases/` (přes ACL), nikdy `shared/`, kde leží `.env`.
+- Každý web má vlastního systémového uživatele, `open_basedir`, FPM pool a
+  `disable_functions` (včetně `proc_open` a `putenv`).
+- Proxy má dvě vrstvy, protože Caddy `file_server` následuje symlinky i mimo root:
+  - `panel-proxy` (edge) drží TLS klíče, ale `/srv` nevidí vůbec
+    (`InaccessiblePaths`). Na web tier jen předává požadavky přes Unix socket.
+  - `panel-web` obsluhuje statiku a FastCGI. Nemá žádná tajemství a přes ACL
+    smí číst jen adresáře `public/`. Symlink, který si web nastrčí, tak vede
+    nanejvýš k souborům, které jsou veřejné i tak.
+- Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
+  uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
+  svého webu). Příkaz určuje framework, panel ho zadat nemůže.
+- Firewall (UFW): porty SSH, 80 a 443 nejde z panelu zakázat ani smazat.
+  Služby, na kterých běží panel, nejde z panelu zastavit.
 
 ## Struktura webu
 
@@ -70,6 +81,11 @@ později jen doinstalovat (Fáze 4).
 
 ## Stav
 
-Fáze 1 je hotová: agent (`site.create/delete`, `service.status/reload/restart`,
-`config.validate`, `sys.services/versions`) a panel se seznamem webů a zakládáním
-classic (PHP-FPM) webů pro Laravel, Symfony a obecné PHP.
+- **Fáze 1:** agent, zakládání a mazání classic (PHP-FPM) webů pro Laravel,
+  Symfony a obecné PHP.
+- **Fáze 2:**
+  - služby (`service.start/stop/restart/reload/reset`),
+  - workery webů (`worker.create/delete`),
+  - firewall (`fw.list/allow/deny/delete`),
+  - zrcadlení skutečného stavu do panelu (`panel:sync` každou minutu přes
+    `panel-scheduler`) a přehled na dashboardu.

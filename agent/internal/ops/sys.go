@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 
 	"wspanel/agent/internal/config"
@@ -13,14 +14,15 @@ import (
 var Version = "dev"
 
 func managedUnits(cfg config.Config) []string {
-	units := []string{cfg.ProxyUnit}
+	units := []string{cfg.ProxyUnit, cfg.WebUnit}
 	for _, v := range cfg.PHPVersions {
 		units = append(units, config.ForVersion(cfg.FPMUnit, v))
 	}
 	for _, e := range cfg.DBEngines {
 		units = append(units, e+".service")
 	}
-	return append(units, "valkey-server.service")
+	units = append(units, "valkey-server.service")
+	return append(units, allWorkerUnits(cfg)...)
 }
 
 func sysServices(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -56,6 +58,19 @@ func sysVersions(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		"db_engines":  env.Cfg.DBEngines,
 		"frameworks":  []string{"laravel", "symfony", "php"},
 		"site_modes":  []string{"classic"},
+		"workers":     workerTypesByFramework(),
+		"panel_units": env.Cfg.PanelUnits(),
 		"dry_run":     env.Cfg.DryRun,
 	}, nil
+}
+
+func workerTypesByFramework() map[string][]string {
+	out := map[string][]string{}
+	for fw, specs := range workerSpecs {
+		for t := range specs {
+			out[fw] = append(out[fw], t)
+		}
+		slices.Sort(out[fw])
+	}
+	return out
 }

@@ -17,16 +17,25 @@ import (
 // siteLayout is everything derived from a validated domain. No path in here
 // is ever built from unvalidated input.
 type siteLayout struct {
-	Domain     string
-	Framework  string
-	PHPVersion string
-	User       string
-	Home       string
-	Socket     string
-	PoolFile   string
-	ProxyFile  string
-	ProxyUser  string
+	Domain           string
+	Framework        string
+	PHPVersion       string
+	User             string
+	Home             string
+	Socket           string
+	PoolFile         string
+	EdgeFile         string // TLS edge site block
+	WebFile          string // web tier site block
+	WebUser          string
+	WebSocket        string
+	DisableFunctions string
 }
+
+// DisableFunctions is the single list applied to every PHP-FPM pool (sites
+// and, via provision/files/panel-pool.conf, the panel; a test keeps them in
+// sync). putenv is included because putenv(LD_PRELOAD) + mail() is a classic
+// way around the rest of the list.
+const DisableFunctions = "exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec,putenv,dl"
 
 func layout(cfg config.Config, domain, framework, version string) (siteLayout, error) {
 	user := validate.SiteUser(domain)
@@ -38,8 +47,12 @@ func layout(cfg config.Config, domain, framework, version string) (siteLayout, e
 		Home:       filepath.Join(cfg.SitesRoot, domain),
 		Socket:     filepath.Join(cfg.FPMSocketDir, "php"+version+"-"+user+".sock"),
 		PoolFile:   filepath.Join(config.ForVersion(cfg.FPMPoolDir, version), user+".conf"),
-		ProxyFile:  filepath.Join(cfg.ProxySitesDir, domain+".caddy"),
-		ProxyUser:  cfg.ProxyUser,
+		EdgeFile:   filepath.Join(cfg.ProxySitesDir, domain+".caddy"),
+		WebFile:    filepath.Join(cfg.WebSitesDir, domain+".caddy"),
+		WebUser:    cfg.WebUser,
+		WebSocket:  cfg.WebSocket,
+
+		DisableFunctions: DisableFunctions,
 	}
 	if !fsx.Within(cfg.SitesRoot, l.Home) {
 		return l, protocol.Invalid("domain resolves outside sites root")
@@ -108,7 +121,7 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range []string{l.Home, l.PoolFile, l.ProxyFile} {
+	for _, path := range []string{l.Home, l.PoolFile, l.EdgeFile, l.WebFile, siteStatePath(env.Cfg, p.Domain)} {
 		if fsx.Exists(path) {
 			return nil, protocol.Conflict(fmt.Sprintf("site %s already exists (%s)", p.Domain, path))
 		}
@@ -147,7 +160,7 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = createSiteTree(env, l, owner); err != nil {
 		return nil, err
 	}
-	if err = grantProxyAccess(ctx, env, l); err != nil {
+	if err = grantWebAccess(ctx, env, l, "initial"); err != nil {
 		return nil, err
 	}
 
@@ -171,22 +184,37 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		return nil, err
 	}
 
-	// 4. Proxy: write, validate, reload.
-	site, err := render("proxy-site.caddy.tmpl", l)
-	if err != nil {
-		return nil, err
+	// 4. Web tier, then edge: write, validate, reload. The web tier goes first
+	// so the edge never routes to a host the web tier does not know yet.
+	for _, tier := range []struct {
+		tmpl, file, unit string
+		validate         func(context.Context, *Env) error
+	}{
+		{"web-site.caddy.tmpl", l.WebFile, env.Cfg.WebUnit, validateWeb},
+		{"edge-site.caddy.tmpl", l.EdgeFile, env.Cfg.ProxyUnit, validateEdge},
+	} {
+		block, rerr := render(tier.tmpl, l)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if err = env.FS.WriteFile(tier.file, block, 0o644, fsx.Root); err != nil {
+			return nil, err
+		}
+		file, unit := tier.file, tier.unit
+		rollback.add(func() {
+			_ = os.Remove(file)
+			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "reload", unit)
+		})
+		if err = tier.validate(ctx, env); err != nil {
+			return nil, err
+		}
+		if _, err = env.Exec.Run(ctx, "systemctl", "reload", unit); err != nil {
+			return nil, err
+		}
 	}
-	if err = env.FS.WriteFile(l.ProxyFile, site, 0o644, fsx.Root); err != nil {
-		return nil, err
-	}
-	rollback.add(func() {
-		_ = os.Remove(l.ProxyFile)
-		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "reload", env.Cfg.ProxyUnit)
-	})
-	if err = validateProxy(ctx, env); err != nil {
-		return nil, err
-	}
-	if _, err = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit); err != nil {
+
+	// 5. The agent's own record of the site (framework decides worker commands).
+	if err = saveSiteState(env, siteState{Domain: l.Domain, Framework: l.Framework, PHPVersion: l.PHPVersion, Mode: p.Mode}); err != nil {
 		return nil, err
 	}
 
@@ -250,25 +278,29 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 	return env.FS.Symlink("releases/initial", filepath.Join(l.Home, "current"), o)
 }
 
-// grantProxyAccess lets the proxy user traverse the site home and read
-// releases (static files) via ACLs — but not shared/, where the env file
-// with credentials lives. Laravel's public storage is the one exception.
-func grantProxyAccess(ctx context.Context, env *Env, l siteLayout) error {
-	acl := "u:" + l.ProxyUser
-	if _, err := env.Exec.Run(ctx, "setfacl", "-m", acl+":x", l.Home); err != nil {
-		return err
-	}
-	read := acl + ":rX,d:" + acl + ":rX"
-	if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-m", read, filepath.Join(l.Home, "releases")); err != nil {
-		return err
-	}
+// grantWebAccess gives the web tier exactly what it must serve: traverse
+// (x, no listing) on the path down to public/, and read on public/ itself.
+// Caddy follows symlinks, so a symlink planted by the site can only ever
+// reach files the web user may read — i.e. public files.
+// Laravel's public/storage -> shared/storage/app/public is the one other path.
+func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string) error {
+	acl := "u:" + l.WebUser
+	traverse := []string{l.Home, filepath.Join(l.Home, "releases"), filepath.Join(l.Home, "releases", release)}
+	readable := []string{filepath.Join(l.Home, "releases", release, "public")}
 	if l.Framework == "laravel" {
 		for _, d := range []string{"shared", "shared/storage", "shared/storage/app"} {
-			if _, err := env.Exec.Run(ctx, "setfacl", "-m", acl+":x", filepath.Join(l.Home, d)); err != nil {
-				return err
-			}
+			traverse = append(traverse, filepath.Join(l.Home, d))
 		}
-		if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-m", read, filepath.Join(l.Home, "shared/storage/app/public")); err != nil {
+		readable = append(readable, filepath.Join(l.Home, "shared/storage/app/public"))
+	}
+	for _, d := range traverse {
+		if _, err := env.Exec.Run(ctx, "setfacl", "-m", acl+":x", d); err != nil {
+			return err
+		}
+	}
+	read := acl + ":rX,d:" + acl + ":rX"
+	for _, d := range readable {
+		if _, err := env.Exec.Run(ctx, "setfacl", "-R", "-P", "-m", read, d); err != nil {
 			return err
 		}
 	}
@@ -297,19 +329,34 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	if !fsx.Exists(l.Home) && !fsx.Exists(l.ProxyFile) {
+	if !fsx.Exists(l.Home) && !fsx.Exists(l.EdgeFile) && !fsx.Exists(l.WebFile) {
 		return nil, protocol.NotFound("site " + p.Domain + " does not exist")
 	}
 
-	// Proxy first, so the site stops receiving traffic.
-	if fsx.Exists(l.ProxyFile) {
-		if err := os.Remove(l.ProxyFile); err != nil {
+	// Edge first, so the site stops receiving traffic; then the web tier.
+	for _, tier := range []struct {
+		file, unit string
+		validate   func(context.Context, *Env) error
+	}{
+		{l.EdgeFile, env.Cfg.ProxyUnit, validateEdge},
+		{l.WebFile, env.Cfg.WebUnit, validateWeb},
+	} {
+		if !fsx.Exists(tier.file) {
+			continue
+		}
+		if err := os.Remove(tier.file); err != nil {
 			return nil, err
 		}
-		if err := validateProxy(ctx, env); err != nil {
+		if err := tier.validate(ctx, env); err != nil {
 			return nil, err
 		}
-		if _, err := env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit); err != nil {
+		if _, err := env.Exec.Run(ctx, "systemctl", "reload", tier.unit); err != nil {
+			return nil, err
+		}
+	}
+	// Workers must stop before their user disappears.
+	for _, unit := range siteWorkerUnits(env.Cfg, l.User) {
+		if err := removeUnit(ctx, env, unit); err != nil {
 			return nil, err
 		}
 	}
@@ -334,6 +381,7 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 			return nil, err
 		}
 	}
+	_ = os.Remove(siteStatePath(env.Cfg, p.Domain))
 	trashed := ""
 	if fsx.Exists(l.Home) {
 		if err := env.FS.MkdirAll(env.Cfg.TrashDir, 0o700, fsx.Root); err != nil {
