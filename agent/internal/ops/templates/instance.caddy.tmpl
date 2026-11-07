@@ -3,7 +3,10 @@
 # as {{.User}}. It serves static files itself, so it can only ever expose
 # what that user can read. Reached by the edge proxy over a Unix socket.
 {
-	admin off
+	# Admin API on a socket only the site user (and root) can open: the agent
+	# restarts the PHP workers through it after a deploy, without dropping
+	# connections.
+	admin unix/{{.RunDir}}/admin.sock|0600
 	auto_https off
 	persist_config off
 	servers {

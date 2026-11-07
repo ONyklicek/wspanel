@@ -777,6 +777,17 @@ else
 fi
 
 # ----------------------------------------------------------------------------
+section "Zero downtime"
+if [[ -S /run/wspanel-sites/web_worker_localhost/admin.sock ]]; then
+	rm -f "$W/codes"
+	(for i in $(seq 1 200); do code worker.localhost / >>"$W/codes"; echo >>"$W/codes"; done) &
+	sleep 0.5
+	curl -s --unix-socket /run/wspanel-sites/web_worker_localhost/admin.sock -X POST http://localhost/frankenphp/workers/restart >/dev/null
+	wait
+	expect "worker mode: PHP workers restart without a failed request" "$(grep -v '^$' "$W/codes" | sort -u | tr '\n' ' ')" "200 "
+fi
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

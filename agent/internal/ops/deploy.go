@@ -695,6 +695,29 @@ func (d *deployment) restartServices(ctx context.Context) {
 		if _, err := d.env.Exec.Run(ctx, "systemctl", "reload", unit); err != nil {
 			d.logf("reload %s: %v\n", unit, err)
 		}
+	case "worker":
+		// Without dropping connections: the server stays, its PHP workers restart.
+		if ok, err := gracefulWorkerRestart(ctx, d.env, l); ok {
+			d.logf("PHP workers restarted in place (no connection dropped)\n")
+		} else {
+			if err != nil {
+				d.logf("graceful worker restart: %v; restarting the process\n", err)
+			}
+			restarted := false
+			if fresh, rerr := render("instance.caddy.tmpl", l); rerr == nil {
+				if cur, _ := os.ReadFile(l.InstanceConfig); string(cur) != string(fresh) {
+					// Brings the admin socket (next deploys restart in place); restarts the unit.
+					if err := applyPHPRuntime(ctx, d.env, l); err != nil {
+						d.logf("instance config: %v\n", err)
+					} else {
+						restarted = true
+					}
+				}
+			}
+			if !restarted {
+				units = append(units, l.AppUnit)
+			}
+		}
 	default:
 		units = append(units, l.AppUnit)
 	}

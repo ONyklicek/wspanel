@@ -55,7 +55,7 @@ func TestWorkerModeSite(t *testing.T) {
 	for _, want := range []string{
 		"bind unix/" + env.Cfg.SiteRunDir + "/" + user + "/http.sock|0220",
 		"root * " + home + "/current/public",
-		"file " + home + "/current/public/frankenphp-worker.php", "try_files {path} frankenphp-worker.php", "env APP_BASE_PATH " + home + "/current", "env LARAVEL_OCTANE 1", "admin off",
+		"file " + home + "/current/public/frankenphp-worker.php", "try_files {path} frankenphp-worker.php", "env APP_BASE_PATH " + home + "/current", "env LARAVEL_OCTANE 1", "admin unix/",
 	} {
 		if !strings.Contains(inst, want) {
 			t.Errorf("instance config missing %q:\n%s", want, inst)
