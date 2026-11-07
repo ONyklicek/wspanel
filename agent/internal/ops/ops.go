@@ -25,9 +25,10 @@ var templates = template.Must(template.New("").Option("missingkey=error").ParseF
 
 // Env is what every operation gets to work with.
 type Env struct {
-	Cfg  config.Config
-	Exec executor.Executor
-	FS   *fsx.FS
+	Cfg        config.Config
+	Exec       executor.Executor
+	FS         *fsx.FS
+	ConfigPath string // to persist config changes (engine.install)
 }
 
 type Handler func(ctx context.Context, env *Env, params json.RawMessage) (any, error)
@@ -41,7 +42,7 @@ type Op struct {
 
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
-var asyncOps = map[string]bool{"db.backup": true, "db.restore": true}
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -66,6 +67,8 @@ func Registry() map[string]Op {
 		{"db.backup_delete", true, dbBackupDelete},
 		{"db.restore", true, dbRestore},
 		{"db.schedule", true, dbSchedule},
+		{"db.access", true, dbAccess},
+		{"engine.install", true, engineInstall},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},

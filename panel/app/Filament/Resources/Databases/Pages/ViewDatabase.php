@@ -28,6 +28,7 @@ class ViewDatabase extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            ...DatabasesTable::toolActions(),
             Action::make('backupNow')
                 ->label('Zálohovat teď')
                 ->icon(Heroicon::OutlinedArchiveBoxArrowDown)

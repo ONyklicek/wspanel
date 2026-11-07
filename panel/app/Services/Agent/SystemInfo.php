@@ -89,6 +89,16 @@ class SystemInfo
         return array_values(array_filter(array_map(fn (string $e) => DatabaseEngine::tryFrom($e), $engines)));
     }
 
+    /** @return list<string> installed database tools (phpmyadmin, adminer) */
+    public function dbTools(): array
+    {
+        try {
+            return $this->versions()['db_tools'] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
     public function defaultPhpVersion(): ?string
     {
         try {

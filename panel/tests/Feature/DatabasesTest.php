@@ -173,6 +173,48 @@ class DatabasesTest extends TestCase
         $this->get(route('filament.admin.backups.download', $backup))->assertNotFound();
     }
 
+    public function test_opening_a_tool_posts_a_one_time_token(): void
+    {
+        $db = Database::create(['engine' => 'mariadb', 'name' => 'shop']);
+        $this->agent->shouldReceive('call')->once()
+            ->with('db.access', ['engine' => 'mariadb', 'name' => 'shop', 'tool' => 'phpmyadmin'])
+            ->andReturn(['token' => str_repeat('ab', 32), 'signon_path' => '/dbtools/pma/wspanel-signon.php']);
+
+        $this->get(route('filament.admin.dbtools.open', [$db, 'phpmyadmin']))
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSee('action="/dbtools/pma/wspanel-signon.php"', false)
+            ->assertSee('name="token" value="'.str_repeat('ab', 32).'"', false)
+            ->assertSee('method="post"', false);
+    }
+
+    public function test_unknown_tools_and_guests_are_refused(): void
+    {
+        $db = Database::create(['engine' => 'mariadb', 'name' => 'shop']);
+        $this->agent->shouldNotReceive('call')->with('db.access', Mockery::any());
+
+        $this->get('/db-open/'.$db->id.'/sqlite')->assertNotFound();
+        auth()->logout();
+        $this->get(route('filament.admin.dbtools.open', [$db, 'adminer']))->assertRedirect('/login');
+    }
+
+    public function test_installing_a_missing_engine(): void
+    {
+        $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb']]);
+        $this->agent->shouldReceive('call')->once()->with('engine.install', ['engine' => 'postgresql'])->andReturn(['job_id' => 'abcdef0123456789']);
+        $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => []]);
+
+        Livewire::test(ListDatabases::class)
+            ->assertActionVisible('installEngine')
+            ->callAction('installEngine', ['engine' => 'postgresql'])
+            ->assertHasNoActionErrors()
+            ->assertNotified('Engine nainstalován');
+
+        Livewire::test(ListDatabases::class)
+            ->callAction('installEngine', ['engine' => 'mariadb'])
+            ->assertHasActionErrors(['engine']);
+    }
+
     private function backupFile(string $dbName, string $file, string $content): Backup
     {
         $db = Database::firstOrCreate(['engine' => 'mariadb', 'name' => $dbName]);

@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\Databases\Tables;
 
 use App\Actions\Databases\ManageDatabases;
+use App\Enums\DatabaseEngine;
 use App\Models\Database;
 use App\Services\Agent\AgentException;
+use App\Services\Agent\SystemInfo;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
@@ -33,6 +35,7 @@ class DatabasesTable
                     ->color(fn (string $state) => $state === 'off' ? 'gray' : 'success'),
             ])
             ->recordActions([
+                ...self::toolActions(),
                 ViewAction::make()->label('Zálohy'),
                 ActionGroup::make([
                     self::resetPasswordAction(),
@@ -55,6 +58,32 @@ class DatabasesTable
                         }),
                 ]),
             ]);
+    }
+
+    /**
+     * "phpMyAdmin" (MariaDB only) and "Adminer" buttons. Each opens a new tab
+     * with temporary credentials for this one database only.
+     *
+     * @return list<Action>
+     */
+    public static function toolActions(): array
+    {
+        $tools = app(SystemInfo::class)->dbTools();
+
+        return [
+            Action::make('phpmyadmin')
+                ->label('phpMyAdmin')
+                ->icon(Heroicon::OutlinedTableCells)
+                ->color('gray')
+                ->visible(fn (Database $record) => in_array('phpmyadmin', $tools, true) && $record->engine === DatabaseEngine::MariaDb)
+                ->url(fn (Database $record) => route('filament.admin.dbtools.open', [$record, 'phpmyadmin']), shouldOpenInNewTab: true),
+            Action::make('adminer')
+                ->label('Adminer')
+                ->icon(Heroicon::OutlinedTableCells)
+                ->color('gray')
+                ->visible(fn () => in_array('adminer', $tools, true))
+                ->url(fn (Database $record) => route('filament.admin.dbtools.open', [$record, 'adminer']), shouldOpenInNewTab: true),
+        ];
     }
 
     public static function resetPasswordAction(): Action

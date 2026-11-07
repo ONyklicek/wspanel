@@ -101,8 +101,27 @@ func (s *Server) Listen() (*net.UnixListener, error) {
 	return ln, nil
 }
 
+// housekeeping drops expired temporary database users every minute.
+func (s *Server) housekeeping(ctx context.Context) {
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	for {
+		s.mutate.Lock()
+		if err := ops.CleanupDBAccess(ctx, s.Env); err != nil {
+			s.Log.Warn("db access cleanup", "err", err)
+		}
+		s.mutate.Unlock()
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
 // Serve handles connections until ctx is cancelled, then waits for in-flight requests.
 func (s *Server) Serve(ctx context.Context, ln *net.UnixListener) error {
+	go s.housekeeping(ctx)
 	go func() {
 		<-ctx.Done()
 		ln.Close()

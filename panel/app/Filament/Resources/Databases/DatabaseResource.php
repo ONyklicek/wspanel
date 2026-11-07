@@ -8,7 +8,6 @@ use App\Filament\Resources\Databases\RelationManagers\BackupsRelationManager;
 use App\Filament\Resources\Databases\Schemas\DatabaseInfolist;
 use App\Filament\Resources\Databases\Tables\DatabasesTable;
 use App\Models\Database;
-use App\Services\Agent\SystemInfo;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -28,12 +27,6 @@ class DatabaseResource extends Resource
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 1;
-
-    /** Hidden when the server has no database engine installed. */
-    public static function shouldRegisterNavigation(): bool
-    {
-        return app(SystemInfo::class)->dbEngines() !== [];
-    }
 
     public static function canCreate(): bool
     {

@@ -87,6 +87,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		exec = executor.NewReal(binaries(cfg), []string{
 			"PATH=/usr/sbin:/usr/bin:/sbin:/bin",
 			"LANG=C.UTF-8",
+			"DEBIAN_FRONTEND=noninteractive",
 			// Caddy validation must not write into /root.
 			"HOME=" + cfg.StateDir,
 			"XDG_DATA_HOME=" + cfg.StateDir + "/xdg/data",
@@ -100,7 +101,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	}
 	defer a.Close()
 
-	env := &ops.Env{Cfg: cfg, Exec: exec, FS: &fsx.FS{DryRun: cfg.DryRun}}
+	env := &ops.Env{Cfg: cfg, Exec: exec, FS: &fsx.FS{DryRun: cfg.DryRun}, ConfigPath: cfgPath}
 	srv := server.New(env, a, log)
 	ln, err := srv.Listen()
 	if err != nil {
@@ -151,6 +152,7 @@ func binaries(cfg config.Config) map[string]string {
 		"systemd-run":      "/usr/bin/systemd-run",
 		"mariadb":          "/usr/bin/mariadb",
 		"mariadb-dump":     "/usr/bin/mariadb-dump",
+		"apt-get":          "/usr/bin/apt-get",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
 	}

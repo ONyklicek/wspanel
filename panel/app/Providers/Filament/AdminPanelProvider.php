@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Http\Controllers\DownloadBackupController;
+use App\Http\Controllers\OpenDatabaseToolController;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -31,6 +32,10 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('WSPanel')
             ->authenticatedRoutes(function () {
                 Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');
+                Route::get('/db-open/{database}/{tool}', OpenDatabaseToolController::class)
+                    ->whereIn('tool', ['phpmyadmin', 'adminer'])
+                    ->middleware('throttle:30,1')
+                    ->name('dbtools.open');
             })
             ->login()
             ->colors([

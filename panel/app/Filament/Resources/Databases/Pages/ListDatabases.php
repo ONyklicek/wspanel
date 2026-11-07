@@ -4,10 +4,13 @@ namespace App\Filament\Resources\Databases\Pages;
 
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\SyncDatabases;
+use App\Enums\DatabaseEngine;
 use App\Filament\Resources\Databases\DatabaseResource;
 use App\Models\Database;
 use App\Models\Site;
+use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Services\Agent\AgentJobs;
 use App\Services\Agent\SystemInfo;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -17,6 +20,7 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Cache;
 
 class ListDatabases extends ListRecords
 {
@@ -25,7 +29,8 @@ class ListDatabases extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            self::createAction(),
+            self::createAction()->visible(fn () => app(SystemInfo::class)->dbEngines() !== []),
+            self::installEngineAction(),
             Action::make('sync')
                 ->label('Ověřit stav')
                 ->icon(Heroicon::OutlinedArrowPath)
@@ -39,6 +44,35 @@ class ListDatabases extends ListRecords
                     }
                 }),
         ];
+    }
+
+    /** Add MariaDB or PostgreSQL after installation (add-only; runs apt on the server). */
+    public static function installEngineAction(): Action
+    {
+        $missing = collect(DatabaseEngine::cases())
+            ->reject(fn (DatabaseEngine $e) => in_array($e, app(SystemInfo::class)->dbEngines(), true))
+            ->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()]);
+
+        return Action::make('installEngine')
+            ->label('Doinstalovat engine')
+            ->icon(Heroicon::OutlinedPlusCircle)
+            ->color('gray')
+            ->visible($missing->isNotEmpty())
+            ->modalDescription('Nainstaluje databázový server a PHP ovladače pro všechny verze PHP. Engine pak z panelu nejde odebrat (odinstalace by smazala data).')
+            ->schema([Select::make('engine')->label('Engine')->options($missing->all())->required()])
+            ->action(function (array $data) {
+                try {
+                    $job = app(AgentClient::class)->call('engine.install', ['engine' => $data['engine']]);
+                    $done = app(AgentJobs::class)->await($job['job_id'], 25) !== null; // [] is a finished job without output
+                    Cache::forget('agent.sys.versions');
+                    Notification::make()
+                        ->title($done ? 'Engine nainstalován' : 'Instalace běží na pozadí')
+                        ->body($done ? null : 'Obnovte stránku za pár minut.')
+                        ->success()->send();
+                } catch (AgentException $e) {
+                    Notification::make()->title('Instalace selhala')->body($e->getMessage())->danger()->persistent()->send();
+                }
+            });
     }
 
     /** Also used from the sites list (prefilled with the site). */

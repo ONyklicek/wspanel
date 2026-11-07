@@ -66,6 +66,7 @@ func sysVersions(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		"site_modes":  validate.SiteModes,
 		"worker_php":  workerPHP,
 		"node":        nodeMajors(env.Cfg),
+		"db_tools":    installedDBTools(env),
 		"workers":     workerTypesByFramework(),
 		"panel_units": env.Cfg.PanelUnits(),
 		"dry_run":     env.Cfg.DryRun,

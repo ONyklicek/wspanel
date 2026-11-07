@@ -71,11 +71,18 @@ func (mariadb) sql(ctx context.Context, env *Env, q string) (string, error) {
 	return res.Stdout, err
 }
 
+// grantPattern escapes MariaDB's GRANT wildcards: in `db`.* an unescaped _
+// matches any character, so `shop_db` would also cover `shopXdb` (another
+// site's database).
+func grantPattern(db string) string {
+	return strings.NewReplacer("_", `\_`, "%", `\%`).Replace(db)
+}
+
 // The owner may connect over TCP (127.0.0.1) and the socket (localhost).
 func (m mariadb) create(ctx context.Context, env *Env, name, pw string) error {
 	q := fmt.Sprintf("CREATE DATABASE `%[1]s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
 		"CREATE USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; CREATE USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s'; "+
-		"GRANT ALL PRIVILEGES ON `%[1]s`.* TO '%[1]s'@'localhost', '%[1]s'@'127.0.0.1';", name, pw)
+		"GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'localhost', '%[1]s'@'127.0.0.1';", name, pw, grantPattern(name))
 	_, err := m.sql(ctx, env, q)
 	return err
 }
@@ -115,8 +122,10 @@ func (mariadb) dump(ctx context.Context, env *Env, name string, w io.Writer) err
 	return err
 }
 
+// The dump's content comes from the site's database. --sandbox makes the
+// client refuse its own commands that touch the system (\!, source, ...).
 func (mariadb) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
-	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", "--default-character-set=utf8mb4", name)
+	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", "--sandbox", "--default-character-set=utf8mb4", name)
 	return err
 }
 
@@ -184,9 +193,13 @@ func (postgres) dump(ctx context.Context, env *Env, name string, w io.Writer) er
 	return err
 }
 
+// The dump's content comes from the site's database (functions, index
+// expressions, ...): restore with the owner's rights (SET ROLE), never as
+// superuser, and without replaying ownership or grants.
 func (postgres) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
 	_, err := env.Exec.RunIO(ctx, r, io.Discard, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
-		"/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--dbname="+name)
+		"/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
+		"--role="+name, "--dbname="+name)
 	return err
 }
 

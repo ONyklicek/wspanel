@@ -12,19 +12,33 @@
 }
 
 http://__PANEL_DOMAIN__ {
-	root * /srv/panel/current/public
 	@hidden {
 		path */.*
 		not path /.well-known/*
 	}
 	respond @hidden 404
-	php_fastcgi unix//run/php/php8.4-panel.sock {
-		resolve_root_symlink
-		env HTTPS on
-		env SERVER_PORT 443
-		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+
+	# phpMyAdmin and Adminer: own pool, sign-in only via agent tokens.
+	handle /dbtools/* {
+		root * /usr/share/wspanel-dbtools
+		php_fastcgi unix//run/php/php8.4-dbtools.sock {
+			env HTTPS on
+			env SERVER_PORT 443
+			env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+		}
+		file_server
 	}
-	file_server
+
+	handle {
+		root * /srv/panel/current/public
+		php_fastcgi unix//run/php/php8.4-panel.sock {
+			resolve_root_symlink
+			env HTTPS on
+			env SERVER_PORT 443
+			env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+		}
+		file_server
+	}
 }
 
 import /etc/panel-web/sites/*.caddy

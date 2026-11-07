@@ -204,3 +204,80 @@ func TestBackupSchedule(t *testing.T) {
 		t.Error("schedule not removed with the database")
 	}
 }
+
+func TestGrantEscapesWildcards(t *testing.T) {
+	env, dr := dbEnv(t)
+	if _, err := call(t, env, dbCreate, map[string]string{"engine": "mariadb", "name": "shop_db"}); err != nil {
+		t.Fatal(err)
+	}
+	var sql string
+	for _, c := range dr.Calls() {
+		if c.Name == "mariadb" && strings.Contains(strings.Join(c.Args, " "), "GRANT") {
+			sql = c.Args[len(c.Args)-1]
+		}
+	}
+	// `shop_db`.* would also grant `shopXdb` (another site's database).
+	if !strings.Contains(sql, "GRANT ALL PRIVILEGES ON `shop\\_db`.*") || !strings.Contains(sql, "CREATE DATABASE `shop_db`") {
+		t.Fatalf("grant not escaped:\n%s", sql)
+	}
+}
+
+func TestRestoreRunsWithoutSuperuserPowers(t *testing.T) {
+	env, dr := dbEnv(t)
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.Name == "setpriv" && strings.Contains(strings.Join(c.Args, " "), "pg_dump") {
+			return executor.Result{Stdout: "PGDMP"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	out, err := call(t, env, dbBackup, map[string]string{"engine": "postgresql", "name": "shop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, dbRestore, map[string]string{"engine": "postgresql", "name": "shop", "backup": out.(backupInfo).File, "confirm": "shop"}); err != nil {
+		t.Fatal(err)
+	}
+	var restore string
+	for _, c := range dr.Calls() {
+		if strings.Contains(strings.Join(c.Args, " "), "pg_restore") {
+			restore = strings.Join(c.Args, " ")
+		}
+	}
+	for _, want := range []string{"--role=shop", "--no-owner", "--no-privileges"} {
+		if !strings.Contains(restore, want) {
+			t.Errorf("pg_restore missing %s: %s", want, restore)
+		}
+	}
+}
+
+func TestEngineInstallIsAddOnlyAndPersisted(t *testing.T) {
+	env, dr := dbEnv(t)
+	env.Cfg.DBEngines = []string{"mariadb"}
+	env.ConfigPath = filepath.Join(t.TempDir(), "agent.json")
+	if err := os.WriteFile(env.ConfigPath, []byte(`{"socket":"/run/x.sock","db_engines":["mariadb"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := call(t, env, engineInstall, map[string]string{"engine": "mariadb"})
+	if err != nil || out.(map[string]any)["changed"] != false || len(dr.Calls()) != 0 {
+		t.Fatalf("installed engine must be a no-op: %v %v %v", out, err, dr.Calls())
+	}
+	if _, err := call(t, env, engineInstall, map[string]string{"engine": "postgresql"}); err != nil {
+		t.Fatal(err)
+	}
+	var install string
+	for _, c := range dr.Calls() {
+		if c.Name == "apt-get" && c.Args[0] == "install" {
+			install = strings.Join(c.Args, " ")
+		}
+	}
+	if !strings.Contains(install, "postgresql php8.3-pgsql php8.4-pgsql") {
+		t.Errorf("apt-get: %s", install)
+	}
+	cfg := read(t, env.ConfigPath)
+	if !strings.Contains(cfg, `"mariadb"`) || !strings.Contains(cfg, `"postgresql"`) || !strings.Contains(cfg, `"socket": "/run/x.sock"`) {
+		t.Errorf("agent.json:\n%s", cfg)
+	}
+	if _, err := call(t, env, engineInstall, map[string]string{"engine": "mysql"}); code(err) != protocol.CodeInvalidParams {
+		t.Error("unknown engine accepted")
+	}
+}

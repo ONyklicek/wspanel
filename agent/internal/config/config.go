@@ -71,6 +71,12 @@ type Config struct {
 	BackupDir   string `json:"backup_dir"`
 	BackupGroup string `json:"backup_group"`
 
+	// phpMyAdmin / Adminer: one-time sign-on tokens for the tools' FPM pool.
+	DBToolsDir   string `json:"dbtools_dir"`  // contains pma/ and adminer/
+	DBToolsUser  string `json:"dbtools_user"` // the tools' pool user
+	DBTokenDir   string `json:"dbtools_token_dir"`
+	DBAccessTTLm int    `json:"dbtools_access_minutes"`
+
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
 	UFWBinary      string `json:"ufw_binary"`
@@ -121,6 +127,10 @@ func Defaults() Config {
 		SFTPGroup:         "wspanel-sftp",
 		ToolsDir:          "/etc/panel-sites/bin",
 		BackupDir:         "/var/backups/wspanel",
+		DBToolsDir:        "/usr/share/wspanel-dbtools/dbtools",
+		DBToolsUser:       "dbtools",
+		DBTokenDir:        "/run/wspanel-dbtools",
+		DBAccessTTLm:      30,
 		BackupGroup:       "panel",
 		SystemdDir:        "/etc/systemd/system",
 		PHPCLIBinary:      "/usr/bin/php{version}",

@@ -20,6 +20,10 @@ declare -A FNM_SHA256=(
   [x86_64]="7807664f39d39fc518da1c35ba0181e4b3267603c4b1dedeb4b5fc6ae440a224"
   [aarch64]="4eaff58b2c5bf30d0934027572dd0b5bbb60d2a1af309230b53662d4b1d45599"
 )
+PMA_VERSION="5.2.3"
+PMA_SHA256="57881348297c4412f86c410547cf76b4d8a236574dd2c6b7d6a2beebe7fc44e3"
+ADMINER_VERSION="6.2.0"
+ADMINER_SHA256="9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16"
 PANEL_PHP="8.4" # the panel itself always runs on this version
 
 DB="none"
@@ -97,7 +101,7 @@ log "Base packages"
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
   ca-certificates curl gnupg acl sqlite3 unzip git rsync composer valkey-server ufw \
-  openssh-server fail2ban mc nano
+  openssh-server fail2ban mc nano xz-utils
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
@@ -179,6 +183,7 @@ sysctl -q -p /etc/sysctl.d/90-wspanel.conf
 log "System users"
 id panel-proxy &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-proxy --shell /usr/sbin/nologin panel-proxy
 id panel-web &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-web --shell /usr/sbin/nologin panel-web
+id dbtools &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/wspanel-dbtools --shell /usr/sbin/nologin dbtools
 getent group wspanel-ssh >/dev/null || groupadd --system wspanel-ssh
 getent group wspanel-sftp >/dev/null || groupadd --system wspanel-sftp
 id panel &>/dev/null || useradd --system --user-group --no-create-home --home-dir /srv/panel --shell /usr/sbin/nologin panel
@@ -277,6 +282,44 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   ls -1dt /srv/panel/releases/*/ | tail -n +6 | xargs -r rm -rf
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
 fi
+
+# ---------------------------------------------------------------- phpMyAdmin + Adminer
+# Served at /dbtools/ on the panel domain by their own FPM pool (user dbtools).
+# Sign-in only through one-time tokens from the agent; config outside the web root.
+log "phpMyAdmin $PMA_VERSION, Adminer $ADMINER_VERSION"
+TOOLS=/usr/share/wspanel-dbtools/dbtools
+install -d -m 0755 /usr/share/wspanel-dbtools "$TOOLS"
+install -d -m 0750 -o root -g dbtools /etc/wspanel-dbtools
+install -d -m 0700 -o dbtools -g dbtools /var/lib/wspanel-dbtools /var/lib/wspanel-dbtools/tmp /var/lib/wspanel-dbtools/sessions /var/lib/wspanel-dbtools/pma-tmp
+echo "d /run/wspanel-dbtools 0700 dbtools dbtools -" > /etc/tmpfiles.d/wspanel-dbtools.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/wspanel-dbtools.conf
+if [[ "$(cat "$TOOLS/pma/RELEASE-DATE-$PMA_VERSION" 2>/dev/null)" == "" ]]; then
+  tmp="$(mktemp -d)"
+  curl -fsSLo "$tmp/pma.tar.xz" "https://files.phpmyadmin.net/phpMyAdmin/$PMA_VERSION/phpMyAdmin-$PMA_VERSION-all-languages.tar.xz"
+  echo "$PMA_SHA256  $tmp/pma.tar.xz" | sha256sum -c - || die "phpMyAdmin checksum mismatch"
+  tar -xJf "$tmp/pma.tar.xz" -C "$tmp"
+  rm -rf "$TOOLS/pma" && mv "$tmp/phpMyAdmin-$PMA_VERSION-all-languages" "$TOOLS/pma"
+  rm -rf "$TOOLS/pma/setup" "$TOOLS/pma/examples" "$TOOLS/pma/test" "$TOOLS/pma/config.sample.inc.php"
+  sed -i "s|'configFile' => ROOT_PATH . 'config.inc.php'|'configFile' => '/etc/wspanel-dbtools/pma.config.inc.php'|" "$TOOLS/pma/libraries/vendor_config.php"
+  grep -q "/etc/wspanel-dbtools/pma.config.inc.php" "$TOOLS/pma/libraries/vendor_config.php" || die "could not relocate phpMyAdmin config"
+  rm -rf "$tmp"
+fi
+install -m 0644 "$HERE/files/dbtools/pma-signon.php" "$TOOLS/pma/wspanel-signon.php"
+if ! sha256sum "$TOOLS/adminer/adminer.php" 2>/dev/null | grep -q "$ADMINER_SHA256"; then
+  install -d -m 0755 "$TOOLS/adminer"
+  curl -fsSLo "$TOOLS/adminer/adminer.php.new" "https://github.com/vrana/adminer/releases/download/v$ADMINER_VERSION/adminer-$ADMINER_VERSION.php"
+  echo "$ADMINER_SHA256  $TOOLS/adminer/adminer.php.new" | sha256sum -c - || die "Adminer checksum mismatch"
+  mv "$TOOLS/adminer/adminer.php.new" "$TOOLS/adminer/adminer.php"
+fi
+install -m 0644 "$HERE/files/dbtools/adminer-index.php" "$TOOLS/adminer/index.php"
+install -m 0644 "$HERE/files/dbtools/adminer-signon.php" "$TOOLS/adminer/wspanel-signon.php"
+chown -R root:root /usr/share/wspanel-dbtools && chmod -R a+rX,go-w /usr/share/wspanel-dbtools
+install -m 0644 "$HERE/files/dbtools/token.php" /etc/wspanel-dbtools/token.php
+if [[ ! -f /etc/wspanel-dbtools/pma.config.inc.php ]]; then
+  sed "s|__BLOWFISH_HEX__|$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')|" "$HERE/files/dbtools/pma-config.inc.php.tmpl" > /etc/wspanel-dbtools/pma.config.inc.php
+fi
+chown root:dbtools /etc/wspanel-dbtools/pma.config.inc.php && chmod 0640 /etc/wspanel-dbtools/pma.config.inc.php
+install -m 0644 "$HERE/files/dbtools/dbtools-pool.conf" "/etc/php/$PANEL_PHP/fpm/pool.d/dbtools.conf"
 
 # ---------------------------------------------------------------- SSH / SFTP
 log "SSH (keys only) and fail2ban"
