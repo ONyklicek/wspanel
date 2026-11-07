@@ -60,6 +60,7 @@ func panelAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	nets = slices.Compact(nets)
 
 	var b bytes.Buffer
+	// Imported inside the panel's route block: evaluated before any handler.
 	b.WriteString("# Managed by WSPanel agent (panel.access). Who may open the panel.\n")
 	if len(nets) > 0 {
 		b.WriteString("@panel_outsider {\n\tnot remote_ip 127.0.0.1/8 ::1 " + strings.Join(nets, " ") + "\n")
@@ -131,7 +132,13 @@ func deployRemoteRef(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 			continue
 		}
 		if p.Kind == "branch" {
-			return map[string]any{"ref": m[3], "commit": m[1]}, nil
+			if m[2] == "heads" && m[3] == st.Deploy.Branch {
+				return map[string]any{"ref": m[3], "commit": m[1]}, nil
+			}
+			continue
+		}
+		if m[2] != "tags" {
+			continue
 		}
 		if best == "" || versionLess(best, m[3]) {
 			best, bestSHA = m[3], m[1]

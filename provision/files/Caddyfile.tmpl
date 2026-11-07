@@ -16,29 +16,6 @@
 
 __PANEL_DOMAIN__ {
 	encode zstd gzip
-	# Who may open the panel (set in the panel: Firewall → Přístup k panelu).
-	import /etc/panel-proxy/panel-access.caddy
-
-	# Mailpit (captured test mail): only for users logged in to the panel.
-	# The panel answers /auth/check with 204 (or redirects to its login).
-	handle /mailpit* {
-		forward_auth unix//run/panel-web/web.sock {
-			uri /auth/check
-		}
-		# Message bodies are attacker-controlled HTML (any site can send mail):
-		# render them as an opaque origin, so nothing in them can act as the
-		# logged-in panel user.
-		@message path /mailpit/view/* /mailpit/api/v1/message/*
-		header @message Content-Security-Policy "sandbox allow-popups allow-popups-to-escape-sandbox"
-		header @message X-Content-Type-Options nosniff
-		reverse_proxy 127.0.0.1:8025 {
-			header_up Authorization "Basic __MAILPIT_BASIC__"
-		}
-	}
-
-	handle {
-		reverse_proxy unix//run/panel-web/web.sock
-	}
 	header {
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff
@@ -46,6 +23,34 @@ __PANEL_DOMAIN__ {
 		-Server
 	}
 	log
+
+	# route: evaluated exactly in the order written, so the access check
+	# runs before anything else answers.
+	route {
+		# Who may open the panel (set in the panel: Firewall → Přístup k panelu).
+		import /etc/panel-proxy/panel-access.caddy
+
+		# Mailpit (captured test mail): only for users logged in to the panel.
+		# The panel answers /auth/check with 204 (or redirects to its login).
+		handle /mailpit* {
+			forward_auth unix//run/panel-web/web.sock {
+				uri /auth/check
+			}
+			# Message bodies are attacker-controlled HTML (any site can send mail):
+			# render them as an opaque origin, so nothing in them can act as the
+			# logged-in panel user.
+			@message path /mailpit/view/* /mailpit/api/v1/message/*
+			header @message Content-Security-Policy "sandbox allow-popups allow-popups-to-escape-sandbox"
+			header @message X-Content-Type-Options nosniff
+			reverse_proxy 127.0.0.1:8025 {
+				header_up Authorization "Basic __MAILPIT_BASIC__"
+			}
+		}
+
+		handle {
+			reverse_proxy unix//run/panel-web/web.sock
+		}
+	}
 }
 
 import /etc/panel-proxy/sites/*.caddy
