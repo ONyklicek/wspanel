@@ -58,7 +58,7 @@ func TestEdgeSettingsRender(t *testing.T) {
 		`header X-Robots-Tag "noindex"`,
 		"route {",
 		"not remote_ip 203.0.113.7/32 10.8.0.0/24",
-		`@wsp_auth path_regexp (?i)^(/[^/]*\.php)?/admin(/.*)?$`,
+		`@wsp_auth path_regexp (?i)^(/+[^/]*\.php)?/+admin(/.*)?$`,
 		"boss " + testBcrypt,
 		"redir /old /new 301",
 		"redir /blog/* https://blog.example.com/ 302",
@@ -112,6 +112,8 @@ func TestEdgeSettingsAreValidated(t *testing.T) {
 		{"auth_path": "/", "auth_user": "bad user", "auth_password": "12345678"},
 		{"auth_path": "/", "auth_user": "u", "auth_password": "short"},
 		{"allow_ips": []string{"0.0.0.0/0"}},
+		{"auth_path": "/%61dmin", "auth_user": "u", "auth_password": "12345678"},
+		{"allow_ips": []string{"10.0.0.1"}, "allow_path": "/%61dmin"},
 		{"allow_ips": []string{"office"}},
 		{"headers": []map[string]string{{"name": "Set-Cookie", "value": "x=1"}}},
 		{"headers": []map[string]string{{"name": "X-A", "value": `a" }`}}},
@@ -154,7 +156,7 @@ func asJSON(v any) string {
 func TestProtectedPathCoversTheFrontController(t *testing.T) {
 	m := edgePathMatcher("/admin")
 	re := regexp.MustCompile(strings.TrimPrefix(m, "path_regexp "))
-	for _, p := range []string{"/admin", "/admin/", "/admin/users", "/ADMIN/x", "/index.php/admin", "/index.php/admin/users", "/app.php/Admin"} {
+	for _, p := range []string{"/admin", "/admin/", "/admin/users", "/ADMIN/x", "/index.php/admin", "/index.php/admin/users", "/app.php/Admin", "//admin", "//index.php//admin/x"} {
 		if !re.MatchString(p) {
 			t.Errorf("%s is not covered", p)
 		}
@@ -164,7 +166,7 @@ func TestProtectedPathCoversTheFrontController(t *testing.T) {
 			t.Errorf("%s is covered but should not be", p)
 		}
 	}
-	if edgePathMatcher("/") != "path *" || !strings.Contains(edgePathMatcher("/blog/*"), `/blog(/.*)?$`) {
+	if edgePathMatcher("/") != "path *" || !strings.Contains(edgePathMatcher("/blog/*"), `/+blog(/.*)?$`) {
 		t.Fatal(edgePathMatcher("/blog/*"))
 	}
 }

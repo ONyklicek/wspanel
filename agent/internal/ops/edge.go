@@ -169,7 +169,7 @@ func siteEdge(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	case in.AuthPath == "":
 		in.AuthUser = ""
 	default:
-		if !edgePathRe.MatchString(in.AuthPath) {
+		if !edgePathRe.MatchString(in.AuthPath) || strings.Contains(in.AuthPath, "%") {
 			return nil, protocol.Invalid("auth_path: a path such as / or /admin")
 		}
 		if !edgeUserRe.MatchString(in.AuthUser) {
@@ -202,7 +202,9 @@ func siteEdge(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		if in.AllowPath == "" {
 			in.AllowPath = "/"
 		}
-		if !edgePathRe.MatchString(in.AllowPath) {
+		// No percent-encoding: Caddy matches the decoded path, so an encoded
+		// rule would never match and the protection would silently not apply.
+		if !edgePathRe.MatchString(in.AllowPath) || strings.Contains(in.AllowPath, "%") {
 			return nil, protocol.Invalid("allow_path: a path such as / or /admin")
 		}
 	}
@@ -261,5 +263,7 @@ func edgePathMatcher(p string) string {
 	if p == "" {
 		return "path *"
 	}
-	return `path_regexp (?i)^(/[^/]*\.php)?` + regexp.QuoteMeta(p) + `(/.*)?$`
+	// Slashes may come doubled (//admin); each one in the pattern takes one or more.
+	quoted := strings.ReplaceAll(regexp.QuoteMeta(p), "/", "/+")
+	return `path_regexp (?i)^(/+[^/]*\.php)?` + quoted + `(/.*)?$`
 }
