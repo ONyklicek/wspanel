@@ -214,12 +214,17 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if p.Mode == "" {
 		return nil, protocol.Invalid("mode: required")
 	}
-	old, oldL, err := loadSite(env, p.Domain)
+	if err := validate.Domain(p.Domain); err != nil {
+		return nil, err
+	}
+	release, err := claimSite(p.Domain)
 	if err != nil {
 		return nil, err
 	}
-	if deployInProgress(p.Domain) {
-		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	defer release()
+	old, oldL, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
 	}
 	if p.Mode == old.Mode {
 		return nil, protocol.Invalid("mode: site already runs in " + old.Mode + " mode (use site.set_version to change the version)")
@@ -292,6 +297,14 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
+	if err := validate.Domain(p.Domain); err != nil {
+		return nil, err
+	}
+	release, err := claimSite(p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	st, oldL, err := loadSite(env, p.Domain)
 	if err != nil {
 		return nil, err

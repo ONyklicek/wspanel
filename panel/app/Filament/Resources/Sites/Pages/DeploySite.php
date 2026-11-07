@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\Sites\Pages;
 
 use App\Actions\Sites\ManageDeploys;
+use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
 use App\Filament\Resources\Sites\SiteResource;
 use App\Models\Deployment;
 use App\Models\Site;
+use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -16,6 +18,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Concerns\InteractsWithRecord;
 use Filament\Resources\Pages\Page;
+use Filament\Schemas\Components\Text;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Collection;
@@ -68,6 +71,12 @@ class DeploySite extends Page
     public function deployments(): Collection
     {
         return Deployment::query()->where('site_id', $this->record->id)->latest('started_at')->limit(20)->get();
+    }
+
+    /** @return Collection<int, WebhookDelivery> */
+    public function deliveries(): Collection
+    {
+        return WebhookDelivery::query()->where('site_id', $this->record->id)->latest('id')->limit(10)->get();
     }
 
     public function refreshHistory(): void
@@ -158,6 +167,39 @@ class DeploySite extends Page
                     } catch (AgentException $e) {
                         Notification::make()->title('Nastavení se nepodařilo uložit')->body($e->getMessage())->danger()->persistent()->send();
                     }
+                }),
+            Action::make('webhook')
+                ->label('Webhook')
+                ->icon(Heroicon::OutlinedBolt)
+                ->color(fn () => $this->record->webhook_enabled ? 'success' : 'gray')
+                ->modalWidth('2xl')
+                ->modalDescription('Push do nastavené větve spustí deploy. Bez platného podpisu se nic nespustí; push během běžícího deploye se zařadí a nasadí se nejnovější stav.')
+                ->fillForm(fn () => [
+                    'enabled' => $this->record->webhook_enabled,
+                    'url' => ManageWebhook::url($this->record),
+                    'secret' => $this->record->webhook_secret,
+                ])
+                ->schema([
+                    Toggle::make('enabled')->label('Zapnuto'),
+                    TextInput::make('url')->label('Payload URL')->readOnly()->placeholder('vytvoří se po zapnutí')->copyable(),
+                    TextInput::make('secret')->label('Secret')->readOnly()->placeholder('vytvoří se po zapnutí')->copyable(),
+                    Text::make('GitHub / Gitea / Forgejo: Settings → Webhooks, content type application/json, událost „push“, secret výše. GitLab: Settings → Webhooks, Secret token = secret, „Push events“. Bitbucket: Repository settings → Webhooks, secret výše.'),
+                ])
+                ->extraModalFooterActions([
+                    Action::make('rotateWebhook')
+                        ->label('Nové URL a secret')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalDescription('Staré URL i secret přestanou okamžitě platit; v repozitáři je bude potřeba zadat znovu.')
+                        ->action(function () {
+                            app(ManageWebhook::class)->rotate($this->record);
+                            Notification::make()->title('Webhook má nové URL a secret')->success()->send();
+                        }),
+                ])
+                ->action(function (array $data) {
+                    $data['enabled'] ? app(ManageWebhook::class)->enable($this->record) : app(ManageWebhook::class)->disable($this->record);
+                    Notification::make()->title($data['enabled'] ? 'Webhook zapnut' : 'Webhook vypnut')
+                        ->body($data['enabled'] ? 'URL a secret najdete znovu v okně Webhook.' : null)->success()->send();
                 }),
             Action::make('deployKey')
                 ->label('Deploy klíč')

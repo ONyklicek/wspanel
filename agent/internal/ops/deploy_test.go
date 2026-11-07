@@ -202,6 +202,32 @@ func TestOneDeployAtATime(t *testing.T) {
 	if _, err := call(t, env, siteDelete, map[string]string{"domain": "app.example.com", "confirm": "app.example.com"}); code(err) != protocol.CodeConflict {
 		t.Errorf("delete during deploy: %v", err)
 	}
+	if _, err := call(t, env, siteSetVersion, map[string]string{"domain": "app.example.com", "version": "8.3"}); code(err) != protocol.CodeConflict {
+		t.Errorf("version switch during deploy: %v", err)
+	}
+	if _, err := call(t, env, deployRollback, map[string]string{"domain": "app.example.com"}); code(err) != protocol.CodeConflict {
+		t.Errorf("rollback during deploy: %v", err)
+	}
+}
+
+func TestDeleteRemovesDeployHistory(t *testing.T) {
+	env := deployEnv(t, "php")
+	env.Exec.(*executor.DryRun).Responder = fakeRepo(nil, "")
+	if _, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, siteDelete, map[string]string{"domain": "app.example.com", "confirm": "app.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(historyPath(env, "app.example.com")); !os.IsNotExist(err) {
+		t.Error("deploy history kept after delete")
+	}
+	if logs, _ := filepath.Glob(filepath.Join(env.Cfg.DeployLogDir, "app.example.com-*.log")); len(logs) != 0 {
+		t.Errorf("deploy logs kept: %v", logs)
+	}
+	if deployInProgress("app.example.com") {
+		t.Error("claim leaked")
+	}
 }
 
 func TestListReleasesOrder(t *testing.T) {

@@ -454,9 +454,11 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if p.Confirm != p.Domain {
 		return nil, protocol.Invalid("confirm: must equal domain")
 	}
-	if deployInProgress(p.Domain) {
-		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	release, err := claimSite(p.Domain)
+	if err != nil {
+		return nil, err
 	}
+	defer release()
 	l, err := layout(env.Cfg, siteState{Domain: p.Domain})
 	if err != nil {
 		return nil, err
@@ -501,6 +503,12 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		}
 	}
 	_ = os.Remove(siteStatePath(env.Cfg, p.Domain))
+	_ = os.Remove(historyPath(env, p.Domain))
+	if logs, _ := filepath.Glob(filepath.Join(env.Cfg.DeployLogDir, p.Domain+"-*.log")); logs != nil {
+		for _, f := range logs {
+			_ = os.Remove(f)
+		}
+	}
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))
 	removeToolLinks(env, l.User)
 	trashed := ""

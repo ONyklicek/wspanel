@@ -82,12 +82,21 @@ func endDeploy(domain string) {
 	deploying.Unlock()
 }
 
-// deployInProgress is checked by operations that would pull the site away
-// under a running build (delete, mode switch).
+// deployInProgress reports a running deploy (shown in the history).
 func deployInProgress(domain string) bool {
 	deploying.Lock()
 	defer deploying.Unlock()
 	return deploying.sites[domain]
+}
+
+// claimSite gives an operation exclusive use of a site against deploys:
+// delete, mode/version switch and rollback claim it like a deploy does, so a
+// deploy can never start halfway through them (and vice versa).
+func claimSite(domain string) (func(), error) {
+	if !beginDeploy(domain) {
+		return nil, protocol.Conflict("a deploy of " + domain + " is running")
+	}
+	return func() { endDeploy(domain) }, nil
 }
 
 func withMutate(env *Env, f func() error) error {
@@ -282,15 +291,24 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	st, l, err := loadSite(env, p.Domain)
-	if err != nil {
+	// Load and claim together under the global lock: a mutating operation on
+	// the site (delete, switch) either finished before or sees the claim.
+	var st siteState
+	var l siteLayout
+	if err := withMutate(env, func() error {
+		var err error
+		if st, l, err = loadSite(env, p.Domain); err != nil {
+			return err
+		}
+		if st.Deploy == nil {
+			return protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
+		}
+		if !beginDeploy(p.Domain) {
+			return protocol.Conflict("a deploy of " + p.Domain + " is already running")
+		}
+		return nil
+	}); err != nil {
 		return nil, err
-	}
-	if st.Deploy == nil {
-		return nil, protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
-	}
-	if !beginDeploy(p.Domain) {
-		return nil, protocol.Conflict("a deploy of " + p.Domain + " is already running")
 	}
 	defer endDeploy(p.Domain)
 
@@ -623,12 +641,14 @@ func deployRollback(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	st, l, err := loadSite(env, p.Domain)
+	release, err := claimSite(p.Domain)
 	if err != nil {
 		return nil, err
 	}
-	if deployInProgress(p.Domain) {
-		return nil, protocol.Conflict("a deploy of " + p.Domain + " is running")
+	defer release()
+	st, l, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
 	}
 	current, err := currentRelease(l)
 	if err != nil {

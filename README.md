@@ -156,6 +156,17 @@ V panelu: web → **Deploy**.
   9. smazání starých releasů.
 - **Když build selže,** `current` se nepřepne a nový release se smaže. Web
   nemá výpadek.
+- **Webhook** (Deploy → Webhook): push do nastavené větve spustí deploy.
+  - URL obsahuje náhodné id, ne doménu. Tajemství je v databázi šifrované.
+  - Podporované podpisy:
+    - GitHub a Bitbucket: HMAC-SHA256 (`X-Hub-Signature-256`, Bitbucket i `X-Hub-Signature`; SHA-1 ne),
+    - Gitea a Forgejo: `X-Gitea-Signature` / `X-Forgejo-Signature`,
+    - GitLab: `X-Gitlab-Token`.
+  - Bez platného podpisu se nic nespustí. Jiné větve a `ping` se jen zapíšou.
+  - Push během běžícího deploye se zařadí. Scheduler ho do minuty spustí jako
+    jeden deploy nejnovějšího stavu.
+  - Limit je 30 požadavků za minutu a 1 MB na tělo. Každé doručení vidíte na
+    stránce Deploy. Tlačítko „Nové URL a secret“ okamžitě zneplatní ty staré.
 - **Rollback** jde na kterýkoli z držených releasů. **`.env`** se edituje
   přímo na stránce Deploy (čte i zapisuje se jako uživatel webu).
 
@@ -220,4 +231,5 @@ později jen doinstalovat (Fáze 4).
   naplánované úlohy a monitoring.
 - **Deploy pipeline:** git a deploy klíč, build v sandboxu pod uživatelem webu,
   atomické přepnutí, restart služeb, health-check, automatický rollback, editor
-  `.env`.
+  `.env`, webhook pro deploy po pushi (GitHub, GitLab, Gitea/Forgejo,
+  Bitbucket).
