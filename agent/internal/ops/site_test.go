@@ -37,6 +37,8 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.SenderLogins = filepath.Join(root, "etc/postfix/wspanel_sender_logins")
 	cfg.LoginSenders = filepath.Join(root, "etc/postfix/wspanel_login_senders")
 	cfg.DKIMDir = filepath.Join(root, "etc/opendkim")
+	cfg.ProxyCertDir = filepath.Join(root, "etc/panel-proxy/certs")
+	cfg.ProxyStorage = filepath.Join(root, "var/lib/panel-proxy/caddy")
 	cfg.PostfixSASL = filepath.Join(root, "etc/postfix/sasl_passwd")
 	// Ports below 1024 need root on the dev machine; the privileged range is a
 	// production property (checked by checkPrivilegedPorts, skipped in dry-run).

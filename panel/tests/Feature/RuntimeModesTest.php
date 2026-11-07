@@ -43,7 +43,7 @@ class RuntimeModesTest extends TestCase
     public function test_creating_a_node_site_sends_only_the_node_version(): void
     {
         $this->agent->shouldReceive('call')->once()
-            ->with('site.create', ['domain' => 'ssr.example.com', 'mode' => 'node', 'framework' => 'nuxt', 'node_version' => '24'])
+            ->with('site.create', ['domain' => 'ssr.example.com', 'mode' => 'node', 'framework' => 'nuxt', 'node_version' => '24', 'tls' => 'auto'])
             ->andReturn(['mode' => 'node', 'framework' => 'nuxt', 'node_version' => '24', 'port' => 30001, 'php_version' => '', 'system_user' => 'web_ssr_example_com']);
 
         Livewire::test(CreateSite::class)
@@ -63,7 +63,7 @@ class RuntimeModesTest extends TestCase
     public function test_worker_site_gets_frankenphp_php_version_from_agent(): void
     {
         $this->agent->shouldReceive('call')->once()
-            ->with('site.create', ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony'])
+            ->with('site.create', ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony', 'tls' => 'auto'])
             ->andReturn(['mode' => 'worker', 'framework' => 'symfony', 'php_version' => '8.5', 'system_user' => 'web_w_example_com']);
 
         Livewire::test(CreateSite::class)

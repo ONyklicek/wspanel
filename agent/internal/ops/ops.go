@@ -91,6 +91,8 @@ func Registry() map[string]Op {
 		{"engine.install", true, engineInstall},
 		{"ssl.status", false, sslStatus},
 		{"ssl.check", false, sslCheck},
+		{"ssl.root_ca", false, sslRootCA},
+		{"site.tls", true, siteTLS},
 		{"sys.resources", false, sysResources},
 		{"sys.metrics", false, sysMetrics},
 		{"sys.site_disk", false, sysSiteDisk},

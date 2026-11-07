@@ -27,7 +27,7 @@ class Site extends Model
     }
 
     protected $fillable = [
-        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys', 'ssh_password', 'mail_mode',
+        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys', 'ssh_password', 'mail_mode', 'tls_mode',
         'system_user', 'home', 'doc_root', 'status', 'enabled', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
         'webhook_id', 'webhook_secret', 'webhook_enabled', 'deploy_trigger', 'deploy_requested_at', 'deploy_requested_ref', 'ci_id', 'ci_token_hash',

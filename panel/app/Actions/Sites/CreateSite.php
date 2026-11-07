@@ -16,12 +16,16 @@ class CreateSite
      * Stores the site as pending, asks the agent to provision it and records
      * the outcome. A failed site stays in the list with its error.
      *
-     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string}  $data
+     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string, tls?: string}  $data
      */
     public function handle(array $data): Site
     {
         $data['mode'] ??= 'classic';
         $params = ['domain' => $data['domain']] + SiteForm::runtimeParams($data);
+        $tls = $data['tls'] ?? (SiteForm::isInternalDomain($data['domain']) ? 'internal' : 'auto');
+        if (in_array($tls, ['auto', 'internal'], true)) {
+            $params['tls'] = $tls;
+        }
 
         $site = Site::create([
             'domain' => $data['domain'],
@@ -30,6 +34,7 @@ class CreateSite
             'php_version' => $params['php_version'] ?? null,
             'node_version' => $params['node_version'] ?? null,
             'status' => SiteStatus::Pending,
+            'tls_mode' => $params['tls'] ?? 'auto',
         ]);
 
         try {

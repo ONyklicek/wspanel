@@ -45,8 +45,7 @@ class SiteManagementTest extends TestCase
             'domain' => 'shop.example.com',
             'framework' => 'symfony',
             'php_version' => '8.3',
-            'mode' => 'classic',
-        ])->andReturn([
+            'mode' => 'classic', 'tls' => 'auto'])->andReturn([
             'mode' => 'classic',
             'framework' => 'symfony',
             'php_version' => '8.3',

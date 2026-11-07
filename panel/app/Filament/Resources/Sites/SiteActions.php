@@ -7,6 +7,7 @@ use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
 use App\Actions\Sites\DeleteSite;
 use App\Actions\Sites\ManageSsh;
+use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
@@ -25,6 +26,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
 
 /**
@@ -140,6 +142,7 @@ class SiteActions
             self::checkHealth(),
             self::createDatabase(),
             self::ssh(),
+            self::tls(),
             self::addWorker(),
             self::delete(),
         ];
@@ -275,6 +278,54 @@ class SiteActions
                         ->send();
                 } catch (AgentException $e) {
                     Notification::make()->title('Nastavení SSH selhalo')->body($e->getMessage())->danger()->persistent()->send();
+                }
+            });
+    }
+
+    public static function tls(): Action
+    {
+        return Action::make('tls')
+            ->label('HTTPS / certifikát')
+            ->icon(Heroicon::OutlinedLockClosed)
+            ->visible(fn (Site $record) => $record->isOperational())
+            ->modalHeading(fn (Site $record) => "HTTPS pro {$record->domain}")
+            ->fillForm(fn (Site $record) => ['mode' => $record->tls_mode ?? 'auto'])
+            ->schema([
+                Radio::make('mode')
+                    ->label('Odkud je certifikát')
+                    ->options(ManageTls::MODES)
+                    ->descriptions([
+                        'auto' => 'Veřejná doména mířící na server. Vydává a obnovuje se sám, zdarma.',
+                        'internal' => 'Domény ve vnitřní síti a testy. Certifikát vydá server sám; počítače musí jednou nainstalovat kořenový certifikát (SSL → Kořenový certifikát).',
+                        'custom' => 'Certifikát od firemní CA nebo zakoupený. Obnovu hlídáte sami (panel upozorní 14 dní předem).',
+                    ])
+                    ->required()
+                    ->live(),
+                Textarea::make('cert')
+                    ->label('Certifikát (PEM, včetně mezilehlých)')
+                    ->placeholder("-----BEGIN CERTIFICATE-----\n…")
+                    ->rows(6)
+                    ->extraInputAttributes(['class' => 'font-mono text-xs'])
+                    ->required(fn (Get $get) => $get('mode') === 'custom')
+                    ->visible(fn (Get $get) => $get('mode') === 'custom'),
+                Textarea::make('key')
+                    ->label('Privátní klíč (PEM, bez hesla)')
+                    ->placeholder("-----BEGIN PRIVATE KEY-----\n…")
+                    ->rows(5)
+                    ->extraInputAttributes(['class' => 'font-mono text-xs'])
+                    ->required(fn (Get $get) => $get('mode') === 'custom')
+                    ->visible(fn (Get $get) => $get('mode') === 'custom'),
+            ])
+            ->action(function (Site $record, array $data) {
+                try {
+                    $out = app(ManageTls::class)->set($record, $data['mode'], $data['cert'] ?? null, $data['key'] ?? null);
+                    $cert = $out['certificate'] ?? null;
+                    Notification::make()
+                        ->title("{$record->domain}: ".ManageTls::MODES[$data['mode']])
+                        ->body($cert ? 'Vydal '.$cert['issuer'].', platí do '.Carbon::parse($cert['not_after'])->format('j. n. Y').'.' : 'Certifikát se vydá během chvíle.')
+                        ->success()->send();
+                } catch (AgentException $e) {
+                    Notification::make()->title('Certifikát se nepodařilo nastavit')->body($e->getMessage())->danger()->persistent()->send();
                 }
             });
     }

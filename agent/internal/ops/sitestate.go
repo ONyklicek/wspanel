@@ -31,6 +31,9 @@ type siteState struct {
 	Disabled bool `json:"disabled,omitempty"`
 	// MailMode: send (Postfix) | capture (Mailpit); empty = server default.
 	MailMode string `json:"mail_mode,omitempty"`
+	// TLS: auto (Let's Encrypt / ZeroSSL) | internal (local CA, for internal
+	// domains) | custom (uploaded certificate). Empty = auto.
+	TLS string `json:"tls,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

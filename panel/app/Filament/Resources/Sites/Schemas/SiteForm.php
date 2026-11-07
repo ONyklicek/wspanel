@@ -36,7 +36,18 @@ class SiteForm
                             }
                         })
                         ->unique(ignoreRecord: true)
-                        ->helperText('Doména musí DNS záznamem mířit na tento server, jinak nepůjde vydat certifikát.'),
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set, ?string $state) => $set('tls', self::isInternalDomain(self::normalizeDomain($state)) ? 'internal' : 'auto'))
+                        ->helperText('Veřejná doména musí DNS záznamem mířit na tento server. Pro vnitřní síť použijte např. intranet.firma.lan.'),
+                    Radio::make('tls')
+                        ->label('HTTPS certifikát')
+                        ->options(self::TLS_OPTIONS)
+                        ->descriptions([
+                            'auto' => 'Zdarma, obnovuje se sám. Doména musí být veřejná a mířit na server.',
+                            'internal' => 'Pro domény ve vnitřní síti (.lan, .local, .internal…) a testy. Počítače musí jednou důvěřovat kořenovému certifikátu (SSL → Kořenový certifikát).',
+                        ])
+                        ->default('auto')
+                        ->required(),
                 ]),
             Section::make('Jak web poběží')
                 ->columns(2)
@@ -110,6 +121,23 @@ class SiteForm
         }
 
         return $params;
+    }
+
+    public const TLS_OPTIONS = [
+        'auto' => "Let's Encrypt (veřejná doména)",
+        'internal' => 'Interní certifikační autorita (lokální síť)',
+    ];
+
+    /** Domains no public CA can issue for: same list as the agent. */
+    public static function isInternalDomain(string $domain): bool
+    {
+        foreach (['localhost', 'local', 'lan', 'internal', 'intranet', 'test', 'home', 'corp', 'private', 'home.arpa', 'example', 'invalid'] as $tld) {
+            if (str_ends_with($domain, '.'.$tld)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function normalizeDomain(?string $domain): string

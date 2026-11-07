@@ -20,6 +20,7 @@ class SyncCertificatesAndTasks
         $seen = [];
         foreach ($this->agent->call('ssl.status') as $c) {
             Certificate::updateOrCreate(['domain' => $c['domain']], [
+                'mode' => $c['mode'] ?? 'auto',
                 'issuer' => ($c['issuer'] ?? '') ?: null,
                 'not_before' => isset($c['not_before']) ? Carbon::parse($c['not_before']) : null,
                 'not_after' => isset($c['not_after']) ? Carbon::parse($c['not_after']) : null,
@@ -27,6 +28,7 @@ class SyncCertificatesAndTasks
                 'last_error' => $c['last_error'] ?? null,
                 'synced_at' => now(),
             ]);
+            Site::query()->where('domain', $c['domain'])->update(['tls_mode' => $c['mode'] ?? 'auto']);
             $seen[] = $c['domain'];
         }
         Certificate::query()->whereNotIn('domain', $seen)->delete();

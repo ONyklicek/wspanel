@@ -25,6 +25,8 @@ class CertificatesTable
                     ->formatStateUsing(fn (string $state) => ['valid' => 'platný', 'expiring' => 'brzy vyprší', 'expired' => 'vypršel', 'missing' => 'chybí'][$state] ?? $state)
                     ->color(fn (string $state) => ['valid' => 'success', 'expiring' => 'warning'][$state] ?? 'danger')
                     ->tooltip(fn (Certificate $record) => $record->last_error),
+                TextColumn::make('mode')->label('Typ')->badge()->color('gray')
+                    ->formatStateUsing(fn (?string $state) => ['auto' => "Let's Encrypt", 'internal' => 'interní CA', 'custom' => 'vlastní'][$state] ?? $state),
                 TextColumn::make('issuer')->label('Vydavatel')->state(fn (Certificate $record) => $record->issuerLabel()),
                 TextColumn::make('not_after')->label('Platí do')->dateTime('j. n. Y')->sortable()
                     ->description(fn (Certificate $record) => $record->not_after?->diffForHumans()),
@@ -32,8 +34,10 @@ class CertificatesTable
             ])
             ->recordActions([
                 Action::make('check')
-                    ->label('Zkontrolovat předpoklady')
+                    ->label('Proč se nevydává?')
                     ->icon(Heroicon::OutlinedMagnifyingGlass)
+                    ->color('gray')
+                    ->visible(fn (Certificate $record) => $record->mode === 'auto' && $record->status !== 'valid')
                     ->action(function (Certificate $record) {
                         try {
                             $r = app(AgentClient::class)->call('ssl.check', ['domain' => $record->domain]);

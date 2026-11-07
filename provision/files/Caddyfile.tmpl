@@ -6,6 +6,9 @@
 	# Admin API only on a socket inside a 0700 runtime dir.
 	admin unix//run/panel-proxy/admin.sock
 	email __ACME_EMAIL__
+	# Internal-TLS sites use the edge's local CA; it is distributed to clients
+	# by the operator (SSL → Kořenový certifikát), never installed system-wide.
+	skip_install_trust
 	servers {
 		protocols h1 h2 h3
 	}

@@ -115,4 +115,30 @@ class SiteControlTest extends TestCase
             ->set('source', 'framework')
             ->assertSee('production.ERROR: boom');
     }
+
+    public function test_internal_domains_default_to_the_local_ca(): void
+    {
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.create', Mockery::on(fn ($p) => $p['domain'] === 'intranet.firma.lan' && $p['tls'] === 'internal'))
+            ->andReturn(['mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'system_user' => 'web_intranet_firma_lan']);
+
+        app(\App\Actions\Sites\CreateSite::class)->handle(['domain' => 'intranet.firma.lan', 'framework' => 'php', 'php_version' => '8.4']);
+
+        $this->assertSame('internal', Site::where('domain', 'intranet.firma.lan')->value('tls_mode'));
+    }
+
+    public function test_custom_certificate_is_sent_to_the_agent(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->with('ssl.status')->andReturn([])->byDefault();
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.tls', Mockery::on(fn ($p) => $p['mode'] === 'custom' && str_starts_with($p['cert'], '-----BEGIN CERTIFICATE') && str_starts_with($p['key'], '-----BEGIN PRIVATE KEY')))
+            ->andReturn(['mode' => 'custom', 'certificate' => ['issuer' => 'Firma CA', 'not_after' => '2027-01-01T00:00:00Z']]);
+
+        Livewire::test(ListSites::class)
+            ->callTableAction('tls', $site, data: ['mode' => 'custom', 'cert' => "-----BEGIN CERTIFICATE-----\nA\n", 'key' => "-----BEGIN PRIVATE KEY-----\nB\n"])
+            ->assertHasNoTableActionErrors()
+            ->assertNotified();
+        $this->assertSame('custom', $site->refresh()->tls_mode);
+    }
 }

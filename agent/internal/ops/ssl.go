@@ -27,6 +27,7 @@ type certInfo struct {
 	DaysLeft  int       `json:"days_left"`
 	Status    string    `json:"status"` // valid | expiring | expired | missing
 	LastError string    `json:"last_error,omitempty"`
+	Mode      string    `json:"mode"` // auto | internal | custom
 }
 
 // edgeDomains: every domain the edge serves (site blocks + the panel).
@@ -47,6 +48,9 @@ func edgeDomains(env *Env) []string {
 }
 
 func readCert(env *Env, domain string) certInfo {
+	if c, ok := customCertInfo(env, domain); ok {
+		return c
+	}
 	c := certInfo{Domain: domain, Status: "missing"}
 	matches, _ := filepath.Glob(filepath.Join(env.Cfg.ProxyStorage, "certificates", "*", domain, domain+".crt"))
 	for _, m := range matches {
@@ -119,8 +123,16 @@ func sslStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	}
 	errs := lastCertErrors(ctx, env)
 	certs := []certInfo{}
+	modes := map[string]string{}
+	for _, st := range allSiteStates(env.Cfg) {
+		modes[st.Domain] = st.TLS
+	}
 	for _, d := range edgeDomains(env) {
 		c := readCert(env, d)
+		c.Mode = modes[d]
+		if c.Mode == "" {
+			c.Mode = "auto"
+		}
 		if c.Status != "valid" {
 			c.LastError = errs[d]
 		}

@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Actions\Sites\ManageTls;
 use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use Filament\Http\Middleware\Authenticate;
@@ -33,6 +34,11 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('WSPanel')
             ->authenticatedRoutes(function () {
                 Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');
+                Route::get('/ssl/root-ca.crt', function () {
+                    $pem = app(ManageTls::class)->rootCa()['pem'];
+
+                    return response($pem, 200, ['Content-Type' => 'application/x-x509-ca-cert', 'Content-Disposition' => 'attachment; filename="wspanel-root-ca.crt"']);
+                })->name('ssl.root-ca');
                 Route::get('/db-open/{database}/{tool}', OpenDatabaseToolController::class)
                     ->whereIn('tool', ['phpmyadmin', 'adminer'])
                     ->middleware('throttle:30,1')

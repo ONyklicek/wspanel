@@ -30,6 +30,8 @@ type siteLayout struct {
 
 	OpcacheProduction bool
 	Disabled          bool
+	TLS               string // effective: auto | internal | custom
+	TLSDirective      string // edge "tls …" line, empty for auto
 	MailMode          string // effective: send | capture
 	SendmailPath      string // PHP mail() for this mode
 	Home              string
@@ -96,6 +98,16 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
 	}
+	l.TLS = st.TLS
+	if l.TLS == "" {
+		l.TLS = "auto"
+	}
+	switch l.TLS {
+	case "internal":
+		l.TLSDirective = "tls internal"
+	case "custom":
+		l.TLSDirective = "tls " + filepath.Join(cfg.ProxyCertDir, st.Domain+".crt") + " " + filepath.Join(cfg.ProxyCertDir, st.Domain+".key")
+	}
 	l.MailMode = st.MailMode
 	if l.MailMode == "" {
 		l.MailMode = cfg.MailDefault
@@ -156,6 +168,7 @@ type siteParams struct {
 	Mode        string `json:"mode"`
 	PHPVersion  string `json:"php_version,omitempty"`
 	NodeVersion string `json:"node_version,omitempty"`
+	TLS         string `json:"tls,omitempty"` // create only: auto | internal (default by domain)
 }
 
 // resolve validates params against the mode and the server, and returns the
@@ -174,6 +187,11 @@ func (p *siteParams) resolve(ctx context.Context, env *Env) (siteState, error) {
 		return siteState{}, err
 	}
 	st := siteState{Domain: p.Domain, Framework: p.Framework, Mode: p.Mode}
+	if p.TLS != "" {
+		if err := validate.OneOf("tls", p.TLS, []string{"auto", "internal"}); err != nil {
+			return st, err
+		}
+	}
 	switch p.Mode {
 	case "classic":
 		if p.NodeVersion != "" {
@@ -215,6 +233,10 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	st, err := p.resolve(ctx, env)
 	if err != nil {
 		return nil, err
+	}
+	st.TLS = p.TLS
+	if st.TLS == "" && isInternalDomain(p.Domain) {
+		st.TLS = "internal" // no public CA can issue for these
 	}
 	if st.Mode == "node" {
 		if st.Port, err = allocatePort(env); err != nil {
@@ -540,6 +562,8 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	removeDeployLogs(env, p.Domain)
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))
 	removeToolLinks(env, l.User)
+	_ = os.Remove(filepath.Join(env.Cfg.ProxyCertDir, p.Domain+".crt"))
+	_ = os.Remove(filepath.Join(env.Cfg.ProxyCertDir, p.Domain+".key"))
 	removeSMTPLogin(ctx, env, l.User)
 	if err := writeSenderMaps(ctx, env); err != nil {
 		return nil, fmt.Errorf("site removed, but updating the mail sender maps failed: %w", err)
