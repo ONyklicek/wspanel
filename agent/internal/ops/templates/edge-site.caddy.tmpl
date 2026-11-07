@@ -33,13 +33,13 @@
 	route {
 {{- if .Edge.AllowIPs}}
 		@wsp_not_allowed {
-			path {{.AllowMatcher}}
+			{{.AllowMatcher}}
 			not remote_ip{{range .Edge.AllowIPs}} {{.}}{{end}}
 		}
 		respond @wsp_not_allowed "Přístup odepřen" 403
 {{- end}}
 {{- if .Edge.AuthPath}}
-		@wsp_auth path {{.AuthMatcher}}
+		@wsp_auth {{.AuthMatcher}}
 		basic_auth @wsp_auth {
 			{{.Edge.AuthUser}} {{.Edge.AuthHash}}
 		}

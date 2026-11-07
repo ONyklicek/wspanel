@@ -251,13 +251,15 @@ func (e edgeSettings) empty() bool {
 		len(e.AllowIPs) == 0 && !e.HSTS && !e.Security && len(e.Headers) == 0
 }
 
-// edgePathMatcher: "/admin" covers /admin and everything under it; "/" the site.
+// edgePathMatcher is the matcher (for a named matcher block) of a protected
+// path. "/admin" covers /admin and everything under it, case-insensitively,
+// and also the front-controller form /index.php/admin (PATH_INFO): Laravel and
+// Symfony route that to the same page, so a plain path matcher could be walked
+// around. "/" is the whole site.
 func edgePathMatcher(p string) string {
-	if p == "/" || p == "" {
-		return "*"
+	p = strings.TrimSuffix(strings.TrimSuffix(p, "*"), "/")
+	if p == "" {
+		return "path *"
 	}
-	if strings.HasSuffix(p, "/*") {
-		return p
-	}
-	return strings.TrimSuffix(p, "/") + " " + strings.TrimSuffix(p, "/") + "/*"
+	return `path_regexp (?i)^(/[^/]*\.php)?` + regexp.QuoteMeta(p) + `(/.*)?$`
 }

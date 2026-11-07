@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -57,7 +58,7 @@ func TestEdgeSettingsRender(t *testing.T) {
 		`header X-Robots-Tag "noindex"`,
 		"route {",
 		"not remote_ip 203.0.113.7/32 10.8.0.0/24",
-		"@wsp_auth path /admin /admin/*",
+		`@wsp_auth path_regexp (?i)^(/[^/]*\.php)?/admin(/.*)?$`,
 		"boss " + testBcrypt,
 		"redir /old /new 301",
 		"redir /blog/* https://blog.example.com/ 302",
@@ -148,4 +149,22 @@ func TestEdgeIsRolledBackWhenCaddyRefusesIt(t *testing.T) {
 func asJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+func TestProtectedPathCoversTheFrontController(t *testing.T) {
+	m := edgePathMatcher("/admin")
+	re := regexp.MustCompile(strings.TrimPrefix(m, "path_regexp "))
+	for _, p := range []string{"/admin", "/admin/", "/admin/users", "/ADMIN/x", "/index.php/admin", "/index.php/admin/users", "/app.php/Admin"} {
+		if !re.MatchString(p) {
+			t.Errorf("%s is not covered", p)
+		}
+	}
+	for _, p := range []string{"/", "/administrator", "/blog/admin", "/index.php", "/index.php/adminx"} {
+		if re.MatchString(p) {
+			t.Errorf("%s is covered but should not be", p)
+		}
+	}
+	if edgePathMatcher("/") != "path *" || !strings.Contains(edgePathMatcher("/blog/*"), `/blog(/.*)?$`) {
+		t.Fatal(edgePathMatcher("/blog/*"))
+	}
 }
