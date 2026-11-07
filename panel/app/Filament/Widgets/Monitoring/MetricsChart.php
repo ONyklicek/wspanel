@@ -79,7 +79,7 @@ abstract class MetricsChart extends ChartWidget
 
         return RawJs::make(<<<JS
             {
-                animation: false,
+                animation: { duration: 0 },
                 interaction: { mode: 'index', intersect: false },
                 plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } },
                     tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + ({$format})(c.parsed.y) } } },
