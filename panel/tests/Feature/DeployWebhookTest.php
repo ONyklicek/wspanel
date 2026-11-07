@@ -9,6 +9,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -149,6 +150,55 @@ class DeployWebhookTest extends TestCase
             $this->hook($this->push(), [])->assertForbidden();
         }
         $this->hook($this->push(), [])->assertStatus(429);
+    }
+
+    public function test_replayed_deliveries_are_ignored(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('deploy.run', ['domain' => 'app.example.com'])->andReturn(['job_id' => 'x']);
+        $sig = 'sha256='.hash_hmac('sha256', json_encode($this->push()), $this->site->webhook_secret);
+        $headers = ['X-GitHub-Event' => 'push', 'X-Hub-Signature-256' => $sig, 'X-GitHub-Delivery' => '72d3162e-cc78-11e3-81ab-4c9367dc0958'];
+
+        $this->hook($this->push(), $headers)->assertStatus(202)->assertJson(['result' => 'deployed']);
+        $this->hook($this->push(), $headers)->assertOk()->assertJson(['message' => 'duplicate delivery']);
+    }
+
+    public function test_an_already_deployed_commit_does_not_redeploy(): void
+    {
+        $this->agent->shouldReceive('call')->with('deploy.history', ['domain' => 'app.example.com'])->andReturn([
+            'deploys' => [['id' => '20261107T100000Z', 'commit' => 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', 'status' => 'success']],
+            'current' => '20261107T100000Z', 'running' => false,
+            'config' => ['repo' => 'git@github.com:acme/app.git', 'branch' => 'main'],
+        ]);
+        $this->agent->shouldNotReceive('call')->with('deploy.run', Mockery::any());
+
+        $this->github($this->push())->assertStatus(202)->assertJson(['message' => 'commit is already deployed']);
+    }
+
+    public function test_agent_errors_are_not_disclosed_to_the_caller(): void
+    {
+        $this->agent->shouldReceive('call')->with('deploy.run', Mockery::any())
+            ->andThrow(new AgentException('op_failed', 'internal path /srv/sites/app.example.com broke', 'deploy.run'));
+
+        $this->github($this->push())->assertStatus(502)->assertExactJson(['result' => 'failed']);
+        $this->assertStringContainsString('/srv/sites', WebhookDelivery::latest('id')->value('message'));
+    }
+
+    public function test_disabling_the_webhook_cancels_a_queued_deploy(): void
+    {
+        $this->site->update(['deploy_requested_at' => now()]);
+        app(ManageWebhook::class)->disable($this->site);
+        $this->assertNull($this->site->refresh()->deploy_requested_at);
+
+        $this->site->update(['deploy_requested_at' => now(), 'webhook_enabled' => false]);
+        $this->agent->shouldNotReceive('call')->with('deploy.run', Mockery::any());
+        $this->assertSame(0, app(DeployTrigger::class)->runQueued());
+    }
+
+    public function test_site_relations(): void
+    {
+        $this->github($this->push(), 'ping')->assertOk();
+        $this->assertSame(1, $this->site->webhookDeliveries()->count());
+        $this->assertSame(0, $this->site->cronJobs()->count());
     }
 
     public function test_secret_is_encrypted_at_rest_and_rotation_changes_url_and_secret(): void

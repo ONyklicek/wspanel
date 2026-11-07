@@ -54,6 +54,12 @@ class WebhookVerifier
         }
         $commit = $payload['after'] ?? $payload['checkout_sha'] ?? ($payload['push']['changes'][0]['new']['target']['hash'] ?? null);
 
+        $delivery = $request->header('X-GitHub-Delivery')
+            ?? $request->header('X-Gitea-Delivery')
+            ?? $request->header('X-Forgejo-Delivery')
+            ?? $request->header('X-Gitlab-Event-UUID')
+            ?? $request->header('X-Request-UUID');
+
         return new PushEvent(
             provider: $provider,
             event: $event,
@@ -61,6 +67,7 @@ class WebhookVerifier
             isPing: $isPing,
             branch: is_string($branch) ? $branch : null,
             commit: is_string($commit) && preg_match('/^[0-9a-f]{7,64}$/', $commit) ? $commit : null,
+            deliveryId: is_string($delivery) && preg_match('/^[A-Za-z0-9{}-]{8,64}$/', $delivery) ? $delivery : null,
         );
     }
 

@@ -38,6 +38,12 @@ class DeployWebhookController
         }
         $info = ['provider' => $event->provider, 'event' => $event->event, 'ref' => $event->branch, 'commit' => $event->commit];
 
+        // A signed delivery can be captured and replayed: each provider delivery id counts once.
+        if ($event->deliveryId !== null && WebhookDelivery::query()->where('site_id', $site->id)->where('delivery_id', $event->deliveryId)->exists()) {
+            return $this->record($site, $request, 'ignored', 'duplicate delivery', 200, ['provider' => $event->provider]);
+        }
+        $info['delivery_id'] = $event->deliveryId;
+
         if ($event->isPing) {
             return $this->record($site, $request, 'ignored', 'ping', 200, $info);
         }
@@ -54,9 +60,16 @@ class DeployWebhookController
             if ($event->branch !== $branch) {
                 return $this->record($site, $request, 'ignored', "push to {$event->branch}, deploying {$branch}", 202, $info);
             }
+            $deployed = collect($history['deploys'] ?? [])->firstWhere('id', $history['current'] ?? null)['commit'] ?? null;
+            if ($event->commit !== null && $deployed !== null && $event->commit === $deployed && ! ($history['running'] ?? false)) {
+                return $this->record($site, $request, 'ignored', 'commit is already deployed', 202, $info);
+            }
             $result = $trigger->request($site, $history);
         } catch (AgentException $e) {
-            return $this->record($site, $request, 'failed', mb_substr($e->getMessage(), 0, 250), 502, $info);
+            // The detail stays in the delivery log; the caller only learns that it failed.
+            $this->record($site, $request, 'failed', mb_substr($e->getMessage(), 0, 250), 502, $info);
+
+            return response()->json(['result' => 'failed'], 502);
         }
 
         return $this->record($site, $request, $result, $result === 'queued' ? 'a deploy is running; queued' : 'deploy started', 202, $info);

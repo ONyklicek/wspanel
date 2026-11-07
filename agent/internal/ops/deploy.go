@@ -201,6 +201,18 @@ func saveRecord(env *Env, domain string, r deployRecord) {
 	_ = env.FS.WriteFile(historyPath(env, domain), b, 0o600, fsx.Root)
 }
 
+// removeDeployLogs deletes exactly this site's logs: <domain>-<release>.log.
+// A prefix glob would also match another site (a.com vs a.com-x.com).
+func removeDeployLogs(env *Env, domain string) {
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(domain) + `-\d{8}T\d{6}Z\.log$`)
+	entries, _ := os.ReadDir(env.Cfg.DeployLogDir)
+	for _, e := range entries {
+		if re.MatchString(e.Name()) {
+			_ = os.Remove(filepath.Join(env.Cfg.DeployLogDir, e.Name()))
+		}
+	}
+}
+
 func deployLogPath(env *Env, domain, id string) string {
 	return filepath.Join(env.Cfg.DeployLogDir, domain+"-"+id+".log")
 }

@@ -20,7 +20,7 @@ class ManageWebhook
 
     public function disable(Site $site): Site
     {
-        $site->update(['webhook_enabled' => false]);
+        $site->update(['webhook_enabled' => false, 'deploy_requested_at' => null]);
 
         return $site;
     }
@@ -28,7 +28,7 @@ class ManageWebhook
     /** New secret and a new URL: the old ones stop working immediately. */
     public function rotate(Site $site): Site
     {
-        $site->update(['webhook_id' => bin2hex(random_bytes(16)), 'webhook_secret' => bin2hex(random_bytes(32))]);
+        $site->update(['webhook_id' => bin2hex(random_bytes(16)), 'webhook_secret' => bin2hex(random_bytes(32)), 'deploy_requested_at' => null]);
 
         return $site;
     }

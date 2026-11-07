@@ -11,6 +11,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
 {
+    public function cronJobs(): HasMany
+    {
+        return $this->hasMany(CronJob::class);
+    }
+
+    public function webhookDeliveries(): HasMany
+    {
+        return $this->hasMany(WebhookDelivery::class)->latest('id');
+    }
+
     public function databases(): HasMany
     {
         return $this->hasMany(Database::class);

@@ -504,11 +504,7 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	}
 	_ = os.Remove(siteStatePath(env.Cfg, p.Domain))
 	_ = os.Remove(historyPath(env, p.Domain))
-	if logs, _ := filepath.Glob(filepath.Join(env.Cfg.DeployLogDir, p.Domain+"-*.log")); logs != nil {
-		for _, f := range logs {
-			_ = os.Remove(f)
-		}
-	}
+	removeDeployLogs(env, p.Domain)
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))
 	removeToolLinks(env, l.User)
 	trashed := ""

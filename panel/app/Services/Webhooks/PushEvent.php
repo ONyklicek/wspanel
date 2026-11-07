@@ -12,5 +12,6 @@ final readonly class PushEvent
         public bool $isPing,
         public ?string $branch,
         public ?string $commit,
+        public ?string $deliveryId = null,
     ) {}
 }

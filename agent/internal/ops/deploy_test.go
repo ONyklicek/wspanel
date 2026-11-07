@@ -266,3 +266,20 @@ func TestEnvSet(t *testing.T) {
 		t.Errorf("written %q", written)
 	}
 }
+
+func TestDeleteKeepsOtherSitesDeployLogs(t *testing.T) {
+	env, _ := testEnv(t)
+	env.Cfg.DeployLogDir = t.TempDir()
+	for _, f := range []string{"a.com-20261107T100000Z.log", "a.com-x.com-20261107T100000Z.log"} {
+		if err := os.WriteFile(filepath.Join(env.Cfg.DeployLogDir, f), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removeDeployLogs(env, "a.com")
+	if _, err := os.Stat(filepath.Join(env.Cfg.DeployLogDir, "a.com-20261107T100000Z.log")); !os.IsNotExist(err) {
+		t.Error("own log kept")
+	}
+	if _, err := os.Stat(filepath.Join(env.Cfg.DeployLogDir, "a.com-x.com-20261107T100000Z.log")); err != nil {
+		t.Error("deleting a.com removed a log of a.com-x.com")
+	}
+}

@@ -39,7 +39,7 @@ class DeployTrigger
     public function runQueued(): int
     {
         $started = 0;
-        foreach (Site::query()->whereNotNull('deploy_requested_at')->get() as $site) {
+        foreach (Site::query()->whereNotNull('deploy_requested_at')->where('webhook_enabled', true)->get() as $site) {
             try {
                 if ($this->request($site) === 'deployed') {
                     $started++;
