@@ -1,9 +1,23 @@
 <?php
-// Placeholder created by WSPanel. Replaced by the first deploy.
+// Placeholder created by WSPanel. Replace it: upload your files or deploy.
 header('Content-Type: text/html; charset=utf-8');
 ?><!doctype html>
-<html lang="cs"><meta charset="utf-8"><title>{{.Domain}}</title>
-<body style="font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">
-<h1>{{.Domain}}</h1>
-<p>Web je založený ({{.Framework}}, PHP <?= PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION ?>). Čeká na první deploy.</p>
+<html lang="cs"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>{{.Domain}}</title>
+<body style="font-family:system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem;color:#1f2937;line-height:1.55">
+<p style="color:#16a34a;font-weight:600;margin:0">&#10003; Web běží</p>
+<h1 style="margin:.2rem 0 1rem">{{.Domain}}</h1>
+<p>Tuto stránku vytvořil WSPanel při založení webu. Odpovídá PHP <?= PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION ?>
+{{- if eq .Mode "worker"}} ve FrankenPHP worker režimu{{else}} (PHP-FPM){{end}}, pod uživatelem <code>{{.User}}</code>.</p>
+{{- if eq .Framework "php"}}
+<h2 style="font-size:1.1rem">Jak sem dostat web</h2>
+<ol>
+<li><b>Nahrát soubory:</b> připojte se přes SFTP jako <code>{{.User}}</code> a nahrajte web do složky <code>public_html/</code> (tento soubor <code>index.php</code> přepište).</li>
+<li><b>Nebo deploy z Gitu:</b> v panelu u webu <i>Deploy</i> nastavte repozitář. Kořen webu je složka <code>public/</code> v repozitáři.</li>
+</ol>
+{{- else}}
+<h2 style="font-size:1.1rem">Další krok</h2>
+<p>V panelu u webu otevřete <i>Deploy</i>, nastavte Git repozitář aplikace ({{.Framework}}) a spusťte první deploy.
+Web pak poběží z <code>current/public/</code>.</p>
+{{- end}}
 </body></html>

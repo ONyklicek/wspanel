@@ -29,6 +29,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('')
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->brandName('WSPanel')
             ->authenticatedRoutes(function () {
                 Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');

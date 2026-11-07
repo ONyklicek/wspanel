@@ -40,6 +40,10 @@ class CreateSite extends CreateRecord
 
     protected function getRedirectUrl(): string
     {
-        return $this->getResource()::getUrl('index');
+        $site = $this->getRecord();
+
+        return $site->status === SiteStatus::Active
+            ? $this->getResource()::getUrl('view', ['record' => $site])
+            : $this->getResource()::getUrl('index');
     }
 }

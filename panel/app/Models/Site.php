@@ -27,8 +27,8 @@ class Site extends Model
     }
 
     protected $fillable = [
-        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys',
-        'system_user', 'home', 'doc_root', 'status', 'last_error',
+        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys', 'ssh_password',
+        'system_user', 'home', 'doc_root', 'status', 'enabled', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
         'webhook_id', 'webhook_secret', 'webhook_enabled', 'deploy_requested_at',
     ];
@@ -43,6 +43,8 @@ class Site extends Model
             'status' => SiteStatus::class,
             'ssh_access' => SshAccess::class,
             'port' => 'integer',
+            'enabled' => 'boolean',
+            'ssh_password' => 'boolean',
             'health_ok' => 'boolean',
             'health_status' => 'integer',
             'health_checked_at' => 'datetime',
@@ -50,6 +52,54 @@ class Site extends Model
             'webhook_enabled' => 'boolean',
             'deploy_requested_at' => 'datetime',
         ];
+    }
+
+    public function services(): HasMany
+    {
+        return $this->hasMany(Service::class);
+    }
+
+    /**
+     * Public URL of the site. The port follows the panel's own URL, so links
+     * also work in the dev container (published on :8443).
+     */
+    public function url(string $path = '/'): string
+    {
+        $port = parse_url((string) config('app.url'), PHP_URL_PORT);
+
+        return 'https://'.$this->domain.($port && $port !== 443 ? ":{$port}" : '').$path;
+    }
+
+    /** Operator-facing state: switched off beats everything else. */
+    public function stateLabel(): string
+    {
+        return match (true) {
+            $this->status !== SiteStatus::Active => $this->status->getLabel(),
+            ! $this->enabled => 'Vypnutý',
+            $this->health_checked_at !== null && ! $this->health_ok => 'Neodpovídá',
+            default => 'Běží',
+        };
+    }
+
+    public function stateColor(): string
+    {
+        return match ($this->stateLabel()) {
+            'Běží' => 'success',
+            'Vypnutý' => 'gray',
+            'Zakládá se' => 'warning',
+            default => 'danger',
+        };
+    }
+
+    public function isOperational(): bool
+    {
+        return $this->status === SiteStatus::Active;
+    }
+
+    /** SFTP/SSH login of the site user on this server. */
+    public function sshTarget(): string
+    {
+        return $this->system_user.'@'.(config('panel.ssh_host') ?: request()->getHost());
     }
 
     /** Human label of what runs the site, e.g. "PHP 8.3", "PHP 8.5 · FrankenPHP", "Node 22". */

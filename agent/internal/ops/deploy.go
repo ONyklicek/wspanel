@@ -316,6 +316,9 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 		if st.Deploy == nil {
 			return protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
 		}
+		if st.Disabled {
+			return protocol.Conflict(p.Domain + " is disabled; enable it before deploying")
+		}
 		if !beginDeploy(p.Domain) {
 			return protocol.Conflict("a deploy of " + p.Domain + " is already running")
 		}

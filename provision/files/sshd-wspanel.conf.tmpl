@@ -1,12 +1,15 @@
 # Managed by WSPanel install.sh.
-# Key-only logins; site users authenticate with keys the panel manages in
-# root-owned /etc/ssh/authorized_keys/<user> (they cannot add their own).
+# Server accounts log in with keys only. Site users authenticate with keys the
+# panel manages in root-owned /etc/ssh/authorized_keys/<user> (they cannot add
+# their own) or, when enabled in the panel, a password (locked otherwise;
+# fail2ban bans repeated failures).
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin __ROOT_LOGIN__
 
 Match Group wspanel-ssh,wspanel-sftp
 	AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+	PasswordAuthentication yes
 	# No tunnels into local services (databases, other sites' backends).
 	AllowTcpForwarding no
 	AllowStreamLocalForwarding no

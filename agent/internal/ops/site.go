@@ -29,6 +29,7 @@ type siteLayout struct {
 	User        string
 
 	OpcacheProduction bool
+	Disabled          bool
 	Home              string
 
 	// classic
@@ -75,6 +76,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		ReverbPort:  st.ReverbPort,
 
 		OpcacheProduction: st.OpcacheProduction,
+		Disabled:          st.Disabled,
 		User:              user,
 		Home:              filepath.Join(cfg.SitesRoot, st.Domain),
 
@@ -348,7 +350,15 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner) error {
 			return err
 		}
 	}
-	return env.FS.Symlink("releases/initial", filepath.Join(l.Home, "current"), o)
+	if err := env.FS.Symlink("releases/initial", filepath.Join(l.Home, "current"), o); err != nil {
+		return err
+	}
+	// Plain PHP sites are usually uploaded over SFTP: public_html is the
+	// familiar name for the document root (it follows current/ after deploys).
+	if l.Framework == "php" {
+		return env.FS.Symlink("current/public", filepath.Join(l.Home, "public_html"), o)
+	}
+	return nil
 }
 
 // asUser runs a fixed binary as the site user (setpriv drops to its uid/gid

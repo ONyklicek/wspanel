@@ -23,9 +23,12 @@ type siteState struct {
 	Port        int           `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent
 	ReverbPort  int           `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
 	SSHAccess   string        `json:"ssh_access,omitempty"`   // off | sftp | shell
+	SSHPassword bool          `json:"ssh_password,omitempty"` // password login allowed (besides keys)
 	Deploy      *deployConfig `json:"deploy,omitempty"`
 	// classic: OPcache does not revalidate files (deploys reload FPM)
 	OpcacheProduction bool `json:"opcache_production,omitempty"`
+	// Disabled: the edge answers 503, app/workers/tasks are stopped.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

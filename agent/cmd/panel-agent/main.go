@@ -146,7 +146,8 @@ func binaries(cfg config.Config) map[string]string {
 		"useradd":          "/usr/sbin/useradd",
 		"userdel":          "/usr/sbin/userdel",
 		"usermod":          "/usr/sbin/usermod",
-		"setpriv":          "/usr/bin/setpriv", // runs fixed binaries as a site user
+		"chpasswd":         "/usr/sbin/chpasswd", // password on stdin only
+		"setpriv":          "/usr/bin/setpriv",   // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",
 		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
 		"systemd-run":      "/usr/bin/systemd-run",

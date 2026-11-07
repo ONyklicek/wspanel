@@ -42,6 +42,7 @@ dev-provision: agent-build
 		--db=$(DB) --php=$(PHP) --panel-domain=panel.localhost \
 		--agent-bin=/opt/wspanel/build/panel-agent-linux-$(ARCH) \
 		--panel-source=/opt/wspanel/panel --local-certs \
+		--public-https-port=8443 --public-ssh-port=2222 \
 		--allow-unenforced-socket-bind # Docker Desktop: no cgroup BPF socket-bind
 
 ## Full end-to-end test inside the dev container (after dev-provision).

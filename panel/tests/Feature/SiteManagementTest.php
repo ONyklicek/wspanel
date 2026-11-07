@@ -59,7 +59,7 @@ class SiteManagementTest extends TestCase
             ->fillForm(['domain' => ' HTTPS://Shop.Example.com/ ', 'mode' => 'classic', 'framework' => 'symfony', 'php_version' => '8.3'])
             ->call('create')
             ->assertHasNoFormErrors()
-            ->assertRedirect('/sites');
+            ->assertRedirect('/sites/1');
 
         $site = Site::sole();
         $this->assertSame('shop.example.com', $site->domain);

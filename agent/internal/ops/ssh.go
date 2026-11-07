@@ -68,7 +68,14 @@ type sshSetParams struct {
 	Domain string   `json:"domain"`
 	Access string   `json:"access"`
 	Keys   []string `json:"keys"`
+	// Password login: "keep" (default), "set" (Password) or "remove".
+	PasswordMode string `json:"password_mode,omitempty"`
+	Password     string `json:"password,omitempty"`
 }
+
+// Passwords go to chpasswd as "user:password" lines: no colon, no control
+// characters. Length makes guessing impractical; fail2ban limits attempts.
+var sshPasswordRe = regexp.MustCompile(`^[\x20-\x39\x3b-\x7e]{12,128}$`)
 
 // sshSet sets SSH/SFTP access for a site user: login shell, group (sshd
 // applies per-group restrictions) and the root-owned authorized_keys file.
@@ -85,8 +92,17 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if len(p.Keys) > 20 {
 		return nil, protocol.Invalid("keys: at most 20 keys")
 	}
-	if p.Access != "off" && len(p.Keys) == 0 {
-		return nil, protocol.Invalid("keys: at least one public key is required (password login is disabled)")
+	if p.PasswordMode == "" {
+		p.PasswordMode = "keep"
+	}
+	if err := validate.OneOf("password_mode", p.PasswordMode, []string{"keep", "set", "remove"}); err != nil {
+		return nil, err
+	}
+	if p.PasswordMode == "set" && !sshPasswordRe.MatchString(p.Password) {
+		return nil, protocol.Invalid("password: 12–128 printable ASCII characters, no colon")
+	}
+	if p.PasswordMode != "set" && p.Password != "" {
+		return nil, protocol.Invalid("password: only with password_mode set")
 	}
 	keys := make([]string, 0, len(p.Keys))
 	for _, k := range p.Keys {
@@ -101,6 +117,14 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 
+	hasPassword := (st.SSHPassword && p.PasswordMode == "keep") || p.PasswordMode == "set"
+	if p.Access == "off" {
+		hasPassword = false
+	}
+	if p.Access != "off" && len(keys) == 0 && !hasPassword {
+		return nil, protocol.Invalid("keys: at least one public key or a password is required")
+	}
+
 	keyFile := filepath.Join(env.Cfg.AuthorizedKeysDir, l.User)
 	shell, group := "/usr/sbin/nologin", ""
 	switch p.Access {
@@ -110,7 +134,7 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		group = env.Cfg.SFTPGroup
 	}
 
-	if p.Access == "off" {
+	if p.Access == "off" || len(keys) == 0 {
 		if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
@@ -135,17 +159,28 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if _, err := env.Exec.Run(ctx, "usermod", "--groups", group, "--shell", shell, l.User); err != nil {
 		return nil, err
 	}
+	// Password: set through chpasswd's stdin (never argv), or locked.
+	if hasPassword && p.PasswordMode == "set" {
+		if _, err := env.Exec.RunIO(ctx, strings.NewReader(l.User+":"+p.Password+"\n"), nil, "chpasswd"); err != nil {
+			return nil, err
+		}
+	} else if !hasPassword {
+		if _, err := env.Exec.Run(ctx, "usermod", "--lock", l.User); err != nil {
+			return nil, err
+		}
+	}
 	// Any change ends existing sessions and everything started from them, so
 	// revoked access cannot linger in a nohup/screen process.
 	if err := killSessionProcesses(ctx, env, l.User); err != nil {
 		return nil, fmt.Errorf("access set, but ending existing sessions failed: %w", err)
 	}
 	st.SSHAccess = p.Access
+	st.SSHPassword = hasPassword
 	if err := saveSiteState(env, st); err != nil {
 		return nil, err
 	}
 	if err := writeToolLinks(env, l); err != nil {
 		return nil, fmt.Errorf("access set, but updating tool links failed: %w", err)
 	}
-	return map[string]any{"domain": p.Domain, "user": l.User, "access": p.Access, "keys": len(keys), "home": l.Home}, nil
+	return map[string]any{"domain": p.Domain, "user": l.User, "access": p.Access, "keys": len(keys), "password": hasPassword, "home": l.Home}, nil
 }

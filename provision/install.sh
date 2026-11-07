@@ -35,6 +35,8 @@ AGENT_BIN=""
 PANEL_SOURCE=""
 LOCAL_CERTS=0
 SSH_PORT=22
+PUBLIC_SSH_PORT=""   # as clients see it (port forwarding / NAT); defaults to --ssh-port
+PUBLIC_HTTPS_PORT=443
 ROOT_LOGIN="prohibit-password"
 UNENFORCED_BIND=false
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,6 +54,8 @@ for arg in "$@"; do
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
     --ssh-port=*) SSH_PORT="${arg#*=}" ;;
+    --public-ssh-port=*) PUBLIC_SSH_PORT="${arg#*=}" ;;     # dev container: 2222
+    --public-https-port=*) PUBLIC_HTTPS_PORT="${arg#*=}" ;; # dev container: 8443
     --allow-unenforced-socket-bind) UNENFORCED_BIND=true ;; # dev containers only (no cgroup BPF)
     --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
     --local-certs) LOCAL_CERTS=1 ;; # dev only: Caddy internal CA instead of Let's Encrypt
@@ -69,6 +73,10 @@ done
 [[ -n "$AGENT_BIN" && -x "$AGENT_BIN" ]] || die "--agent-bin must point to the built panel-agent binary"
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${PANEL_DOMAIN}"
+[[ -z "$PUBLIC_SSH_PORT" ]] && PUBLIC_SSH_PORT="$SSH_PORT"
+[[ "$PUBLIC_SSH_PORT" =~ ^[0-9]+$ && "$PUBLIC_HTTPS_PORT" =~ ^[0-9]+$ ]] || die "invalid --public-*-port"
+PANEL_URL="https://$PANEL_DOMAIN"
+[[ "$PUBLIC_HTTPS_PORT" != 443 ]] && PANEL_URL="$PANEL_URL:$PUBLIC_HTTPS_PORT"
 
 DB_ENGINES=()
 case "$DB" in
@@ -153,6 +161,9 @@ fi
 # ---------------------------------------------------------------- Node (fnm)
 # System-wide installs in /opt/fnm, readable by every site user. The agent
 # discovers versions from /opt/fnm/node-versions; sites pick a major.
+# The panel's own assets are built with Node too: with --node=none one LTS
+# major is still installed for that.
+[[ ${#NODE_LIST[@]} -gt 0 ]] || NODE_LIST=(24)
 if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
   if ! /usr/local/bin/fnm --version 2>/dev/null | grep -q "${FNM_VERSION#v}"; then
     log "fnm $FNM_VERSION"
@@ -261,12 +272,23 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   if [[ ! -f /srv/panel/shared/.env ]]; then
     install -m 0600 -o panel -g panel "$PANEL_SOURCE/.env.example" /srv/panel/shared/.env
     sed -i -e "s|^APP_ENV=.*|APP_ENV=production|" -e "s|^APP_DEBUG=.*|APP_DEBUG=false|" \
-      -e "s|^APP_URL=.*|APP_URL=https://$PANEL_DOMAIN|" \
+      -e "s|^APP_URL=.*|APP_URL=$PANEL_URL|" \
       -e "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite|" -e "s|^# *DB_DATABASE=.*|DB_DATABASE=/srv/panel/shared/database.sqlite|" \
       -e "s|^AGENT_SOCKET=.*|AGENT_SOCKET=/run/panel-agent.sock|" /srv/panel/shared/.env
     grep -q '^DB_DATABASE=' /srv/panel/shared/.env || echo "DB_DATABASE=/srv/panel/shared/database.sqlite" >> /srv/panel/shared/.env
     grep -q '^AGENT_SOCKET=' /srv/panel/shared/.env || echo "AGENT_SOCKET=/run/panel-agent.sock" >> /srv/panel/shared/.env
   fi
+  # Public URL and SSH port (shown with links and SFTP logins), kept in sync.
+  set_panel_env() {
+    if grep -q "^$1=" /srv/panel/shared/.env; then
+      sed -i "s|^$1=.*|$1=$2|" /srv/panel/shared/.env
+    else
+      echo "$1=$2" >> /srv/panel/shared/.env
+    fi
+  }
+  set_panel_env APP_URL "$PANEL_URL"
+  set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
+  grep -q '^APP_LOCALE=' /srv/panel/shared/.env || echo "APP_LOCALE=cs" >> /srv/panel/shared/.env
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
   ln -sfn /srv/panel/shared/.env "$release/.env"
   rm -rf "$release/storage" && ln -sfn /srv/panel/shared/storage "$release/storage"
@@ -274,6 +296,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
 
   as_panel() { runuser -u panel -- env HOME=/srv/panel/tmp COMPOSER_HOME=/srv/panel/tmp/composer "$@"; }
   (cd "$release" && as_panel composer install --no-dev --optimize-autoloader --no-interaction --no-progress)
+  # Panel theme (Tailwind via Vite), built with the newest installed Node.
+  node_bin="$(ls -d /opt/fnm/node-versions/v*/installation/bin | sort -V | tail -1)"
+  (cd "$release" && as_panel env PATH="$node_bin:/usr/bin:/bin" npm ci --no-audit --no-fund --loglevel=error \
+    && as_panel env PATH="$node_bin:/usr/bin:/bin" npm run build >/dev/null && rm -rf node_modules)
   grep -q '^APP_KEY=base64:' /srv/panel/shared/.env || (cd "$release" && as_panel php artisan key:generate --force)
   (cd "$release" && as_panel php artisan migrate --force && as_panel php artisan optimize && as_panel php artisan filament:optimize)
   setfacl -m u:panel-web:x "$release"
@@ -367,6 +393,6 @@ if [[ -f /etc/systemd/system/panel-scheduler.service ]]; then
   systemctl restart panel-scheduler
 fi
 
-log "Done. Panel: https://$PANEL_DOMAIN"
+log "Done. Panel: $PANEL_URL"
 [[ -n "$PANEL_SOURCE" ]] && log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan make:filament-user"
 exit 0
