@@ -16,6 +16,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Carbon;
 use NyonCode\WireCore\Actions\Action;
@@ -146,7 +147,7 @@ final class SiteActions
                 ? 'Nový FPM pool naběhne vedle starého a web se na něj přepne. Bez výpadku.'
                 : 'Proces se restartuje s novou verzí (krátký výpadek).')
             ->form(fn (Site $record) => [
-                Select::make('version')
+                Select::make('version')->rules([Options::rule()])
                     ->label($record->mode === SiteMode::Classic ? 'Verze PHP' : 'Verze Node')
                     ->options(collect($record->mode === SiteMode::Classic
                         ? app(SystemInfo::class)->phpVersionOptions()
@@ -183,7 +184,7 @@ final class SiteActions
             ->visible(fn (Site $record) => $record->isOperational() && app(SystemInfo::class)->dbEngines() !== [])
             ->modalDescription('Údaje (host, jméno, heslo) zapíše server rovnou do .env webu; heslo se nikde nezobrazuje.')
             ->form(fn (Site $record) => [
-                Select::make('engine')->label('Engine')->required()
+                Select::make('engine')->rules([Options::rule()])->label('Engine')->required()
                     ->options(collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()])->all())
                     ->default(app(SystemInfo::class)->dbEngines()[0]->value ?? null),
                 TextInput::make('name')->label('Název (i uživatel)')->required()->maxLength(32)
@@ -209,7 +210,7 @@ final class SiteActions
             ->fillFormUsing(fn (Site $record) => ['access' => $record->ssh_access->value, 'keys' => (string) $record->ssh_keys, 'password_mode' => 'keep'])
             ->form(fn (Site $record) => [
                 Radio::make('access')->label('Přístup')->options(SshAccess::class)->segmented()->required()->live(),
-                Radio::make('password_mode')
+                Radio::make('password_mode')->rules([Options::rule()])
                     ->label('Heslo')
                     ->options($record->ssh_password
                         ? ['keep' => 'Ponechat současné', 'generate' => 'Vygenerovat nové', 'set' => 'Zadat vlastní', 'remove' => 'Zrušit (jen klíče)']
@@ -234,16 +235,16 @@ final class SiteActions
                     ->rows(4)
                     ->placeholder('ssh-ed25519 AAAA… jmeno@pocitac')
                     ->helperText('Jeden na řádek. Klíč je bezpečnější než heslo.')
-                    ->hiddenWhen('access', SshAccess::Off->value),
-            ])
-            ->action(function (Site $record, array $data, Action $action) {
-                $usesPassword = in_array($data['password_mode'] ?? 'keep', ['generate', 'set'], true)
-                    || ($record->ssh_password && ($data['password_mode'] ?? 'keep') === 'keep');
-                if (($data['access'] ?? 'off') !== 'off' && ManageSsh::parseKeys((string) ($data['keys'] ?? '')) === [] && ! $usesPassword) {
-                    Toast::error('Chybí klíč nebo heslo', 'Zadejte veřejný klíč, nebo nastavte heslo.');
-
-                    return;
-                }
+                    ->hiddenWhen('access', SshAccess::Off->value)
+                    ->required(fn ($get) => ! in_array($get('password_mode') ?? 'keep', ['generate', 'set'], true)
+                        && ! ($record->ssh_password && ($get('password_mode') ?? 'keep') === 'keep'))
+                    ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
+                        if (trim((string) $value) !== '' && ManageSsh::parseKeys((string) $value) === []) {
+                            $fail('Nenašel jsem žádný platný klíč.');
+                        }
+                    }])
+                    ->validationMessages(['required' => 'Zadejte veřejný klíč, nebo nastavte heslo.']),            ])
+            ->action(function (Site $record, array $data) {
                 self::attempt('Nastavení SSH selhalo', function () use ($record, $data) {
                     $generated = app(ManageSsh::class)->handle($record, $data['access'], (string) ($data['keys'] ?? ''), (string) ($data['password_mode'] ?? 'keep'), $data['password'] ?? null);
                     $login = 'sftp -P '.config('panel.ssh_port').' '.$record->sshTarget();
@@ -264,7 +265,7 @@ final class SiteActions
             ->modalWidth('2xl')
             ->fillFormUsing(fn (Site $record) => ['mode' => $record->tls_mode ?? 'auto'])
             ->form([
-                Radio::make('mode')
+                Radio::make('mode')->rules([Options::rule()])
                     ->label('Odkud je certifikát')
                     ->options(ManageTls::MODES)
                     ->descriptions([
@@ -306,7 +307,7 @@ final class SiteActions
                 && app(SystemInfo::class)->workerTypes($record->framework->value) !== [])
             ->modalDescription('Worker běží jako systemd služba pod uživatelem webu se sandboxem a po pádu se sám restartuje. Před prvním deployem se jen zaregistruje.')
             ->form(fn (Site $record) => [
-                Select::make('worker')
+                Select::make('worker')->rules([Options::rule()])
                     ->label('Typ')
                     ->options(collect(app(SystemInfo::class)->workerTypes($record->framework->value))
                         ->mapWithKeys(fn (string $t) => [$t => $t === 'scheduler'

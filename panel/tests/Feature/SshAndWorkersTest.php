@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Actions\Sites\ManageSsh;
 use App\Enums\SshAccess;
-use App\Filament\Resources\Sites\Pages\ListSites;
+use App\Livewire\Sites\ListSites;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -12,11 +12,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class SshAndWorkersTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private const KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGWV8cCv0YxZ7QS0jcjKOzzD8qUuDmzQ4b0V2Rz1fNnS admin@laptop';
 
@@ -53,9 +55,8 @@ class SshAndWorkersTest extends TestCase
             ->with('ssh.set', ['domain' => 'app.example.com', 'access' => 'sftp', 'keys' => [self::KEY]])
             ->andReturn(['access' => 'sftp', 'keys' => 1, 'password' => false]);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('ssh', $site, data: ['access' => 'sftp', 'keys' => self::KEY."\n"])
-            ->assertHasNoTableActionErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'keys' => self::KEY."\n"])
+            ->assertHasNoErrors();
 
         $site->refresh();
         $this->assertSame(SshAccess::Sftp, $site->ssh_access);
@@ -67,9 +68,8 @@ class SshAndWorkersTest extends TestCase
         $site = $this->site();
         $this->agent->shouldNotReceive('call')->with('ssh.set', Mockery::any());
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('ssh', $site, data: ['access' => 'shell', 'keys' => ''])
-            ->assertHasTableActionErrors(['keys']);
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'shell', 'keys' => ''])
+            ->assertHasErrors();
     }
 
     public function test_generated_password_is_sent_to_the_agent_and_not_stored(): void
@@ -84,9 +84,8 @@ class SshAndWorkersTest extends TestCase
             }))
             ->andReturn(['access' => 'sftp', 'keys' => 0, 'password' => true]);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('ssh', $site, data: ['access' => 'sftp', 'password_mode' => 'generate', 'keys' => ''])
-            ->assertHasNoTableActionErrors()
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'password_mode' => 'generate', 'keys' => ''])
+            ->assertHasNoErrors()
             ->assertNotified();
 
         $site->refresh();
@@ -101,9 +100,8 @@ class SshAndWorkersTest extends TestCase
             ->with('worker.create', ['domain' => 'app.example.com', 'worker' => 'reverb'])
             ->andReturn(['started' => true, 'port' => 601]);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('addWorker', $site, data: ['worker' => 'reverb'])
-            ->assertHasNoTableActionErrors()
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'reverb'])
+            ->assertHasNoErrors()
             ->assertNotified();
     }
 }

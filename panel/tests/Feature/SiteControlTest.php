@@ -2,10 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Filament\Resources\Sites\Pages\ListSites;
-use App\Filament\Resources\Sites\Pages\ViewSite;
-use App\Filament\Resources\Sites\Widgets\SiteLogs;
-use App\Filament\Resources\Sites\Widgets\SiteProcesses;
+use App\Actions\Sites\CreateSite;
+use App\Livewire\Sites\ListSites;
+use App\Livewire\Sites\SiteLogs;
+use App\Livewire\Sites\SiteProcesses;
+use App\Livewire\Sites\ViewSite;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -13,11 +14,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class SiteControlTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -64,12 +67,12 @@ class SiteControlTest extends TestCase
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()->with('site.disable', ['domain' => 'app.example.com'])->andReturn(['enabled' => false]);
 
-        Livewire::test(ListSites::class)->callTableAction('disable', $site)->assertHasNoTableActionErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'disable')->assertHasNoErrors();
         $this->assertFalse($site->refresh()->enabled);
         $this->assertSame('Vypnutý', $site->stateLabel());
 
         $this->agent->shouldReceive('call')->once()->with('site.enable', ['domain' => 'app.example.com'])->andReturn(['enabled' => true]);
-        Livewire::test(ViewSite::class, ['record' => $site->id])->callAction('enable')->assertHasNoActionErrors();
+        $this->pageAction(Livewire::test(ViewSite::class, ['record' => $site->id]), 'enable')->assertHasNoErrors();
         $this->assertTrue($site->refresh()->enabled);
     }
 
@@ -79,10 +82,8 @@ class SiteControlTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('site.restart', ['domain' => 'app.example.com', 'workers' => true])
             ->andReturn(['restarted' => ['php8.4-fpm.service (reload)']]);
 
-        Livewire::test(ViewSite::class, ['record' => $site->id])
-            ->callAction('restart', data: ['workers' => true])
-            ->assertHasNoActionErrors()
-            ->assertNotified();
+        $page = $this->pageAction(Livewire::test(ViewSite::class, ['record' => $site->id]), 'restart', ['workers' => true]);
+        $page->assertHasNoErrors()->assertNotified(type: 'success');
     }
 
     public function test_processes_are_listed_and_controlled(): void
@@ -96,12 +97,11 @@ class SiteControlTest extends TestCase
             ->with('service.restart', ['service' => 'worker', 'domain' => 'app.example.com', 'worker' => 'queue'])
             ->andReturn(['unit' => 'x']);
 
-        Livewire::test(SiteProcesses::class, ['record' => $site])
-            ->assertSee('Fronta (queue:work)')
+        $list = Livewire::test(SiteProcesses::class, ['site' => $site->id])
+            ->assertSee('Fronta (artisan queue:work)')
             ->assertSee('Úloha #3')
-            ->assertSee('50,0 MB')
-            ->callTableAction('restart', 'wspanel-web_app_example_com-queue.service')
-            ->assertNotified();
+            ->assertSee('50,0 MB');
+        $this->tableAction($list, 'wspanel-web_app_example_com-queue.service', 'restart')->assertNotified(type: 'success');
     }
 
     public function test_logs_widget_reads_the_selected_source(): void
@@ -111,7 +111,7 @@ class SiteControlTest extends TestCase
             ->with('site.logs', ['domain' => 'app.example.com', 'source' => 'framework', 'lines' => 200])
             ->andReturn(['text' => "[2026-11-07] production.ERROR: boom\n", 'file' => '/srv/sites/app.example.com/shared/storage/logs/laravel.log']);
 
-        Livewire::test(SiteLogs::class, ['record' => $site])
+        Livewire::test(SiteLogs::class, ['site' => $site->id])
             ->set('source', 'framework')
             ->assertSee('production.ERROR: boom');
     }
@@ -122,7 +122,7 @@ class SiteControlTest extends TestCase
             ->with('site.create', Mockery::on(fn ($p) => $p['domain'] === 'intranet.firma.lan' && $p['tls'] === 'internal'))
             ->andReturn(['mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'system_user' => 'web_intranet_firma_lan']);
 
-        app(\App\Actions\Sites\CreateSite::class)->handle(['domain' => 'intranet.firma.lan', 'framework' => 'php', 'php_version' => '8.4']);
+        app(CreateSite::class)->handle(['domain' => 'intranet.firma.lan', 'framework' => 'php', 'php_version' => '8.4']);
 
         $this->assertSame('internal', Site::where('domain', 'intranet.firma.lan')->value('tls_mode'));
     }
@@ -135,10 +135,25 @@ class SiteControlTest extends TestCase
             ->with('site.tls', Mockery::on(fn ($p) => $p['mode'] === 'custom' && str_starts_with($p['cert'], '-----BEGIN CERTIFICATE') && str_starts_with($p['key'], '-----BEGIN PRIVATE KEY')))
             ->andReturn(['mode' => 'custom', 'certificate' => ['issuer' => 'Firma CA', 'not_after' => '2027-01-01T00:00:00Z']]);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('tls', $site, data: ['mode' => 'custom', 'cert' => "-----BEGIN CERTIFICATE-----\nA\n", 'key' => "-----BEGIN PRIVATE KEY-----\nB\n"])
-            ->assertHasNoTableActionErrors()
-            ->assertNotified();
+        $list = $this->tableAction(Livewire::test(ListSites::class), $site, 'tls', ['mode' => 'custom', 'cert' => "-----BEGIN CERTIFICATE-----\nA\n", 'key' => "-----BEGIN PRIVATE KEY-----\nB\n"]);
+        $list->assertHasNoErrors()->assertNotified(type: 'success');
         $this->assertSame('custom', $site->refresh()->tls_mode);
+    }
+
+    public function test_process_log_opens_in_a_modal(): void
+    {
+        $site = $this->site();
+        $this->agent->shouldReceive('call')->with('site.processes', ['domain' => 'app.example.com'])->andReturn(['processes' => [
+            ['unit' => 'wspanel-web_app_example_com-queue.service', 'kind' => 'worker', 'name' => 'queue', 'active' => 'failed', 'sub' => 'failed', 'enabled' => 'enabled', 'restarts' => 5],
+        ]]);
+        $this->agent->shouldReceive('call')->atLeast()->once()
+            ->with('site.logs', ['domain' => 'app.example.com', 'source' => 'worker', 'lines' => 300, 'name' => 'queue'])
+            ->andReturn(['text' => "Worker crashed: <script>x</script>\n", 'unit' => 'wspanel-web_app_example_com-queue.service']);
+
+        Livewire::test(SiteProcesses::class, ['site' => $site->id])
+            ->assertSee('chyba')
+            ->call('openActionModal', 'wspanel-web_app_example_com-queue.service', 'log')
+            ->assertSee('Worker crashed:')
+            ->assertDontSee('<script>x</script>', false);
     }
 }

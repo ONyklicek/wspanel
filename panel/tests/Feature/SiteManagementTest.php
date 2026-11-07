@@ -3,8 +3,8 @@
 namespace Tests\Feature;
 
 use App\Enums\SiteStatus;
-use App\Filament\Resources\Sites\Pages\CreateSite;
-use App\Filament\Resources\Sites\Pages\ListSites;
+use App\Livewire\Sites\CreateSitePage as CreateSite;
+use App\Livewire\Sites\ListSites;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -13,11 +13,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class SiteManagementTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -46,18 +48,17 @@ class SiteManagementTest extends TestCase
             'framework' => 'symfony',
             'php_version' => '8.3',
             'mode' => 'classic', 'tls' => 'auto'])->andReturn([
-            'mode' => 'classic',
-            'framework' => 'symfony',
-            'php_version' => '8.3',
-            'system_user' => 'web_shop_example_com',
-            'home' => '/srv/sites/shop.example.com',
-            'doc_root' => '/srv/sites/shop.example.com/current/public',
-        ]);
+                'mode' => 'classic',
+                'framework' => 'symfony',
+                'php_version' => '8.3',
+                'system_user' => 'web_shop_example_com',
+                'home' => '/srv/sites/shop.example.com',
+                'doc_root' => '/srv/sites/shop.example.com/current/public',
+            ]);
 
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => ' HTTPS://Shop.Example.com/ ', 'mode' => 'classic', 'framework' => 'symfony', 'php_version' => '8.3'])
-            ->call('create')
-            ->assertHasNoFormErrors()
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => ' HTTPS://Shop.Example.com/ ', 'mode' => 'classic', 'framework' => 'symfony', 'php_version' => '8.3'])
+            ->call('save')
+            ->assertHasNoErrors()
             ->assertRedirect('/sites/1');
 
         $site = Site::sole();
@@ -66,19 +67,16 @@ class SiteManagementTest extends TestCase
         $this->assertSame('web_shop_example_com', $site->system_user);
     }
 
-    public function test_agent_failure_keeps_the_site_with_its_error(): void
+    public function test_agent_failure_is_shown_and_no_site_is_left_behind(): void
     {
         $this->agent->shouldReceive('call')->with('site.create', Mockery::any())
             ->andThrow(new AgentException('op_failed', 'php-fpm 8.4 config invalid, not reloading', 'site.create'));
 
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => 'broken.example.com', 'framework' => 'laravel', 'php_version' => '8.4'])
-            ->call('create')
-            ->assertHasNoFormErrors();
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'broken.example.com', 'framework' => 'laravel', 'php_version' => '8.4'])
+            ->call('save')
+            ->assertHasErrors(['data.domain']);
 
-        $site = Site::sole();
-        $this->assertSame(SiteStatus::Failed, $site->status);
-        $this->assertStringContainsString('config invalid', $site->last_error);
+        $this->assertSame(0, Site::count());
     }
 
     public function test_invalid_domains_never_reach_the_agent(): void
@@ -86,38 +84,34 @@ class SiteManagementTest extends TestCase
         $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
 
         foreach (['localhost', 'a_b.example.com', '-x.com', 'example.com;reboot', '../etc.com'] as $domain) {
-            Livewire::test(CreateSite::class)
-                ->fillForm(['domain' => $domain, 'framework' => 'laravel', 'php_version' => '8.4'])
-                ->call('create')
-                ->assertHasFormErrors(['domain']);
+            $this->fillForm(Livewire::test(CreateSite::class), ['domain' => $domain, 'framework' => 'laravel', 'php_version' => '8.4'])
+                ->call('save')
+                ->assertHasErrors(['data.domain']);
         }
         $this->assertSame(0, Site::count());
     }
 
     public function test_unknown_php_version_is_rejected(): void
     {
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => 'a.example.com', 'framework' => 'laravel', 'php_version' => '7.4'])
-            ->call('create')
-            ->assertHasFormErrors(['php_version']);
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'a.example.com', 'framework' => 'laravel', 'php_version' => '7.4'])
+            ->call('save')
+            ->assertHasErrors(['data.php_version']);
     }
 
     public function test_delete_requires_typing_the_domain(): void
     {
         $site = Site::create(['domain' => 'old.example.com', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('delete', $site, data: ['confirm' => 'wrong.example.com'])
-            ->assertHasTableActionErrors(['confirm']);
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'delete', ['confirm' => 'wrong.example.com'])
+            ->assertHasErrors();
         $this->assertModelExists($site);
 
         $this->agent->shouldReceive('call')->once()
             ->with('site.delete', ['domain' => 'old.example.com', 'confirm' => 'old.example.com'])
             ->andReturn(['trashed_to' => '/srv/sites/.trash/old.example.com-x']);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('delete', $site, data: ['confirm' => 'old.example.com'])
-            ->assertHasNoTableActionErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'delete', ['confirm' => 'old.example.com'])
+            ->assertHasNoErrors();
         $this->assertModelMissing($site);
     }
 }

@@ -11,6 +11,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\RelationManagers\DatabaseBackups;
 use Illuminate\Support\Number;
 use NyonCode\WireCore\Actions\Action;
@@ -198,8 +199,8 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             ->modalDescription('Vytvoří databázi a jejího vlastníka se stejným názvem a náhodným heslem. S připojeným webem se údaje zapíší rovnou do jeho .env a panel heslo neuvidí.')
             ->fillFormUsing(fn () => ['engine' => $engines->keys()->first(), 'site_id' => null, 'name' => null])
             ->form([
-                Select::make('engine')->label('Engine')->options($engines->all())->required(),
-                Select::make('site_id')
+                Select::make('engine')->rules([Options::rule()])->label('Engine')->options($engines->all())->required(),
+                Select::make('site_id')->rules([Options::rule()])
                     ->label('Web')
                     ->options(fn () => Site::query()->where('status', 'active')->orderBy('domain')->pluck('domain', 'id')->all())
                     ->placeholder('nepřipojovat')

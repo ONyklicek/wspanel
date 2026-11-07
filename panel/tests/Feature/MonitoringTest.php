@@ -3,15 +3,11 @@
 namespace Tests\Feature;
 
 use App\Actions\Monitoring\ServerMetrics;
-use App\Filament\Widgets\Monitoring\CpuChart;
-use App\Filament\Widgets\Monitoring\LiveStats;
-use App\Filament\Widgets\Monitoring\SitesLoadTable;
 use App\Models\ServerMetric;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
 use Tests\TestCase;
@@ -83,9 +79,10 @@ class MonitoringTest extends TestCase
         $this->agent->shouldReceive('call')->with('sys.metrics')->andReturn($this->snapshot());
         Cache::flush();
 
-        $this->get('/monitoring')->assertOk()->assertSee('Vytížení serveru');
-        Livewire::test(LiveStats::class)->assertSee('12,5 %')->assertSee('91 %')->assertSee('1 d 1 h');
-        Livewire::test(SitesLoadTable::class)->assertSee('shop.example.com')->assertSee('55,5 %')->assertSee('5,0 GB');
-        Livewire::test(CpuChart::class)->assertOk();
+        $this->get('/monitoring')->assertOk()
+            ->assertSee('Vytížení serveru')
+            ->assertSee('12,5 %')->assertSee('91 %')->assertSee('1 d 1 h')
+            ->assertSee('shop.example.com')->assertSee('55,5 %')->assertSee('5,0 GB')
+            ->assertSee('php-fpm8.4');
     }
 }

@@ -21,7 +21,10 @@ class DatabaseBackups extends RelationManager
 
     public function table(Table $table): Table
     {
+        // Set here as well: WireStack 2.9 scopes the query once per request and
+        // loses it when an action rebuilds the table (invalidateTable()).
         return $table
+            ->query($this->getRelationship()->getQuery())
             ->columns([
                 TextColumn::make('taken_at')->label('Pořízeno')->dateTime('j. n. Y H:i')->sortable()
                     ->description(fn (Backup $record) => $record->taken_at?->diffForHumans()),

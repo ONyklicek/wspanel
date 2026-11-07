@@ -10,6 +10,7 @@ use App\Models\CronJob;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
 use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
@@ -69,9 +70,9 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
         };
 
         return [
-            Select::make('site_id')->label('Web')->required()->live()->disabled($editing)
+            Select::make('site_id')->rules([Options::rule()])->label('Web')->required()->live()->disabled($editing)
                 ->options(Site::query()->where('status', 'active')->where('mode', '!=', SiteMode::Node)->orderBy('domain')->pluck('domain', 'id')->all()),
-            Select::make('kind')->label('Typ')->required()->live()->options(fn ($get) => $kinds(Site::find($get('site_id')))),
+            Select::make('kind')->rules([Options::rule()])->label('Typ')->required()->live()->options(fn ($get) => $kinds(Site::find($get('site_id')))),
             TextInput::make('command')
                 ->label('Příkaz a argumenty (u PHP skriptu cesta relativně k releasu)')
                 ->placeholder('backup:run --only-db')

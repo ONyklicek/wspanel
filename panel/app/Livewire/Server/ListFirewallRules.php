@@ -7,6 +7,7 @@ use App\Actions\Firewall\SyncFirewall;
 use App\Actions\ManagePanelAccess;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\Resources\FirewallRuleResource;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
@@ -56,13 +57,13 @@ class ListFirewallRules extends ListPage
                 ->icon('outline:plus')
                 ->form([
                     Grid::make()->columns(3)->schema([
-                        Select::make('action')->label('Akce')->options(['allow' => 'Povolit', 'deny' => 'Zakázat'])->default('allow')->required(),
+                        Select::make('action')->rules([Options::rule()])->label('Akce')->options(['allow' => 'Povolit', 'deny' => 'Zakázat'])->default('allow')->required(),
                         TextInput::make('port')->label('Port')->integer()->minValue(1)->maxValue(65535)->required(),
-                        Select::make('proto')->label('Protokol')->options(['tcp' => 'TCP', 'udp' => 'UDP'])->default('tcp')->required(),
+                        Select::make('proto')->rules([Options::rule()])->label('Protokol')->options(['tcp' => 'TCP', 'udp' => 'UDP'])->default('tcp')->required(),
                     ]),
                     TextInput::make('from')->label('Odkud (IP nebo síť)')->placeholder('odkudkoli')
                         ->helperText('Např. 203.0.113.10 nebo 10.0.0.0/24. Prázdné = odkudkoli.')
-                        ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                        ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
                             if (filled($value) && ! self::isIpOrCidr(trim((string) $value))) {
                                 $fail('Zadejte IP adresu nebo síť v CIDR.');
                             }

@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Actions\Sites\DeployTrigger;
 use App\Actions\Sites\ManageWebhook;
-use App\Filament\Resources\Sites\Pages\DeploySite;
+use App\Livewire\Sites\SiteDeploy as DeploySite;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\WebhookDelivery;
@@ -16,11 +16,13 @@ use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class DeployWebhookTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -214,8 +216,10 @@ class DeployWebhookTest extends TestCase
         $this->actingAs(User::factory()->create());
         $this->agent->shouldReceive('call')->with('deploy.log', Mockery::any())->andReturn(['content' => '', 'offset' => 0, 'status' => 'success']);
         Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->mountAction('webhook')
-            ->callAction('rotateWebhook');
+            ->call('mountAction', 'automation')
+            ->call('callModalFooterAction', 'rotateWebhook')
+            ->assertSet('mountedActions.0.data.secret', fn ($secret) => $secret !== $oldSecret && strlen($secret) === 64)
+            ->assertNotified('nové URL');
 
         $this->site->refresh();
         $this->assertNotSame($oldId, $this->site->webhook_id);

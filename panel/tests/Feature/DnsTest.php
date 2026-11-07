@@ -4,22 +4,25 @@ namespace Tests\Feature;
 
 use App\Actions\Dns\ManageDnsZones;
 use App\Enums\DnsProvider;
-use App\Filament\Resources\DnsZones\Pages\CreateDnsZone;
-use App\Filament\Resources\DnsZones\RecordForm;
-use App\Filament\Resources\DnsZones\Widgets\ZoneRecords;
+use App\Livewire\Dns\CreateDnsZone;
+use App\Livewire\Dns\ViewDnsZone;
+use App\Livewire\Dns\ZoneRecords;
 use App\Models\DnsZone;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Wire\Dns\RecordForm;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class DnsTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -46,10 +49,9 @@ class DnsTest extends TestCase
             return true;
         }))->andReturn([]);
 
-        Livewire::test(CreateDnsZone::class)
-            ->fillForm(['domain' => 'Example.com', 'provider' => 'local', 'nameservers' => ['ns1.panel.example.com', 'ns2.panel.example.com'], 'recommended' => true])
-            ->call('create')
-            ->assertHasNoFormErrors();
+        $this->fillForm(Livewire::test(CreateDnsZone::class), ['domain' => 'Example.com', 'provider' => 'local', 'nameservers' => ['ns1.panel.example.com', 'ns2.panel.example.com'], 'recommended' => true])
+            ->call('save')
+            ->assertHasNoErrors();
 
         $this->assertSame(DnsProvider::Local, DnsZone::sole()->provider);
         $this->assertSame(['example.com A', 'example.com CAA', 'example.com TXT', '_dmarc.example.com TXT'], $set);
@@ -79,16 +81,15 @@ class DnsTest extends TestCase
             ]]),
         ]);
 
-        Livewire::test(CreateDnsZone::class)
-            ->fillForm(['domain' => 'example.com', 'provider' => 'cloudflare', 'cloudflare_token' => 'cf-token', 'recommended' => false])
-            ->call('create')
-            ->assertHasNoFormErrors();
+        $this->fillForm(Livewire::test(CreateDnsZone::class), ['domain' => 'example.com', 'provider' => 'cloudflare', 'cloudflare_token' => 'cf-token', 'recommended' => false])
+            ->call('save')
+            ->assertHasNoErrors();
 
         $zone = DnsZone::sole();
         $this->assertSame('z1', $zone->cloudflare_zone_id);
         $this->assertNotSame('cf-token', $zone->getRawOriginal('cloudflare_token'));
 
-        Livewire::test(ZoneRecords::class, ['record' => $zone])->assertSee('10 mx1.example.net')->assertSee('20 mx2.example.net');
+        Livewire::test(ZoneRecords::class, ['zone' => $zone->id])->assertSee('10 mx1.example.net')->assertSee('20 mx2.example.net');
         Http::assertSent(fn ($r) => $r->hasHeader('Authorization', 'Bearer cf-token'));
     }
 
@@ -98,5 +99,44 @@ class DnsTest extends TestCase
         $this->assertSame('www.example.com', RecordForm::fqdn('www', 'example.com'));
         $this->assertSame('www.example.com', RecordForm::fqdn('www.example.com.', 'example.com'));
         $this->assertSame(['a', 'b'], RecordForm::values("a\n\n b \r\n"));
+    }
+
+    public function test_records_are_added_edited_and_deleted_from_the_zone_page(): void
+    {
+        $zone = DnsZone::create(['domain' => 'example.com', 'provider' => 'local']);
+        $this->agent->shouldReceive('call')->with('dns.records', ['domain' => 'example.com'])->andReturn(['rrsets' => [
+            ['name' => 'www.example.com', 'type' => 'A', 'ttl' => 3600, 'records' => ['198.51.100.1']],
+            ['name' => 'example.com', 'type' => 'TXT', 'ttl' => 300, 'records' => ['"v=spf1 a mx ~all"']],
+        ]]);
+        $this->agent->shouldReceive('call')->once()
+            ->with('dns.record_set', ['domain' => 'example.com', 'name' => 'mail.example.com', 'type' => 'A', 'ttl' => 600, 'records' => ['203.0.113.10']])
+            ->andReturn([]);
+        $this->agent->shouldReceive('call')->once()
+            ->with('dns.record_set', ['domain' => 'example.com', 'name' => 'www.example.com', 'type' => 'A', 'ttl' => 300, 'records' => ['198.51.100.1', '198.51.100.2']])
+            ->andReturn([]);
+        $this->agent->shouldReceive('call')->once()
+            ->with('dns.record_set', ['domain' => 'example.com', 'name' => 'example.com', 'type' => 'TXT', 'ttl' => 300, 'records' => []])
+            ->andReturn([]);
+
+        $this->pageAction(Livewire::test(ViewDnsZone::class, ['record' => $zone->id]), 'add', ['name' => 'mail', 'type' => 'A', 'ttl' => 600, 'records' => "203.0.113.10\n"])
+            ->assertHasNoErrors()
+            ->assertNotified('Uloženo: mail.example.com A');
+
+        $records = Livewire::test(ZoneRecords::class, ['zone' => $zone->id]);
+        $this->tableAction($records, 'www.example.com|A', 'edit', ['ttl' => 300, 'records' => "198.51.100.1\n198.51.100.2"])
+            ->assertHasNoErrors()
+            ->assertNotified('Uloženo: www.example.com A');
+        $this->tableAction($records, 'example.com|TXT', 'delete')
+            ->assertNotified('Smazáno: example.com TXT');
+    }
+
+    public function test_record_type_must_be_one_of_the_offered(): void
+    {
+        $zone = DnsZone::create(['domain' => 'example.com', 'provider' => 'local']);
+        $this->agent->shouldReceive('call')->with('dns.records', ['domain' => 'example.com'])->andReturn(['rrsets' => []]);
+        $this->agent->shouldNotReceive('call')->with('dns.record_set', Mockery::any());
+
+        $this->pageAction(Livewire::test(ViewDnsZone::class, ['record' => $zone->id]), 'add', ['name' => 'x', 'type' => 'PTR', 'ttl' => 600, 'records' => 'a'])
+            ->assertHasErrors();
     }
 }

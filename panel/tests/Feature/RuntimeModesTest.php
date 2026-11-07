@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Actions\Services\SyncServices;
 use App\Enums\SiteMode;
-use App\Filament\Resources\Sites\Pages\CreateSite;
-use App\Filament\Resources\Sites\Pages\ListSites;
+use App\Livewire\Sites\CreateSitePage as CreateSite;
+use App\Livewire\Sites\ListSites;
 use App\Models\Service;
 use App\Models\Site;
 use App\Models\User;
@@ -15,11 +15,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class RuntimeModesTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -46,12 +48,11 @@ class RuntimeModesTest extends TestCase
             ->with('site.create', ['domain' => 'ssr.example.com', 'mode' => 'node', 'framework' => 'nuxt', 'node_version' => '24', 'tls' => 'auto'])
             ->andReturn(['mode' => 'node', 'framework' => 'nuxt', 'node_version' => '24', 'port' => 30001, 'php_version' => '', 'system_user' => 'web_ssr_example_com']);
 
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => 'ssr.example.com', 'mode' => 'node'])
-            ->assertFormSet(['framework' => 'nuxt'])   // framework follows the mode
-            ->fillForm(['node_version' => '24'])
-            ->call('create')
-            ->assertHasNoFormErrors();
+        $page = $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'ssr.example.com', 'mode' => 'node'])
+            ->assertSet('data.framework', 'nuxt');   // framework follows the mode
+        $this->fillForm($page, ['node_version' => '24'])
+            ->call('save')
+            ->assertHasNoErrors();
 
         $site = Site::sole();
         $this->assertSame(SiteMode::Node, $site->mode);
@@ -66,10 +67,9 @@ class RuntimeModesTest extends TestCase
             ->with('site.create', ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony', 'tls' => 'auto'])
             ->andReturn(['mode' => 'worker', 'framework' => 'symfony', 'php_version' => '8.5', 'system_user' => 'web_w_example_com']);
 
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony'])
-            ->call('create')
-            ->assertHasNoFormErrors();
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony'])
+            ->call('save')
+            ->assertHasNoErrors();
 
         $this->assertSame('PHP 8.5 · FrankenPHP', Site::sole()->runtimeLabel());
     }
@@ -78,11 +78,9 @@ class RuntimeModesTest extends TestCase
     {
         $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
 
-        Livewire::test(CreateSite::class)
-            ->fillForm(['domain' => 'x.example.com', 'mode' => 'worker'])
-            ->fillForm(['framework' => 'php'])
-            ->call('create')
-            ->assertHasFormErrors(['framework']);
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'x.example.com', 'mode' => 'worker', 'framework' => 'php'])
+            ->call('save')
+            ->assertHasErrors(['data.framework']);
     }
 
     public function test_switch_mode_updates_the_site(): void
@@ -92,9 +90,8 @@ class RuntimeModesTest extends TestCase
             ->with('site.switch_mode', ['domain' => 'm.example.com', 'mode' => 'worker', 'framework' => 'laravel'])
             ->andReturn(['mode' => 'worker', 'framework' => 'laravel', 'php_version' => '8.5', 'system_user' => 'web_m_example_com']);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('switchMode', $site, data: ['mode' => 'worker', 'framework' => 'laravel'])
-            ->assertHasNoTableActionErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'switchMode', ['mode' => 'worker', 'framework' => 'laravel'])
+            ->assertHasNoErrors();
 
         $this->assertSame(SiteMode::Worker, $site->refresh()->mode);
         $this->assertSame('8.5', $site->php_version);
@@ -107,11 +104,11 @@ class RuntimeModesTest extends TestCase
         $this->agent->shouldReceive('call')->with('site.set_version', ['domain' => 'c.example.com', 'version' => '8.4'])
             ->andThrow(new AgentException('op_failed', 'php-fpm 8.4 config invalid', 'site.set_version'));
 
-        Livewire::test(ListSites::class)
-            ->assertTableActionHidden('setVersion', $worker)
-            ->assertTableActionVisible('setVersion', $classic)
-            ->callTableAction('setVersion', $classic, data: ['version' => '8.4'])
-            ->assertNotified();
+        $list = Livewire::test(ListSites::class);
+        $this->assertFalse($this->tableActionVisible($list, 'setVersion', $worker));
+        $this->assertTrue($this->tableActionVisible($list, 'setVersion', $classic));
+        $this->tableAction($list, $classic, 'setVersion', ['version' => '8.4'])
+            ->assertNotified('config invalid', 'error');
 
         $this->assertSame('8.3', $classic->refresh()->php_version);
     }
@@ -122,7 +119,7 @@ class RuntimeModesTest extends TestCase
         $this->agent->shouldReceive('call')->with('site.health', ['domain' => 'h.example.com'])
             ->andReturn(['ok' => false, 'error' => 'dial tcp 127.0.0.1:30000: connect: connection refused']);
 
-        Livewire::test(ListSites::class)->callTableAction('checkHealth', $site);
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'checkHealth');
 
         $site->refresh();
         $this->assertFalse($site->health_ok);

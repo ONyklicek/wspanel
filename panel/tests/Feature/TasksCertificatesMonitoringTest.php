@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Filament\Resources\Certificates\Pages\ListCertificates;
-use App\Filament\Resources\CronJobs\Pages\ListCronJobs;
-use App\Filament\Resources\Services\Pages\ListServices;
+use App\Livewire\Network\ListCertificates;
+use App\Livewire\Server\ListServices;
+use App\Livewire\Sites\ListCronJobs;
 use App\Models\Certificate;
 use App\Models\CronJob;
 use App\Models\Site;
@@ -16,11 +16,13 @@ use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class TasksCertificatesMonitoringTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -47,9 +49,8 @@ class TasksCertificatesMonitoringTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('cron.list', ['domain' => 'app.example.com'])
             ->andReturn([['id' => 1, 'kind' => 'artisan', 'args' => ['backup:run', '--only-db'], 'schedule' => '0 3 * * *', 'calendar' => '*-*-* 03:00:00']]);
 
-        Livewire::test(ListCronJobs::class)
-            ->callAction('create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'php artisan backup:run   --only-db', 'schedule' => ' 0 3  * * * '])
-            ->assertHasNoActionErrors();
+        $this->headerTableAction(Livewire::test(ListCronJobs::class), 'create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'php artisan backup:run   --only-db', 'schedule' => ' 0 3  * * * '])
+            ->assertHasNoErrors();
 
         $job = CronJob::sole();
         $this->assertSame('php artisan backup:run --only-db', $job->commandLine());
@@ -60,18 +61,16 @@ class TasksCertificatesMonitoringTest extends TestCase
         $site = $this->laravelSite();
         $this->agent->shouldNotReceive('call')->with('cron.add', Mockery::any());
 
-        Livewire::test(ListCronJobs::class)
-            ->callAction('create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'x; rm -rf ~', 'schedule' => '* * *'])
-            ->assertHasActionErrors(['command', 'schedule']);
+        $this->headerTableAction(Livewire::test(ListCronJobs::class), 'create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'x; rm -rf ~', 'schedule' => '* * *'])
+            ->assertHasErrors();
     }
 
     public function test_symfony_sites_offer_console_not_artisan(): void
     {
         $site = Site::create(['domain' => 'sf.example.com', 'mode' => 'classic', 'framework' => 'symfony', 'php_version' => '8.4', 'status' => 'active']);
 
-        Livewire::test(ListCronJobs::class)
-            ->callAction('create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'inspire', 'schedule' => '* * * * *'])
-            ->assertHasActionErrors(['kind']);
+        $this->headerTableAction(Livewire::test(ListCronJobs::class), 'create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'inspire', 'schedule' => '* * * * *'])
+            ->assertHasErrors();
     }
 
     public function test_certificate_precheck_reports_what_is_missing(): void
@@ -82,8 +81,7 @@ class TasksCertificatesMonitoringTest extends TestCase
             'dns_points_here' => false, 'port_443_open' => true, 'note' => 'Behind NAT…',
         ]);
 
-        Livewire::test(ListCertificates::class)
-            ->callTableAction('check', $cert)
+        $this->tableAction(Livewire::test(ListCertificates::class), $cert, 'check')
             ->assertNotified('app.example.com: něco chybí');
     }
 
@@ -101,9 +99,9 @@ class TasksCertificatesMonitoringTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('frankenphp.update', ['version' => 'v1.14.0'])->andReturn(['job_id' => 'abcdef0123456789']);
         $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => ['changed' => true]]);
 
-        Livewire::test(ListServices::class)
-            ->assertActionVisible('updateFrankenphp')
-            ->callAction('updateFrankenphp')
+        $list = Livewire::test(ListServices::class);
+        $this->assertTrue($this->headerActionVisible($list, 'updateFrankenphp'));
+        $this->headerTableAction($list, 'updateFrankenphp')
             ->assertNotified('FrankenPHP aktualizován na v1.14.0');
     }
 
@@ -112,7 +110,7 @@ class TasksCertificatesMonitoringTest extends TestCase
         Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.13.5'])]);
         $this->agent->shouldReceive('call')->with('sys.services')->andReturn([]);
 
-        Livewire::test(ListServices::class)->assertActionHidden('updateFrankenphp');
+        $this->assertFalse($this->headerActionVisible(Livewire::test(ListServices::class), 'updateFrankenphp'));
     }
 
     public function test_no_update_when_github_is_unreachable(): void

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Database;
+use App\Models\DnsZone;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -23,6 +25,8 @@ class PanelPagesTest extends TestCase
             'site.processes' => ['processes' => [['unit' => 'wspanel-web_a_example_com-queue.service', 'kind' => 'worker', 'name' => 'queue', 'active' => 'active', 'sub' => 'running', 'enabled' => 'enabled', 'restarts' => 0, 'memory' => 1048576]]],
             'sys.metrics' => ['cpus' => 4, 'cpu' => ['percent' => 5.5, 'iowait' => 0, 'steal' => 0], 'memory' => ['total' => 8 << 30, 'used' => 2 << 30, 'available' => 6 << 30, 'cache' => 0, 'swap_total' => 0, 'swap_used' => 0], 'net' => ['rx_bps' => 0, 'tx_bps' => 0], 'io' => ['read_bps' => 0, 'write_bps' => 0], 'filesystems' => [['mount' => '/', 'type' => 'ext4', 'total' => 100, 'used' => 10, 'free' => 90, 'inodes_total' => 10, 'inodes_free' => 9]], 'load' => [0.1, 0.1, 0.1], 'uptime_seconds' => 100, 'processes' => 10, 'sites' => [], 'top' => [], 'counters' => []],
             'deploy.history' => ['deploys' => [], 'releases' => ['initial'], 'current' => 'initial', 'running' => false, 'config' => null],
+            'mail.status' => ['default_mode' => 'capture', 'relay' => '', 'queue' => 0, 'services' => [], 'sites' => ['a.example.com' => 'capture'], 'dkim' => []],
+            'audit.tail' => [['ts' => '2026-11-07T10:00:00Z', 'op' => 'site.create', 'ok' => true, 'duration_ms' => 12, 'peer_uid' => 999]],
             'sys.site_disk' => ['sizes' => []],
             'dns.records' => ['rrsets' => [['name' => 'www.example.com', 'type' => 'CNAME', 'ttl' => 3600, 'records' => ['example.com.']]]],
             'db.list' => ['databases' => []],
@@ -45,14 +49,14 @@ class PanelPagesTest extends TestCase
 
     public function test_database_screens_render(): void
     {
-        $db = \App\Models\Database::create(['engine' => 'mariadb', 'name' => 'shop_db', 'site_id' => $this->site()->id]);
+        $db = Database::create(['engine' => 'mariadb', 'name' => 'shop_db', 'site_id' => $this->site()->id]);
         $this->get('/databases')->assertOk()->assertSee('shop_db');
         $this->get("/databases/{$db->id}")->assertOk()->assertSee('Zálohy');
     }
 
     public function test_dns_screens_render(): void
     {
-        $zone = \App\Models\DnsZone::create(['domain' => 'example.com', 'provider' => 'local']);
+        $zone = DnsZone::create(['domain' => 'example.com', 'provider' => 'local']);
         $this->get('/dns')->assertOk()->assertSee('example.com');
         $this->get('/dns/create')->assertOk();
         $this->get("/dns/{$zone->id}")->assertOk()->assertSee('www');
@@ -68,6 +72,14 @@ class PanelPagesTest extends TestCase
     public function test_monitoring_renders(): void
     {
         $this->get('/monitoring')->assertOk()->assertSee('Vytížení serveru');
+    }
+
+    public function test_mail_audit_help_render(): void
+    {
+        $this->site();
+        $this->get('/mail')->assertOk()->assertSee('a.example.com');
+        $this->get('/audit')->assertOk();
+        $this->get('/help?doc=deploy')->assertOk()->assertSee('Deploy');
     }
 
     public function test_site_screens_render(): void

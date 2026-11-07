@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Filament\Resources\Sites\Pages\DeploySite;
+use App\Livewire\Sites\SiteDeploy as DeploySite;
 use App\Models\Deployment;
 use App\Models\Site;
 use App\Models\User;
@@ -11,11 +11,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class DeployTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -56,9 +58,8 @@ class DeployTest extends TestCase
     {
         $this->agent->shouldNotReceive('call')->with('deploy.config', Mockery::any());
 
-        Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->callAction('settings', ['repo' => 'https://user:ghp_token@github.com/acme/app.git', 'branch' => 'main', 'keep' => 5])
-            ->assertHasActionErrors(['repo']);
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => 'https://user:ghp_token@github.com/acme/app.git', 'branch' => 'main', 'keep' => 5])
+            ->assertHasErrors();
     }
 
     public function test_settings_are_sent_to_the_agent(): void
@@ -68,9 +69,8 @@ class DeployTest extends TestCase
             'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3,
         ])->andReturn([]);
 
-        Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->callAction('settings', ['repo' => 'https://github.com/acme/app.git', 'branch' => 'release/2', 'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3])
-            ->assertHasNoActionErrors();
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => 'https://github.com/acme/app.git', 'branch' => 'release/2', 'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3])
+            ->assertHasNoErrors();
     }
 
     public function test_deploy_starts_a_job_and_follows_its_log(): void
@@ -96,8 +96,7 @@ class DeployTest extends TestCase
         $this->agent->shouldReceive('call')->with('deploy.log', ['domain' => 'app.example.com', 'id' => '20261107T110000Z', 'offset' => 17])
             ->andReturn(['content' => "==> Composer\n", 'offset' => 30, 'status' => 'running']);
 
-        Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->callAction('deploy')
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'deploy')
             ->assertSet('logRelease', '20261107T110000Z')
             ->assertSet('log', "==> Fetch source\n")
             ->call('refreshLog')
@@ -110,8 +109,7 @@ class DeployTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('deploy.rollback', ['domain' => 'app.example.com', 'release' => 'initial'])
             ->andReturn(['current' => 'initial', 'healthy' => true, 'health_error' => '']);
 
-        Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->callAction('rollback', ['release' => 'initial'])
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'rollback', ['release' => 'initial'])
             ->assertNotified('Web běží na releasu initial');
     }
 
@@ -120,9 +118,8 @@ class DeployTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('deploy.config', Mockery::any())->andReturn([]);
         $this->agent->shouldReceive('call')->once()->with('site.opcache', ['domain' => 'app.example.com', 'production' => true])->andReturn([]);
 
-        Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->callAction('settings', ['repo' => 'git@github.com:acme/app.git', 'branch' => 'main', 'keep' => 5, 'opcache_production' => true])
-            ->assertHasNoActionErrors();
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => 'git@github.com:acme/app.git', 'branch' => 'main', 'keep' => 5, 'opcache_production' => true])
+            ->assertHasNoErrors();
     }
 
     public function test_env_is_read_and_saved_through_the_agent(): void
@@ -131,10 +128,10 @@ class DeployTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('env.set', ['domain' => 'app.example.com', 'content' => "APP_NAME=Shop\nAPP_KEY=base64:x"])->andReturn([]);
 
         Livewire::test(DeploySite::class, ['record' => $this->site->id])
-            ->mountAction('env')
-            ->assertActionDataSet(['content' => "APP_NAME=Shop\n"])
-            ->setActionData(['content' => "APP_NAME=Shop\r\nAPP_KEY=base64:x"])
-            ->callMountedAction()
+            ->call('mountAction', 'env')
+            ->assertSet('mountedActions.0.data.content', "APP_NAME=Shop\n")
+            ->set('mountedActions.0.data.content', "APP_NAME=Shop\r\nAPP_KEY=base64:x")
+            ->call('callMountedAction')
             ->assertNotified('.env uložen');
     }
 }

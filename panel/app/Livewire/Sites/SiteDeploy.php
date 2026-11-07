@@ -12,11 +12,13 @@ use App\Models\Site;
 use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
+use NyonCode\WireCore\Actions\ModalFooterAction;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
@@ -238,7 +240,7 @@ class SiteDeploy extends ViewPage
                     ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
                 Toggle::make('assets')->label('Buildit assety (npm ci + npm run build)')->visible(! $site->framework->isNode()),
                 Toggle::make('auto_rollback')->label('Když nový release neodpovídá, vrátit předchozí'),
-                Select::make('keep')->label('Držet releasů')->options(array_combine(range(2, 10), range(2, 10)))->required(),
+                Select::make('keep')->rules([Options::rule()])->label('Držet releasů')->options(array_combine(range(2, 10), range(2, 10)))->required(),
                 Toggle::make('opcache_production')
                     ->label('Produkční OPcache (nekontrolovat změny souborů)')
                     ->helperText('Rychlejší. Ruční úpravy přes SFTP se pak projeví až po restartu webu nebo dalším deployi.')
@@ -272,7 +274,7 @@ class SiteDeploy extends ViewPage
             ])
             ->form(fn () => [
                 Toggle::make('enabled')->label('Zapnuto'),
-                Radio::make('trigger')
+                Radio::make('trigger')->rules([Options::rule()])
                     ->label('Co spustí deploy')
                     ->options(self::TRIGGERS)
                     ->descriptions([
@@ -292,6 +294,20 @@ class SiteDeploy extends ViewPage
                 Placeholder::make('help')->hiddenLabel()
                     ->content('GitHub / Gitea / Forgejo: Settings → Webhooks, content type application/json, secret výše. GitLab: Settings → Webhooks, Secret token = secret. Bitbucket: Repository settings → Webhooks.')
                     ->hiddenWhen('trigger', ['poll_branch', 'poll_tags']),
+            ])
+            ->modalFooterActions([
+                ModalFooterAction::make('rotateWebhook')
+                    ->label('Nové URL a secret')
+                    ->icon('outline:arrow-path')
+                    ->color('warning')
+                    ->position('before')
+                    ->confirm('Staré URL i secret přestanou okamžitě platit; v repozitáři je bude potřeba zadat znovu. Pokračovat?')
+                    ->action(function ($set) {
+                        $site = app(ManageWebhook::class)->rotate($this->site());
+                        $set('url', ManageWebhook::url($site) ?? '');
+                        $set('secret', (string) $site->webhook_secret);
+                        Toast::success('Webhook má nové URL a secret', 'Zadejte je znovu v nastavení repozitáře.');
+                    }),
             ])
             ->action(function (array $data) {
                 $site = $this->site();
@@ -387,7 +403,7 @@ class SiteDeploy extends ViewPage
             ->modalHeading('Vrátit na předchozí release')
             ->modalDescription('Web se okamžitě přepne zpět, bez nového buildu. Databázové migrace se nevracejí.')
             ->form(fn () => [
-                Select::make('release')
+                Select::make('release')->rules([Options::rule()])
                     ->label('Release')
                     ->options(collect($this->releases)->reject(fn ($r) => $r === $this->current)->reverse()->mapWithKeys(fn ($r) => [$r => $r])->all())
                     ->default($this->releases[array_search($this->current, $this->releases, true) - 1] ?? null)

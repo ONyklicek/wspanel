@@ -13,6 +13,7 @@ use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
 use App\Support\Domains;
+use App\Wire\Forms\Options;
 use Illuminate\Validation\ValidationException;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
 use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
@@ -92,14 +93,14 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                     TextInput::make('domain')->label('Doména')->placeholder('example.com')->required()
                         ->datalist(Site::query()->pluck('domain')->all())
                         ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
-                        ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                        ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
                             if (! Domains::isValid($value)) {
                                 $fail('Neplatná doména.');
                             } elseif (DnsZone::query()->where('domain', Domains::normalize($value))->exists()) {
                                 $fail('Tato zóna už v panelu je.');
                             }
                         }]),
-                    Radio::make('provider')->label('Kde je zóna')
+                    Radio::make('provider')->rules([Options::rule()])->label('Kde je zóna')
                         ->options(collect(DnsProvider::cases())->mapWithKeys(fn (DnsProvider $p) => [$p->value => $p->getLabel()])->all())
                         ->descriptions(collect(DnsProvider::cases())->mapWithKeys(fn (DnsProvider $p) => [$p->value => $p->getDescription()
                             .($p === DnsProvider::Local && ! $local ? ' (Není nainstalováno: install.sh --dns=powerdns.)' : '')])->all())

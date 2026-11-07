@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Filament\Pages\Mail;
+use App\Livewire\Pages\MailPage as Mail;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -10,11 +10,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class MailTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -72,9 +74,8 @@ class MailTest extends TestCase
             ->with('mail.relay', ['host' => 'smtp.eu.mailgun.org', 'port' => 587, 'username' => 'postmaster', 'password' => 'key-123'])
             ->andReturn(['relay' => '[smtp.eu.mailgun.org]:587']);
 
-        Livewire::test(Mail::class)
-            ->callAction('relay', data: ['host' => 'smtp.eu.mailgun.org', 'port' => 587, 'username' => 'postmaster', 'password' => 'key-123'])
-            ->assertHasNoActionErrors();
+        $this->pageAction(Livewire::test(Mail::class), 'relay', ['host' => 'smtp.eu.mailgun.org', 'port' => 587, 'username' => 'postmaster', 'password' => 'key-123'])
+            ->assertHasNoErrors();
     }
 
     public function test_forward_auth_for_mailpit(): void

@@ -7,6 +7,7 @@ use App\Actions\Databases\SyncDatabases;
 use App\Models\Database;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
@@ -55,7 +56,7 @@ class ViewDatabase extends ViewPage
                 ->color('gray')
                 ->fillFormUsing(fn (Database $record) => ['frequency' => $record->backup_frequency, 'keep' => $record->backup_keep])
                 ->form([
-                    Select::make('frequency')->label('Frekvence')->options(['off' => 'Vypnuto', 'daily' => 'Denně (kolem 3:00)', 'weekly' => 'Týdně (v neděli kolem 3:00)'])->required(),
+                    Select::make('frequency')->rules([Options::rule()])->label('Frekvence')->options(['off' => 'Vypnuto', 'daily' => 'Denně (kolem 3:00)', 'weekly' => 'Týdně (v neděli kolem 3:00)'])->required(),
                     TextInput::make('keep')->label('Držet záloh')->integer()->minValue(1)->maxValue(90)->required(),
                 ])
                 ->action(function (Database $record, array $data) {

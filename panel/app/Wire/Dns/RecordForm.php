@@ -2,6 +2,7 @@
 
 namespace App\Wire\Dns;
 
+use App\Wire\Forms\Options;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
@@ -29,7 +30,7 @@ final class RecordForm
             TextInput::make('name')->label('Název')->placeholder('@')
                 ->helperText("Prázdné nebo @ = {$domain}. Jinak např. www, mail, _dmarc.")
                 ->readOnly($editing),
-            Select::make('type')->label('Typ')->options(array_combine(self::TYPES, self::TYPES))->required()->live()->disabled($editing),
+            Select::make('type')->rules([Options::rule()])->label('Typ')->options(array_combine(self::TYPES, self::TYPES))->required()->live()->disabled($editing),
             TextInput::make('ttl')->label('TTL (s)')->integer()->minValue(60)->maxValue(604800)->default(3600)->required(),
             Textarea::make('records')->label('Hodnoty')->rows(3)->required()
                 ->helperText(fn ($get) => 'Jedna na řádek. '.(self::HINTS[$get('type')] ?? '')),

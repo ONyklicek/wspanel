@@ -3,25 +3,25 @@
 namespace Tests\Feature;
 
 use App\Actions\Databases\SyncDatabases;
-use App\Filament\Resources\Databases\Pages\ListDatabases;
-use App\Filament\Resources\Databases\Pages\ViewDatabase;
-use App\Filament\Resources\Databases\RelationManagers\BackupsRelationManager;
+use App\Livewire\Databases\ListDatabases;
 use App\Models\Backup;
 use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
-use Filament\Notifications\Notification;
+use App\Wire\RelationManagers\DatabaseBackups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
 use PHPUnit\Framework\Attributes\TestWith;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class DatabasesTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -52,9 +52,8 @@ class DatabasesTest extends TestCase
             ->with('db.create', ['engine' => 'mariadb', 'name' => 'shop_example_com', 'domain' => 'shop.example.com'])
             ->andReturn(['name' => 'shop_example_com', 'env_file' => '/srv/sites/shop.example.com/shared/.env']);
 
-        Livewire::test(ListDatabases::class)
-            ->callAction('createDatabase', ['engine' => 'mariadb', 'site_id' => $site->id, 'name' => 'shop_example_com'])
-            ->assertHasNoActionErrors()
+        $this->headerTableAction(Livewire::test(ListDatabases::class), 'createDatabase', ['engine' => 'mariadb', 'site_id' => $site->id, 'name' => 'shop_example_com'])
+            ->assertHasNoErrors()
             ->assertNotified('Databáze shop_example_com vytvořena');
 
         $this->assertTrue(Database::sole()->site->is($site));
@@ -66,18 +65,12 @@ class DatabasesTest extends TestCase
             ->with('db.create', ['engine' => 'postgresql', 'name' => 'reports'])
             ->andReturn(['name' => 'reports', 'password' => 'S3cretGeneratedByAgent']);
 
-        Livewire::test(ListDatabases::class)
-            ->callAction('createDatabase', ['engine' => 'postgresql', 'site_id' => null, 'name' => 'reports'])
-            ->assertHasNoActionErrors();
+        $this->headerTableAction(Livewire::test(ListDatabases::class), 'createDatabase', ['engine' => 'postgresql', 'site_id' => null, 'name' => 'reports'])
+            ->assertHasNoErrors()
+            ->assertNotified('heslo (zobrazeno jen teď): S3cretGeneratedByAgent', 'success');
 
         $this->assertDatabaseHas('databases', ['engine' => 'postgresql', 'name' => 'reports', 'site_id' => null]);
-        Notification::assertNotified(
-            Notification::make()
-                ->title('Databáze reports vytvořena')
-                ->body('Uživatel reports, heslo: S3cretGeneratedByAgent (zobrazeno jen teď)')
-                ->success()
-                ->persistent(),
-        );
+        $this->assertSame(0, substr_count(json_encode(Database::sole()->getAttributes()), 'S3cret'));
     }
 
     #[TestWith(['Shop'])]
@@ -89,9 +82,8 @@ class DatabasesTest extends TestCase
     {
         $this->agent->shouldNotReceive('call')->with('db.create', Mockery::any());
 
-        Livewire::test(ListDatabases::class)
-            ->callAction('createDatabase', ['engine' => 'mariadb', 'site_id' => null, 'name' => $name])
-            ->assertHasActionErrors(['name']);
+        $this->headerTableAction(Livewire::test(ListDatabases::class), 'createDatabase', ['engine' => 'mariadb', 'site_id' => null, 'name' => $name])
+            ->assertHasErrors();
     }
 
     public function test_sync_mirrors_real_databases_and_backups(): void
@@ -119,9 +111,8 @@ class DatabasesTest extends TestCase
         $db = Database::create(['engine' => 'mariadb', 'name' => 'shop']);
         $backup = Backup::create(['database_id' => $db->id, 'file' => 'shop-20261107T030000Z.sql.gz', 'size' => 1, 'taken_at' => now()]);
 
-        Livewire::test(BackupsRelationManager::class, ['ownerRecord' => $db, 'pageClass' => ViewDatabase::class])
-            ->callTableAction('restore', $backup, data: ['confirm' => 'other'])
-            ->assertHasTableActionErrors(['confirm']);
+        $this->tableAction(Livewire::test(DatabaseBackups::class, ['ownerRecord' => $db]), $backup, 'restore', ['confirm' => 'other'])
+            ->assertHasErrors();
 
         $this->agent->shouldReceive('call')->once()
             ->with('db.restore', ['engine' => 'mariadb', 'name' => 'shop', 'backup' => 'shop-20261107T030000Z.sql.gz', 'confirm' => 'shop'])
@@ -129,8 +120,7 @@ class DatabasesTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])
             ->andReturn(['status' => 'done', 'output' => ['snapshot' => 'shop-20261107T040000Z-pre-restore.sql.gz']]);
 
-        Livewire::test(BackupsRelationManager::class, ['ownerRecord' => $db, 'pageClass' => ViewDatabase::class])
-            ->callTableAction('restore', $backup, data: ['confirm' => 'shop'])
+        $this->tableAction(Livewire::test(DatabaseBackups::class, ['ownerRecord' => $db]), $backup, 'restore', ['confirm' => 'shop'])
             ->assertNotified('Databáze obnovena');
     }
 
@@ -139,14 +129,14 @@ class DatabasesTest extends TestCase
         $backup = $this->backupFile('shop', 'shop-20261107T030000Z.sql.gz', 'dump-data');
         auth()->logout();
 
-        $this->get(route('filament.admin.backups.download', $backup))->assertRedirect('/login');
+        $this->get(route('backups.download', $backup))->assertRedirect('/login');
     }
 
     public function test_admin_downloads_a_backup(): void
     {
         $backup = $this->backupFile('shop', 'shop-20261107T030000Z.sql.gz', 'dump-data');
 
-        $this->get(route('filament.admin.backups.download', $backup))
+        $this->get(route('backups.download', $backup))
             ->assertOk()
             ->assertDownload('shop-20261107T030000Z.sql.gz');
     }
@@ -158,8 +148,8 @@ class DatabasesTest extends TestCase
         $foreign = Backup::create(['database_id' => $shop->id, 'file' => 'other-20261107T030000Z.sql.gz', 'size' => 1, 'taken_at' => now()]);
         $traversal = Backup::create(['database_id' => $shop->id, 'file' => '../other/other-20261107T030000Z.sql.gz', 'size' => 1, 'taken_at' => now()]);
 
-        $this->get(route('filament.admin.backups.download', $foreign))->assertNotFound();
-        $this->get(route('filament.admin.backups.download', $traversal))->assertNotFound();
+        $this->get(route('backups.download', $foreign))->assertNotFound();
+        $this->get(route('backups.download', $traversal))->assertNotFound();
         $this->assertNotNull($other->path());
     }
 
@@ -170,7 +160,7 @@ class DatabasesTest extends TestCase
         symlink('/etc/hosts', $this->backupDir.'/mariadb/shop/shop-20261107T030000Z.sql.gz');
         $backup = Backup::create(['database_id' => $db->id, 'file' => 'shop-20261107T030000Z.sql.gz', 'size' => 1, 'taken_at' => now()]);
 
-        $this->get(route('filament.admin.backups.download', $backup))->assertNotFound();
+        $this->get(route('backups.download', $backup))->assertNotFound();
     }
 
     public function test_opening_a_tool_posts_a_one_time_token(): void
@@ -180,7 +170,7 @@ class DatabasesTest extends TestCase
             ->with('db.access', ['engine' => 'mariadb', 'name' => 'shop', 'tool' => 'phpmyadmin'])
             ->andReturn(['token' => str_repeat('ab', 32), 'signon_path' => '/dbtools/pma/wspanel-signon.php']);
 
-        $this->get(route('filament.admin.dbtools.open', [$db, 'phpmyadmin']))
+        $this->get(route('dbtools.open', [$db, 'phpmyadmin']))
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('action="/dbtools/pma/wspanel-signon.php"', false)
@@ -195,7 +185,7 @@ class DatabasesTest extends TestCase
 
         $this->get('/db-open/'.$db->id.'/sqlite')->assertNotFound();
         auth()->logout();
-        $this->get(route('filament.admin.dbtools.open', [$db, 'adminer']))->assertRedirect('/login');
+        $this->get(route('dbtools.open', [$db, 'adminer']))->assertRedirect('/login');
     }
 
     public function test_installing_a_missing_engine(): void
@@ -204,15 +194,12 @@ class DatabasesTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('engine.install', ['engine' => 'postgresql'])->andReturn(['job_id' => 'abcdef0123456789']);
         $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => []]);
 
-        Livewire::test(ListDatabases::class)
-            ->assertActionVisible('installEngine')
-            ->callAction('installEngine', ['engine' => 'postgresql'])
-            ->assertHasNoActionErrors()
+        $this->headerTableAction(Livewire::test(ListDatabases::class), 'installEngine', ['engine' => 'postgresql'])
+            ->assertHasNoErrors()
             ->assertNotified('Engine nainstalován');
 
-        Livewire::test(ListDatabases::class)
-            ->callAction('installEngine', ['engine' => 'mariadb'])
-            ->assertHasActionErrors(['engine']);
+        $this->headerTableAction(Livewire::test(ListDatabases::class), 'installEngine', ['engine' => 'mariadb'])
+            ->assertHasErrors();
     }
 
     private function backupFile(string $dbName, string $file, string $content): Backup

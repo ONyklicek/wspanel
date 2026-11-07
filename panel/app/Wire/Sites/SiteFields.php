@@ -6,6 +6,7 @@ use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
+use Illuminate\Validation\Rule;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
@@ -27,7 +28,7 @@ final class SiteFields
             ->required()
             ->maxLength(253)
             ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
-            ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+            ->rules([fn () => function (string $attribute, mixed $value, \Closure $fail) {
                 if (! Domains::isValid($value)) {
                     $fail('Neplatná doména.');
                 }
@@ -47,7 +48,8 @@ final class SiteFields
                 'internal' => 'Pro domény ve vnitřní síti (.lan, .local, .internal…) a testy. Počítače jednou nainstalují kořenový certifikát (SSL → Kořenový certifikát).',
             ])
             ->default('auto')
-            ->required();
+            ->required()
+            ->rules([Rule::in(array_keys(self::TLS_OPTIONS))]);
     }
 
     /**
@@ -68,6 +70,7 @@ final class SiteFields
                 ->cards()
                 ->default($modes->first()->value)
                 ->required()
+                ->rules([Rule::in($modes->map(fn (SiteMode $m) => $m->value)->all())])
                 ->live()
                 ->afterStateUpdated(fn ($state, $set) => $set('framework', array_key_first(Framework::optionsForMode($state)))),
             Select::make('framework')
@@ -75,13 +78,15 @@ final class SiteFields
                 ->options(fn ($get) => Framework::optionsForMode($get('mode')))
                 ->default(array_key_first(Framework::optionsForMode($modes->first()->value)))
                 ->required()
+                ->rules([fn ($get) => Rule::in(array_keys(Framework::optionsForMode($get('mode'))))])
                 ->helperText('Určuje adresáře, .env, workery a postup deploye.'),
             Select::make('php_version')
                 ->label('Verze PHP')
                 ->options(fn () => $system->phpVersionOptions())
                 ->default(fn () => $system->defaultPhpVersion())
                 ->visibleWhen('mode', SiteMode::Classic->value)
-                ->requiredIf('mode', SiteMode::Classic->value),
+                ->requiredIf('mode', SiteMode::Classic->value)
+                ->rules([fn () => Rule::in(array_keys($system->phpVersionOptions()))]),
             Placeholder::make('worker_php')
                 ->label('PHP')
                 ->content(fn () => 'Worker režim běží na PHP '.($system->workerPhpVersion() ?? '?').' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+.')
@@ -91,7 +96,8 @@ final class SiteFields
                 ->options(fn () => $system->nodeVersionOptions())
                 ->default(fn () => array_key_first($system->nodeVersionOptions()))
                 ->visibleWhen('mode', SiteMode::Node->value)
-                ->requiredIf('mode', SiteMode::Node->value),
+                ->requiredIf('mode', SiteMode::Node->value)
+                ->rules([fn () => Rule::in(array_keys($system->nodeVersionOptions()))]),
         ];
     }
 }

@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Actions\Services\SyncServices;
 use App\Enums\ServiceType;
-use App\Filament\Resources\FirewallRules\Pages\ListFirewallRules;
-use App\Filament\Resources\Services\Pages\ListServices;
-use App\Filament\Resources\Sites\Pages\ListSites;
+use App\Livewire\Server\ListFirewallRules;
+use App\Livewire\Server\ListServices;
+use App\Livewire\Sites\ListSites;
 use App\Models\FirewallRule;
 use App\Models\Service;
 use App\Models\Site;
@@ -18,11 +18,13 @@ use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class ServicesAndFirewallTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -98,18 +100,19 @@ class ServicesAndFirewallTest extends TestCase
         $fpm = Service::where('unit', 'php8.3-fpm.service')->sole();
         $this->agent->shouldReceive('call')->once()->with('service.restart', ['service' => 'php-fpm', 'version' => '8.3'])->andReturn([]);
 
-        Livewire::test(ListServices::class)->callTableAction('restart', $fpm)->assertHasNoTableActionErrors();
+        $this->tableAction(Livewire::test(ListServices::class), $fpm, 'restart')->assertHasNoErrors();
     }
 
     public function test_panel_units_cannot_be_stopped_but_others_can(): void
     {
         $this->artisan('panel:sync');
-        Livewire::test(ListServices::class)
-            ->assertTableActionHidden('stop', Service::where('unit', 'panel-proxy.service')->sole())
-            ->assertTableActionHidden('stop', Service::where('unit', 'php8.4-fpm.service')->sole())
-            ->assertTableActionVisible('stop', Service::where('unit', 'php8.3-fpm.service')->sole())
-            ->assertTableActionVisible('reset', Service::where('unit', 'valkey-server.service')->sole())
-            ->assertTableActionHidden('reload', Service::where('unit', 'valkey-server.service')->sole());
+        $list = Livewire::test(ListServices::class);
+        $unit = fn (string $name) => Service::where('unit', $name)->sole();
+        $this->assertFalse($this->tableActionVisible($list, 'stop', $unit('panel-proxy.service')));
+        $this->assertFalse($this->tableActionVisible($list, 'stop', $unit('php8.4-fpm.service')));
+        $this->assertTrue($this->tableActionVisible($list, 'stop', $unit('php8.3-fpm.service')));
+        $this->assertTrue($this->tableActionVisible($list, 'reset', $unit('valkey-server.service')));
+        $this->assertFalse($this->tableActionVisible($list, 'reload', $unit('valkey-server.service')));
     }
 
     public function test_agent_errors_are_shown_not_thrown(): void
@@ -118,9 +121,8 @@ class ServicesAndFirewallTest extends TestCase
         $this->agent->shouldReceive('call')->with('service.stop', Mockery::any())
             ->andThrow(new AgentException('forbidden', 'cannot be stopped', 'service.stop'));
 
-        Livewire::test(ListServices::class)
-            ->callTableAction('stop', Service::where('unit', 'php8.3-fpm.service')->sole())
-            ->assertNotified();
+        $this->tableAction(Livewire::test(ListServices::class), Service::where('unit', 'php8.3-fpm.service')->sole(), 'stop')
+            ->assertNotified('cannot be stopped', 'error');
     }
 
     public function test_adding_a_firewall_rule(): void
@@ -129,9 +131,8 @@ class ServicesAndFirewallTest extends TestCase
             ->with('fw.allow', ['port' => 5432, 'proto' => 'tcp', 'from' => '10.0.0.7/24'])
             ->andReturn(['from' => '10.0.0.0/24']);
 
-        Livewire::test(ListFirewallRules::class)
-            ->callAction('add', ['action' => 'allow', 'port' => '5432', 'proto' => 'tcp', 'from' => '10.0.0.7/24', 'description' => 'DB z interní sítě'])
-            ->assertHasNoActionErrors();
+        $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'add', ['action' => 'allow', 'port' => '5432', 'proto' => 'tcp', 'from' => '10.0.0.7/24', 'description' => 'DB z interní sítě'])
+            ->assertHasNoErrors();
 
         $this->assertSame('DB z interní sítě', FirewallRule::where('port', 5432)->sole()->description);
     }
@@ -140,22 +141,22 @@ class ServicesAndFirewallTest extends TestCase
     {
         $this->agent->shouldNotReceive('call')->with('fw.allow', Mockery::any());
 
-        Livewire::test(ListFirewallRules::class)
-            ->callAction('add', ['action' => 'allow', 'port' => '70000', 'proto' => 'tcp', 'from' => 'kdekoli'])
-            ->assertHasActionErrors(['port', 'from']);
+        $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'add', ['action' => 'allow', 'port' => '70000', 'proto' => 'tcp', 'from' => 'kdekoli'])
+            ->assertHasErrors();
+        $this->assertSame(0, FirewallRule::where('port', 70000)->count());
     }
 
     public function test_protected_rules_cannot_be_deleted(): void
     {
         $this->artisan('panel:sync');
-        Livewire::test(ListFirewallRules::class)
-            ->assertTableActionHidden('delete', FirewallRule::where('port', 22)->sole())
-            ->assertTableActionVisible('delete', FirewallRule::where('port', 5432)->sole());
+        $list = Livewire::test(ListFirewallRules::class);
+        $this->assertFalse($this->tableActionVisible($list, 'delete', FirewallRule::where('port', 22)->sole()));
+        $this->assertTrue($this->tableActionVisible($list, 'delete', FirewallRule::where('port', 5432)->sole()));
 
         $this->agent->shouldReceive('call')->once()
             ->with('fw.delete', ['action' => 'allow', 'port' => 5432, 'proto' => 'tcp', 'from' => '10.0.0.0/24'])
             ->andReturn(['deleted' => true]);
-        Livewire::test(ListFirewallRules::class)->callTableAction('delete', FirewallRule::where('port', 5432)->sole());
+        $this->tableAction(Livewire::test(ListFirewallRules::class), FirewallRule::where('port', 5432)->sole(), 'delete');
     }
 
     public function test_worker_types_follow_the_framework(): void
@@ -165,17 +166,9 @@ class ServicesAndFirewallTest extends TestCase
             ->with('worker.create', ['domain' => 'sf.example.com', 'worker' => 'messenger'])
             ->andReturn(['started' => false]);
 
-        Livewire::test(ListSites::class)
-            ->callTableAction('addWorker', $site, data: ['worker' => 'horizon'])
-            ->assertHasTableActionErrors(['worker']);
-        Livewire::test(ListSites::class)
-            ->callTableAction('addWorker', $site, data: ['worker' => 'messenger'])
-            ->assertHasNoTableActionErrors();
-    }
-
-    public function test_dashboard_renders(): void
-    {
-        $this->artisan('panel:sync');
-        $this->get('/')->assertOk()->assertSee('Služby');
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'horizon'])
+            ->assertHasErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'messenger'])
+            ->assertHasNoErrors();
     }
 }

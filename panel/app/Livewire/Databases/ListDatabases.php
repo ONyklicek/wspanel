@@ -9,6 +9,7 @@ use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
+use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
 use Illuminate\Support\Facades\Cache;
 use NyonCode\WireCore\Actions\Action;
@@ -38,7 +39,7 @@ class ListDatabases extends ListPage
                 ->color('gray')
                 ->visible($missing->isNotEmpty())
                 ->modalDescription('Nainstaluje databázový server a PHP ovladače pro všechny verze PHP. Engine pak z panelu nejde odebrat (odinstalace by smazala data).')
-                ->form([Select::make('engine')->label('Engine')->options($missing->all())->required()])
+                ->form([Select::make('engine')->rules([Options::rule()])->label('Engine')->options($missing->all())->required()])
                 ->action(function (array $data) {
                     try {
                         $job = app(AgentClient::class)->call('engine.install', ['engine' => $data['engine']]);
