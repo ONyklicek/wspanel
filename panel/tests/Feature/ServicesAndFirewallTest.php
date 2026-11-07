@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
@@ -46,6 +47,14 @@ class ServicesAndFirewallTest extends TestCase
         ])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.services')->andReturnUsing(fn () => $this->units)->byDefault();
         $this->agent->shouldReceive('call')->with('site.health', Mockery::any())->andReturn(['ok' => true, 'status' => 200])->byDefault();
+        $this->agent->shouldReceive('call')->with('ssl.status')->andReturn([])->byDefault();
+        $this->agent->shouldReceive('call')->with('cron.list', Mockery::any())->andReturn([])->byDefault();
+        $this->agent->shouldReceive('call')->with('sys.resources')->andReturn([
+            'cpus' => 4, 'load' => [0.5, 0.4, 0.3],
+            'memory' => ['total' => 8 * 1024 ** 3, 'available' => 6 * 1024 ** 3],
+            'disks' => [['path' => '/', 'total' => 100 * 1024 ** 3, 'free' => 40 * 1024 ** 3]],
+        ])->byDefault();
+        Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.13.5'])]);
         $this->agent->shouldReceive('call')->with('fw.list')->andReturn([
             'active' => true,
             'protected_ports' => [22, 80, 443],

@@ -91,6 +91,46 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
 - fail2ban hlídá SSH. Root se může přihlásit jen klíčem; `--no-root-ssh` ho zakáže úplně.
 - Přímé SSH obchází audit panelu, proto panel u webu zobrazuje, že je zapnuté.
 
+## Databáze
+
+- **Enginy:** MariaDB a PostgreSQL, volitelné při instalaci (`--db=`). Později
+  je jde z panelu doinstalovat (`engine.install`), odebrat ne.
+- **Vznik databáze:** každá databáze má vlastníka se stejným jménem a náhodným
+  heslem.
+  - S připojeným webem agent zapíše údaje přímo do jeho `.env` (Laravel `DB_*`,
+    Symfony a Node `DATABASE_URL`) a heslo neopustí agenta.
+  - Admin hesla neexistují: root jde přes `unix_socket`, `postgres` přes peer.
+- **Izolace:**
+  - MariaDB `GRANT` escapuje `_` a `%`, takže práva neplatí pro podobně
+    pojmenovanou databázi jiného webu.
+  - PostgreSQL odebírá `CONNECT` pro `PUBLIC`.
+- **Zálohy** v `/var/backups/wspanel` (root:panel 0640):
+  - spuštění ručně, nebo plánovaně přes systemd timer s rotací,
+  - dump a obnova běží jako joby na pozadí,
+  - před obnovou se pořídí snímek,
+  - obnova PostgreSQL běží s právy vlastníka (`--role`), MariaDB s `--sandbox`.
+- **phpMyAdmin 5.2.3 a Adminer 6.2.0** na `/dbtools/` domény panelu:
+  - vlastní pool `dbtools`,
+  - přihlášení jen jednorázovým tokenem od agenta, s dočasným uživatelem
+    omezeným na jednu databázi a 30 minut,
+  - Adminer má server pevně na 127.0.0.1 (CVE-2021-21311).
+
+## SSL, úlohy, monitoring
+
+- **SSL:** certifikáty vydává a obnovuje edge proxy (Caddy) sama. Panel ukazuje
+  stav, vydavatele a poslední chybu z logu. Před vydáním umí zkontrolovat, že
+  DNS míří na server a port 443 je otevřený.
+- **Naplánované úlohy:**
+  - systemd timery pod uživatelem webu se sandboxem,
+  - příkazy jen `artisan …`, `bin/console …` nebo PHP skript webu, argumenty bez
+    shellových znaků,
+  - cron výraz se převede na `OnCalendar`.
+- **Dashboard:**
+  - zátěž, paměť a nejplnější disk,
+  - stav certifikátů,
+  - upozornění na novou verzi FrankenPHP (binárka se neaktualizuje sama a má v
+    sobě OpenSSL i PHP).
+
 ## Struktura webu
 
 ```
@@ -146,4 +186,7 @@ později jen doinstalovat (Fáze 4).
   - zrcadlení skutečného stavu do panelu (`panel:sync` každou minutu přes
     `panel-scheduler`) a přehled na dashboardu.
 - **Fáze 3:** worker režim (FrankenPHP + Octane / Symfony Runtime), Node SSR přes
-  fnm, přepínání režimů a verzí z panelu, kontrola, že web odpovídá.
+  fnm, přepínání režimů a verzí z panelu, kontrola, že web odpovídá, SSH/SFTP,
+  Reverb a Pulse.
+- **Fáze 4:** databáze se zálohami, phpMyAdmin a Adminer, SSL přehled,
+  naplánované úlohy a monitoring.

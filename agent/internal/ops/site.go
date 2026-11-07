@@ -466,9 +466,14 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := removeCaddyBlock(ctx, env, l.EdgeFile, env.Cfg.ProxyUnit, validateEdge); err != nil {
 		return nil, err
 	}
-	// Workers must stop before their user disappears.
+	// Workers and tasks must stop before their user disappears.
 	for _, unit := range siteWorkerUnits(env.Cfg, l.User) {
 		if err := removeUnit(ctx, env, unit); err != nil {
+			return nil, err
+		}
+	}
+	for _, id := range siteCronIDs(env.Cfg, l.User) {
+		if err := removeCron(ctx, env, l.User, id); err != nil {
 			return nil, err
 		}
 	}

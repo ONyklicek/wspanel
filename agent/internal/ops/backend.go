@@ -266,6 +266,9 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if err = refreshWorkers(ctx, env, l); err != nil {
 		return nil, fmt.Errorf("switched to %s, but updating workers failed: %w", st.Mode, err)
 	}
+	if err = refreshCrons(ctx, env, l); err != nil {
+		return nil, fmt.Errorf("switched to %s, but updating tasks failed: %w", st.Mode, err)
+	}
 	if err = writeToolLinks(env, l); err != nil {
 		return nil, err
 	}
@@ -329,6 +332,9 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 		}
 		if err = refreshWorkers(ctx, env, l); err != nil {
 			return nil, fmt.Errorf("switched to PHP %s, but updating workers failed: %w", p.Version, err)
+		}
+		if err = refreshCrons(ctx, env, l); err != nil {
+			return nil, fmt.Errorf("switched to PHP %s, but updating tasks failed: %w", p.Version, err)
 		}
 		if err = writeToolLinks(env, l); err != nil {
 			return nil, err

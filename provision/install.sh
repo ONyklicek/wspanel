@@ -216,6 +216,7 @@ cat > /etc/panel-agent/agent.json <<JSON
   "php_versions": $(json_list "${PHP_LIST[@]}"),
   "default_php_version": "$PANEL_PHP",
   "db_engines": $(json_list "${DB_ENGINES[@]}"),
+  "panel_domain": "$PANEL_DOMAIN",
   "protected_ports": [$SSH_PORT, 80, 443],
   "allow_unenforced_socket_bind": $UNENFORCED_BIND
 }

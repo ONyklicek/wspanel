@@ -65,10 +65,13 @@ type mariadb struct{}
 func (mariadb) port() int   { return 3306 }
 func (mariadb) ext() string { return ".sql.gz" }
 
+// sql runs statements as root over the local socket (unix_socket auth: no
+// admin password exists). SQL goes in on stdin, never in argv, where any
+// local user could read passwords from /proc/<pid>/cmdline.
 func (mariadb) sql(ctx context.Context, env *Env, q string) (string, error) {
-	// root over the local socket (unix_socket auth): no admin password exists.
-	res, err := env.Exec.Run(ctx, "mariadb", "--batch", "--skip-column-names", "--execute", q)
-	return res.Stdout, err
+	var out strings.Builder
+	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "mariadb", "--batch", "--skip-column-names")
+	return out.String(), err
 }
 
 // grantPattern escapes MariaDB's GRANT wildcards: in `db`.* an unescaped _
@@ -136,11 +139,12 @@ type postgres struct{}
 func (postgres) port() int   { return 5432 }
 func (postgres) ext() string { return ".pgdump" }
 
-// psql as the postgres OS user (peer auth): no admin password exists.
+// psql as the postgres OS user (peer auth: no admin password exists). SQL on
+// stdin, never in argv (see mariadb.sql).
 func (postgres) psql(ctx context.Context, env *Env, db, q string) (string, error) {
 	var out strings.Builder
-	_, err := env.Exec.RunIO(ctx, nil, &out, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
-		"/usr/bin/psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-d", db, "-c", q)
+	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
+		"/usr/bin/psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-d", db, "-f", "-")
 	return out.String(), err
 }
 

@@ -50,8 +50,11 @@ func TestDBCreateMariaDBReturnsPasswordOnce(t *testing.T) {
 	}
 	var sql string
 	for _, c := range dr.Calls() {
-		if c.Name == "mariadb" && strings.Contains(strings.Join(c.Args, " "), "CREATE DATABASE") {
-			sql = c.Args[len(c.Args)-1]
+		if c.Name == "mariadb" && strings.Contains(c.Stdin, "CREATE DATABASE") {
+			sql = c.Stdin
+		}
+		if strings.Contains(strings.Join(c.Args, " "), "IDENTIFIED BY") || strings.Contains(strings.Join(c.Args, " "), "PASSWORD") {
+			t.Fatalf("a password reached argv: %s", c)
 		}
 	}
 	for _, want := range []string{"CREATE DATABASE `shop` CHARACTER SET utf8mb4", "CREATE USER 'shop'@'localhost' IDENTIFIED BY '" + pw + "'",
@@ -70,7 +73,10 @@ func TestDBCreatePostgresIsolatesDatabase(t *testing.T) {
 	var all []string
 	for _, c := range dr.Calls() {
 		if c.Name == "setpriv" && c.Args[0] == "--reuid=postgres" {
-			all = append(all, c.Args[len(c.Args)-1])
+			all = append(all, c.Stdin)
+			if strings.Contains(strings.Join(c.Args, " "), "PASSWORD") {
+				t.Fatalf("a password reached argv: %s", c)
+			}
 		}
 	}
 	joined := strings.Join(all, "\n")
@@ -170,7 +176,7 @@ func TestBackupsAndRestoreValidation(t *testing.T) {
 	}
 	var restored string
 	for _, c := range dr.Calls() {
-		if c.Name == "mariadb" && c.Args[len(c.Args)-1] == "shop" {
+		if c.Name == "mariadb" && len(c.Args) > 0 && c.Args[len(c.Args)-1] == "shop" {
 			restored = c.Stdin
 		}
 	}
@@ -212,8 +218,8 @@ func TestGrantEscapesWildcards(t *testing.T) {
 	}
 	var sql string
 	for _, c := range dr.Calls() {
-		if c.Name == "mariadb" && strings.Contains(strings.Join(c.Args, " "), "GRANT") {
-			sql = c.Args[len(c.Args)-1]
+		if c.Name == "mariadb" && strings.Contains(c.Stdin, "GRANT") {
+			sql = c.Stdin
 		}
 	}
 	// `shop_db`.* would also grant `shopXdb` (another site's database).

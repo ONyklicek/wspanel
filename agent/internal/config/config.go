@@ -77,6 +77,9 @@ type Config struct {
 	DBTokenDir   string `json:"dbtools_token_dir"`
 	DBAccessTTLm int    `json:"dbtools_access_minutes"`
 
+	ProxyStorage string `json:"proxy_storage"` // Caddy data dir of the edge (certificates)
+	PanelDomain  string `json:"panel_domain"`
+
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
 	UFWBinary      string `json:"ufw_binary"`
@@ -132,6 +135,7 @@ func Defaults() Config {
 		DBTokenDir:        "/run/wspanel-dbtools",
 		DBAccessTTLm:      30,
 		BackupGroup:       "panel",
+		ProxyStorage:      "/var/lib/panel-proxy/caddy",
 		SystemdDir:        "/etc/systemd/system",
 		PHPCLIBinary:      "/usr/bin/php{version}",
 		UFWBinary:         "/usr/sbin/ufw",

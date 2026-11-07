@@ -153,6 +153,7 @@ func binaries(cfg config.Config) map[string]string {
 		"mariadb":          "/usr/bin/mariadb",
 		"mariadb-dump":     "/usr/bin/mariadb-dump",
 		"apt-get":          "/usr/bin/apt-get",
+		"journalctl":       "/usr/bin/journalctl",
 		"ufw":              cfg.UFWBinary,
 		"frankenphp":       cfg.FrankenPHPBin,
 	}
