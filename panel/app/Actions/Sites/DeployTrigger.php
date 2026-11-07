@@ -5,6 +5,7 @@ namespace App\Actions\Sites;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Starts a deploy, or queues one when a deploy is already running: pushes
@@ -38,6 +39,8 @@ class DeployTrigger
     /** Called every minute by panel:sync: starts queued deploys whose previous run finished. */
     public function runQueued(): int
     {
+        DB::table('webhook_replays')->where('created_at', '<', now()->subDays(90))->delete();
+
         $started = 0;
         foreach (Site::query()->whereNotNull('deploy_requested_at')->where('webhook_enabled', true)->get() as $site) {
             try {

@@ -8,8 +8,10 @@ use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Webhooks\WebhookVerifier;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Public endpoint for git hosting webhooks (POST /hooks/deploy/{hook}).
@@ -38,11 +40,15 @@ class DeployWebhookController
         }
         $info = ['provider' => $event->provider, 'event' => $event->event, 'ref' => $event->branch, 'commit' => $event->commit];
 
-        // A signed delivery can be captured and replayed: each provider delivery id counts once.
-        if ($event->deliveryId !== null && WebhookDelivery::query()->where('site_id', $site->id)->where('delivery_id', $event->deliveryId)->exists()) {
+        $info['delivery_id'] = $event->deliveryId; // informational only: the header is not signed
+
+        // A signed delivery can be captured and replayed. The signature covers
+        // the body, so each signed body counts once (atomic via the unique index).
+        try {
+            DB::table('webhook_replays')->insert(['site_id' => $site->id, 'body_hash' => hash('sha256', $request->getContent()), 'created_at' => now()]);
+        } catch (UniqueConstraintViolationException) {
             return $this->record($site, $request, 'ignored', 'duplicate delivery', 200, ['provider' => $event->provider]);
         }
-        $info['delivery_id'] = $event->deliveryId;
 
         if ($event->isPing) {
             return $this->record($site, $request, 'ignored', 'ping', 200, $info);
@@ -78,6 +84,9 @@ class DeployWebhookController
     /** @param array<string, ?string> $info */
     private function record(Site $site, Request $request, string $result, string $message, int $status, array $info = []): JsonResponse
     {
+        if (isset($info['delivery_id']) && WebhookDelivery::query()->where('site_id', $site->id)->where('delivery_id', $info['delivery_id'])->exists()) {
+            unset($info['delivery_id']); // a reused header value must not break logging
+        }
         WebhookDelivery::create($info + ['site_id' => $site->id, 'result' => $result, 'message' => $message, 'ip' => $request->ip()]);
         // Keep the last 200 deliveries per site.
         $keep = WebhookDelivery::query()->where('site_id', $site->id)->latest('id')->skip(200)->value('id');

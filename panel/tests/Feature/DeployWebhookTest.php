@@ -57,9 +57,9 @@ class DeployWebhookTest extends TestCase
         return $this->hook($payload, ['X-GitHub-Event' => $event, 'X-Hub-Signature-256' => $sig]);
     }
 
-    private function push(string $branch = 'main'): array
+    private function push(string $branch = 'main', string $commit = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'): array
     {
-        return ['ref' => "refs/heads/{$branch}", 'after' => 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'];
+        return ['ref' => "refs/heads/{$branch}", 'after' => $commit];
     }
 
     public function test_github_push_to_the_branch_deploys(): void
@@ -94,11 +94,11 @@ class DeployWebhookTest extends TestCase
     public function test_gitlab_gitea_and_bitbucket_signatures(): void
     {
         $this->agent->shouldReceive('call')->times(3)->with('deploy.run', ['domain' => 'app.example.com'])->andReturn(['job_id' => 'x']);
-        $body = json_encode($this->push());
-        $hmac = hash_hmac('sha256', $body, $this->site->webhook_secret);
+        $gitea = $this->push(commit: 'b1b2c3d4e5f60718293a4b5c6d7e8f9012345678');
+        $hmac = hash_hmac('sha256', json_encode($gitea), $this->site->webhook_secret);
 
         $this->hook($this->push(), ['X-Gitlab-Event' => 'Push Hook', 'X-Gitlab-Token' => $this->site->webhook_secret])->assertStatus(202);
-        $this->hook($this->push(), ['X-Gitea-Event' => 'push', 'X-Gitea-Signature' => $hmac])->assertStatus(202);
+        $this->hook($gitea, ['X-Gitea-Event' => 'push', 'X-Gitea-Signature' => $hmac])->assertStatus(202);
         $bitbucket = ['push' => ['changes' => [['new' => ['type' => 'branch', 'name' => 'main', 'target' => ['hash' => 'abcdef1234567']]]]]];
         $this->hook($bitbucket, ['X-Event-Key' => 'repo:push', 'X-Hub-Signature' => 'sha256='.hash_hmac('sha256', json_encode($bitbucket), $this->site->webhook_secret)])->assertStatus(202);
 
@@ -127,7 +127,7 @@ class DeployWebhookTest extends TestCase
         $this->running = true;
         $this->agent->shouldNotReceive('call')->with('deploy.run', Mockery::any());
         $this->github($this->push())->assertStatus(202)->assertJson(['result' => 'queued']);
-        $this->github($this->push())->assertStatus(202)->assertJson(['result' => 'queued']);
+        $this->github($this->push(commit: 'c1b2c3d4e5f60718293a4b5c6d7e8f9012345678'))->assertStatus(202)->assertJson(['result' => 'queued']);
         $this->assertNotNull($this->site->refresh()->deploy_requested_at);
 
         $this->running = false;
@@ -152,14 +152,16 @@ class DeployWebhookTest extends TestCase
         $this->hook($this->push(), [])->assertStatus(429);
     }
 
-    public function test_replayed_deliveries_are_ignored(): void
+    public function test_replayed_deliveries_are_ignored_even_with_a_new_delivery_id(): void
     {
         $this->agent->shouldReceive('call')->once()->with('deploy.run', ['domain' => 'app.example.com'])->andReturn(['job_id' => 'x']);
         $sig = 'sha256='.hash_hmac('sha256', json_encode($this->push()), $this->site->webhook_secret);
-        $headers = ['X-GitHub-Event' => 'push', 'X-Hub-Signature-256' => $sig, 'X-GitHub-Delivery' => '72d3162e-cc78-11e3-81ab-4c9367dc0958'];
 
-        $this->hook($this->push(), $headers)->assertStatus(202)->assertJson(['result' => 'deployed']);
-        $this->hook($this->push(), $headers)->assertOk()->assertJson(['message' => 'duplicate delivery']);
+        $this->hook($this->push(), ['X-GitHub-Event' => 'push', 'X-Hub-Signature-256' => $sig, 'X-GitHub-Delivery' => '72d3162e-cc78-11e3-81ab-4c9367dc0958'])
+            ->assertStatus(202)->assertJson(['result' => 'deployed']);
+        // Same signed body, forged fresh delivery id (the header is not signed).
+        $this->hook($this->push(), ['X-GitHub-Event' => 'push', 'X-Hub-Signature-256' => $sig, 'X-GitHub-Delivery' => 'aaaaaaaa-0000-0000-0000-000000000001'])
+            ->assertOk()->assertJson(['message' => 'duplicate delivery']);
     }
 
     public function test_an_already_deployed_commit_does_not_redeploy(): void
