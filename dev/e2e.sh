@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+# WSPanel end-to-end test, run INSIDE the dev container as root after
+# provision/install.sh:   docker compose -f dev/compose.yaml exec devserver /opt/wspanel/dev/e2e.sh
+#
+# Drives everything through the panel's own code (as the panel user, i.e. the
+# same path the UI takes) and checks the result on the real system: HTTP via
+# the edge proxy, SSH, files, processes, databases. Prints PASS/FAIL per check.
+# Leaves demo data behind (sites shop/sf/node/worker.localhost etc.).
+set -uo pipefail
+
+PASS=0
+FAIL=0
+FAILED=()
+W=/tmp/e2e
+mkdir -p "$W" && chmod 1777 "$W" # the panel user writes hand-over files here
+
+green() { printf '\033[32m%s\033[0m' "$*"; }
+red() { printf '\033[31m%s\033[0m' "$*"; }
+section() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+ok() { PASS=$((PASS + 1)); printf '  %s %s\n' "$(green PASS)" "$1"; }
+bad() { FAIL=$((FAIL + 1)); FAILED+=("$1"); printf '  %s %s %s\n' "$(red FAIL)" "$1" "${2:+— $2}"; }
+check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then ok "$name"; else bad "$name"; fi; }
+expect() { # expect NAME ACTUAL WANTED
+	if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1" "got '$2', want '$3'"; fi
+}
+contains() { # contains NAME HAYSTACK NEEDLE
+	if [[ "$2" == *"$3"* ]]; then ok "$1"; else bad "$1" "'$3' not in '${2:0:160}'"; fi
+}
+
+# php CODE [VAR=VALUE ...]: run PHP in the panel's context (Laravel booted) as the panel user.
+php() {
+	local code=$1; shift
+	printf '<?php\n%s\n' "$code" >"$W/snippet.php"
+	chmod 644 "$W/snippet.php"
+	(cd /srv/panel/current && runuser -u panel -- env "$@" php artisan tinker --execute "require '$W/snippet.php';" 2>&1)
+}
+site() { echo "\$s = App\\Models\\Site::where('domain', '$1')->sole();"; }
+https() { # https HOST PATH -> body
+	curl -sk --max-time 15 --resolve "$1:443:127.0.0.1" "https://$1$2"
+}
+code() { curl -sk --max-time 15 -o /dev/null -w '%{http_code}' --resolve "$1:443:127.0.0.1" "https://$1$2"; }
+wait_deploy() { # wait_deploy DOMAIN RELEASE -> final status
+	local st=running
+	for _ in $(seq 1 90); do
+		st=$(php "$(site "$1") echo app(App\\Actions\\Sites\\ManageDeploys::class)->log(\$s, '$2', 0)['status'];" | tr -d '[:space:]')
+		[[ "$st" != running ]] && break
+		sleep 2
+	done
+	echo "$st"
+}
+
+# ----------------------------------------------------------------------------
+section "Services"
+for u in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-fpm mariadb postgresql valkey-server ssh fail2ban; do
+	check "$u active" systemctl is-active --quiet "$u"
+done
+check "ufw active" bash -c 'ufw status | grep -q "Status: active"'
+expect "ip_unprivileged_port_start = 1024" "$(sysctl -n net.ipv4.ip_unprivileged_port_start)" "1024"
+expect "agent socket root:panel 0660" "$(stat -c '%U:%G %a' /run/panel-agent.sock)" "root:panel 660"
+expect "panel login page" "$(code panel.localhost /login)" "200"
+expect "panel requires login" "$(code panel.localhost /sites)" "302"
+expect "unknown host gets no site" "$(curl -sk -o /dev/null -w '%{http_code}' --resolve nothing.localhost:443:127.0.0.1 https://nothing.localhost/)" "000"
+
+php 'app(App\Actions\Services\SyncServices::class)->handle(); echo App\Models\Service::count();' >/dev/null
+check "services mirrored into the panel" test "$(php 'echo App\Models\Service::where("active_state","active")->count();' | tr -d '[:space:]')" -ge 7
+
+# ----------------------------------------------------------------------------
+section "Sites in all modes"
+php 'foreach ([
+    ["shop.localhost", ["mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]],
+    ["sf.localhost", ["mode" => "classic", "framework" => "symfony", "php_version" => "8.3"]],
+    ["worker.localhost", ["mode" => "worker", "framework" => "laravel"]],
+    ["node.localhost", ["mode" => "node", "framework" => "node", "node_version" => "24"]],
+    ["other.localhost", ["mode" => "classic", "framework" => "php", "php_version" => "8.4"]],
+] as [$d, $r]) {
+    if (! App\Models\Site::where("domain", $d)->exists()) {
+        $s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => $d] + $r);
+        echo $d, " ", $s->status->value, " ", $s->last_error, PHP_EOL;
+    }
+}' | sed 's/^/    /'
+for d in shop sf node other; do
+	expect "$d.localhost answers via edge" "$(code $d.localhost /)" "200"
+done
+contains "classic PHP 8.3 site runs 8.3" "$(https sf.localhost /)" "PHP 8.3"
+contains "node site runs Node 24" "$(https node.localhost /)" "Node 24"
+check "classic FPM worker runs as site user" bash -c 'https() { curl -sk --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/ >/dev/null; }; https; ps -o user= -C php-fpm8.4 | grep -q web_shop_localhost'
+expect "node port is privileged (< 1024)" "$(php 'echo App\Models\Site::where("domain","node.localhost")->value("port") < 1024 ? "yes" : "no";' | tr -d '[:space:]')" "yes"
+
+# worker mode: a real FrankenPHP worker script keeps state between requests
+install -o web_worker_localhost -g web_worker_localhost -m 0640 /dev/stdin /srv/sites/worker.localhost/current/public/frankenphp-worker.php <<'PHP'
+<?php
+$n = 0;
+while (frankenphp_handle_request(function () use (&$n) {
+    $n++;
+    header('Content-Type: text/plain');
+    echo "worker.localhost request #{$n} php ".PHP_VERSION.' user '.posix_getpwuid(posix_geteuid())['name']."\n";
+})) {}
+PHP
+php 'app(App\Actions\Services\SyncServices::class)->handle(); app(App\Actions\Services\ControlService::class)->handle(App\Models\Service::where("unit","wspanel-web_worker_localhost-app.service")->sole(), "restart");' >/dev/null
+sleep 2
+first=$(https worker.localhost /a)
+second=$(https worker.localhost /b)
+contains "worker mode answers (FrankenPHP)" "$first" "request #"
+check "worker keeps state between requests" test "${first%% php*}" != "${second%% php*}"
+contains "worker runs as site user" "$second" "user web_worker_localhost"
+
+# ----------------------------------------------------------------------------
+section "Isolation"
+check "site user cannot read another site" bash -c '! runuser -u web_shop_localhost -- ls /srv/sites/sf.localhost'
+check "site user cannot reach the agent socket" bash -c '! runuser -u web_shop_localhost -- php8.4 -r "exit(@stream_socket_client(\"unix:///run/panel-agent.sock\") ? 0 : 1);"'
+check "site user cannot read agent config" bash -c '! runuser -u web_shop_localhost -- cat /etc/panel-agent/agent.json'
+check "web tier cannot read .env" bash -c '! runuser -u panel-web -- cat /srv/sites/shop.localhost/shared/.env'
+runuser -u web_shop_localhost -- ln -sfn /srv/sites/sf.localhost/shared/.env.local /srv/sites/shop.localhost/current/public/leak.txt
+runuser -u web_shop_localhost -- ln -sfn /var/lib/panel-proxy /srv/sites/shop.localhost/current/public/leak-tls
+check "planted symlink does not leak another site's .env" bash -c '! curl -sk --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/leak.txt | grep -q DATABASE_URL'
+check "planted symlink does not reach TLS keys" bash -c '! curl -sk --resolve shop.localhost:443:127.0.0.1 https://shop.localhost/leak-tls/ | grep -qi "certificates"'
+rm -f /srv/sites/shop.localhost/current/public/leak.txt /srv/sites/shop.localhost/current/public/leak-tls
+node_port=$(php 'echo App\Models\Site::where("domain","node.localhost")->value("port");' | tr -d '[:space:]')
+systemctl stop wspanel-web_node_localhost-app
+check "other site user cannot squat the node port" bash -c "! runuser -u web_shop_localhost -- php8.4 -r 'exit(@stream_socket_server(\"tcp://127.0.0.1:$node_port\") ? 0 : 1);'"
+systemctl start wspanel-web_node_localhost-app
+
+# ----------------------------------------------------------------------------
+section "Workers (Laravel)"
+php "$(site shop.localhost) foreach (['horizon', 'scheduler', 'pulse', 'reverb'] as \$w) if (! file_exists('/etc/systemd/system/wspanel-web_shop_localhost-'.\$w.'.service')) app(App\\Actions\\Sites\\ManageWorkers::class)->create(\$s, \$w);" >/dev/null
+for w in horizon scheduler pulse; do
+	check "worker unit $w installed" test -f /etc/systemd/system/wspanel-web_shop_localhost-$w.service
+done
+check "worker units are sandboxed (ProtectSystem=strict)" grep -q ProtectSystem=strict /etc/systemd/system/wspanel-web_shop_localhost-horizon.service
+contains "reverb gets a privileged port" "$(grep -o -- '--port=[0-9]*' /etc/systemd/system/wspanel-web_shop_localhost-reverb.service)" "--port="
+contains "edge routes /app to reverb" "$(cat /etc/panel-proxy/sites/shop.localhost.caddy)" "@reverb path /app"
+
+# ----------------------------------------------------------------------------
+section "Databases"
+php "$(site shop.localhost) if (! App\\Models\\Database::where('name','shop_db')->exists()) app(App\\Actions\\Databases\\ManageDatabases::class)->create('mariadb', 'shop_db', \$s);
+$(site sf.localhost) if (! App\\Models\\Database::where('name','sf_db')->exists()) app(App\\Actions\\Databases\\ManageDatabases::class)->create('postgresql', 'sf_db', \$s);" >/dev/null
+contains "Laravel .env got DB_* (MariaDB)" "$(cat /srv/sites/shop.localhost/shared/.env)" 'DB_DATABASE="shop_db"'
+contains "Symfony .env.local got DATABASE_URL (PostgreSQL)" "$(cat /srv/sites/sf.localhost/shared/.env.local)" 'DATABASE_URL="postgresql://sf_db:'
+expect ".env belongs to the site user, 0600" "$(stat -c '%U %a' /srv/sites/shop.localhost/shared/.env)" "web_shop_localhost 600"
+cat >"$W/db.php" <<'PHP'
+<?php
+// usage: db.php <env file> <write|count|delete>
+$e = [];
+foreach (file($argv[1]) as $l) {
+    if (preg_match('/^(DB_\w+)="(.*)"$/', trim($l), $m)) $e[$m[1]] = $m[2];
+}
+$pdo = new PDO("mysql:host={$e['DB_HOST']};port={$e['DB_PORT']};dbname={$e['DB_DATABASE']}", $e['DB_USERNAME'], $e['DB_PASSWORD']);
+match ($argv[2]) {
+    'write' => $pdo->exec("CREATE TABLE IF NOT EXISTS orders (id INT PRIMARY KEY, note VARCHAR(50)); REPLACE INTO orders VALUES (1, 'e2e')"),
+    'delete' => $pdo->exec('DELETE FROM orders'),
+    default => null,
+};
+echo $pdo->query('SELECT COUNT(*) FROM orders')->fetchColumn();
+PHP
+chmod 644 "$W/db.php"
+dbq() { runuser -u web_shop_localhost -- php8.4 "$W/db.php" /srv/sites/shop.localhost/shared/.env "$1" 2>&1; }
+expect "site connects with its credentials and writes" "$(dbq write)" "1"
+php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); app(App\\Actions\\Databases\\ManageDatabases::class)->backupNow(\$db);" >/dev/null
+expect "data deleted" "$(dbq delete)" "0"
+php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); \$b = \$db->backups()->where('file','not like','%pre-restore%')->first(); app(App\\Actions\\Databases\\ManageDatabases::class)->restore(\$b);" >/dev/null
+expect "restore brings the data back" "$(dbq count)" "1"
+check "pre-restore snapshot exists" bash -c 'ls /var/backups/wspanel/mariadb/shop_db/ | grep -q pre-restore'
+expect "dumps are root:panel 0640" "$(stat -c '%U:%G %a' "$(ls -d /var/backups/wspanel/mariadb/shop_db/* | head -1)")" "root:panel 640"
+sfpw=$(sed -n 's/^DATABASE_URL="postgresql:\/\/sf_db:\([^@]*\)@.*/\1/p' /srv/sites/sf.localhost/shared/.env.local)
+php 'if (! App\Models\Database::where("name","other_pg")->exists()) app(App\Actions\Databases\ManageDatabases::class)->create("postgresql", "other_pg", null);' >/dev/null
+check "PostgreSQL role cannot connect to another database" bash -c "! PGPASSWORD='$sfpw' psql -h 127.0.0.1 -U sf_db -d other_pg -Atc 'select 1'"
+check "PostgreSQL role connects to its own database" bash -c "PGPASSWORD='$sfpw' psql -h 127.0.0.1 -U sf_db -d sf_db -Atc 'select 1' | grep -q 1"
+contains "MariaDB GRANT escapes _" "$(mariadb --raw -N -e "SHOW GRANTS FOR 'shop_db'@'127.0.0.1'" | tail -1)" 'shop\_db'
+
+tok() { php "\$db = App\\Models\\Database::where('name','$1')->sole(); echo app(App\\Services\\Agent\\AgentClient::class)->call('db.access', \$db->agentParams() + ['tool' => '$2'])['token'];" | tr -d '[:space:]'; }
+pc() { curl -sk --resolve panel.localhost:443:127.0.0.1 "$@"; }
+t=$(tok shop_db phpmyadmin)
+pc -c "$W/jar1" -b "$W/jar1" -L -o "$W/pma.html" -d "token=$t" https://panel.localhost/dbtools/pma/wspanel-signon.php
+contains "phpMyAdmin opens the database via token" "$(cat "$W/pma.html")" "orders"
+expect "phpMyAdmin token is single-use" "$(pc -o /dev/null -w '%{http_code}' -d "token=$t" https://panel.localhost/dbtools/pma/wspanel-signon.php)" "403"
+t=$(tok sf_db adminer)
+pc -c "$W/jar2" -b "$W/jar2" -L -o "$W/adm.html" -w '%{url_effective}' -d "token=$t" https://panel.localhost/dbtools/adminer/wspanel-signon.php >"$W/adm.url"
+contains "Adminer opens PostgreSQL via token" "$(cat "$W/adm.url")" "pgsql=127.0.0.1"
+expect "Adminer refuses another server (SSRF)" "$(pc -b "$W/jar2" -o /dev/null -w '%{http_code}' 'https://panel.localhost/dbtools/adminer/?server=10.0.0.1&username=x')" "403"
+expect "Adminer refuses its own login form" "$(pc -o /dev/null -w '%{http_code}' -d 'auth[driver]=server&auth[server]=10.0.0.1' https://panel.localhost/dbtools/adminer/)" "403"
+
+# ----------------------------------------------------------------------------
+section "Deploy and webhook"
+# A fresh site every run, so the deploy checks start from a known state.
+php 'if ($s = App\Models\Site::where("domain","app.localhost")->first()) app(App\Actions\Sites\DeleteSite::class)->handle($s);
+app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "app.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);' >/dev/null
+id git >/dev/null 2>&1 || useradd --create-home --shell /usr/bin/git-shell git
+rm -rf /home/git/app.git "$W/app" && runuser -u git -- git init -q --bare -b main /home/git/app.git
+cp -r /opt/wspanel/dev/deploy-test-app "$W/app" && echo v1 >"$W/app/VERSION" && chown -R git:git "$W/app"
+gitc() { runuser -u git -- git -c user.email=e2e@local -c user.name=e2e -C "$W/app" "$@"; }
+gitc init -q -b main && gitc add -A && gitc commit -qm v1 && gitc push -q /home/git/app.git main
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->configure(\$s, ['repo' => 'git@localhost:app.git', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5]);
+file_put_contents('$W/deploy.pub', app(App\\Actions\\Sites\\ManageDeploys::class)->publicKey(\$s));" >/dev/null
+install -d -m 0700 -o git -g git /home/git/.ssh && cat "$W/deploy.pub" >/home/git/.ssh/authorized_keys && chown git:git /home/git/.ssh/authorized_keys
+# Start without APP_KEY (repeatable runs): the first deploy must answer 500 and roll back.
+php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, preg_replace('/^(APP_KEY|APP_NAME)=.*\\R/m', '', \$m->envGet(\$s)));" >/dev/null
+rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->start(\$s);" | tr -d '[:space:]')
+expect "deploy without APP_KEY rolls back (health check)" "$(wait_deploy app.localhost "$rel")" "rolled_back"
+contains "site still serves the previous release" "$(https app.localhost /)" "app.localhost"
+php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, 'APP_NAME=Shop'.PHP_EOL.'APP_KEY=base64:'.base64_encode(random_bytes(32)).PHP_EOL.\$m->envGet(\$s));" >/dev/null
+rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->start(\$s);" | tr -d '[:space:]')
+expect "deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
+contains "deployed app answers" "$(https app.localhost /)" "deploy-test-app v1"
+contains "build ran as the site user" "$(cat /srv/sites/app.localhost/shared/storage/logs/artisan.log)" "as web_app_localhost"
+contains "assets built and served by the web tier" "$(https app.localhost /build/manifest.json)" '"node":"v'
+check "env.set content is redacted in the audit log" bash -c '! grep "\"op\":\"env.set\"" /var/log/panel-agent/audit.log | grep -q APP_KEY=base64'
+
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageWebhook::class)->enable(\$s); file_put_contents('$W/hook', App\\Actions\\Sites\\ManageWebhook::url(\$s).PHP_EOL.\$s->webhook_secret);" >/dev/null
+url=$(sed -n 1p "$W/hook"); secret=$(sed -n 2p "$W/hook")
+echo v2 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v2 && gitc push -q /home/git/app.git main
+body="{\"ref\":\"refs/heads/main\",\"after\":\"$(gitc rev-parse HEAD)\"}"
+sig="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
+hook() { pc -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' "$@" -d "$body" "$url"; }
+expect "webhook with a bad signature is refused" "$(hook -H 'X-Hub-Signature-256: sha256=00')" "403"
+expect "signed webhook starts a deploy" "$(hook -H "X-Hub-Signature-256: $sig")" "202"
+expect "replayed webhook is ignored" "$(hook -H "X-Hub-Signature-256: $sig" -H 'X-GitHub-Delivery: replay-0000-0000')" "200"
+sleep 2
+rel=$(php "$(site app.localhost) echo App\\Models\\Deployment::where('site_id', \$s->id)->latest('started_at')->value('release');" | tr -d '[:space:]')
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->history(\$s);" >/dev/null
+rel=$(php "$(site app.localhost) echo App\\Models\\Deployment::where('site_id', \$s->id)->latest('started_at')->value('release');" | tr -d '[:space:]')
+expect "webhook deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
+contains "v2 is live" "$(https app.localhost /)" "deploy-test-app v2"
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->rollback(\$s);" >/dev/null
+contains "rollback brings v1 back" "$(https app.localhost /)" "deploy-test-app v1"
+
+# ----------------------------------------------------------------------------
+section "SSH / SFTP"
+rm -f "$W/key" "$W/key.pub" && ssh-keygen -q -t ed25519 -N "" -C e2e -f "$W/key"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'shell', file_get_contents('$W/key.pub'));" >/dev/null
+SSH=(ssh -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes)
+contains "SSH shell as the site user with its PHP" "$("${SSH[@]}" web_shop_localhost@127.0.0.1 'id -un; php -r "echo PHP_VERSION;"')" "web_shop_localhost"
+contains "composer and node available" "$("${SSH[@]}" web_shop_localhost@127.0.0.1 'composer --version; node -v')" "Composer version"
+check "password login is disabled" bash -c "! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password web_shop_localhost@127.0.0.1 true"
+"${SSH[@]}" -N -L 13306:127.0.0.1:3306 web_shop_localhost@127.0.0.1 2>"$W/tun.err" &
+tun=$!
+sleep 2
+bytes=$( (exec 3<>/dev/tcp/127.0.0.1/13306 && timeout 2 head -c 10 <&3 | wc -c) 2>/dev/null || echo 0)
+kill $tun 2>/dev/null
+expect "SSH port forwarding into MariaDB is refused" "$(echo "$bytes" | tr -d '[:space:]')" "0"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'sftp', file_get_contents('$W/key.pub'));" >/dev/null
+check "SFTP-only refuses a shell" bash -c "! \"\${@}\" web_shop_localhost@127.0.0.1 id" _ "${SSH[@]}"
+contains "SFTP works" "$(printf 'ls\n' | sftp -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -b - web_shop_localhost@127.0.0.1 2>&1)" "releases"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'off', '');" >/dev/null
+check "access off removes the key" test ! -f /etc/ssh/authorized_keys/web_shop_localhost
+
+# ----------------------------------------------------------------------------
+section "Mode and version switching"
+php "$(site other.localhost) app(App\\Actions\\Sites\\ChangeRuntime::class)->setVersion(\$s, '8.3');" >/dev/null
+contains "classic PHP 8.4 -> 8.3" "$(https other.localhost /)" "PHP 8.3"
+php "$(site other.localhost) app(App\\Actions\\Sites\\ChangeRuntime::class)->switchMode(\$s, ['mode' => 'node', 'framework' => 'node', 'node_version' => '22']);" >/dev/null
+check "classic -> node: FPM pool removed" test ! -f /etc/php/8.3/fpm/pool.d/web_other_localhost.conf
+php "$(site other.localhost) app(App\\Actions\\Sites\\ChangeRuntime::class)->switchMode(\$s, ['mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4']);" >/dev/null
+contains "node -> classic: serves PHP 8.4 again" "$(https other.localhost /)" "PHP 8.4"
+check "no app unit left after returning to classic" test ! -f /etc/systemd/system/wspanel-web_other_localhost-app.service
+
+# ----------------------------------------------------------------------------
+section "Scheduled tasks, firewall, SSL, monitoring, audit"
+php "$(site app.localhost) app(App\\Actions\\ManageCronJobs::class)->create(\$s, ['kind' => 'artisan', 'command' => 'optimize', 'schedule' => '* * * * *']);" >/dev/null
+check "task timer active" systemctl is-active --quiet wspanel-web_app_localhost-cron-1.timer
+php 'app(App\Actions\Firewall\ManageFirewall::class)->add(["action" => "allow", "port" => 8081, "proto" => "tcp", "description" => "e2e"]);' >/dev/null
+check "firewall rule added" bash -c 'ufw status | grep -q "8081/tcp"'
+contains "SSH port is protected" "$(php 'try { app(App\Actions\Firewall\ManageFirewall::class)->add(["action" => "deny", "port" => 22, "proto" => "tcp"]); echo "ALLOWED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "protected"
+php '$r = App\Models\FirewallRule::where("port", 8081)->first(); if ($r) app(App\Actions\Firewall\ManageFirewall::class)->delete($r);' >/dev/null
+check "firewall rule removed" bash -c '! ufw status | grep -q "8081/tcp"'
+php 'app(App\Actions\SyncCertificatesAndTasks::class)->certificates();' >/dev/null
+expect "all certificates valid" "$(php 'echo App\Models\Certificate::where("status","!=","valid")->count();' | tr -d '[:space:]')" "0"
+contains "resources reported" "$(php 'echo json_encode(app(App\Services\Agent\AgentClient::class)->call("sys.resources"));')" '"memory"'
+contains "audit log readable from the panel" "$(php 'echo count(app(App\Services\Agent\AgentClient::class)->call("audit.tail", ["limit" => 5]));')" "5"
+check "panel:sync runs cleanly" bash -c 'cd /srv/panel/current && runuser -u panel -- php artisan panel:sync'
+for _ in $(seq 1 35); do
+	[[ "$(systemctl show -p Result --value wspanel-web_app_localhost-cron-1.service)" == success && -n "$(systemctl show -p ExecMainStartTimestamp --value wspanel-web_app_localhost-cron-1.service)" ]] && break
+	sleep 2
+done
+contains "scheduled task ran successfully" "$(systemctl show -p Result,ExecMainStartTimestamp wspanel-web_app_localhost-cron-1.service | tr '\n' ' ')" "Result=success"
+
+# ----------------------------------------------------------------------------
+section "Delete cleans up"
+php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
+$s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null
+check "system user removed" bash -c '! id web_tmp_localhost'
+check "worker unit removed" test ! -f /etc/systemd/system/wspanel-web_tmp_localhost-queue.service
+check "edge block removed" test ! -f /etc/panel-proxy/sites/tmp.localhost.caddy
+check "home moved to the root-only trash" bash -c 'ls /srv/sites/.trash | grep -q tmp.localhost'
+
+# ----------------------------------------------------------------------------
+printf '\n\033[1m%s passed, %s failed\033[0m\n' "$PASS" "$FAIL"
+if ((FAIL > 0)); then
+	printf '  - %s\n' "${FAILED[@]}"
+	exit 1
+fi
