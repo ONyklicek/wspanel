@@ -47,6 +47,7 @@ PUBLIC_IPV4=""       # server's public addresses for suggested DNS records; dete
 PUBLIC_IPV6=""
 ROOT_LOGIN="prohibit-password"
 UNENFORCED_BIND=false
+PANEL_ALLOW=""      # comma-separated IPs/CIDRs allowed to open the panel; empty = keep current (public on first install)
 DNS_SERVER="none"   # powerdns: this server is authoritative DNS for zones managed in the panel
 MAIL_DEFAULT="send" # new sites: send (Postfix) | capture (Mailpit, nothing leaves the server)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +73,7 @@ for arg in "$@"; do
     --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
     --mail=*) MAIL_DEFAULT="${arg#*=}" ;;
     --dns=*) DNS_SERVER="${arg#*=}" ;;
+    --panel-allow=*) PANEL_ALLOW="${arg#*=}" ;; # e.g. 10.8.0.0/24,203.0.113.7 ; "any" = public again
     --local-certs) LOCAL_CERTS=1 ;; # dev only: Caddy internal CA instead of Let's Encrypt
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) die "unknown argument: $arg" ;;
@@ -387,6 +389,22 @@ sed -e "s|__PANEL_DOMAIN__|$PANEL_DOMAIN|" -e "s|__ACME_EMAIL__|$ACME_EMAIL|" \
   -e "s|__MAILPIT_BASIC__|$(cat /etc/mailpit/ui-basic)|" \
   "$HERE/files/Caddyfile.tmpl" > /etc/panel-proxy/Caddyfile
 chmod 0640 /etc/panel-proxy/Caddyfile; chgrp panel-proxy /etc/panel-proxy/Caddyfile
+# Panel access list (also editable in the panel). Deploy webhooks and the CI
+# API stay public; loopback is always allowed (SSH tunnel).
+if [[ -n "$PANEL_ALLOW" ]]; then
+  if [[ "$PANEL_ALLOW" == any ]]; then
+    printf '# Managed by WSPanel agent (panel.access). Public.\n' > /etc/panel-proxy/panel-access.caddy
+  else
+    [[ "$PANEL_ALLOW" =~ ^[0-9a-fA-F:.,/]+$ ]] || die "invalid --panel-allow"
+    {
+      printf '# Managed by WSPanel agent (panel.access). Who may open the panel.\n'
+      printf '@panel_outsider {\n\tnot remote_ip 127.0.0.1/8 ::1 %s\n\tnot path /hooks/deploy/* /api/deploy/*\n}\n' "${PANEL_ALLOW//,/ }"
+      printf 'respond @panel_outsider 404 {\n\tclose\n}\n'
+    } > /etc/panel-proxy/panel-access.caddy
+  fi
+fi
+[[ -f /etc/panel-proxy/panel-access.caddy ]] || printf '# Managed by WSPanel agent (panel.access). Public.\n' > /etc/panel-proxy/panel-access.caddy
+chmod 0640 /etc/panel-proxy/panel-access.caddy; chgrp panel-proxy /etc/panel-proxy/panel-access.caddy
 if [[ $LOCAL_CERTS -eq 1 ]]; then
   sed -i 's|^\temail .*|\tlocal_certs|' /etc/panel-proxy/Caddyfile
 fi

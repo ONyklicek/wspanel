@@ -106,6 +106,8 @@ func Registry() map[string]Op {
 		{"deploy.log", false, deployLog},
 		{"deploy.history", false, deployHistory},
 		{"deploy.rollback", true, deployRollback},
+		{"deploy.remote_ref", false, deployRemoteRef},
+		{"panel.access", true, panelAccess},
 		{"env.get", false, envGet},
 		{"env.set", true, envSet},
 		{"audit.tail", false, auditTail},

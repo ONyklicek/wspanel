@@ -19,3 +19,10 @@ func TestRedact(t *testing.T) {
 		t.Fatal("non-sensitive params changed")
 	}
 }
+
+func TestSiteTLSKeyIsRedacted(t *testing.T) {
+	out := string(Redact("site.tls", json.RawMessage(`{"domain":"a.cz","mode":"custom","cert":"-----BEGIN CERTIFICATE-----","key":"-----BEGIN PRIVATE KEY-----SECRET"}`)))
+	if strings.Contains(out, "SECRET") || strings.Contains(out, "BEGIN") || !strings.Contains(out, `"domain":"a.cz"`) {
+		t.Fatalf("not redacted: %s", out)
+	}
+}

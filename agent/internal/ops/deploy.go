@@ -410,8 +410,19 @@ func (d *deployment) dir() string { return filepath.Join(d.l.Home, "releases", d
 // streaming its output into the log.
 func (d *deployment) step(ctx context.Context, title, workdir string, env []string, argv ...string) error {
 	d.logf("\n==> %s\n$ %s\n", title, strings.Join(argv, " "))
-	l := d.l
-	tools := filepath.Join(d.env.Cfg.ToolsDir, l.User)
+	args := append(sandboxRunArgs(d.env, d.l, workdir, env), argv...)
+	_, err := d.env.Exec.RunLog(ctx, d.log, "systemd-run", args...)
+	if err != nil {
+		return fmt.Errorf("%s failed", title)
+	}
+	return nil
+}
+
+// sandboxRunArgs: systemd-run arguments (up to and including "--") that run a
+// command as the site user in a sandboxed transient unit, with the site's
+// tools on PATH and its deploy key for git.
+func sandboxRunArgs(e *Env, l siteLayout, workdir string, env []string) []string {
+	tools := filepath.Join(e.Cfg.ToolsDir, l.User)
 	args := []string{
 		"--wait", "--pipe", "--quiet", "--collect", "--service-type=exec",
 		"--unit=wspanel-" + l.User + "-deploy-" + strconv.FormatInt(time.Now().UnixNano(), 36),
@@ -429,16 +440,10 @@ func (d *deployment) step(ctx context.Context, title, workdir string, env []stri
 		"--setenv=COMPOSER_NO_INTERACTION=1", "--setenv=CI=1",
 		"--setenv=GIT_SSH_COMMAND=ssh -i " + l.Home + "/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=" + l.Home + "/.ssh/known_hosts",
 	}
-	for _, e := range env {
-		args = append(args, "--setenv="+e)
+	for _, v := range env {
+		args = append(args, "--setenv="+v)
 	}
-	args = append(args, "--")
-	args = append(args, argv...)
-	_, err := d.env.Exec.RunLog(ctx, d.log, "systemd-run", args...)
-	if err != nil {
-		return fmt.Errorf("%s failed", title)
-	}
-	return nil
+	return append(args, "--")
 }
 
 func (d *deployment) exists(rel string) bool {
