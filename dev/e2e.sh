@@ -639,6 +639,39 @@ done
 contains "scheduled task ran successfully" "$(systemctl show -p Result,ExecMainStartTimestamp wspanel-web_app_localhost-cron-1.service | tr '\n' ' ')" "Result=success"
 
 # ----------------------------------------------------------------------------
+section "Clients and packages"
+# panel_login EMAIL PASSWORD JAR: sign in through the real login form (Fortify).
+panel_login() {
+	rm -f "$3"
+	local tok
+	tok=$(curl -sk -c "$3" -b "$3" --resolve panel.localhost:443:127.0.0.1 https://panel.localhost/login | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"//')
+	curl -sk -c "$3" -b "$3" -o /dev/null --resolve panel.localhost:443:127.0.0.1 -X POST https://panel.localhost/login \
+		--data-urlencode "_token=$tok" --data-urlencode "email=$1" --data-urlencode "password=$2"
+}
+pcode() { curl -sk -o /dev/null -w '%{http_code}' -b "$1" --resolve panel.localhost:443:127.0.0.1 "https://panel.localhost$2"; }
+php '$p = App\Models\Package::firstOrCreate(["name" => "e2e"], ["max_sites" => 1, "ssh" => "sftp"]);
+foreach (["e2e-a" => "a", "e2e-b" => "b"] as $name => $k) {
+    $c = App\Models\Client::firstOrCreate(["name" => $name], ["package_id" => $p->id]);
+    App\Models\User::updateOrCreate(["email" => "$k@e2e.local"], ["name" => $name, "password" => "E2e-heslo-12345", "role" => "client", "client_id" => $c->id]);
+}
+$a = App\Models\Client::where("name", "e2e-a")->sole();
+App\Models\Site::where("domain", "shop.localhost")->update(["client_id" => $a->id]);' >/dev/null
+panel_login a@e2e.local E2e-heslo-12345 "$W/a.jar"
+panel_login b@e2e.local E2e-heslo-12345 "$W/b.jar"
+shop_id=$(php 'echo App\Models\Site::where("domain","shop.localhost")->value("id");' | tr -d '[:space:]')
+expect "client sees its own site" "$(pcode "$W/a.jar" "/sites/$shop_id")" "200"
+expect "another client gets 404 for it" "$(pcode "$W/b.jar" "/sites/$shop_id")" "404"
+expect "client cannot open the firewall" "$(pcode "$W/a.jar" /firewall)" "403"
+expect "client cannot open panel accounts" "$(pcode "$W/a.jar" /users)" "403"
+contains "package limit refuses a second site" "$(php 'auth()->login(App\Models\User::where("email","a@e2e.local")->sole()); try { app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "over.localhost", "framework" => "laravel", "php_version" => "8.4"]); echo "CREATED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "Limit balíčku"
+php 'app(App\Actions\Clients\ManageClients::class)->suspend(App\Models\Client::where("name","e2e-a")->sole());' >/dev/null
+expect "suspended client site answers 503" "$(code shop.localhost /)" "503"
+expect "suspended client is signed out" "$(pcode "$W/a.jar" /sites)" "302"
+php 'app(App\Actions\Clients\ManageClients::class)->resume(App\Models\Client::where("name","e2e-a")->sole());' >/dev/null
+expect "resumed client site answers again" "$(code shop.localhost /)" "200"
+php 'App\Models\Site::where("domain", "shop.localhost")->update(["client_id" => null]);' >/dev/null
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

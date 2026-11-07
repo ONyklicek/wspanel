@@ -26,6 +26,9 @@ class DatabaseServersPage extends Page
 {
     protected static string $view = 'livewire.pages.database-servers';
 
+    /** Server-wide settings: administrators only. */
+    protected static ?string $permission = 'admin';
+
     protected ?string $title = 'Databázové servery';
 
     protected static ?string $slug = 'db-servers';

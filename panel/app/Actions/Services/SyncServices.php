@@ -6,6 +6,7 @@ use App\Enums\ServiceType;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
+use App\Support\CurrentClient;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,33 +19,35 @@ class SyncServices
 
     public function handle(): int
     {
-        $units = $this->agent->call('sys.services');
-        $now = now();
-        $usersToSites = Site::query()->whereNotNull('system_user')->pluck('id', 'system_user');
+        return CurrentClient::unrestricted(function () {
+            $units = $this->agent->call('sys.services');
+            $now = now();
+            $usersToSites = Site::query()->whereNotNull('system_user')->pluck('id', 'system_user');
 
-        DB::transaction(function () use ($units, $now, $usersToSites) {
-            $seen = [];
-            foreach ($units as $u) {
-                $parsed = self::parseUnit($u['unit']);
-                if ($parsed === null) {
-                    continue;
+            DB::transaction(function () use ($units, $now, $usersToSites) {
+                $seen = [];
+                foreach ($units as $u) {
+                    $parsed = self::parseUnit($u['unit']);
+                    if ($parsed === null) {
+                        continue;
+                    }
+                    $seen[] = $u['unit'];
+                    $user = $parsed['_user'] ?? null;
+                    unset($parsed['_user']);
+                    Service::updateOrCreate(['unit' => $u['unit']], $parsed + [
+                        'site_id' => $user !== null ? ($usersToSites[$user] ?? null) : null,
+                        'load_state' => $u['load'] ?? 'unknown',
+                        'active_state' => $u['active'] ?? 'unknown',
+                        'sub_state' => $u['sub'] ?? null,
+                        'enabled_state' => $u['enabled'] ?? null,
+                        'synced_at' => $now,
+                    ]);
                 }
-                $seen[] = $u['unit'];
-                $user = $parsed['_user'] ?? null;
-                unset($parsed['_user']);
-                Service::updateOrCreate(['unit' => $u['unit']], $parsed + [
-                    'site_id' => $user !== null ? ($usersToSites[$user] ?? null) : null,
-                    'load_state' => $u['load'] ?? 'unknown',
-                    'active_state' => $u['active'] ?? 'unknown',
-                    'sub_state' => $u['sub'] ?? null,
-                    'enabled_state' => $u['enabled'] ?? null,
-                    'synced_at' => $now,
-                ]);
-            }
-            Service::query()->whereNotIn('unit', $seen)->delete();
-        });
+                Service::query()->whereNotIn('unit', $seen)->delete();
+            });
 
-        return count($units);
+            return count($units);
+        });
     }
 
     /**

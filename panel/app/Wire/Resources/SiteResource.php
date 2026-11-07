@@ -6,15 +6,18 @@ use App\Actions\Sites\CreateSite;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
+use App\Exceptions\LimitReachedException;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteBackups;
 use App\Livewire\Sites\SiteDeploy;
 use App\Livewire\Sites\SiteFiles;
 use App\Livewire\Sites\ViewSite;
+use App\Models\Client;
 use App\Models\Site;
 use App\Wire\Sites\SiteActions;
 use App\Wire\Sites\SiteFields;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
@@ -89,7 +92,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
     {
         return $table
             ->stackedOnMobile()
-            ->query(Site::query()->with('services'))
+            ->query(Site::query()->with(['services', 'client']))
             ->columns([
                 TextColumn::make('domain')
                     ->label('Web')
@@ -123,6 +126,8 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     ->label('SSH')
                     // "Vypnuto" beside "Běží" reads as a stopped site on a phone card, where the header is not shown.
                     ->formatStateUsing(fn ($state) => $state === SshAccess::Off ? 'bez SSH' : ($state instanceof SshAccess ? $state->getLabel() : $state)),
+                TextColumn::make('client.name')->label('Klient')->placeholder('správce')->sortable()
+                    ->visible(fn () => Gate::allows('admin')),
                 TextColumn::make('created_at')->label('Založeno')->date('j. n. Y')->sortable()->toggleable(),
             ])
             ->recordUrl(fn (Site $record) => self::url('view', $record))
@@ -142,12 +147,18 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             ->schema([
                 Section::make('domain')->label('Doména')->schema([SiteFields::domain(), SiteFields::tls()]),
                 Section::make('runtime')->label('Jak web poběží')->schema(SiteFields::runtime()),
+                Section::make('owner')->label('Vlastník')->schema([SiteFields::client()])
+                    ->visible(fn () => Gate::allows('admin') && Client::query()->exists()),
             ])
             ->using(function (array $data): Site {
-                if (Site::query()->where('domain', $data['domain'])->exists()) {
+                if (Site::acrossClients()->where('domain', $data['domain'])->exists()) {
                     throw ValidationException::withMessages(['data.domain' => 'Web s touto doménou už existuje.']);
                 }
-                $site = app(CreateSite::class)->handle($data);
+                try {
+                    $site = app(CreateSite::class)->handle($data);
+                } catch (LimitReachedException $e) {
+                    throw ValidationException::withMessages(['data.domain' => $e->getMessage()]);
+                }
                 if ($site->status === SiteStatus::Failed) {
                     $error = (string) $site->last_error;
                     $site->delete();

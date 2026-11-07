@@ -97,7 +97,7 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                         ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                             if (! Domains::isValid($value)) {
                                 $fail('Neplatná doména.');
-                            } elseif (DnsZone::query()->where('domain', Domains::normalize($value))->exists()) {
+                            } elseif (DnsZone::acrossClients()->where('domain', Domains::normalize($value))->exists()) {
                                 $fail('Tato zóna už v panelu je.');
                             }
                         }]),

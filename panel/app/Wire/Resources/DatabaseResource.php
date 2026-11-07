@@ -231,9 +231,10 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                 try {
                     $site = $data['site_id'] ? Site::find($data['site_id']) : null;
                     $result = app(ManageDatabases::class)->create($data['engine'], $data['name'], $site);
+                    $name = $result['database']->name;
                     $result['password']
-                        ? Toast::secret("Databáze {$data['name']} vytvořena", "Uživatel {$data['name']}, heslo (zobrazeno jen teď): {$result['password']}")
-                        : Toast::success("Databáze {$data['name']} vytvořena", "Údaje zapsány do .env webu {$site?->domain}.");
+                        ? Toast::secret("Databáze {$name} vytvořena", "Uživatel {$name}, heslo (zobrazeno jen teď): {$result['password']}")
+                        : Toast::success("Databáze {$name} vytvořena", "Údaje zapsány do .env webu {$site?->domain}.");
                 } catch (AgentException $e) {
                     Toast::error('Databázi se nepodařilo vytvořit', $e->getMessage());
                 }

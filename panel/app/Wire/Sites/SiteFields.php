@@ -4,8 +4,11 @@ namespace App\Wire\Sites;
 
 use App\Enums\Framework;
 use App\Enums\SiteMode;
+use App\Models\Client;
 use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
+use App\Support\Limits;
+use App\Wire\Forms\Options;
 use Illuminate\Validation\Rule;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Radio;
@@ -57,10 +60,27 @@ final class SiteFields
      *
      * @return list<mixed>
      */
+    /** Which client owns the site (administrators only; empty = the administrator). */
+    public static function client(): Select
+    {
+        return Select::make('client_id')
+            ->label('Klient')
+            ->options(fn () => Client::query()->orderBy('name')->pluck('name', 'id')->all())
+            ->placeholder('žádný (web správce)')
+            ->rules([Options::rule()])
+            ->helperText('Klient web uvidí ve svém panelu a počítá se mu do limitů balíčku.');
+    }
+
     public static function runtime(?string $currentMode = null): array
     {
         $system = app(SystemInfo::class);
-        $modes = collect(SiteMode::cases())->reject(fn (SiteMode $m) => $m->value === $currentMode);
+        $client = Limits::forCurrentUser();
+        $allowed = $client?->limit('allowed_modes');
+        $modes = collect(SiteMode::cases())
+            ->reject(fn (SiteMode $m) => $m->value === $currentMode)
+            ->filter(fn (SiteMode $m) => ! is_array($allowed) || $allowed === [] || in_array($m->value, $allowed, true))
+            ->values();
+        $phpOptions = fn () => Limits::filterPhp($client, $system->phpVersionOptions());
 
         return [
             Radio::make('mode')
@@ -82,11 +102,11 @@ final class SiteFields
                 ->helperText('Určuje adresáře, .env, workery a postup deploye.'),
             Select::make('php_version')
                 ->label('Verze PHP')
-                ->options(fn () => $system->phpVersionOptions())
-                ->default(fn () => $system->defaultPhpVersion())
+                ->options($phpOptions)
+                ->default(fn () => array_key_exists((string) $system->defaultPhpVersion(), $phpOptions()) ? $system->defaultPhpVersion() : array_key_first($phpOptions()))
                 ->visibleWhen('mode', SiteMode::Classic->value)
                 ->requiredIf('mode', SiteMode::Classic->value)
-                ->rules([fn () => Rule::in(array_keys($system->phpVersionOptions()))]),
+                ->rules([fn () => Rule::in(array_keys($phpOptions()))]),
             Placeholder::make('worker_php')
                 ->label('PHP')
                 ->content(fn () => 'Worker režim běží na PHP '.($system->workerPhpVersion() ?? '?').' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+.')

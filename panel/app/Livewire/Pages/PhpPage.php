@@ -20,6 +20,9 @@ class PhpPage extends Page
 {
     protected static string $view = 'livewire.pages.php';
 
+    /** Server-wide settings: administrators only. */
+    protected static ?string $permission = 'admin';
+
     protected ?string $title = 'PHP';
 
     protected static ?string $slug = 'php';

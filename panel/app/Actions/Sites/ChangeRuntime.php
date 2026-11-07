@@ -3,10 +3,11 @@
 namespace App\Actions\Sites;
 
 use App\Actions\Services\SyncServices;
-use App\Support\Domains;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\Domains;
+use App\Support\Limits;
 
 /** Mode and version changes. The agent builds the new backend before removing the old one. */
 class ChangeRuntime
@@ -23,6 +24,7 @@ class ChangeRuntime
      */
     public function switchMode(Site $site, array $data): Site
     {
+        app(Limits::class)->assertMode($site->client, (string) ($data['mode'] ?? $site->mode->value), ($data['mode'] ?? null) === 'classic' ? ($data['php_version'] ?? null) : null);
         $out = $this->agent->call('site.switch_mode', ['domain' => $site->domain] + Domains::runtimeParams($data));
 
         return $this->record($site, $out);
@@ -31,6 +33,9 @@ class ChangeRuntime
     /** @throws AgentException */
     public function setVersion(Site $site, string $version): Site
     {
+        if ($site->mode->value === 'classic') {
+            app(Limits::class)->assertMode($site->client, $site->mode, $version);
+        }
         $out = $this->agent->call('site.set_version', ['domain' => $site->domain, 'version' => $version]);
 
         return $this->record($site, $out);

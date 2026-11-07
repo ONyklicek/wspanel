@@ -11,6 +11,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | nainstalovat panel na server | [Instalace](instalace.md) |
 | založit web a dostat ho na internet | [Weby](weby.md) |
 | nahrát obyčejný PHP web (třeba WordPress) | [Weby → Čisté PHP](weby.md#čisté-php-wordpress-vlastní-skripty) |
+| hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |
 | nasazovat aplikaci z Gitu | [Deploy](deploy.md) |
 | nasazovat přes GitHub Releases / Actions | [Deploy → Release a CI](deploy.md#nasazení-releasů-a-z-ci-github-actions) |
 | databázi a phpMyAdmin / Adminer | [Databáze](databaze.md) |
@@ -40,6 +41,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | Menu | Co tam je |
 |---|---|
 | **Přehled** | co vyžaduje pozornost (spadlé služby, neodpovídající weby, certifikáty, chyby deploye, plný disk), zátěž, poslední deploye |
+| **Hosting → Klienti** | klienti, jejich balíčky a limity, spotřeba, pozastavení, přihlášení jako klient (jen správce) |
 | **Hosting → Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi, záložky Deploy, Soubory a Zálohy |
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
 | **Hosting → Databáze → Servery** | heslo root / postgres, přístup k databázím z internetu, phpMyAdmin / Adminer přes všechny databáze |

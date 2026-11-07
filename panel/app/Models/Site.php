@@ -6,6 +6,7 @@ use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
+use App\Models\Concerns\OwnedByClient;
 use App\Support\AgentMessages;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
 {
+    use OwnedByClient;
+
     public function cronJobs(): HasMany
     {
         return $this->hasMany(CronJob::class);

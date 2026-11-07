@@ -6,6 +6,7 @@ use App\Enums\SshAccess;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\Limits;
 use Illuminate\Support\Str;
 
 class ManageSsh
@@ -27,6 +28,7 @@ class ManageSsh
      */
     public function handle(Site $site, SshAccess|string $access, string $keys, string $passwordMode = 'keep', ?string $password = null): ?string
     {
+        app(Limits::class)->assertSsh($site->client, $access instanceof SshAccess ? $access : SshAccess::from($access));
         $access = $access instanceof SshAccess ? $access->value : $access;
         $lines = self::parseKeys($keys);
         $params = ['domain' => $site->domain, 'access' => $access, 'keys' => $lines];

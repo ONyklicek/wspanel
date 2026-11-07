@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
+use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
@@ -17,6 +18,7 @@ use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ProvidesPages;
+use NyonCode\WireCore\Foundation\Routing\RoutePage;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesResourceTable;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
@@ -51,12 +53,12 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function pages(): array
     {
-        return ['index' => ListServices::class];
+        return ['index' => RoutePage::make(ListServices::class)->permission('admin')];
     }
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make()->icon('outline:server-stack')->group('server')->sort(20);
+        return NavigationItem::make()->icon('outline:server-stack')->group('server')->sort(20)->visible(fn (): bool => Gate::allows('admin'));
     }
 
     public function table(Table $table): Table

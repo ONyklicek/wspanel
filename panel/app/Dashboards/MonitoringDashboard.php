@@ -4,13 +4,15 @@ namespace App\Dashboards;
 
 use App\Actions\Monitoring\ServerMetrics;
 use App\Livewire\Dashboards\ShowMonitoring;
+use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Wire\Resources\SiteResource;
-use App\Models\Site;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Number;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ProvidesPages;
+use NyonCode\WireCore\Foundation\Routing\RoutePage;
 use NyonCode\WireCore\Widgets\ChartWidget;
 use NyonCode\WireCore\Widgets\CustomWidget;
 use NyonCode\WireCore\Widgets\Dashboard;
@@ -159,11 +161,11 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
 
     public static function pages(): array
     {
-        return ['index' => ShowMonitoring::class];
+        return ['index' => RoutePage::make(ShowMonitoring::class)->permission('admin')];
     }
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Vytížení')->icon('outline:chart-bar')->group('server')->sort(10);
+        return NavigationItem::make('Vytížení')->icon('outline:chart-bar')->group('server')->sort(10)->visible(fn (): bool => Gate::allows('admin'));
     }
 }

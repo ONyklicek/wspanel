@@ -6,6 +6,7 @@ use App\Models\CronJob;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\Limits;
 
 class ManageCronJobs
 {
@@ -21,6 +22,7 @@ class ManageCronJobs
      */
     public function create(Site $site, array $data): void
     {
+        app(Limits::class)->assertCanAdd($site->client, 'cron');
         $this->agent->call('cron.add', $this->params($site, $data));
         $this->sync->tasks($site);
     }

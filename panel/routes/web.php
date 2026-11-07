@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Clients\Impersonation;
 use App\Actions\Sites\ManageTls;
 use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\DownloadSiteBackupController;
@@ -25,7 +26,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/db-open-server/{engine}/{tool}', OpenDatabaseServerToolController::class)
         ->whereIn('engine', ['mariadb', 'postgresql'])
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
-        ->middleware('throttle:30,1')
+        ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
     Route::get('/ssl/root-ca.crt', function () {
         return response(app(ManageTls::class)->rootCa()['pem'], 200, [
@@ -33,6 +34,11 @@ Route::middleware(['web', 'auth'])->group(function () {
             'Content-Disposition' => 'attachment; filename="wspanel-root-ca.crt"',
         ]);
     })->name('ssl.root-ca');
+
+    // An administrator viewing the panel as a client, and the way back.
+    Route::post('/impersonation/leave', function (Impersonation $impersonation) {
+        return $impersonation->leave() ? redirect('/clients') : redirect('/');
+    })->name('impersonation.leave');
 
     // The panel: every registered resource, page and dashboard, at the root.
     Route::wire('panel');

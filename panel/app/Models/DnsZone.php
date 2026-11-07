@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DnsProvider;
+use App\Models\Concerns\OwnedByClient;
 use App\Services\Dns\CloudflareDns;
 use App\Services\Dns\DnsZoneProvider;
 use App\Services\Dns\LocalDns;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DnsZone extends Model
 {
+    use OwnedByClient;
+
     protected $fillable = ['domain', 'provider', 'cloudflare_zone_id', 'cloudflare_token', 'site_id'];
 
     protected $hidden = ['cloudflare_token'];

@@ -3,11 +3,14 @@
 namespace App\Actions\Databases;
 
 use App\Models\Backup;
+use App\Models\Client;
 use App\Models\Database;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
+use App\Support\CurrentClient;
+use App\Support\Limits;
 
 class ManageDatabases
 {
@@ -21,20 +24,45 @@ class ManageDatabases
      * Creates a database with its owner. With a site, credentials go straight
      * into the site's env file and the password is never seen by the panel.
      *
+     * A client's database counts against its package and is named with the
+     * client's prefix (c12_shop), so clients never compete for names.
+     *
      * @return array{database: Database, password: ?string}
      *
      * @throws AgentException
      */
     public function create(string $engine, string $name, ?Site $site): array
     {
+        $owner = $site !== null ? $site->client : Client::find(CurrentClient::id());
+        app(Limits::class)->assertCanAdd($owner, 'databases');
+        $name = self::nameFor($owner, $name);
         $params = ['engine' => $engine, 'name' => $name];
         if ($site !== null) {
             $params['domain'] = $site->domain;
         }
         $out = $this->agent->call('db.create', $params);
-        $database = Database::updateOrCreate(['engine' => $engine, 'name' => $name], ['site_id' => $site?->id]);
+        $database = Database::acrossClients()->updateOrCreate(['engine' => $engine, 'name' => $name], ['site_id' => $site?->id, 'client_id' => $owner?->id]);
 
         return ['database' => $database, 'password' => $out['password'] ?? null];
+    }
+
+    /**
+     * The name a database gets: a client's carries its prefix (c12_).
+     *
+     * @throws AgentException when the prefixed name is too long
+     */
+    public static function nameFor(?Client $owner, string $name): string
+    {
+        if ($owner === null) {
+            return $name;
+        }
+        $prefix = 'c'.$owner->id.'_';
+        $name = str_starts_with($name, $prefix) ? $name : $prefix.$name;
+        if (strlen($name) > 48) {
+            throw new AgentException('invalid_params', 'Název databáze je i s předponou '.$prefix.' delší než 48 znaků.', 'panel');
+        }
+
+        return $name;
     }
 
     /** @throws AgentException */

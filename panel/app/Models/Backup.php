@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FollowsParentOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Backup extends Model
 {
+    use FollowsParentOwner;
+
+    protected static string $ownerRelation = 'database';
+
     protected $fillable = ['database_id', 'file', 'size', 'taken_at'];
 
     protected function casts(): array

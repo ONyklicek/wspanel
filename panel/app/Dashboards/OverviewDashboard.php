@@ -6,12 +6,14 @@ use App\Actions\Monitoring\ServerMetrics;
 use App\Enums\SiteStatus;
 use App\Livewire\Dashboards\ShowOverview;
 use App\Models\Certificate;
+use App\Models\Client;
 use App\Models\Deployment;
 use App\Models\ServerMetric;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Attention;
+use App\Support\Limits;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Number;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
@@ -39,6 +41,8 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
     public function widgets(): array
     {
+        $client = Limits::forCurrentUser();
+
         return [
             ListWidget::make()
                 ->key('attention')
@@ -52,20 +56,29 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                     ->url($i['url']), Attention::items()))
                 ->emptyState('Vše v pořádku: služby běží, weby odpovídají, certifikáty platí.'),
 
-            StatsOverviewWidget::make()
-                ->key('server')
-                ->heading('Server')
-                ->columnSpan(2)
-                ->columns(4)
-                ->pollingInterval('15s')
-                ->stats($this->serverStats()),
+            ...($client === null ? [
+                StatsOverviewWidget::make()
+                    ->key('server')
+                    ->heading('Server')
+                    ->columnSpan(2)
+                    ->columns(4)
+                    ->pollingInterval('15s')
+                    ->stats($this->serverStats()),
 
-            StatsOverviewWidget::make()
-                ->key('hosting')
-                ->heading('Hosting')
-                ->columnSpan(2)
-                ->columns(4)
-                ->stats($this->hostingStats()),
+                StatsOverviewWidget::make()
+                    ->key('hosting')
+                    ->heading('Hosting')
+                    ->columnSpan(2)
+                    ->columns(4)
+                    ->stats($this->hostingStats()),
+            ] : [
+                StatsOverviewWidget::make()
+                    ->key('account')
+                    ->heading('Můj účet'.($client->package ? ' · balíček '.$client->package->name : ''))
+                    ->columnSpan(2)
+                    ->columns(3)
+                    ->stats($this->accountStats($client)),
+            ]),
 
             ListWidget::make()
                 ->key('deploys')
@@ -128,6 +141,25 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                 ->icon('outline:arrows-up-down')->color('gray')
                 ->chart($history->pluck('net_rx')->map(fn ($v) => (int) $v)->all()),
         ];
+    }
+
+    /** @return list<Stat> */
+    /**
+     * What the client uses against its package.
+     *
+     * @return list<Stat>
+     */
+    private function accountStats(Client $client): array
+    {
+        $stats = [];
+        foreach (app(Limits::class)->usage($client) as $u) {
+            $ratio = $u['limit'] ? $u['used'] / $u['limit'] : 0;
+            $stats[] = Stat::make($u['label'], number_format($u['used'], 0, ',', ' ').($u['unit'] ? ' '.$u['unit'] : ''))
+                ->description($u['limit'] === null ? 'bez limitu' : 'z '.number_format($u['limit'], 0, ',', ' ').($u['unit'] ? ' '.$u['unit'] : ''))
+                ->color($u['limit'] === null ? 'gray' : ($ratio >= 1 ? 'danger' : ($ratio >= 0.8 ? 'warning' : 'success')));
+        }
+
+        return $stats;
     }
 
     /** @return list<Stat> */

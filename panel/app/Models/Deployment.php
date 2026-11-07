@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FollowsParentOwner;
 use App\Support\AgentMessages;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -9,6 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Deployment extends Model
 {
+    use FollowsParentOwner;
+
+    protected static string $ownerRelation = 'site';
+
     protected $fillable = ['site_id', 'release', 'status', 'commit', 'ref', 'source', 'error', 'started_at', 'finished_at'];
 
     /** The agent's English text, shown in Czech (stored as it came). */

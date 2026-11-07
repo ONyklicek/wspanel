@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Enums\UserRole;
+use App\Models\Client;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -40,6 +42,15 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /** A sign-in of a hosting client (sees only what the client owns). */
+    public function forClient(?Client $client = null): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => UserRole::Client,
+            'client_id' => $client?->id ?? Client::factory(),
         ]);
     }
 }

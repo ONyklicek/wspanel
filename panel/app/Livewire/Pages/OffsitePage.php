@@ -17,6 +17,9 @@ class OffsitePage extends Page
 {
     protected static string $view = 'livewire.pages.offsite';
 
+    /** Server-wide settings: administrators only. */
+    protected static ?string $permission = 'admin';
+
     protected ?string $title = 'Zálohy mimo server';
 
     protected static ?string $slug = 'offsite';

@@ -4,6 +4,7 @@ Vlastní hostingový panel pro jeden server (Debian 13). Produkce běží nativn
 přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
 
 **Umí:**
+- klienty s balíčky a limity (každý vidí jen své weby, databáze a DNS),
 - weby: Čisté PHP, Laravel, Symfony, Nuxt/Next/Node v režimech PHP-FPM,
   FrankenPHP worker a Node SSR,
 - deploy z Gitu, releasů a GitHub Actions,
@@ -27,6 +28,7 @@ docs/       dokumentace
 
 - [Přehled](docs/README.md)
 - [Instalace](docs/instalace.md)
+- [Klienti a balíčky](docs/klienti.md)
 - [Weby](docs/weby.md)
 - [Deploy](docs/deploy.md)
 - [Databáze](docs/databaze.md)

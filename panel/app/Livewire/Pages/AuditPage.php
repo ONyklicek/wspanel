@@ -9,6 +9,9 @@ class AuditPage extends Page
 {
     protected static string $view = 'livewire.pages.audit';
 
+    /** Server-wide settings: administrators only. */
+    protected static ?string $permission = 'admin';
+
     protected ?string $title = 'Audit agenta';
 
     protected static ?string $slug = 'audit';

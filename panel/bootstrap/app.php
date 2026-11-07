@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
+use App\Http\Middleware\EnsureAccountActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -29,7 +30,8 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // A suspended client is signed out on its next request (Livewire's too).
+        $middleware->appendToGroup('web', EnsureAccountActive::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

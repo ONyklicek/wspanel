@@ -22,6 +22,9 @@ class MailPage extends Page
 {
     protected static string $view = 'livewire.pages.mail';
 
+    /** Server-wide settings: administrators only. */
+    protected static ?string $permission = 'admin';
+
     protected ?string $title = 'Odchozí pošta';
 
     protected static ?string $slug = 'mail';

@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FollowsParentOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CronJob extends Model
 {
+    use FollowsParentOwner;
+
+    protected static string $ownerRelation = 'site';
+
     protected $fillable = ['site_id', 'agent_id', 'kind', 'args', 'schedule', 'calendar', 'last_run', 'last_result', 'next_run'];
 
     protected function casts(): array

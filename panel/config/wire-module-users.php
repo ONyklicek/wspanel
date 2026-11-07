@@ -280,7 +280,8 @@ return [
     |
     */
     'navigation' => [
-        'group' => 'access',
+        // Under "Server": only administrators manage panel accounts.
+        'group' => 'server',
         'label' => null,
         'icon' => 'outline:users',
         'sort' => 90,

@@ -2,6 +2,7 @@
 
 namespace App\Wire\Sites;
 
+use App\Actions\Clients\ManageClients;
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\ManageDatabaseServers;
 use App\Actions\Sites\ChangeRuntime;
@@ -15,14 +16,17 @@ use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
+use App\Models\Client;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
+use App\Support\Limits;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireCore\Foundation\Schema\Tab;
@@ -159,7 +163,7 @@ final class SiteActions
                 Select::make('version')->rules([Options::rule()])
                     ->label($record->mode === SiteMode::Classic ? 'Verze PHP' : 'Verze Node')
                     ->options(collect($record->mode === SiteMode::Classic
-                        ? app(SystemInfo::class)->phpVersionOptions()
+                        ? Limits::filterPhp(Limits::forCurrentUser(), app(SystemInfo::class)->phpVersionOptions())
                         : app(SystemInfo::class)->nodeVersionOptions())
                         ->except($record->mode === SiteMode::Classic ? $record->php_version : $record->node_version)
                         ->all())
@@ -202,8 +206,8 @@ final class SiteActions
                     ->validationMessages(['regex' => 'Malá písmena, číslice a podtržítko, začíná písmenem.']),
             ])
             ->action(fn (Site $record, array $data) => self::attempt('Databázi se nepodařilo vytvořit', function () use ($record, $data) {
-                app(ManageDatabases::class)->create($data['engine'], $data['name'], $record);
-                Toast::success("Databáze {$data['name']} vytvořena", 'Údaje jsou v .env webu.');
+                $name = app(ManageDatabases::class)->create($data['engine'], $data['name'], $record)['database']->name;
+                Toast::success("Databáze {$name} vytvořena", 'Údaje jsou v .env webu.');
             }));
     }
 
@@ -503,13 +507,32 @@ final class SiteActions
             }));
     }
 
+    /** Move the site (with its databases and DNS zone) to a client or back to the administrator. */
+    public static function assignClient(): Action
+    {
+        return Action::make('assignClient')
+            ->label('Přiřadit klientovi')
+            ->icon('outline:user-group')
+            ->visible(fn () => Gate::allows('admin') && Client::query()->exists())
+            ->modalHeading(fn (Site $record) => "Vlastník webu {$record->domain}")
+            ->modalDescription('S webem přejdou i jeho databáze a DNS zóna. Limity balíčku se tu nekontrolují.')
+            ->fillFormUsing(fn (Site $record) => ['client_id' => $record->client_id])
+            ->form([SiteFields::client()])
+            ->action(function (Site $record, array $data) {
+                abort_unless(Gate::allows('admin'), 403);
+                $client = filled($data['client_id'] ?? null) ? Client::findOrFail($data['client_id']) : null;
+                app(ManageClients::class)->assignSite($record, $client);
+                Toast::success('Vlastník změněn', $client ? "Web teď patří klientovi {$client->name}." : 'Web teď patří správci.');
+            });
+    }
+
     public static function more(): array
     {
         return [
             self::restart(), self::enable(), self::disable(),
             self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
-            self::delete(),
+            self::assignClient(), self::delete(),
         ];
     }
 }

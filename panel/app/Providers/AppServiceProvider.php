@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Services\Agent\AgentClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
@@ -35,11 +37,21 @@ class AppServiceProvider extends ServiceProvider
         // Numbers and sizes in the panel's language (1,5 GB, 12,5 %).
         Number::useLocale((string) config('app.locale'));
 
+        // Administrators manage the server and the panel's accounts; clients
+        // only what they own (narrowed by the OwnedByClient scope).
+        Gate::define('admin', fn (User $user): bool => $user->isAdmin());
+        foreach ((array) config('wire-module-users.permissions') as $abilities) {
+            foreach ((array) $abilities as $ability) {
+                Gate::define((string) $ability, fn (User $user): bool => $user->isAdmin());
+            }
+        }
+
         // Menu sections. Entries name a group by key; the heading and order live here.
         app(NavigationGroups::class)->registerMany([
             NavigationGroup::make('hosting')->label('Hosting')->icon('outline:globe-alt')->sort(10),
             NavigationGroup::make('network')->label('Síť a pošta')->icon('outline:signal')->sort(20),
-            NavigationGroup::make('server')->label('Server')->icon('outline:server-stack')->sort(30),
+            NavigationGroup::make('server')->label('Server')->icon('outline:server-stack')->sort(30)
+                ->visible(fn (): bool => Gate::allows('admin')),
             NavigationGroup::make('help')->label('Nápověda')->icon('outline:question-mark-circle')->sort(90),
         ]);
         RateLimiter::for('webhooks', fn (Request $request) => Limit::perMinute(30)->by(($request->route('hook') ?? '').'|'.$request->ip()));

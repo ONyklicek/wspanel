@@ -3,11 +3,16 @@
 namespace App\Models;
 
 use App\Enums\ServiceType;
+use App\Models\Concerns\FollowsParentOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Service extends Model
 {
+    use FollowsParentOwner;
+
+    protected static string $ownerRelation = 'site';
+
     protected $fillable = [
         'unit', 'type', 'instance', 'worker', 'site_id',
         'load_state', 'active_state', 'sub_state', 'enabled_state', 'synced_at',

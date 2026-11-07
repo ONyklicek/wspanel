@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use App\Enums\DatabaseEngine;
+use App\Models\Concerns\OwnedByClient;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Database extends Model
 {
+    use OwnedByClient;
+
     protected $fillable = ['engine', 'name', 'site_id', 'size', 'backup_frequency', 'backup_keep', 'synced_at'];
 
     protected function casts(): array

@@ -7,12 +7,14 @@ use App\Models\Certificate;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
 use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ProvidesPages;
+use NyonCode\WireCore\Foundation\Routing\RoutePage;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesResourceTable;
 use NyonCode\WireTable\Columns\BadgeColumn;
 use NyonCode\WireTable\Columns\TextColumn;
@@ -44,12 +46,12 @@ final class CertificateResource implements DescribesResource, ProvidesNavigation
 
     public static function pages(): array
     {
-        return ['index' => ListCertificates::class];
+        return ['index' => RoutePage::make(ListCertificates::class)->permission('admin')];
     }
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('SSL')->icon('outline:lock-closed')->group('network')->sort(20);
+        return NavigationItem::make('SSL')->icon('outline:lock-closed')->group('network')->sort(20)->visible(fn (): bool => Gate::allows('admin'));
     }
 
     public function table(Table $table): Table
