@@ -93,3 +93,51 @@ func TestSymfonyQueueGoesToValkey(t *testing.T) {
 		t.Errorf("%v %v", keys, v)
 	}
 }
+
+func TestReleaseEnvMergesButThePanelsKeysWin(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "gh.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "gh.example.com", "enabled": true, "maxmemory_mb": 64, "use": []string{"cache"}}); err != nil {
+		t.Fatal(err)
+	}
+	st, l, _ := loadSite(env, "gh.example.com")
+	current := parseDotenv("DB_HOST=127.0.0.1\nDB_PASSWORD=panel\nREDIS_HOST=127.0.0.1\nAPP_KEY=base64:real\n")
+	managed := panelManagedKeys(env, l, st, current)
+	in := parseDotenv("APP_KEY=\nAPP_NAME=\"From GitHub\"\nSTRIPE_SECRET=sk_live\nDB_PASSWORD=from-github\nREDIS_HOST=10.0.0.5\nCACHE_STORE=file\nSESSION_DRIVER=cookie\nbad-key=x\n")
+	keys, values, kept := envFromRelease(in, managed)
+	if strings.Join(keys, ",") != "APP_NAME,SESSION_DRIVER,STRIPE_SECRET" || values["STRIPE_SECRET"] != "sk_live" {
+		t.Errorf("taken: %v %v", keys, values)
+	}
+	if strings.Join(kept, ",") != "CACHE_STORE,DB_PASSWORD,REDIS_HOST" {
+		t.Errorf("the panel's keys must win: kept %v", kept)
+	}
+}
+
+func TestDeployCommandsAreConsoleCommandsOnly(t *testing.T) {
+	ok := deployConfig{Repo: "https://github.com/a/b", Branch: "main", Keep: 5, Commands: []string{"install:permissions", "livewire:publish --assets", "erag:update-manifest"}}
+	if err := ok.validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"migrate; rm -rf /", "tinker --execute=system('id')", "down && up", "x $(id)", "../evil"} {
+		c := ok
+		c.Commands = []string{bad}
+		if err := c.validate(); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+}
+
+func TestEnvFromDeployLeavesOnlyReverbsListener(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "d.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	st, l, _ := loadSite(env, "d.example.com")
+	st.Deploy = &deployConfig{EnvFromDeploy: true}
+	managed := panelManagedKeys(env, l, st, parseDotenv("MAIL_HOST=127.0.0.1\nDB_PASSWORD=x\nREVERB_SERVER_PORT=601\n"))
+	if len(managed) != 1 || !managed["REVERB_SERVER_PORT"] {
+		t.Errorf("managed %v", managed)
+	}
+}

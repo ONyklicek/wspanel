@@ -42,7 +42,7 @@ dev-provision: agent-build
 		--db=$(DB) --php=$(PHP) --panel-domain=panel.localhost \
 		--agent-bin=/opt/wspanel/build/panel-agent-linux-$(ARCH) \
 		--panel-source=/opt/wspanel/panel --local-certs \
-		--public-https-port=8443 --public-ssh-port=2222 --mail=capture --dns=powerdns \
+		--public-https-port=8443 --public-ssh-port=2222 --mail=capture --dns=powerdns --clients=yes \
 		--allow-unenforced-socket-bind # Docker Desktop: no cgroup BPF socket-bind
 
 ## Real demo apps (Laravel, Symfony Demo, WordPress over SFTP) in the dev container.

@@ -155,7 +155,7 @@ class SiteDeploy extends ViewPage
                 $f === Framework::Laravel => 'Do releasu se nalinkují .env a storage/ ze shared/, takže data a nahrané soubory přežívají deploye.',
                 $f === Framework::Symfony => 'Do releasu se nalinkují .env.local a var/log ze shared/.',
                 default => 'Do releasu se nalinkuje .env ze shared/.',
-            }],
+            }.' Přinese-li release vlastní .env (build z CI), jeho hodnoty se do shared/ doplní'.(($c['env_from_deploy'] ?? false) ? ' a mají přednost.' : '; klíče, které nastavil panel, zůstanou.')],
         ];
         if (! $f->isNode()) {
             $steps[] = ['Composer', 'composer install --no-dev, pokud repozitář obsahuje composer.json (u balíku z CI se přeskočí).'];
@@ -167,7 +167,7 @@ class SiteDeploy extends ViewPage
             if ($c['migrate'] ?? false) {
                 $steps[] = ['Migrace', 'php artisan migrate --force.'];
             }
-            $steps[] = ['Optimalizace', 'storage:link a artisan optimize.'];
+            $steps[] = ['Optimalizace', 'storage:link a artisan optimize'.(($c['commands'] ?? []) !== [] ? ', pak vlastní příkazy: '.implode(', ', $c['commands']) : '').'.'];
         }
         if ($f === Framework::Symfony) {
             if ($c['migrate'] ?? false) {
@@ -227,7 +227,8 @@ class SiteDeploy extends ViewPage
             ->color('gray')
             ->modalHeading('Nastavení deploye')
             ->modalWidth('2xl')
-            ->fillFormUsing(fn () => ($this->config ?? ['repo' => '', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5])
+            ->fillFormUsing(fn () => ['commands' => implode("\n", $this->config['commands'] ?? []), 'env_from_deploy' => (bool) ($this->config['env_from_deploy'] ?? false)]
+                + ($this->config ?? ['repo' => '', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5])
                 + ['opcache_production' => $this->opcacheProduction])
             ->form([
                 TextInput::make('repo')
@@ -243,6 +244,16 @@ class SiteDeploy extends ViewPage
                 Toggle::make('assets')->label('Buildit assety (npm ci + npm run build)')->visible(! $site->framework->isNode()),
                 Toggle::make('auto_rollback')->label('Když nový release neodpovídá, vrátit předchozí'),
                 Select::make('keep')->rules([Options::rule()])->label('Držet releasů')->options(array_combine(range(2, 10), range(2, 10)))->required(),
+                Textarea::make('commands')
+                    ->label($site->framework === Framework::Symfony ? 'Vlastní příkazy po deployi (bin/console)' : 'Vlastní příkazy po deployi (artisan)')
+                    ->rows(4)
+                    ->placeholder("install:permissions\nlivewire:publish --assets")
+                    ->helperText('Jeden na řádek, běží po migracích a optimalizaci, před přepnutím na nový release. Jen příkazy konzole s argumenty, žádný shell.')
+                    ->rules(['nullable', 'string', 'max:2000'])
+                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
+                Toggle::make('env_from_deploy')
+                    ->label('Konfigurace z deploye má přednost (.env z CI / GitHub Secrets)')
+                    ->helperText('Vypnuto: klíče, které nastavil panel (databáze, pošta, Valkey, Reverb), zůstanou panelové a zbytek doplní .env z releasu. Zapnuto: platí .env z releasu celý; panel hlídá jen port, na kterém poslouchá Reverb.'),
                 Toggle::make('opcache_production')
                     ->label('Produkční OPcache (nekontrolovat změny souborů)')
                     ->helperText('Rychlejší. Ruční úpravy přes SFTP se pak projeví až po restartu webu nebo dalším deployi.')

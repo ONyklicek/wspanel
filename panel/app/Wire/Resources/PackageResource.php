@@ -77,13 +77,13 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function pages(): array
     {
-        return ['index' => RoutePage::make(ListPackages::class)->permission('admin')];
+        return ['index' => RoutePage::make(ListPackages::class)->permission('clients')];
     }
 
     public static function navigation(): NavigationItem
     {
         return NavigationItem::make('Balíčky')->icon('outline:cube')->parent(ClientResource::class)->sort(10)
-            ->visible(fn (): bool => Gate::allows('admin'));
+            ->visible(fn (): bool => Gate::allows('clients'));
     }
 
     /** Fields of the package form, shared by create and edit. */

@@ -185,3 +185,33 @@ Deploy → **.env** upraví sdílený soubor (`shared/.env`, u Symfony
 - **„Permission denied (publickey)“ při stažení:** deploy klíč není u
   repozitáře.
 - **Deploy nelze spustit, web je vypnutý:** nejdřív ho zapněte.
+
+
+## .env z CI (GitHub Secrets)
+
+Když release přinese vlastní `.env` (typicky ho sestaví GitHub Actions z
+`vars` a `secrets` a pošle v artefaktu), panel ho při deployi **sloučí** do
+`shared/.env`, který je pak nalinkovaný do releasu:
+
+- hodnoty z releasu se zapíšou; prázdné se přeskočí (prázdný `APP_KEY` ze
+  šablony nikdy nesmaže skutečný),
+- **výchozí:** klíče, které nastavil panel a které musí sedět se serverem,
+  zůstanou panelové: databáze, kterou vytvořil, pošta (`MAIL_*`), Valkey webu
+  (`REDIS_*`), kde aplikace publikuje do Reverbu a kde Reverb poslouchá,
+  ovladače zvolené u Valkey/Horizonu. Klíče aplikace Reverbu (`REVERB_APP_*`)
+  a `VITE_REVERB_*` vyhrávají z releasu (frontend je s nimi sestavený v CI),
+- **„Konfigurace z deploye má přednost“** (Nastavení deploye): platí `.env`
+  z releasu celý; panel hlídá jen port, na kterém poslouchá Reverb.
+
+Log deploye vypíše, kolik hodnot převzal a které klíče ponechal panelu.
+
+## Vlastní příkazy po deployi
+
+V Nastavení deploye lze zadat příkazy konzole aplikace (jeden na řádek,
+`artisan` / `bin/console` na začátku je nepovinné), např.
+`install:permissions` nebo `livewire:publish --assets`. Běží po migracích a
+`optimize`, před přepnutím na nový release; když selžou, nový release se
+nepoužije. Shell ani jiné programy spustit nejdou.
+
+U balíku z CI panel před prvním `artisan` smaže `bootstrap/cache/*.php`:
+cache sestavené na CI runneru znají jeho cesty a balíčky.

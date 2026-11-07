@@ -668,7 +668,7 @@ final class SiteActions
         return Action::make('assignClient')
             ->label('Přiřadit klientovi')
             ->icon('outline:user-group')
-            ->visible(fn () => Gate::allows('admin') && Client::query()->exists())
+            ->visible(fn () => Gate::allows('clients') && Client::query()->exists())
             ->modalHeading(fn (Site $record) => "Vlastník webu {$record->domain}")
             ->modalDescription('S webem přejdou i jeho databáze a DNS zóna. Limity balíčku se tu nekontrolují.')
             ->fillFormUsing(fn (Site $record) => ['client_id' => $record->client_id])

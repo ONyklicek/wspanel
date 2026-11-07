@@ -67,9 +67,11 @@ class DeployTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('deploy.config', [
             'domain' => 'app.example.com', 'repo' => 'https://github.com/acme/app.git', 'branch' => 'release/2',
             'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3,
+            'commands' => ['install:permissions', 'livewire:publish --assets'], 'env_from_deploy' => true,
         ])->andReturn([]);
 
-        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => 'https://github.com/acme/app.git', 'branch' => 'release/2', 'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3])
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => 'https://github.com/acme/app.git', 'branch' => 'release/2', 'migrate' => false, 'assets' => true, 'auto_rollback' => true, 'keep' => 3,
+            'commands' => "php artisan install:permissions\n\n  livewire:publish --assets ", 'env_from_deploy' => true])
             ->assertHasNoErrors();
     }
 

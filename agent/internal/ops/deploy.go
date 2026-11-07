@@ -39,7 +39,15 @@ type deployConfig struct {
 	Assets       bool   `json:"assets"`        // npm ci + npm run build when package.json exists
 	AutoRollback bool   `json:"auto_rollback"` // switch back when the new release does not answer
 	Keep         int    `json:"keep"`          // releases to keep
+	// Commands: the app's own console commands after the built-in steps
+	// (artisan / bin/console, e.g. "install:permissions"); no shell.
+	Commands []string `json:"commands,omitempty"`
+	// EnvFromDeploy: the release's env file wins over the panel, except for
+	// what binds the app to this server (Reverb's listening port).
+	EnvFromDeploy bool `json:"env_from_deploy,omitempty"`
 }
+
+var deployCommandRe = regexp.MustCompile(`^[a-z][a-z0-9:_-]{0,63}( [A-Za-z0-9=:_.,/@-]{1,100}){0,8}$`)
 
 var (
 	repoHTTPSRe = regexp.MustCompile(`^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/[A-Za-z0-9._~/-]+$`)
@@ -57,6 +65,14 @@ func (c *deployConfig) validate() error {
 	}
 	if c.Keep < 2 || c.Keep > 20 {
 		return protocol.Invalid("keep: 2-20")
+	}
+	if len(c.Commands) > 10 {
+		return protocol.Invalid("commands: at most 10")
+	}
+	for _, cmd := range c.Commands {
+		if !deployCommandRe.MatchString(cmd) {
+			return protocol.Invalid("commands: " + cmd + " is not a console command with plain arguments")
+		}
 	}
 	return nil
 }
@@ -482,6 +498,10 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 	}
 
 	// 2. Shared files and directories.
+	if err := d.mergeReleaseEnv(ctx); err != nil {
+		cleanup()
+		return "", err
+	}
 	if err := d.linkShared(ctx); err != nil {
 		cleanup()
 		return "", err
@@ -599,6 +619,13 @@ func (d *deployment) build(ctx context.Context) error {
 	}
 	switch l.Framework {
 	case "laravel":
+		if d.artifact != "" {
+			// Caches built on the CI runner name its paths and its packages;
+			// the first artisan run here would boot with them.
+			if err := asUser(ctx, d.env, l.User, "/usr/bin/find", filepath.Join(dir, "bootstrap", "cache"), "-maxdepth", "1", "-type", "f", "-name", "*.php", "-delete"); err != nil {
+				d.logf("clearing bootstrap/cache: %v\n", err)
+			}
+		}
 		if d.cfg.Migrate {
 			if err := d.step(ctx, "Migrations", dir, nil, php, "artisan", "migrate", "--force"); err != nil {
 				return err
@@ -609,6 +636,11 @@ func (d *deployment) build(ctx context.Context) error {
 		}
 		if err := d.step(ctx, "Optimize", dir, nil, php, "artisan", "optimize"); err != nil {
 			return err
+		}
+		for _, cmd := range d.cfg.Commands {
+			if err := d.step(ctx, "artisan "+cmd, dir, nil, append([]string{php, "artisan"}, strings.Fields(cmd)...)...); err != nil {
+				return err
+			}
 		}
 	case "symfony":
 		prod := []string{"APP_ENV=prod", "APP_DEBUG=0"}
@@ -624,6 +656,11 @@ func (d *deployment) build(ctx context.Context) error {
 		}
 		if err := d.step(ctx, "Cache warmup", dir, prod, php, "bin/console", "cache:warmup"); err != nil {
 			return err
+		}
+		for _, cmd := range d.cfg.Commands {
+			if err := d.step(ctx, "bin/console "+cmd, dir, prod, append([]string{php, "bin/console"}, strings.Fields(cmd)...)...); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

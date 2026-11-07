@@ -1,5 +1,8 @@
 # Klienti a balíčky
 
+Volitelný modul: zapíná se při instalaci (`install.sh --clients=yes`) nebo
+později v **Server → Moduly**. Vypnout jde, jen když nejsou žádní klienti.
+
 Panel umí hostovat weby pro víc **klientů**. Klient se přihlásí do stejného
 panelu, ale vidí a spravuje jen své weby, databáze, DNS zóny a naplánované
 úlohy. Server (firewall, služby, PHP, pošta, zálohy mimo server, vytížení,

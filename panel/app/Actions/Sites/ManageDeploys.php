@@ -52,7 +52,26 @@ class ManageDeploys
             'assets' => (bool) $config['assets'],
             'auto_rollback' => (bool) $config['auto_rollback'],
             'keep' => (int) $config['keep'],
+            'commands' => self::commandLines($config['commands'] ?? []),
+            'env_from_deploy' => (bool) ($config['env_from_deploy'] ?? false),
         ]);
+    }
+
+    /**
+     * Console commands after the deploy, one per line (artisan / bin/console
+     * prefix optional).
+     *
+     * @param  string|list<string>  $commands
+     * @return list<string>
+     */
+    public static function commandLines(string|array $commands): array
+    {
+        $lines = is_array($commands) ? $commands : (preg_split('/\R/', $commands) ?: []);
+
+        return array_values(array_filter(array_map(
+            fn ($line) => trim((string) preg_replace('~^(php\s+)?(artisan|bin/console)\s+~', '', trim((string) $line))),
+            $lines,
+        ), fn ($line) => $line !== ''));
     }
 
     /** @throws AgentException */

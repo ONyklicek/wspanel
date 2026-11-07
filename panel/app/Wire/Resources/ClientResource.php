@@ -47,15 +47,15 @@ final class ClientResource implements DescribesResource, ProvidesNavigation, Pro
     public static function pages(): array
     {
         return [
-            'index' => RoutePage::make(ListClients::class)->permission('admin'),
-            'view' => RoutePage::make(ViewClient::class)->permission('admin'),
+            'index' => RoutePage::make(ListClients::class)->permission('clients'),
+            'view' => RoutePage::make(ViewClient::class)->permission('clients'),
         ];
     }
 
     public static function navigation(): NavigationItem
     {
         return NavigationItem::make()->icon('outline:user-group')->group('hosting')->sort(5)
-            ->visible(fn (): bool => Gate::allows('admin'));
+            ->visible(fn (): bool => Gate::allows('clients'));
     }
 
     public function table(Table $table): Table

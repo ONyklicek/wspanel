@@ -198,7 +198,7 @@ rm -rf /home/git/app.git "$W/app" && runuser -u git -- git init -q --bare -b mai
 cp -r /opt/wspanel/dev/deploy-test-app "$W/app" && echo v1 >"$W/app/VERSION" && chown -R git:git "$W/app"
 gitc() { runuser -u git -- git -c user.email=e2e@local -c user.name=e2e -C "$W/app" "$@"; }
 gitc init -q -b main && gitc add -A && gitc commit -qm v1 && gitc push -q /home/git/app.git main
-php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->configure(\$s, ['repo' => 'git@localhost:app.git', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5]);
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->configure(\$s, ['repo' => 'git@localhost:app.git', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5, 'commands' => \"php artisan install:permissions --force\"]);
 file_put_contents('$W/deploy.pub', app(App\\Actions\\Sites\\ManageDeploys::class)->publicKey(\$s));" >/dev/null
 install -d -m 0700 -o git -g git /home/git/.ssh && cat "$W/deploy.pub" >/home/git/.ssh/authorized_keys && chown git:git /home/git/.ssh/authorized_keys
 # Start without APP_KEY (repeatable runs): the first deploy must answer 500 and roll back.
@@ -211,6 +211,7 @@ rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::cl
 expect "deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
 contains "deployed app answers" "$(https app.localhost /)" "deploy-test-app v1"
 contains "build ran as the site user" "$(cat /srv/sites/app.localhost/shared/storage/logs/artisan.log)" "as web_app_localhost"
+contains "the app's own command ran after optimize" "$(cat /srv/sites/app.localhost/shared/storage/logs/artisan.log)" "install:permissions --force as web_app_localhost"
 contains "assets built and served by the web tier" "$(https app.localhost /build/manifest.json)" '"node":"v'
 check "env.set content is redacted in the audit log" bash -c '! grep "\"op\":\"env.set\"" /var/log/panel-agent/audit.log | grep -q APP_KEY=base64'
 
@@ -252,10 +253,17 @@ expect "CI deploy of tag v3 succeeds" "$(ci_wait "$out")" "success"
 contains "tag v3 is live" "$(https app.localhost /)" "deploy-test-app v3"
 rm -rf "$W/artifact" && cp -r "$W/app" "$W/artifact" && rm -rf "$W/artifact/.git" && echo v4-ci >"$W/artifact/VERSION"
 mkdir -p "$W/artifact/public/build" && echo '{"built":"in-ci"}' >"$W/artifact/public/build/manifest.json"
+# A .env built in CI from GitHub secrets: merged, the panel's own keys win.
+printf 'FROM_GITHUB_SECRET="s3cr3t"\nAPP_KEY=\nMAIL_HOST="smtp.from-github.example"\n' >"$W/artifact/.env"
+mail_before=$(grep -oP '^MAIL_HOST="?\K[^"]*' /srv/sites/app.localhost/shared/.env || true)
 tar -czf "$W/build.tar.gz" -C "$W/artifact" .
 out=$(pc -X POST -H "Authorization: Bearer $ci_token" -F "artifact=@$W/build.tar.gz" -F ref=v4 -F commit=abcdef1 "$api/artifact")
 expect "CI artifact deploy succeeds" "$(ci_wait "$out")" "success"
 contains "artifact is live (no build on the server)" "$(https app.localhost /build/manifest.json)" "in-ci"
+contains "a value from the CI .env reaches the app" "$(cat /srv/sites/app.localhost/shared/.env)" 'FROM_GITHUB_SECRET="s3cr3t"'
+expect "the panel's own key (local mail) is kept" "$(grep -oP '^MAIL_HOST="?\K[^"]*' /srv/sites/app.localhost/shared/.env || true)" "$mail_before"
+check "an empty APP_KEY from CI does not wipe the real one" grep -qE '^APP_KEY="?base64:' /srv/sites/app.localhost/shared/.env
+check "the release links the shared .env" test -L /srv/sites/app.localhost/current/.env
 # (file-manager transfers dl-*/up-* share the directory and expire on their own)
 check "artifact file removed after the deploy" bash -c '[ -z "$(ls -A /var/lib/wspanel-artifacts | grep -vE "^(dl|up)-")" ]'
 

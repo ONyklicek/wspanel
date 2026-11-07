@@ -136,7 +136,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     // "Vypnuto" beside "Běží" reads as a stopped site on a phone card, where the header is not shown.
                     ->formatStateUsing(fn ($state) => $state === SshAccess::Off ? 'bez SSH' : ($state instanceof SshAccess ? $state->getLabel() : $state)),
                 TextColumn::make('client.name')->label('Klient')->placeholder('správce')->sortable()
-                    ->visible(fn () => Gate::allows('admin')),
+                    ->visible(fn () => Gate::allows('clients')),
                 TextColumn::make('created_at')->label('Založeno')->date('j. n. Y')->sortable()->toggleable(),
             ])
             ->recordUrl(fn (Site $record) => self::url('view', $record))
@@ -157,7 +157,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                 Section::make('domain')->label('Doména')->schema([SiteFields::domain(), SiteFields::tls()]),
                 Section::make('runtime')->label('Jak web poběží')->schema(SiteFields::runtime()),
                 Section::make('owner')->label('Vlastník')->schema([SiteFields::client()])
-                    ->visible(fn () => Gate::allows('admin') && Client::query()->exists()),
+                    ->visible(fn () => Gate::allows('clients') && Client::query()->exists()),
             ])
             ->using(function (array $data): Site {
                 if (Site::hostTaken($data['domain'])) {

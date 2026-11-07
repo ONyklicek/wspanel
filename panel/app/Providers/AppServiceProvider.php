@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Support\Features;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -51,6 +52,8 @@ class AppServiceProvider extends ServiceProvider
         // Administrators manage the server and the panel's accounts; clients
         // only what they own (narrowed by the OwnedByClient scope).
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
+        // The clients module: administrators, and only while it is switched on.
+        Gate::define('clients', fn (User $user): bool => $user->isAdmin() && Features::clients());
         foreach ((array) config('wire-module-users.permissions') as $abilities) {
             foreach ((array) $abilities as $ability) {
                 Gate::define((string) $ability, fn (User $user): bool => $user->isAdmin());

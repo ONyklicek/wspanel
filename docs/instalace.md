@@ -42,6 +42,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 |---|---|---|
 | `--panel-domain=` | (povinné bez `--panel-port`) | doména panelu |
 | `--panel-port=` | `443` | port panelu (např. `8443`); viz Adresa panelu níže |
+| `--clients=` | `no` | `yes` = klienti a balíčky (hostování pro víc klientů); později Server → Moduly |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |
 | `--agent-bin=` | (povinné) | sestavená binárka agenta |
 | `--panel-source=` | – | adresář `panel/` (bez něj se nainstaluje jen systém) |

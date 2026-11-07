@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"math/big"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
+	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 )
 
@@ -125,4 +130,119 @@ func randomToken(n int) string {
 		out[i] = alphabet[d.Int64()]
 	}
 	return string(out)
+}
+
+// Keys the panel writes and keeps when they are in the site's env file:
+// what the servers it runs need (database, mail, Valkey, Reverb).
+var panelEnvKeys = []string{
+	"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DATABASE_URL",
+	"MAIL_MAILER", "MAIL_HOST", "MAIL_PORT", "MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM_ADDRESS", "MAILER_DSN",
+	"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS",
+	"REDIS_CLIENT", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_URL", "REDIS_SOCKET",
+	// Reverb: where the app publishes and where the server listens. The app
+	// id/key/secret and VITE_REVERB_* are not here: a CI build bakes them into
+	// the frontend, so the deployed values must win (Reverb reads the same file).
+	"REVERB_HOST", "REVERB_PORT", "REVERB_SCHEME", "REVERB_SERVER_HOST", "REVERB_SERVER_PORT",
+}
+
+// panelManagedKeys: the keys of the site's env file the panel owns right now.
+// Drivers count only where the panel chose them (Valkey uses, workers).
+func panelManagedKeys(env *Env, l siteLayout, st siteState, current map[string]string) map[string]bool {
+	out := map[string]bool{}
+	if st.Deploy != nil && st.Deploy.EnvFromDeploy {
+		// The deployed file is the configuration; only where Reverb listens
+		// is the server's to say.
+		for _, k := range []string{"REVERB_SERVER_HOST", "REVERB_SERVER_PORT"} {
+			if _, ok := current[k]; ok {
+				out[k] = true
+			}
+		}
+		return out
+	}
+	for _, k := range panelEnvKeys {
+		if _, ok := current[k]; ok {
+			out[k] = true
+		}
+	}
+	if st.Valkey != nil {
+		keys, _ := valkeyUseEnv(l.Framework, st.Valkey.Use, 0, "")
+		uses := map[string]string{"CACHE_STORE": "cache", "SESSION_DRIVER": "session", "QUEUE_CONNECTION": "queue", "MESSENGER_TRANSPORT_DSN": "queue"}
+		for _, k := range keys {
+			if slices.Contains(st.Valkey.Use, uses[k]) {
+				out[k] = true
+			}
+		}
+	}
+	has := func(w string) bool { return fsx.Exists(filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, w))) }
+	if has("reverb") {
+		out["BROADCAST_CONNECTION"] = true
+	}
+	if has("horizon") {
+		out["QUEUE_CONNECTION"] = true
+	}
+	if has("pulsework") {
+		out["PULSE_INGEST_DRIVER"] = true
+	}
+	return out
+}
+
+var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// mergeReleaseEnv takes the env file a release brought (a CI build, the
+// repository) into the site's shared one before it is linked: its values
+// win, except where the panel owns the key (the app must keep matching the
+// servers the panel runs) and except empty values (an empty APP_KEY in a
+// template never wipes the real one). Read as the site user.
+func (d *deployment) mergeReleaseEnv(ctx context.Context) error {
+	l := d.l
+	f := sharedEnvFile(l.Framework)
+	if f == "" {
+		return nil
+	}
+	rel := filepath.Join(d.dir(), f)
+	if fi, err := os.Lstat(rel); err != nil || !fi.Mode().IsRegular() {
+		return nil
+	}
+	incoming, err := readSiteFile(ctx, d.env, l, rel)
+	if err != nil {
+		return err
+	}
+	sharedPath := filepath.Join(l.Home, "shared", f)
+	current, err := readSiteFile(ctx, d.env, l, sharedPath)
+	if err != nil {
+		return err
+	}
+	st, _, err := loadSite(d.env, l.Domain)
+	if err != nil {
+		return err
+	}
+	keys, values, kept := envFromRelease(parseDotenv(incoming), panelManagedKeys(d.env, l, st, parseDotenv(current)))
+	d.logf("\n==> %s from the release: %d values taken into shared/%s", f, len(keys), f)
+	if len(kept) > 0 {
+		d.logf("; kept as the panel set them: %s", strings.Join(kept, ", "))
+	}
+	d.logf("\n")
+	if len(keys) == 0 {
+		return nil
+	}
+	return writeSiteFile(ctx, d.env, l, sharedPath, mergeEnvSection(current, keys, values, "From the deployed release (written by WSPanel)"))
+}
+
+// envFromRelease picks what a release's env file may set: valid keys with a
+// value that the panel does not own (kept lists the owned ones it brought).
+func envFromRelease(in map[string]string, managed map[string]bool) (keys []string, values map[string]string, kept []string) {
+	values = map[string]string{}
+	for k, v := range in {
+		switch {
+		case !envKeyRe.MatchString(k) || v == "":
+		case managed[k]:
+			kept = append(kept, k)
+		default:
+			keys = append(keys, k)
+			values[k] = v
+		}
+	}
+	slices.Sort(keys)
+	slices.Sort(kept)
+	return keys, values, kept
 }

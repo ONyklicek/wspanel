@@ -11,6 +11,10 @@ return [
     'public_ipv4' => env('PANEL_PUBLIC_IPV4'),
     'public_ipv6' => env('PANEL_PUBLIC_IPV6'),
 
+    // Hosting clients with packages and limits (optional, install.sh --clients=yes;
+    // switched later on Server → Moduly).
+    'clients' => (bool) env('PANEL_CLIENTS', false),
+
     // The panel's own HTTPS port (443 = it has its domain to itself) and the
     // port browsers reach the sites on (as published; 8443 in the dev container).
     'port' => (int) env('PANEL_PORT', 443),

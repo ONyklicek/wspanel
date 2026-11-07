@@ -4,7 +4,7 @@
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
 #              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
-#              [--panel-port=8443]
+#              [--panel-port=8443] [--clients=yes]
 #
 # Panel address:
 #   --panel-domain=panel.example.com             own hostname, port 443, Let's Encrypt
@@ -44,6 +44,7 @@ PHP_VERSIONS="8.4"
 NODE_VERSIONS="22,24"
 PANEL_DOMAIN=""
 PANEL_PORT=443
+CLIENTS=no
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -70,6 +71,7 @@ for arg in "$@"; do
     --node=*) NODE_VERSIONS="${arg#*=}" ;; # Node majors for SSR sites, "none" to skip
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
+    --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
@@ -93,6 +95,7 @@ done
 [[ $EUID -eq 0 ]] || die "run as root"
 . /etc/os-release
 [[ "${ID:-}" == "debian" && "${VERSION_CODENAME:-}" == "trixie" ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
+[[ "$CLIENTS" == yes || "$CLIENTS" == no ]] || die "--clients must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 if [[ -z "$PANEL_DOMAIN" ]]; then
   [[ $PANEL_PORT -ne 443 ]] || die "--panel-domain is required (or give --panel-port to reach the panel at the server's IP address)"
@@ -482,6 +485,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   }
   set_panel_env APP_URL "$PANEL_URL"
   set_panel_env PANEL_PORT "$PANEL_PORT"
+  set_panel_env PANEL_CLIENTS "$([[ $CLIENTS == yes ]] && echo true || echo false)"
   set_panel_env PANEL_SITES_HTTPS_PORT "$PUBLIC_HTTPS_PORT"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
   [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
