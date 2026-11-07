@@ -49,6 +49,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
         'max_cron' => 'Naplánované úlohy',
         'max_workers' => 'Workery',
         'fpm_children' => 'Souběžné PHP procesy na web',
+        'max_valkey_mb' => 'Valkey na web (MB, 0 = ne)',
         'max_mailboxes' => 'Poštovní schránky',
         'max_mail_quota_mb' => 'Místo pro poštu (MB)',
         'backups_keep' => 'Uchovávat záloh',

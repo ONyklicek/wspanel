@@ -4,6 +4,7 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManageDeploys;
 use App\Actions\Sites\ManagePhpSettings;
+use App\Actions\Sites\ManageValkey;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -15,6 +16,7 @@ use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Number;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Foundation\Schema\Section;
@@ -111,6 +113,9 @@ class ViewSite extends ViewPage
                         ->label($d->name)->icon('outline:circle-stack')->color('gray')->size('sm')
                         ->tooltip('Otevřít databázi '.$d->name)
                         ->url(DatabaseResource::url('view', $d)))->all()),
+                TextEntry::make('valkey')->label('Valkey (Redis)')
+                    ->state(fn () => $this->valkeyState($site))
+                    ->actions($site->valkey !== null ? [SiteActions::valkeyFlush()->size('sm'), SiteActions::valkeyRestart()->size('sm')] : []),
                 TextEntry::make('mail')->label('Pošta')
                     ->state(fn () => $site->mail_mode === 'capture' ? 'zachytává se v Mailpitu' : 'odesílá se')
                     ->badge()->color($site->mail_mode === 'capture' ? 'warning' : 'success'),
@@ -120,6 +125,21 @@ class ViewSite extends ViewPage
                     ->state(fn () => $deploy ? $deploy->statusLabel().' · '.$deploy->started_at?->diffForHumans() : 'zatím žádný'),
             ]),
         ]);
+    }
+
+    /** One line about the site's Valkey: memory, keys, state. */
+    private function valkeyState(Site $site): string
+    {
+        if ($site->valkey === null) {
+            return 'vypnutý (zapnete v menu Další → Valkey)';
+        }
+        $s = rescue(fn () => app(ManageValkey::class)->status($site), [], report: false);
+        if (($s['active'] ?? '') !== 'active') {
+            return 'neběží'.(isset($s['active']) ? ' ('.$s['active'].')' : '');
+        }
+
+        return Number::fileSize($s['used_memory'] ?? 0, 1).' z '.$site->valkey['maxmemory_mb'].' MB · '
+            .Number::format($s['keys'] ?? 0).' klíčů'.($site->valkey['persist'] ? ' · ukládá na disk' : '');
     }
 
     public function render(): View

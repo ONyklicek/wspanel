@@ -697,6 +697,23 @@ check "client's site removed" bash -c '! id web_client_b_localhost 2>/dev/null &
 expect "site back with the administrator keeps its own group" "$(stat -c %G /srv/sites/shop.localhost/shared)" "web_shop_localhost"
 
 # ----------------------------------------------------------------------------
+section "Valkey per site"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => true, 'maxmemory_mb' => 32, 'policy' => 'allkeys-lru', 'persist' => false]);" >/dev/null
+vsock=/run/wspanel-valkey/web_shop_localhost/valkey.sock
+check "site's Valkey unit active" systemctl is-active --quiet wspanel-web_shop_localhost-valkey.service
+expect "site user reaches its Valkey" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock PING 2>&1)" "PONG"
+check "another site cannot reach it" bash -c "! runuser -u web_sf_localhost -- valkey-cli -s $vsock PING 2>/dev/null | grep -q PONG"
+check "no TCP port opened for it" bash -c "! ss -ltnp | grep -q 'valkey-server.*web_shop'"
+contains ".env points to the socket" "$(cat /srv/sites/shop.localhost/shared/.env)" "REDIS_HOST=\"$vsock\""
+runuser -u web_shop_localhost -- valkey-cli -s $vsock SET e2e:key v >/dev/null
+contains "status counts keys" "$(php "$(site shop.localhost) echo json_encode(app(App\\Actions\\Sites\\ManageValkey::class)->status(\$s));")" '"keys":1'
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->flush(\$s);" >/dev/null
+expect "flush empties it" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock DBSIZE)" "0"
+expect "maxmemory from the panel" "$(runuser -u web_shop_localhost -- valkey-cli -s $vsock CONFIG GET maxmemory | tail -1)" "33554432"
+php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageValkey::class)->set(\$s, ['enabled' => false]);" >/dev/null
+check "disabled: unit gone" test ! -f /etc/systemd/system/wspanel-web_shop_localhost-valkey.service
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

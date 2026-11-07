@@ -1,0 +1,19 @@
+# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
+# The site's own Valkey: unix socket only (no TCP), reachable by the site user.
+port 0
+unixsocket {{.Socket}}
+unixsocketperm 700
+protected-mode yes
+daemonize no
+supervised no
+logfile ""
+dir {{.DataDir}}
+maxmemory {{.MaxMemoryMB}}mb
+maxmemory-policy {{.Policy}}
+databases 16
+appendonly no
+{{- if .Persist}}
+save 3600 1 300 100 60 10000
+{{- else}}
+save ""
+{{- end}}

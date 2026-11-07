@@ -15,6 +15,7 @@ audit, účty panelu) spravuje jen **správce**.
 | Místo na disku (MB) | součet velikostí webů klienta |
 | Velikost databází (MB) | součet velikostí databází klienta |
 | SSH / SFTP | vypnuto, jen SFTP, nebo SSH + SFTP |
+| Valkey na web (MB) | kolik paměti smí mít vlastní Valkey jednoho webu (0 = nepovoleno) |
 | Režimy webu, Verze PHP | co klient uvidí při zakládání webu a změně verze |
 | Aliasy domén | kolik dalších domén (aliasů a přesměrovaných domén) mají weby klienta dohromady |
 | Poštovní schránky, Místo pro poštu | připraveno pro poštu (zatím se nevynucuje) |

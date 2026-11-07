@@ -46,6 +46,8 @@ type siteState struct {
 	Group string `json:"group,omitempty"`
 	// FPMChildren: classic mode, pm.max_children (0 = default).
 	FPMChildren int `json:"fpm_children,omitempty"`
+	// Valkey: the site's own Valkey server, nil = none.
+	Valkey *valkeyConfig `json:"valkey,omitempty"`
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

@@ -44,6 +44,11 @@ func writeSiteFile(ctx context.Context, env *Env, l siteLayout, path, content st
 // mergeEnv sets keys in dotenv content: existing assignments are replaced in
 // place, missing ones appended under a marker. Other lines are kept.
 func mergeEnv(content string, keys []string, values map[string]string) string {
+	return mergeEnvSection(content, keys, values, "Database (written by WSPanel)")
+}
+
+// mergeEnvSection is mergeEnv with the heading of the appended block.
+func mergeEnvSection(content string, keys []string, values map[string]string, heading string) string {
 	quote := func(v string) string {
 		return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", "", "$", `\$`).Replace(v) + `"`
 	}
@@ -70,7 +75,7 @@ func mergeEnv(content string, keys []string, values map[string]string) string {
 		if len(lines) > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, "# Database (written by WSPanel)")
+		lines = append(lines, "# "+heading)
 		lines = append(lines, missing...)
 	}
 	return strings.Join(lines, "\n") + "\n"

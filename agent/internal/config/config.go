@@ -50,11 +50,14 @@ type Config struct {
 	// Worker mode (one FrankenPHP instance per site) and Node SSR.
 	SiteConfigDir string `json:"site_config_dir"` // per-site FrankenPHP Caddyfiles
 	SiteRunDir    string `json:"site_run_dir"`    // per-site socket dirs (group = proxy group)
-	TmpfilesDir   string `json:"tmpfiles_dir"`
-	ProxyGroup    string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
-	NodeDir       string `json:"node_dir"`      // fnm node-versions dir
-	NodePortMin   int    `json:"node_port_min"` // must stay below net.ipv4.ip_unprivileged_port_start
-	NodePortMax   int    `json:"node_port_max"`
+	// Per-site Valkey: runtime dir parent (systemd RuntimeDirectory) and binary.
+	ValkeyRunDir    string `json:"valkey_run_dir"`
+	ValkeyServerBin string `json:"valkey_server_bin"`
+	TmpfilesDir     string `json:"tmpfiles_dir"`
+	ProxyGroup      string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
+	NodeDir         string `json:"node_dir"`      // fnm node-versions dir
+	NodePortMin     int    `json:"node_port_min"` // must stay below net.ipv4.ip_unprivileged_port_start
+	NodePortMax     int    `json:"node_port_max"`
 	// Dev containers only: allow app ports although SocketBindAllow/Deny is not
 	// enforced by the kernel (then an app could bind other privileged ports).
 	AllowUnenforcedSocketBind bool   `json:"allow_unenforced_socket_bind"`
@@ -144,11 +147,13 @@ func Defaults() Config {
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",
 
-		SiteConfigDir: "/etc/panel-sites",
-		SiteRunDir:    "/run/wspanel-sites",
-		TmpfilesDir:   "/etc/tmpfiles.d",
-		ProxyGroup:    "panel-proxy",
-		NodeDir:       "/opt/fnm/node-versions",
+		SiteConfigDir:   "/etc/panel-sites",
+		SiteRunDir:      "/run/wspanel-sites",
+		ValkeyRunDir:    "/run/wspanel-valkey",
+		ValkeyServerBin: "/usr/bin/valkey-server",
+		TmpfilesDir:     "/etc/tmpfiles.d",
+		ProxyGroup:      "panel-proxy",
+		NodeDir:         "/opt/fnm/node-versions",
 		// Privileged ports: only units granted CAP_NET_BIND_SERVICE (and allowed
 		// exactly their own port via SocketBindAllow) can bind them, so no
 		// other site user can squat a port while its owner restarts.

@@ -337,6 +337,25 @@ uživatelem webu, se sandboxem, a po pádu se sám restartuje.
 Reverb: do `.env` dejte `REVERB_HOST=<doména>`, `REVERB_PORT=443`,
 `REVERB_SCHEME=https`. Port, na kterém Reverb poslouchá, přiděluje panel.
 
+## Valkey (Redis)
+
+Každý web si může zapnout **vlastní Valkey server** (plně kompatibilní
+s Redisem): **Další → Valkey (Redis)**.
+
+- Běží pod uživatelem webu, jen přes unix socket
+  `/run/wspanel-valkey/<uživatel>/valkey.sock`, bez TCP portu. Jiný web na něj
+  nedosáhne a `FLUSHALL` v jednom webu nesmaže data jinému.
+- Nastavíte paměť (MB), co dělat při zaplnění (cache maže staré klíče, fronty
+  a data nic nemažou) a jestli se data ukládají na disk (`<web>/valkey/`).
+- Připojení se zapíše do `.env`:
+  - Laravel / Čisté PHP: `REDIS_CLIENT=phpredis`, `REDIS_HOST=<socket>`,
+    `REDIS_PORT=0` (rozšíření `redis` je u PHP nainstalované),
+  - Symfony: `REDIS_URL=redis://<socket>`,
+  - Node: `REDIS_URL=unix://<socket>`, `REDIS_SOCKET`.
+- Detail webu ukazuje obsazenou paměť a počet klíčů, odtud jde Valkey
+  vyprázdnit nebo restartovat.
+- U klientů omezuje paměť balíček (**Valkey na web**, 0 = nepovoleno).
+
 ## Změna režimu a verze
 
 - **Změnit režim** (např. classic → worker): nový backend naběhne vedle

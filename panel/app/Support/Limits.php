@@ -100,6 +100,28 @@ final class Limits
         }
     }
 
+    /**
+     * The site's own Valkey: allowed at all (0 = no) and at most this much memory.
+     *
+     * @throws LimitReachedException
+     */
+    public function assertValkey(?Client $client, int $memoryMb): void
+    {
+        if ($client === null || ! CurrentClient::restricted()) {
+            return;
+        }
+        $limit = $client->limit('max_valkey_mb');
+        if ($limit === null) {
+            return;
+        }
+        if ((int) $limit === 0) {
+            throw LimitReachedException::make('Valkey balíček nepovoluje.');
+        }
+        if ($memoryMb > (int) $limit) {
+            throw LimitReachedException::make("Balíček povoluje Valkey nejvýš {$limit} MB na web.");
+        }
+    }
+
     /** @throws LimitReachedException */
     public function assertSsh(?Client $client, SshAccess $wanted): void
     {

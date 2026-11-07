@@ -13,6 +13,7 @@ use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageTls;
+use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -507,6 +508,63 @@ final class SiteActions
             }));
     }
 
+    /** The site's own Valkey (Redis-compatible) server. */
+    public static function valkey(): Action
+    {
+        return Action::make('valkey')
+            ->label('Valkey (Redis)')
+            ->icon('outline:bolt')
+            ->visible(fn (Site $record) => $record->isOperational())
+            ->modalHeading(fn (Site $record) => "Valkey pro {$record->domain}")
+            ->modalDescription('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu, jen přes unix socket, takže na něj žádný jiný web nedosáhne. Připojení se zapíše do .env (REDIS_HOST, REDIS_URL).')
+            ->fillFormUsing(fn (Site $record) => [
+                'enabled' => $record->valkey !== null,
+                'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,
+                'policy' => $record->valkey['policy'] ?? 'allkeys-lru',
+                'persist' => $record->valkey['persist'] ?? false,
+            ])
+            ->form([
+                Toggle::make('enabled')->label('Zapnout Valkey pro tento web')->live(),
+                TextInput::make('maxmemory_mb')->label('Paměť (MB)')->integer()->minValue(8)->maxValue(65536)
+                    ->rules(['integer', 'between:8,65536'])->visibleWhen('enabled', true)->requiredIf('enabled', true),
+                Select::make('policy')->label('Když se paměť zaplní')->options(ManageValkey::POLICIES)->rules([Options::rule()])
+                    ->visibleWhen('enabled', true)->requiredIf('enabled', true),
+                Toggle::make('persist')->label('Ukládat data na disk (přežijí restart)')->visibleWhen('enabled', true)
+                    ->helperText('Pro fronty a session ano, pro čistou cache není třeba.'),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt('Valkey se nepodařilo nastavit', function () use ($record, $data) {
+                app(ManageValkey::class)->set($record, $data);
+                Toast::success($data['enabled'] ? 'Valkey běží' : 'Valkey vypnut', $data['enabled'] ? 'Připojení je v .env webu.' : null);
+            }));
+    }
+
+    public static function valkeyFlush(): Action
+    {
+        return Action::make('valkeyFlush')
+            ->label('Vyprázdnit Valkey')
+            ->icon('outline:trash')
+            ->color('danger')
+            ->visible(fn (Site $record) => $record->valkey !== null)
+            ->requiresConfirmation()
+            ->modalHeading(fn (Site $record) => "Smazat všechny klíče ve Valkey webu {$record->domain}?")
+            ->action(fn (Site $record) => self::attempt('Valkey se nepodařilo vyprázdnit', function () use ($record) {
+                app(ManageValkey::class)->flush($record);
+                Toast::success('Valkey vyprázdněn');
+            }));
+    }
+
+    public static function valkeyRestart(): Action
+    {
+        return Action::make('valkeyRestart')
+            ->label('Restartovat Valkey')
+            ->icon('outline:arrow-path')
+            ->visible(fn (Site $record) => $record->valkey !== null)
+            ->action(fn (Site $record) => self::attempt('Valkey se nepodařilo restartovat', function () use ($record) {
+                app(ManageValkey::class)->restart($record);
+                Toast::success('Valkey restartován');
+            }));
+    }
+
     /** Move the site (with its databases and DNS zone) to a client or back to the administrator. */
     public static function assignClient(): Action
     {
@@ -534,7 +592,7 @@ final class SiteActions
     {
         return [
             self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::addWorker(),
+            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::assignClient(), self::delete(),
         ];

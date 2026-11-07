@@ -594,6 +594,9 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 			return nil, err
 		}
 	}
+	if err := removeSiteValkey(ctx, env, l); err != nil {
+		return nil, err
+	}
 	for _, id := range siteCronIDs(env.Cfg, l.User) {
 		if err := removeCron(ctx, env, l.User, id); err != nil {
 			return nil, err
