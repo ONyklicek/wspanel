@@ -53,6 +53,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--no-root-ssh` | – | zakáže přihlášení roota přes SSH (nejdřív si ověřte jiný účet s klíčem) |
 | `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy (za NATem zadejte ručně) |
 | `--public-https-port=` / `--public-ssh-port=` | 443 / 22 | porty, jak je vidí klienti (jen pro přesměrování portů, např. dev kontejner) |
+| `--panel-allow=` | veřejný | panel jen z těchto adres/sítí, např. `10.8.0.0/24,203.0.113.7`; `any` = zase veřejný (viz [Bezpečnost](bezpecnost.md#panel-jen-z-vnitřní-sítě)) |
 | `--local-certs` | – | jen pro vývoj: certifikáty z lokální CA místo Let's Encrypt |
 | `--allow-unenforced-socket-bind` | – | jen Docker Desktop (viz [Bezpečnost](bezpecnost.md)) |
 
@@ -71,14 +72,20 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 
 ## Po instalaci
 
-1. **DNS:** domény webů musí mířit na server (A/AAAA), jinak nepůjde vydat
+1. **Účet administrátora:**
+   ```bash
+   cd /srv/panel/current && runuser -u panel -- php artisan wire:user
+   ```
+   Zeptá se na jméno, e-mail a heslo. Registrace z webu je vypnutá, další účty
+   zakládejte stejně. Pak se přihlaste na `https://<panel>`.
+2. **DNS:** domény webů musí mířit na server (A/AAAA), jinak nepůjde vydat
    certifikát. Viz [DNS](dns.md).
-2. **Pošta:** u každé domény, ze které weby posílají e-maily, vytvořte DKIM klíč
+3. **Pošta:** u každé domény, ze které weby posílají e-maily, vytvořte DKIM klíč
    a nastavte SPF/DKIM/DMARC. Viz [Pošta](posta.md). Pokud poskytovatel serveru
    blokuje port 25, nastavte relay.
-3. **Reverzní záznam (PTR)** IP adresy nastavte u poskytovatele serveru na
+4. **Reverzní záznam (PTR)** IP adresy nastavte u poskytovatele serveru na
    doménu panelu. Bez něj servery příjemců poštu často odmítají.
-4. **Zálohy:** nastavte plán záloh databází (Databáze → web → Plán záloh) a
+5. **Zálohy:** nastavte plán záloh databází (Databáze → web → Plán záloh) a
    zálohujte i `/srv/sites` (např. rsync/borg na jiný stroj).
 
 ## Kde co na serveru je

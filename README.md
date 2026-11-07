@@ -17,7 +17,7 @@ přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
 
 ```
 agent/      Go agent: jediná komponenta s rootem, whitelist operací přes Unix socket
-panel/      Laravel 13 + Filament 5, běží jako neprivilegovaný uživatel `panel`, stav v SQLite
+panel/      Laravel 13 + WireStack (Livewire 4), běží jako neprivilegovaný uživatel `panel`, stav v SQLite
 provision/  install.sh pro Debian 13 + systemd unity, Caddyfile, konfigurace
 dev/        Debian 13 kontejner se systemd (náhrada VM na Macu), e2e test, demo
 docs/       dokumentace

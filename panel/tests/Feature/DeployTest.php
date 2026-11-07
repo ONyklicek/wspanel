@@ -134,4 +134,23 @@ class DeployTest extends TestCase
             ->call('callMountedAction')
             ->assertNotified('.env uložen');
     }
+
+    public function test_switching_to_polling_shows_the_last_check_and_resets_it_on_change(): void
+    {
+        $this->site->update(['webhook_enabled' => true, 'webhook_id' => str_repeat('a', 32), 'webhook_secret' => str_repeat('b', 64), 'deploy_trigger' => 'poll_branch',
+            'deploy_polled_at' => now(), 'deploy_polled_ref' => 'abc', 'deploy_poll_error' => 'git ls-remote failed: Permission denied (publickey)']);
+
+        $page = Livewire::test(DeploySite::class, ['record' => $this->site->id])
+            ->call('mountAction', 'automation')
+            ->assertSee('Permission denied (publickey)');
+
+        $page->set('mountedActions.0.data.trigger', 'poll_tags')
+            ->call('callMountedAction')
+            ->assertHasNoErrors();
+
+        $this->site->refresh();
+        $this->assertSame('poll_tags', $this->site->deploy_trigger);
+        $this->assertNull($this->site->deploy_polled_ref);
+        $this->assertNull($this->site->deploy_poll_error);
+    }
 }

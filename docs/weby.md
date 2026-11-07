@@ -4,24 +4,51 @@
 
 **Weby → Nový web**
 
-1. **Doména:** např. `example.com`. Musí mířit na server (A/AAAA záznam), jinak
-   se nevydá certifikát. Web na `www.` je samostatná doména.
-2. **Režim:**
+1. **Doména:** např. `example.com`. Veřejná doména musí mířit na server
+   (A/AAAA záznam), jinak se nevydá certifikát. Web na `www.` je samostatná
+   doména.
+2. **HTTPS certifikát:** viz [HTTPS a certifikáty](#https-a-certifikáty).
+   U domén vnitřní sítě (`.lan`, `.local`, `.internal`, `.test`, `.localhost`…)
+   panel sám předvyplní interní certifikační autoritu.
+3. **Režim:**
    - **Classic (PHP-FPM):** pro většinu webů. Lze zvolit verzi PHP.
    - **Worker (FrankenPHP):** aplikace zůstává v paměti mezi požadavky (Laravel
      Octane, Symfony 7.4+ s Runtime). Rychlejší, ale kód musí být „worker-safe“.
    - **Node SSR:** Nuxt, Next.js nebo vlastní `server.js` jako stále běžící proces.
-3. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js nebo Node.
+4. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js nebo Node.
    Podle typu panel připraví adresáře, `.env`, workery a postup deploye.
-4. Po uložení se otevře **detail webu**. Web už odpovídá úvodní stránkou
+5. Po uložení se otevře **detail webu**. Web už odpovídá úvodní stránkou
    „Web běží“, která popisuje, jak pokračovat.
 
 Co se při založení stane:
 - vytvoří se systémový uživatel `web_<doména>` bez přihlášení,
 - vznikne `/srv/sites/<doména>` (struktura níže),
 - PHP-FPM pool, nebo proces aplikace, pod tímto uživatelem,
-- edge proxy začne pro doménu vydávat certifikát (Let's Encrypt),
+- edge proxy začne pro doménu vydávat certifikát (Let's Encrypt, nebo z interní CA),
 - vytvoří se SMTP přihlášení pro odesílání pošty webem.
+
+## HTTPS a certifikáty
+
+Každý web běží jen přes HTTPS. Certifikát se mění na detailu webu: **Další →
+HTTPS / certifikát**.
+
+| Volba | Pro koho | Co je potřeba |
+|---|---|---|
+| **Let's Encrypt** | veřejné domény | doména míří na server a port 80/443 je z internetu dostupný; obnovuje se sám |
+| **Interní certifikační autorita** | vnitřní síť, intranet, testy (`intranet.firma.lan`) | počítače, které web otevírají, jednou nainstalují kořenový certifikát serveru |
+| **Vlastní certifikát** | firemní CA, zakoupený certifikát | vložíte certifikát (PEM, i s mezilehlými) a soukromý klíč; panel ověří, že k sobě patří a platí pro doménu |
+
+**Kořenový certifikát interní CA** stáhnete v **Síť a pošta → SSL →
+Kořenový certifikát**. Instalace:
+- **Windows:** dvojklik → Nainstalovat certifikát → Místní počítač → Důvěryhodné
+  kořenové certifikační autority (nebo rozeslat přes GPO),
+- **macOS:** dvojklik → Klíčenka *Systém* → u certifikátu „Vždy důvěřovat“,
+- **Linux:** `/usr/local/share/ca-certificates/` + `update-ca-certificates`,
+- **Firefox** má vlastní úložiště: Nastavení → Certifikáty → Importovat.
+
+Soukromý klíč vlastního certifikátu je jen na serveru (čitelný pro proxy) a do
+auditu se nezapisuje. Vlastní certifikát hlídá panel na stránce SSL; obnovit ho
+musíte sami (nahrát nový).
 
 ## Čisté PHP (WordPress, vlastní skripty)
 

@@ -16,6 +16,7 @@ use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Actions\ModalFooterAction;
@@ -291,6 +292,19 @@ class SiteDeploy extends ViewPage
                 TextInput::make('secret')->label('Secret')->readOnly()
                     ->default(fn () => $this->site()->webhook_secret ?? 'vytvoří se po zapnutí')
                     ->hiddenWhen('trigger', ['poll_branch', 'poll_tags']),
+                Placeholder::make('poll_status')
+                    ->label('Poslední kontrola repozitáře')
+                    ->content(function () {
+                        $site = $this->site();
+                        if (! in_array($site->deploy_trigger, ['poll_branch', 'poll_tags'], true) || $site->deploy_polled_at === null) {
+                            return 'Zatím neproběhla. Panel kontroluje repozitář jednou za minutu.';
+                        }
+
+                        return $site->deploy_poll_error !== null
+                            ? $site->deploy_polled_at->diffForHumans().': chyba – '.$site->deploy_poll_error
+                            : $site->deploy_polled_at->diffForHumans().': '.($site->deploy_trigger === 'poll_tags' ? 'nejnovější tag ' : 'commit ').Str::limit((string) $site->deploy_polled_ref, 12, '');
+                    })
+                    ->visibleWhen('trigger', ['poll_branch', 'poll_tags']),
                 Placeholder::make('help')->hiddenLabel()
                     ->content('GitHub / Gitea / Forgejo: Settings → Webhooks, content type application/json, secret výše. GitLab: Settings → Webhooks, Secret token = secret. Bitbucket: Repository settings → Webhooks.')
                     ->hiddenWhen('trigger', ['poll_branch', 'poll_tags']),
@@ -311,7 +325,10 @@ class SiteDeploy extends ViewPage
             ])
             ->action(function (array $data) {
                 $site = $this->site();
-                $site->update(['deploy_trigger' => $data['trigger'] ?? 'branch']);
+                $trigger = $data['trigger'] ?? 'branch';
+                $site->update($trigger === $site->deploy_trigger
+                    ? ['deploy_trigger' => $trigger]
+                    : ['deploy_trigger' => $trigger, 'deploy_polled_ref' => null, 'deploy_polled_at' => null, 'deploy_poll_error' => null]);
                 $data['enabled'] ? app(ManageWebhook::class)->enable($site) : app(ManageWebhook::class)->disable($site);
                 Toast::success($data['enabled'] ? 'Automatický deploy zapnut' : 'Automatický deploy vypnut', $data['enabled'] ? self::TRIGGERS[$data['trigger']] : null);
             });

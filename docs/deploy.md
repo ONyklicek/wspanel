@@ -68,15 +68,32 @@ V logu je přesně vidět, který příkaz a s jakým výstupem selhal.
 **Bezpečnost:** každý krok běží pod uživatelem webu v izolované systemd unitě
 (bez roota, zapisovat smí jen do svého webu), s limitem 30 minut.
 
-## Webhook: deploy po pushi nebo releasu
+## Automatický deploy
 
-Deploy → **Webhook** → Zapnuto. Zvolte, co deploy spustí:
+Deploy → **Automatický deploy** → Zapnuto. Zvolte, co deploy spustí:
 
-- **Push do větve:** nasadí se nejnovější commit nastavené větve.
-- **Nový release nebo tag:** nasadí se přesně ten tag (`v1.4.0`). Push do
-  větví se ignoruje.
+| Spouštěč | Jak to funguje | Panel musí být z internetu dostupný |
+|---|---|---|
+| **Push do větve** (webhook) | Git hosting pošle webhook, nasadí se nejnovější commit větve | ano (jen adresa webhooku) |
+| **Release nebo tag** (webhook) | nasadí se přesně vydaný tag (`v1.4.0`), push do větví se ignoruje | ano (jen adresa webhooku) |
+| **Kontrolovat větev** | server se jednou za minutu podívá do repozitáře (`git ls-remote`) a nasadí nový commit | **ne** |
+| **Kontrolovat tagy** | jako výše, nasadí nejnovější tag podle čísla verze (`v1.10.0` > `v1.9.3`) | **ne** |
 
-Nastavení u Git hostingu (URL a secret zkopírujte z okna Webhook):
+Kontrola repozitáře se hodí, když panel není veřejný (viz
+[Bezpečnost](bezpecnost.md#panel-jen-z-vnitřní-sítě)) nebo je server za NATem.
+Server se do repozitáře přihlašuje stejně jako při deployi (deploy klíč nebo
+veřejné `https://`). Výsledek poslední kontroly, případně chybu, ukazuje okno
+Automatický deploy.
+
+- Nasadí se jen změna od poslední kontroly, a jen když ji poslední deploy ještě
+  nenasadil. Ruční rollback se tedy nepřepíše a commit, jehož build selhal, se
+  nezkouší každou minutu znovu (nasadí se až další commit, nebo ručně).
+- Když zrovna běží deploy, nový stav se zařadí a nasadí po jeho skončení.
+
+### Webhook
+
+Nastavení u Git hostingu (URL a secret zkopírujte z okna Automatický deploy).
+Tlačítko **Nové URL a secret** vydá nové údaje, staré okamžitě přestanou platit:
 
 | Hosting | Kde | Události |
 |---|---|---|

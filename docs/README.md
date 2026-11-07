@@ -39,15 +39,17 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 
 | Menu | Co tam je |
 |---|---|
-| **Nástěnka** | souhrn: zátěž, paměť, disk, certifikáty, upozornění |
-| **Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
-| **Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi |
-| **Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
-| **DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
-| **Pošta** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, log |
-| **Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
-| **Firewall** | pravidla UFW |
-| **SSL** | certifikáty a jejich stav |
-| **Naplánované úlohy** | cron úlohy webů |
-| **Audit** | co přesně a kdy agent na serveru udělal |
-| **Nápověda** | tato dokumentace |
+| **Přehled** | co vyžaduje pozornost (spadlé služby, neodpovídající weby, certifikáty, chyby deploye, plný disk), zátěž, poslední deploye |
+| **Hosting → Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi, záložka Deploy |
+| **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
+| **Hosting → Naplánované úlohy** | cron úlohy webů |
+| **Síť a pošta → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
+| **Síť a pošta → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
+| **Síť a pošta → Pošta** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, log |
+| **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
+| **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
+| **Server → Firewall** | pravidla UFW a přístup k panelu (z jakých adres) |
+| **Server → Audit** | co přesně a kdy agent na serveru udělal |
+| **Dokumentace** | tato dokumentace |
+
+Vyhledávání (⌘K / Ctrl+K) najde web nebo databázi podle názvu.

@@ -81,6 +81,25 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
 - Tokeny Cloudflare, secrety webhooků a hesla relaye jsou v databázi panelu
   šifrovaně (`APP_KEY`), resp. jen na serveru s právy roota.
 
+## Panel jen z vnitřní sítě
+
+Weby mohou být veřejné a panel přitom dostupný jen z vybraných adres (kancelář,
+VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
+(`10.8.0.0/24`, `203.0.113.7`). Ostatním panel odpovídá jako neexistující stránka
+(404), weby to neovlivní.
+
+- Ze serveru samotného (`127.0.0.1`, SSH tunel) je panel přístupný vždy.
+  Když se zamknete: `ssh -L 8443:127.0.0.1:443 root@server` a v prohlížeči
+  `https://<panel>:8443` (nebo z terminálu znovu `install.sh --panel-allow=any`).
+- Panel odmítne uložit seznam, který nezahrnuje adresu, ze které ho právě
+  používáte.
+- **Webhooky a CI API** (`/hooks/deploy/…`, `/api/deploy/…`) mohou zůstat
+  veřejné, aby GitHub mohl spouštět deploy. Pokud je vypnete, použijte
+  [automatický deploy kontrolou repozitáře](deploy.md#automatický-deploy) –
+  ten nepotřebuje žádné spojení zvenku.
+- Totéž jde nastavit při instalaci: `install.sh --panel-allow=10.8.0.0/24,203.0.113.7`.
+- Omezení se týká i Mailpitu a phpMyAdminu/Admineru (běží pod doménou panelu).
+
 ## Docker Desktop (jen vývoj)
 
 Docker Desktop na Macu nevynucuje cgroup BPF `SocketBindDeny`. Dev kontejner

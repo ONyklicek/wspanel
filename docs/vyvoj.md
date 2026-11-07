@@ -38,10 +38,10 @@ Certifikáty vydává interní CA Caddy. Prohlížeč jednou zobrazí varování
 
 ```
 agent/      Go agent: jediná komponenta s rootem, whitelist operací přes Unix socket
-panel/      Laravel 13 + Filament 5, běží jako neprivilegovaný uživatel panel, stav v SQLite
+panel/      Laravel 13 + WireStack (Livewire 4), běží jako neprivilegovaný uživatel panel, stav v SQLite
 provision/  install.sh pro Debian 13 + systemd unity, Caddyfile, konfigurace
 dev/        dev kontejner, e2e test, demo aplikace
-docs/       tato dokumentace (v panelu v menu Nápověda)
+docs/       tato dokumentace (v panelu v menu Dokumentace)
 ```
 
 ## Přidání operace agenta
