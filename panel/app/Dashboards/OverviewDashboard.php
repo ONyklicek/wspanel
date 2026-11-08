@@ -10,12 +10,16 @@ use App\Models\Client;
 use App\Models\Deployment;
 use App\Models\ServerMetric;
 use App\Models\Service;
+use App\Models\Setting;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Attention;
 use App\Support\Limits;
+use App\Support\SetupChecklist;
 use App\Wire\Resources\SiteResource;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Number;
+use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Contracts\ProvidesNavigation;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Foundation\Routing\Contracts\ConfiguresRoutes;
@@ -44,6 +48,27 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
         $client = Limits::forCurrentUser();
 
         return [
+            ...(SetupChecklist::shown() ? [
+                ListWidget::make()
+                    ->key('setup')
+                    ->heading(__('Dokončení nastavení serveru'))
+                    ->description(__('Kroky k serveru, který je bezpečné provozovat. Až budou všechny hotové, tento seznam zmizí.'))
+                    ->columnSpan(2)
+                    ->headerActions([
+                        Action::make('hideSetup')->label(__('Skrýt'))->icon('outline:eye-slash')->color('gray')->size('sm')
+                            ->action(function () {
+                                abort_unless(Gate::allows('admin'), 403);
+                                Setting::put(SetupChecklist::DISMISSED, true);
+                            }),
+                    ])
+                    ->items(fn () => array_map(fn (array $s) => ListItem::make($s['title'])
+                        ->description($s['detail'])
+                        ->icon($s['done'] ? 'outline:check-circle' : 'outline:arrow-right-circle')
+                        ->color($s['done'] ? 'success' : 'warning')
+                        ->meta($s['done'] ? __('hotovo') : null)
+                        ->url($s['done'] ? null : $s['url']), SetupChecklist::steps())),
+            ] : []),
+
             ListWidget::make()
                 ->key('attention')
                 ->heading(__('Vyžaduje pozornost'))

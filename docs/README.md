@@ -44,7 +44,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 
 | Menu | Co tam je |
 |---|---|
-| **Přehled** | co vyžaduje pozornost (spadlé služby, neodpovídající weby, certifikáty, chyby deploye, plný disk), zátěž, poslední deploye |
+| **Přehled** | u nového serveru checklist dokončení nastavení (první web, 2FA, notifikace, zálohy mimo server, PTR a SPF pošty), co vyžaduje pozornost (spadlé služby, neodpovídající weby, certifikáty, chyby deploye, plný disk), zátěž, poslední deploye |
 | **Hosting → Klienti** | klienti, jejich balíčky a limity, spotřeba, pozastavení, přihlášení jako klient (jen správce) |
 | **Hosting → Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi, záložky Deploy, Soubory a Zálohy |
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
