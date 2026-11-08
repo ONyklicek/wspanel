@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Pages;
 
+use App\Actions\Mail\ManageMailHosting;
 use App\Models\Client;
+use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Features;
 use App\Support\Toast;
@@ -48,9 +50,30 @@ class ModulesPage extends Page
         return array_map(fn ($e) => $e->getLabel(), rescue(fn () => app(SystemInfo::class)->dbEngines(), [], report: false));
     }
 
+    public function mailHosting(): bool
+    {
+        return app(ManageMailHosting::class)->installed();
+    }
+
     protected function headerActions(): array
     {
         return [
+            Action::make('installMail')
+                ->label('Nainstalovat poštu (schránky)')
+                ->icon('outline:inbox-stack')
+                ->visible(fn () => ! app(ManageMailHosting::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription('Doinstaluje Dovecot (IMAP, POP3, Sieve) a Rspamd (antispam), otevře porty 25, 465, 587, 993, 995 a 4190 a Postfix začne přijímat poštu pro přidané domény. Trvá pár minut.')
+                ->action(function () {
+                    try {
+                        app(ManageMailHosting::class)->install()
+                            ? Toast::success('Pošta nainstalována', 'Přidejte domény v Síť a pošta → Schránky.')
+                            : Toast::warning('Instalace ještě běží', 'Stav se ukáže za chvíli.');
+                    } catch (AgentException $e) {
+                        Toast::error('Instalace selhala', $e->getMessage());
+                    }
+                    $this->redirect(self::url());
+                }),
             Action::make('enableClients')
                 ->label('Zapnout klienty a balíčky')
                 ->icon('outline:user-group')

@@ -3,6 +3,8 @@
 namespace App\Services\Dns;
 
 use App\Actions\Mail\ManageMail;
+use App\Actions\Mail\ManageMailHosting;
+use App\Models\MailDomain;
 
 /**
  * What a domain on this server should have in DNS, and whether public DNS
@@ -29,6 +31,14 @@ class DnsAdvisor
             $out[] = ['name' => $domain, 'type' => 'AAAA', 'ttl' => 3600, 'records' => [$v6], 'note' => 'Web na tomto serveru (IPv6).'];
         }
         $out[] = ['name' => $domain, 'type' => 'CAA', 'ttl' => 3600, 'records' => ['0 issue "letsencrypt.org"', '0 issue "zerossl.com"'], 'note' => 'Certifikáty smí vydat jen autority, které používá server.'];
+        // Mail hosting: MX to this server, client autodiscovery by SRV (RFC 6186).
+        if (MailDomain::acrossClients()->where('domain', $domain)->exists()) {
+            $host = ManageMailHosting::mailHost();
+            $out[] = ['name' => $domain, 'type' => 'MX', 'ttl' => 3600, 'records' => ['10 '.$host.'.'], 'note' => 'Pošta pro doménu chodí na tento server.'];
+            foreach (['_imaps._tcp' => '993', '_pop3s._tcp' => '995', '_submission._tcp' => '587'] as $srv => $port) {
+                $out[] = ['name' => $srv.'.'.$domain, 'type' => 'SRV', 'ttl' => 3600, 'records' => ['0 1 '.$port.' '.$host.'.'], 'note' => 'Poštovní programy samy najdou server.'];
+            }
+        }
         foreach (ManageMail::dnsRecords($domain, $dkim, null, $v4) as $r) {
             $out[] = ['name' => $r['name'], 'type' => 'TXT', 'ttl' => 3600, 'records' => [$r['value']], 'note' => $r['note']];
         }

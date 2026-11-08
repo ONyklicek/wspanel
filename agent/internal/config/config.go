@@ -109,7 +109,16 @@ type Config struct {
 	DKIMSelector string `json:"dkim_selector"`
 	SASLDB       string `json:"sasl_db"`       // per-site SMTP logins (Cyrus sasldb)
 	SenderLogins string `json:"sender_logins"` // Postfix: sender domain -> SMTP login allowed to use it
-	LoginSenders string `json:"login_senders"` // Postfix: Unix login -> senders allowed with sendmail -f
+	// Mail hosting (mail-hosting.sh): where mail.json is rendered to.
+	MailHost       string `json:"mail_host,omitempty"` // default: the panel domain
+	MailDir        string `json:"mail_dir"`            // TLS pair, the "hosting" marker
+	VDomains       string `json:"vdomains"`
+	VMailboxes     string `json:"vmailboxes"`
+	VAliases       string `json:"valiases"`
+	MailboxSenders string `json:"mailbox_senders"`
+	DovecotUsers   string `json:"dovecot_users"`
+	VmailRoot      string `json:"vmail_root"`
+	LoginSenders   string `json:"login_senders"` // Postfix: Unix login -> senders allowed with sendmail -f
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
@@ -194,6 +203,13 @@ func Defaults() Config {
 		PanelUser:         "panel",
 		SASLDB:            "/etc/sasldb2",
 		SenderLogins:      "/etc/postfix/wspanel_sender_logins",
+		MailDir:           "/etc/wspanel/mail",
+		VDomains:          "/etc/postfix/wspanel_vdomains",
+		VMailboxes:        "/etc/postfix/wspanel_vmailboxes",
+		VAliases:          "/etc/postfix/wspanel_valiases",
+		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
+		DovecotUsers:      "/etc/dovecot/wspanel/users",
+		VmailRoot:         "/var/mail/vmail",
 		LoginSenders:      "/etc/postfix/wspanel_login_senders",
 	}
 }

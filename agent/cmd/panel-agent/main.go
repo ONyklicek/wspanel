@@ -203,6 +203,9 @@ func binaries(cfg config.Config) map[string]string {
 		"postconf":         "/usr/sbin/postconf",
 		"postmap":          "/usr/sbin/postmap",
 		"postqueue":        "/usr/sbin/postqueue",
+		"postfix":          "/usr/sbin/postfix", // reload only
+		"doveadm":          "/usr/bin/doveadm",  // quota get
+		"mail-hosting":     "/usr/lib/wspanel/mail-hosting.sh",
 		"saslpasswd2":      "/usr/sbin/saslpasswd2", // password on stdin (-p)
 		"setpriv":          "/usr/bin/setpriv",      // runs fixed binaries as a site user
 		"systemd-analyze":  "/usr/bin/systemd-analyze",

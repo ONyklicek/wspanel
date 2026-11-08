@@ -54,6 +54,13 @@ final class AgentMessages
             '/^(horizon|pulsework) needs the site\'s Valkey.*$/' => 'Worker $1 potřebuje Valkey webu.',
             '/^worker (\S+) keeps its data in Valkey; remove it first$/' => 'Worker $1 má data ve Valkey: nejdřív ho odeberte, pak Valkey vypněte.',
 
+            '/^mail hosting is not installed.*$/' => 'Příjem pošty není nainstalovaný (Server → Moduly).',
+            '/^domain (\S+) still has mailboxes$/' => 'Doména $1 má ještě schránky.',
+            '/^mailbox (\S+) does not exist$/' => 'Schránka $1 neexistuje.',
+            '/^mail domain (\S+) is not set up$/' => 'Doména $1 nemá na serveru poštu.',
+            '/^(\S+) is an alias$/' => '$1 je alias, nemůže být i schránkou.',
+            '/^(\S+) is a mailbox$/' => '$1 je schránka, nemůže být i aliasem.',
+
             // Site web-server rules (site.directives)
             '/^directives: the web server refused them$/' => 'Webserver pravidla odmítl, platí dál předchozí.',
             '/^directives: the web server could not read them$/' => 'Webserver pravidlům nerozumí, platí dál předchozí.',

@@ -20,6 +20,9 @@ return [
     'port' => (int) env('PANEL_PORT', 443),
     'sites_https_port' => (int) env('PANEL_SITES_HTTPS_PORT', 0),
 
+    // Host name of the mail server (MX, IMAP/SMTP for clients); default: the panel's.
+    'mail_host' => env('PANEL_MAIL_HOST'),
+
     // Mailpit web UI path on the panel domain (behind the panel login).
     'mailpit_path' => '/mailpit/',
 ];

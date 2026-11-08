@@ -28,6 +28,8 @@ class SyncState extends Command
             $health->all();
             $databases->handle();
             $certsAndTasks->certificates();
+            // The mail server's certificate follows the edge's (renewals included).
+            rescue(fn () => app(\App\Services\Agent\AgentClient::class)->call('mail.certs'), report: false);
             $certsAndTasks->tasks();
         } catch (AgentException $e) {
             $this->error("Agent: {$e->getMessage()}");

@@ -9,6 +9,8 @@ use App\Enums\SshAccess;
 use App\Exceptions\LimitReachedException;
 use App\Models\Client;
 use App\Models\CronJob;
+use App\Models\Mailbox;
+use App\Models\MailDomain;
 use App\Models\Service;
 use App\Models\Site;
 use App\Models\User;
@@ -36,6 +38,8 @@ final class Limits
         'workers' => ['max_workers', 'Workery', null],
         'disk' => ['disk_quota_mb', 'Místo na disku', 'MB'],
         'db_size' => ['max_db_size_mb', 'Velikost databází', 'MB'],
+        'mailboxes' => ['max_mailboxes', 'Poštovní schránky', null],
+        'mail_quota' => ['max_mail_quota_mb', 'Místo pro poštu', 'MB'],
     ];
 
     /** The client whose limits apply to the signed-in user, null for an admin. */
@@ -172,6 +176,8 @@ final class Limits
             'workers' => Service::withoutGlobalScopes()->whereIn('site_id', $siteIds())->where('type', ServiceType::Worker)->count(),
             'disk' => (int) ceil($this->diskBytes($client) / 1048576),
             'db_size' => (int) ceil($client->databases()->sum('size') / 1048576),
+            'mailboxes' => Mailbox::withoutGlobalScopes()->whereIn('mail_domain_id', MailDomain::acrossClients()->where('client_id', $client->id)->pluck('id'))->count(),
+            'mail_quota' => (int) Mailbox::withoutGlobalScopes()->whereIn('mail_domain_id', MailDomain::acrossClients()->where('client_id', $client->id)->pluck('id'))->sum('quota_mb'),
             default => 0,
         };
     }

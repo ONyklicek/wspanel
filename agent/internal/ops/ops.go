@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true,
 	"php.extension": true, "php.install": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -140,6 +140,15 @@ func Registry() map[string]Op {
 		{"client.delete", true, clientDelete},
 		{"client.quota", true, clientQuota},
 		{"site.directives", true, siteDirectives},
+		{"mail.install", true, mailInstall},
+		{"mail.hosting", false, mailHostingStatus},
+		{"mail.domain.set", true, mailDomainSet},
+		{"mail.mailbox.set", true, mailMailboxSet},
+		{"mail.mailbox.delete", true, mailMailboxDelete},
+		{"mail.alias.set", true, mailAliasSet},
+		{"mail.usage", false, mailUsage},
+		{"mail.autoreply", true, mailAutoreply},
+		{"mail.certs", true, mailCerts},
 		{"site.credentials", false, siteCredentials},
 		{"valkey.set", true, valkeySet},
 		{"valkey.status", false, valkeyStatus},

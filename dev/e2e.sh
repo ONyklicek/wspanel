@@ -812,6 +812,44 @@ contains "Node now serves from the other slot" "$(cat /var/lib/panel-agent/sites
 
 
 # ----------------------------------------------------------------------------
+section "Mail hosting (mailboxes, IMAP, submission, antispam)"
+command -v swaks >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q swaks libnet-ssleay-perl libio-socket-ssl-perl >/dev/null 2>&1
+check "dovecot and rspamd active" systemctl is-active --quiet dovecot rspamd
+php '$m = app(App\Actions\Mail\ManageMailHosting::class);
+foreach (App\Models\MailDomain::where("domain","shop.localhost")->get() as $d) { foreach ($d->mailboxes as $mb) { $m->deleteMailbox($mb); } $m->setAliases($d, []); $m->removeDomain($d); }
+$d = $m->addDomain("shop.localhost");
+$m->saveMailbox($d, "alice", "Alice-heslo-123", 50, true);
+$m->saveMailbox($d, "bob", "Bob-heslo-12345", 50, true);
+$m->setAliases($d, ["info" => ["alice@shop.localhost"], "" => ["bob@shop.localhost"]]);' >/dev/null
+imap_count() { curl -sk --max-time 10 "imaps://127.0.0.1/INBOX" -u "$1:$2" -X "STATUS INBOX (MESSAGES)" 2>/dev/null | grep -o 'MESSAGES [0-9]*' | awk '{print $2}'; }
+a0=$(imap_count alice@shop.localhost Alice-heslo-123); b0=$(imap_count bob@shop.localhost Bob-heslo-12345)
+contains "inbound mail to an alias is accepted" "$(swaks --server 127.0.0.1 --to info@shop.localhost --from x@example.org --header 'Subject: e2e-alias' --body hi 2>&1)" "queued"
+swaks --server 127.0.0.1 --to whatever@shop.localhost --from x@example.org --header 'Subject: e2e-catchall' --body hi >/dev/null 2>&1
+sleep 3
+expect "IMAP: the alias delivered to alice" "$(imap_count alice@shop.localhost Alice-heslo-123)" "$((${a0:-0} + 1))"
+expect "IMAP: catch-all delivered to bob" "$(imap_count bob@shop.localhost Bob-heslo-12345)" "$((${b0:-0} + 1))"
+contains "submission (587) as the mailbox" "$(swaks --server 127.0.0.1 --port 587 --tls --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from alice@shop.localhost --to bob@shop.localhost --header 'Subject: e2e-sub' 2>&1)" "queued"
+contains "a mailbox may send as its alias" "$(swaks --server 127.0.0.1 --port 587 --tls --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from info@shop.localhost --to bob@shop.localhost 2>&1)" "queued"
+contains "but not as anyone else" "$(swaks --server 127.0.0.1 --port 587 --tls --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from bob@shop.localhost --to bob@shop.localhost 2>&1)" "not owned by user"
+contains "SMTPS (465) works" "$(swaks --server 127.0.0.1 --port 465 --tlsc --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from alice@shop.localhost --to bob@shop.localhost 2>&1)" "queued"
+contains "no relay without login" "$(swaks --server 127.0.0.1 --to someone@example.net --from x@example.org 2>&1)" "Relay access denied"
+contains "spam (GTUBE) is rejected by Rspamd" "$(swaks --server 127.0.0.1 --to info@shop.localhost --from x@example.org --body 'XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X' 2>&1)" "Gtube"
+# Autoreply: bob writes to alice, alice is away.
+php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","alice")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->autoreply($mb, ["enabled" => true, "subject" => "Jsem na dovolene", "body" => "Vratim se v pondeli.", "days" => 1]);' >/dev/null
+b1=$(imap_count bob@shop.localhost Bob-heslo-12345)
+swaks --server 127.0.0.1 --port 587 --tls --auth LOGIN --auth-user bob@shop.localhost --auth-password Bob-heslo-12345 --from bob@shop.localhost --to alice@shop.localhost --header "Subject: e2e-vacation-$RANDOM" >/dev/null 2>&1
+for _ in $(seq 1 20); do [[ "$(imap_count bob@shop.localhost Bob-heslo-12345)" -gt "${b1:-0}" ]] && break; sleep 1; done
+check "the autoreply reached the sender" test "$(imap_count bob@shop.localhost Bob-heslo-12345)" -gt "${b1:-0}"
+contains "quota usage is reported" "$(php 'echo json_encode(app(App\Services\Agent\AgentClient::class)->call("mail.usage", ["domain" => "shop.localhost"]));')" '"alice@shop.localhost"'
+contains "IMAP uses the edge's certificate" "$(echo | openssl s_client -connect 127.0.0.1:993 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null)" "Caddy"
+contains "blocking a mailbox" "$(php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","bob")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->saveMailbox($mb->mailDomain, "bob", null, 50, false, $mb); echo "BLOCKED";' 2>&1)" "BLOCKED"
+for _ in $(seq 1 10); do [[ -z "$(imap_count bob@shop.localhost Bob-heslo-12345)" ]] && break; sleep 0.5; done # Dovecot re-reads the users file within a second
+expect "a blocked mailbox cannot log in" "$(imap_count bob@shop.localhost Bob-heslo-12345)" ""
+php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","bob")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->deleteMailbox($mb);' >/dev/null
+check "a deleted mailbox's mail is gone" test ! -d /var/mail/vmail/shop.localhost/bob
+check "the agent never stored a plain password" bash -c '! grep -rq "Alice-heslo-123" /var/lib/panel-agent /etc/dovecot/wspanel /var/log/panel-agent 2>/dev/null'
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

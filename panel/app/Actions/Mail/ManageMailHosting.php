@@ -1,0 +1,189 @@
+<?php
+
+namespace App\Actions\Mail;
+
+use App\Models\Client;
+use App\Models\MailAlias;
+use App\Models\Mailbox;
+use App\Models\MailDomain;
+use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
+use App\Services\Agent\AgentJobs;
+use App\Support\CurrentClient;
+use App\Support\Limits;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/**
+ * Mail hosting: domains, mailboxes, aliases and autoreplies. The agent
+ * holds the server's copy (and renders Postfix/Dovecot from it); the panel
+ * mirrors it and hashes passwords before they leave (SHA512-CRYPT).
+ */
+class ManageMailHosting
+{
+    public function __construct(
+        private readonly AgentClient $agent,
+        private readonly AgentJobs $jobs,
+    ) {}
+
+    /** @return array<string, mixed> */
+    public function status(): array
+    {
+        return Cache::remember('mail.hosting.status', 30, fn () => $this->agent->call('mail.hosting'));
+    }
+
+    public function installed(): bool
+    {
+        return (bool) (rescue(fn () => $this->status(), [], report: false)['installed'] ?? false);
+    }
+
+    /** @throws AgentException */
+    public function install(): bool
+    {
+        $job = $this->agent->call('mail.install');
+        Cache::forget('mail.hosting.status');
+
+        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 600) !== null : true;
+    }
+
+    /** The host name mail clients and MX records use. */
+    public static function mailHost(): string
+    {
+        return (string) (config('panel.mail_host') ?: parse_url((string) config('app.url'), PHP_URL_HOST));
+    }
+
+    /** @throws AgentException */
+    public function addDomain(string $domain, ?Client $owner = null): MailDomain
+    {
+        $domain = strtolower(trim($domain));
+        if (MailDomain::acrossClients()->where('domain', $domain)->exists()) {
+            throw new AgentException('conflict', 'Doména už poštu na tomto serveru má.', 'panel');
+        }
+        $owner ??= Client::find(CurrentClient::id());
+        $this->agent->call('mail.domain.set', ['domain' => $domain, 'enabled' => true]);
+
+        return MailDomain::create(['domain' => $domain, 'client_id' => $owner?->id]);
+    }
+
+    /** @throws AgentException */
+    public function removeDomain(MailDomain $domain): void
+    {
+        if ($domain->mailboxes()->exists()) {
+            throw new AgentException('conflict', 'Doména má schránky, nejdřív je smažte.', 'panel');
+        }
+        if ($domain->aliases()->exists()) {
+            $this->agent->call('mail.alias.set', ['domain' => $domain->domain, 'aliases' => (object) []]);
+        }
+        $this->agent->call('mail.domain.set', ['domain' => $domain->domain, 'enabled' => false]);
+        $domain->delete();
+    }
+
+    /**
+     * A new mailbox, or new settings / password of one. Counts against the
+     * client's package: mailboxes and the mail quota they add up to.
+     *
+     * @throws AgentException
+     */
+    public function saveMailbox(MailDomain $domain, string $localPart, ?string $password, int $quotaMb, bool $enabled, ?Mailbox $existing = null): Mailbox
+    {
+        $localPart = strtolower(trim($localPart));
+        $client = $domain->client;
+        $limits = app(Limits::class);
+        if ($existing === null) {
+            $limits->assertCanAdd($client, 'mailboxes');
+        }
+        $limits->assertCanAdd($client, 'mail_quota', $quotaMb - ($existing->quota_mb ?? 0));
+        if ($existing === null && $domain->aliases()->where('local_part', $localPart)->exists()) {
+            throw new AgentException('conflict', "{$localPart}@{$domain->domain} je alias.", 'panel');
+        }
+        $params = ['address' => $localPart.'@'.$domain->domain, 'quota_mb' => $quotaMb, 'enabled' => $enabled];
+        if ($password !== null && $password !== '') {
+            $params['password_hash'] = self::hash($password);
+        }
+        $this->agent->call('mail.mailbox.set', $params);
+
+        return $existing
+            ? tap($existing)->update(['quota_mb' => $quotaMb, 'enabled' => $enabled])
+            : Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => $localPart, 'quota_mb' => $quotaMb, 'enabled' => $enabled]);
+    }
+
+    /** @throws AgentException */
+    public function deleteMailbox(Mailbox $mailbox, bool $removeData = true): void
+    {
+        $this->agent->call('mail.mailbox.delete', ['address' => $mailbox->address(), 'remove_data' => $removeData]);
+        $mailbox->delete();
+    }
+
+    /**
+     * Replaces the domain's aliases.
+     *
+     * @param  array<string, list<string>>  $aliases  local part ('' = catch-all) => destinations
+     *
+     * @throws AgentException
+     */
+    public function setAliases(MailDomain $domain, array $aliases): void
+    {
+        $this->agent->call('mail.alias.set', ['domain' => $domain->domain, 'aliases' => (object) $aliases]);
+        DB::transaction(function () use ($domain, $aliases) {
+            $domain->aliases()->delete();
+            foreach ($aliases as $local => $to) {
+                MailAlias::create(['mail_domain_id' => $domain->id, 'local_part' => (string) $local, 'destinations' => array_values($to)]);
+            }
+        });
+    }
+
+    /**
+     * @param  array{enabled: bool, subject?: string, body?: string, days?: int}  $data
+     *
+     * @throws AgentException
+     */
+    public function autoreply(Mailbox $mailbox, array $data): void
+    {
+        $this->agent->call('mail.autoreply', ['address' => $mailbox->address(), 'enabled' => (bool) $data['enabled'],
+            'subject' => (string) ($data['subject'] ?? ''), 'body' => (string) ($data['body'] ?? ''), 'days' => (int) ($data['days'] ?? 1)]);
+        $mailbox->update(['autoreply' => $data['enabled'] ? ['subject' => $data['subject'] ?? '', 'body' => $data['body'] ?? '', 'days' => (int) ($data['days'] ?? 1)] : null]);
+    }
+
+    /** Refreshes the used storage of the domain's mailboxes. */
+    public function refreshUsage(MailDomain $domain): void
+    {
+        $out = rescue(fn () => $this->agent->call('mail.usage', ['domain' => $domain->domain]), [], report: false);
+        foreach ($domain->mailboxes as $mb) {
+            if (isset($out['usage_kb'][$mb->address()])) {
+                $mb->update(['used_kb' => (int) $out['usage_kb'][$mb->address()]]);
+            }
+        }
+    }
+
+    /** SHA512-CRYPT ($6$), as Dovecot verifies it. */
+    public static function hash(string $password): string
+    {
+        $salt = substr(strtr(base64_encode(random_bytes(12)), '+', '.'), 0, 16);
+        $hash = crypt($password, '$6$rounds=100000$'.$salt.'$');
+        if (! str_starts_with($hash, '$6$')) {
+            throw new AgentException('op_failed', 'Heslo se nepodařilo zahashovat.', 'panel');
+        }
+
+        return $hash;
+    }
+
+    /** A random password for a new mailbox (shown once). */
+    public static function randomPassword(): string
+    {
+        return Str::password(16, symbols: false);
+    }
+
+    /**
+     * Settings for mail clients.
+     *
+     * @return array<string, string>
+     */
+    public static function clientSettings(): array
+    {
+        $host = self::mailHost();
+
+        return ['IMAP' => "{$host}:993 (SSL/TLS)", 'POP3' => "{$host}:995 (SSL/TLS)", 'SMTP' => "{$host}:587 (STARTTLS) nebo :465 (SSL/TLS)",
+            'Přihlášení' => 'celá e-mailová adresa a heslo schránky'];
+    }
+}

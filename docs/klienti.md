@@ -21,7 +21,7 @@ audit, účty panelu) spravuje jen **správce**.
 | Valkey na web (MB) | kolik paměti smí mít vlastní Valkey jednoho webu (0 = nepovoleno) |
 | Režimy webu, Verze PHP | co klient uvidí při zakládání webu a změně verze |
 | Aliasy domén | kolik dalších domén (aliasů a přesměrovaných domén) mají weby klienta dohromady |
-| Poštovní schránky, Místo pro poštu | připraveno pro poštu (zatím se nevynucuje) |
+| Poštovní schránky, Místo pro poštu | kolik schránek a kolik místa (součet kvót schránek) klient smí mít |
 
 Prázdné pole znamená **neomezeno**. Změna balíčku platí **hned** pro všechny
 jeho klienty, nic se nekopíruje.

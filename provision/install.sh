@@ -4,7 +4,7 @@
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
 #              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
-#              [--panel-port=8443] [--clients=yes]
+#              [--panel-port=8443] [--clients=yes] [--mail-hosting=yes]
 #
 # Panel address:
 #   --panel-domain=panel.example.com             own hostname, port 443, Let's Encrypt
@@ -45,6 +45,7 @@ NODE_VERSIONS="22,24"
 PANEL_DOMAIN=""
 PANEL_PORT=443
 CLIENTS=no
+MAIL_HOSTING=no
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -72,6 +73,7 @@ for arg in "$@"; do
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
+    --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
@@ -96,6 +98,7 @@ done
 . /etc/os-release
 [[ "${ID:-}" == "debian" && "${VERSION_CODENAME:-}" == "trixie" ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
 [[ "$CLIENTS" == yes || "$CLIENTS" == no ]] || die "--clients must be yes or no"
+[[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 if [[ -z "$PANEL_DOMAIN" ]]; then
   [[ $PANEL_PORT -ne 443 ]] || die "--panel-domain is required (or give --panel-port to reach the panel at the server's IP address)"
@@ -351,6 +354,14 @@ systemctl daemon-reload
 systemctl enable mailpit >/dev/null
 systemctl restart mailpit
 
+# Mail hosting (optional): the script the agent also runs when it is added later.
+install -d -m 0755 /usr/lib/wspanel
+install -m 0755 "$HERE/mail-hosting.sh" /usr/lib/wspanel/mail-hosting.sh
+if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
+  log "Mail hosting (Dovecot, Rspamd)"
+  /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME"
+fi
+
 # ---------------------------------------------------------------- DNS (optional)
 # Authoritative only (no recursion), zones in SQLite, managed by the agent over
 # the API on loopback. Zones can also live at Cloudflare (panel, API token).
@@ -406,6 +417,7 @@ cat > /etc/panel-agent/agent.json <<JSON
   "panel_port": $PANEL_PORT,
   "protected_ports": [$SSH_PORT, 80, 443$([[ $PANEL_PORT -ne 443 ]] && echo ", $PANEL_PORT")],
   "mail_default": "$MAIL_DEFAULT",
+  "mail_host": "$MAIL_NAME",
   "powerdns_api": "$([[ -n "$PDNS_API_KEY" ]] && echo http://127.0.0.1:8081)",
   "powerdns_key": "$PDNS_API_KEY",
   "allow_unenforced_socket_bind": $UNENFORCED_BIND
@@ -486,6 +498,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env APP_URL "$PANEL_URL"
   set_panel_env PANEL_PORT "$PANEL_PORT"
   set_panel_env PANEL_CLIENTS "$([[ $CLIENTS == yes ]] && echo true || echo false)"
+  set_panel_env PANEL_MAIL_HOST "$MAIL_NAME"
   set_panel_env PANEL_SITES_HTTPS_PORT "$PUBLIC_HTTPS_PORT"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
   [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
