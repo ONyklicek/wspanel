@@ -225,6 +225,7 @@ check "env.set content is redacted in the audit log" bash -c '! grep "\"op\":\"e
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageWebhook::class)->enable(\$s); file_put_contents('$W/hook', App\\Actions\\Sites\\ManageWebhook::url(\$s).PHP_EOL.\$s->webhook_secret);" >/dev/null
 url=$(sed -n 1p "$W/hook" | sed -E 's#^(https://[^/:]+):[0-9]+#\1#'); secret=$(sed -n 2p "$W/hook") # public port -> in-container 443
 echo v2 >"$W/app/VERSION" && chown git:git "$W/app/VERSION" && gitc commit -qam v2 && gitc push -q /home/git/app.git main
+php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->configure(\$s, ['repo' => 'git@localhost:app.git', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5, 'commands' => 'install:permissions --force', 'maintenance' => true]);" >/dev/null
 body="{\"ref\":\"refs/heads/main\",\"after\":\"$(gitc rev-parse HEAD)\"}"
 sig="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
 hook() { pc -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' "$@" -d "$body" "$url"; }
@@ -237,6 +238,10 @@ php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->histo
 rel=$(php "$(site app.localhost) echo App\\Models\\Deployment::where('site_id', \$s->id)->latest('started_at')->value('release');" | tr -d '[:space:]')
 expect "webhook deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
 contains "v2 is live" "$(https app.localhost /)" "deploy-test-app v2"
+v2log=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->log(\$s, '$(basename "$(readlink /srv/sites/app.localhost/current)")', 0)['content'] ?? '';")
+contains "maintenance page was up during the migrations" "$v2log" "Maintenance page up"
+contains "and came down after the switch" "$v2log" "Maintenance page down"
+check "no maintenance page left" bash -c "! grep -q wsp_maint /etc/panel-proxy/sites/app.localhost.caddy"
 rel_q2=$(basename "$(readlink /srv/sites/app.localhost/current)")
 check "the deploy started the queue of the new release" systemctl is-active --quiet "wspanel-web_app_localhost-queue@$rel_q2.service"
 for _ in $(seq 1 20); do systemctl is-active --quiet "wspanel-web_app_localhost-queue@$rel_q.service" || break; sleep 0.5; done

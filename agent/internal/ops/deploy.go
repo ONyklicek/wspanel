@@ -45,6 +45,9 @@ type deployConfig struct {
 	// EnvFromDeploy: the release's env file wins over the panel, except for
 	// what binds the app to this server (Reverb's listening port).
 	EnvFromDeploy bool `json:"env_from_deploy,omitempty"`
+	// Maintenance: visitors see a maintenance page while migrations run and
+	// until the new release answers (for migrations the old code cannot run on).
+	Maintenance bool `json:"maintenance,omitempty"`
 }
 
 var deployCommandRe = regexp.MustCompile(`^[a-z][a-z0-9:_-]{0,63}( [A-Za-z0-9=:_.,/@-]{1,100}){0,8}$`)
@@ -416,6 +419,8 @@ type deployment struct {
 	commit   string
 	ref      string // what to fetch instead of the configured branch
 	artifact string // pre-built release from CI: no git, no composer/npm
+	// maintenance: this deploy put the maintenance page up
+	maintenance bool
 }
 
 func (d *deployment) logf(format string, a ...any) { fmt.Fprintf(d.log, format, a...) }
@@ -506,6 +511,13 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 		cleanup()
 		return "", err
 	}
+
+	// Whatever happens below, a maintenance page this deploy put up comes down.
+	defer func() {
+		if d.maintenance {
+			d.setMaintenance(context.WithoutCancel(ctx), false)
+		}
+	}()
 
 	// 3. Build.
 	if err := d.build(ctx); err != nil {
@@ -619,6 +631,7 @@ func (d *deployment) build(ctx context.Context) error {
 	}
 	switch l.Framework {
 	case "laravel":
+		d.maintenanceForMigrations(ctx)
 		if d.artifact != "" {
 			// Caches built on the CI runner name its paths and its packages;
 			// the first artisan run here would boot with them.
@@ -643,6 +656,7 @@ func (d *deployment) build(ctx context.Context) error {
 			}
 		}
 	case "symfony":
+		d.maintenanceForMigrations(ctx)
 		prod := []string{"APP_ENV=prod", "APP_DEBUG=0"}
 		if d.cfg.Migrate && d.exists("config/packages/doctrine_migrations.yaml") {
 			if err := d.step(ctx, "Migrations", dir, prod, php, "bin/console", "doctrine:migrations:migrate", "--no-interaction", "--allow-no-migration"); err != nil {
@@ -664,6 +678,53 @@ func (d *deployment) build(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// maintenanceForMigrations puts the maintenance page up before migrations
+// when the site asked for it.
+func (d *deployment) maintenanceForMigrations(ctx context.Context) {
+	if d.cfg.Migrate && d.cfg.Maintenance && !d.maintenance {
+		d.setMaintenance(ctx, true)
+	}
+}
+
+// setMaintenance switches the edge's maintenance page for the site. The
+// operator gets in with a bypass link (a cookie), printed in the deploy log;
+// the health check talks to the backend directly and is not affected.
+func (d *deployment) setMaintenance(ctx context.Context, on bool) {
+	err := withMutate(d.env, func() error {
+		st, _, err := loadSite(d.env, d.l.Domain)
+		if err != nil {
+			return err
+		}
+		st.Maintenance = ""
+		if on {
+			st.Maintenance = randomToken(24)
+		}
+		l, err := layout(d.env.Cfg, st)
+		if err != nil {
+			return err
+		}
+		var rb undo
+		if err := writeEdge(ctx, d.env, l, &rb); err != nil {
+			rb.run()
+			return err
+		}
+		if err := saveSiteState(d.env, st); err != nil {
+			return err
+		}
+		if on {
+			d.logf("\n==> Maintenance page up (migrations). You get in with https://%s/?wsp_maintenance=%s\n", d.l.Domain, st.Maintenance)
+		} else {
+			d.logf("\n==> Maintenance page down\n")
+		}
+		return nil
+	})
+	if err != nil {
+		d.logf("maintenance page: %v\n", err)
+		return
+	}
+	d.maintenance = on
 }
 
 // switchTo points current at a release atomically (as the site user: the

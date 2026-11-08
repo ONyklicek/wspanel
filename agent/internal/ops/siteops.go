@@ -115,11 +115,12 @@ func setSiteEnabled(ctx context.Context, env *Env, raw json.RawMessage, enable b
 			}
 		}
 	}
+	if !enable {
+		// At once: an hour's drain is for deploys, not for switching a site off.
+		stopNow(ctx, env, units)
+	}
 	for _, u := range units {
 		if !enable {
-			if _, err = env.Exec.Run(ctx, "systemctl", "disable", "--now", u); err != nil {
-				return nil, err
-			}
 			continue
 		}
 		if _, err = env.Exec.Run(ctx, "systemctl", "enable", u); err != nil {

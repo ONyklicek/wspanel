@@ -46,6 +46,9 @@ type siteState struct {
 	Group string `json:"group,omitempty"`
 	// FPMChildren: classic mode, pm.max_children (0 = default).
 	FPMChildren int `json:"fpm_children,omitempty"`
+	// Maintenance: while set (a bypass secret), the edge shows a maintenance
+	// page (a deploy's migrations); the secret's cookie lets the operator in.
+	Maintenance string `json:"maintenance,omitempty"`
 	// Directives: custom Caddyfile rules in the site's edge route (checked by checkDirectives).
 	Directives string `json:"directives,omitempty"`
 	// ValkeyPort: the site's Valkey port, kept after Valkey is switched off

@@ -54,6 +54,7 @@ class ManageDeploys
             'keep' => (int) $config['keep'],
             'commands' => self::commandLines($config['commands'] ?? []),
             'env_from_deploy' => (bool) ($config['env_from_deploy'] ?? false),
+            'maintenance' => (bool) ($config['maintenance'] ?? false),
         ]);
     }
 

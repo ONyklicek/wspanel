@@ -44,6 +44,19 @@
 			{{.Edge.AuthUser}} {{.Edge.AuthHash}}
 		}
 {{- end}}
+{{- if .Maintenance}}
+
+		# Maintenance page (a deploy's migrations). The bypass link sets a cookie.
+		@wsp_maint_enter query wsp_maintenance={{.Maintenance}}
+		header @wsp_maint_enter Set-Cookie "wsp_maintenance={{.Maintenance}}; Path=/; Secure; HttpOnly; SameSite=Lax"
+		@wsp_maint {
+			not header Cookie *wsp_maintenance={{.Maintenance}}*
+			not query wsp_maintenance={{.Maintenance}}
+		}
+		header @wsp_maint Retry-After 60
+		header @wsp_maint Content-Type "text/html; charset=utf-8"
+		respond @wsp_maint `<!doctype html><html lang="cs"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="15"><title>Probíhá údržba</title><body style="font-family:system-ui;max-width:36rem;margin:5rem auto;padding:0 1rem;color:#333"><h1 style="font-size:1.4rem">Probíhá krátká údržba</h1><p>Web bude za chvíli zpět. Stránka se sama obnoví.</p></body></html>` 503
+{{- end}}
 {{- range .Edge.Redirects}}
 		redir {{.From}} {{.To}} {{.Code}}
 {{- end}}

@@ -69,3 +69,27 @@ func TestDeployRotatesWorkersWithoutMixingCode(t *testing.T) {
 		t.Error("a release an old worker still runs from must not be pruned")
 	}
 }
+
+func TestMaintenancePageWithBypass(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "m.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	_, l, _ := loadSite(env, "m.example.com")
+	var log strings.Builder
+	d := &deployment{env: env, l: l, cfg: deployConfig{Migrate: true, Maintenance: true}, log: &log}
+	d.maintenanceForMigrations(t.Context())
+	st, _, _ := loadSite(env, "m.example.com")
+	edge, _ := os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "m.example.com.caddy"))
+	if len(st.Maintenance) != 24 || !strings.Contains(string(edge), "respond @wsp_maint") || !strings.Contains(string(edge), "wsp_maintenance="+st.Maintenance) {
+		t.Fatalf("maintenance page with its bypass:\n%s", edge)
+	}
+	if !strings.Contains(log.String(), "?wsp_maintenance="+st.Maintenance) {
+		t.Error("the deploy log gives the operator the bypass link")
+	}
+	d.setMaintenance(t.Context(), false)
+	edge, _ = os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "m.example.com.caddy"))
+	if strings.Contains(string(edge), "wsp_maint") {
+		t.Error("the page must come down")
+	}
+}

@@ -227,7 +227,7 @@ class SiteDeploy extends ViewPage
             ->color('gray')
             ->modalHeading('Nastavení deploye')
             ->modalWidth('2xl')
-            ->fillFormUsing(fn () => ['commands' => implode("\n", $this->config['commands'] ?? []), 'env_from_deploy' => (bool) ($this->config['env_from_deploy'] ?? false)]
+            ->fillFormUsing(fn () => ['commands' => implode("\n", $this->config['commands'] ?? []), 'env_from_deploy' => (bool) ($this->config['env_from_deploy'] ?? false), 'maintenance' => (bool) ($this->config['maintenance'] ?? false)]
                 + ($this->config ?? ['repo' => '', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5])
                 + ['opcache_production' => $this->opcacheProduction])
             ->form([
@@ -242,6 +242,11 @@ class SiteDeploy extends ViewPage
                     ->label($site->framework === Framework::Symfony ? 'Spouštět Doctrine migrace' : 'Spouštět migrace (artisan migrate --force)')
                     ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
                 Toggle::make('assets')->label('Buildit assety (npm ci + npm run build)')->visible(! $site->framework->isNode()),
+                Toggle::make('maintenance')
+                    ->label('Stránka údržby během migrací')
+                    ->helperText('Pro migrace, se kterými starý kód nepoběží: návštěvníci uvidí „Probíhá údržba“ od migrací do chvíle, kdy nový release odpovídá. Odkaz pro vstup správce je v logu deploye.')
+                    ->visibleWhen('migrate', true)
+                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
                 Toggle::make('auto_rollback')->label('Když nový release neodpovídá, vrátit předchozí'),
                 Select::make('keep')->rules([Options::rule()])->label('Držet releasů')->options(array_combine(range(2, 10), range(2, 10)))->required(),
                 Textarea::make('commands')

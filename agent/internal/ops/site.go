@@ -67,6 +67,7 @@ type siteLayout struct {
 	// Edge settings, ready for the template.
 	Edge         edgeSettings
 	Directives   string // custom rules, indented for the edge route
+	Maintenance  string // bypass secret while a maintenance page is up
 	EdgeHosts    string // the site block's addresses: domain + aliases
 	AuthMatcher  string // basic_auth matcher ("*" = whole site)
 	AllowMatcher string // path the IP allowlist guards
@@ -118,6 +119,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		EdgeFile: filepath.Join(cfg.ProxySitesDir, st.Domain+".caddy"),
 	}
+	l.Maintenance = st.Maintenance
 	if st.Directives != "" {
 		l.Directives = "\t\t" + strings.ReplaceAll(st.Directives, "\n", "\n\t\t")
 	}

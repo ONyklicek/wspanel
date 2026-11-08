@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"wspanel/agent/internal/fsx"
 )
@@ -170,12 +171,8 @@ func startWorkerRelease(ctx context.Context, env *Env, l siteLayout, typ string,
 			}
 		}
 	}
-	if l.Disabled {
-		stopOld(true)
-		return false, nil
-	}
-	if !fileIn(filepath.Join(l.Home, "releases", rel), spec.Entry) {
-		stopOld(true)
+	if l.Disabled || !fileIn(filepath.Join(l.Home, "releases", rel), spec.Entry) {
+		stopNow(ctx, env, olds)
 		return false, nil
 	}
 	draining := slices.Contains(drainingWorkers, typ)
@@ -221,8 +218,9 @@ func removeWorker(ctx context.Context, env *Env, l siteLayout, typ string) error
 			return err
 		}
 	}
-	for _, u := range loadedInstances(ctx, env, l.User, typ) {
-		_, _ = env.Exec.Run(ctx, "systemctl", "disable", "--now", u)
+	instances := loadedInstances(ctx, env, l.User, typ)
+	stopNow(ctx, env, instances)
+	for _, u := range instances {
 		_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", u)
 	}
 	path := filepath.Join(env.Cfg.SystemdDir, workerTemplate(l.User, typ))
@@ -290,3 +288,37 @@ func MigrateLegacyWorkers(ctx context.Context, env *Env, logf func(string, ...an
 		}
 	}
 }
+
+// stopNow stops units at once (site switched off, suspended or deleted, a
+// worker removed): SIGTERM and at most hardStopGrace to finish, then SIGKILL.
+// The long drain timeout is for the old worker beside the new one after a
+// deploy only; here nothing may wait an hour, least of all under the lock.
+func stopNow(ctx context.Context, env *Env, units []string) {
+	if len(units) == 0 {
+		return
+	}
+	for _, u := range units {
+		_, _ = env.Exec.Run(ctx, "systemctl", "disable", u)
+		_, _ = env.Exec.Run(ctx, "systemctl", "stop", "--no-block", u)
+	}
+	if env.Cfg.DryRun {
+		return
+	}
+	deadline := time.Now().Add(hardStopGrace)
+	for time.Now().Before(deadline) {
+		res, _ := env.Exec.Run(ctx, "systemctl", append([]string{"is-active"}, units...)...)
+		running := false
+		for _, state := range strings.Fields(res.Stdout) {
+			if state == "active" || state == "activating" || state == "deactivating" || state == "reloading" {
+				running = true
+			}
+		}
+		if !running {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	_, _ = env.Exec.Run(ctx, "systemctl", append([]string{"kill", "--signal=SIGKILL"}, units...)...)
+}
+
+const hardStopGrace = 30 * time.Second
