@@ -94,3 +94,35 @@ Skript odehraje celý postup týmu proti dev serveru:
 Ověří, že běží v PHP-FPM, s migrovanou databází, frontou a plánovačem. Potom
 přepne web do režimu FrankenPHP (worker) a release `v1.1.0` nasadí stejně.
 
+
+## Vydání verze
+
+CI je v `.github/workflows/`:
+
+- **CI** (`ci.yml`) při každém push na `main` a pull requestu: agent (gofmt,
+  `go vet` pro amd64 i arm64, testy), panel (Pint, build assetů, testy),
+  syntaxe skriptů instalace.
+- **Release** (`release.yml`) po pushnutí tagu:
+
+  ```
+  git tag v1.2.0 && git push origin v1.2.0      # v1.2.0-rc1 = předběžná verze
+  ```
+
+  Spustí kontroly z CI, sestaví balíčky pro amd64 a arm64, každý nainstaluje
+  na čistý Debian 13 na stejné architektuře (`dev/release-smoke.sh`: instalace
+  se všemi moduly, služby, panel, web Laravel s workery, doručení pošty,
+  aktualizace s uloženým nastavením) a teprve pak vydá GitHub release:
+  balíčky, `SHA256SUMS`, záznam o původu buildu (build provenance) a seznam
+  změn od předchozího tagu.
+
+  Ručním spuštěním (Actions → Release → Run workflow, s číslem verze) se
+  balíčky sestaví a otestují bez vydání.
+
+Lokálně totéž: `make release-smoke VERSION=1.2.0-rc1` (Docker, trvá 10–15 minut).
+
+Ověření staženého balíčku na serveru:
+
+```
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify wspanel-1.2.0-linux-amd64.tar.gz --repo <vlastník>/<repozitář>
+```

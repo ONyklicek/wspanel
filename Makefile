@@ -8,7 +8,7 @@ PHP     ?= 8.3,8.4
 LDFLAGS := -s -w -X wspanel/agent/internal/ops.Version=$(VERSION)
 DEV     := docker compose -f dev/compose.yaml
 
-.PHONY: dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
+.PHONY: release-smoke dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
 
 test: agent-test panel-test
 
@@ -28,6 +28,11 @@ agent-build:
 ## dist/wspanel-$(VERSION)-linux-$(ARCH).tar.gz
 bundle:
 	provision/bundle.sh $(VERSION) $(ARCH)
+
+## The release check CI runs: the bundle installed on a clean Debian 13
+## (Docker), used and upgraded. make release-smoke VERSION=1.2.0-rc1
+release-smoke: bundle
+	dev/release-smoke.sh dist/wspanel-$(VERSION)-linux-$(ARCH).tar.gz
 
 ## The wspanel CLI for Linux and macOS (both architectures).
 cli-build:

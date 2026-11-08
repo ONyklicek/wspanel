@@ -1,0 +1,132 @@
+# A release: push a tag v1.2.0 (or v1.2.0-rc1 for a pre-release) and this
+# builds the bundles for amd64 and arm64, installs each on a clean Debian 13
+# (dev/release-smoke.sh), and only then publishes them as a GitHub release
+# with checksums and build provenance.
+#
+# Run it by hand (Actions → Release → Run workflow) to build and test a
+# version without publishing anything.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without v), e.g. 1.2.0-test"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Bundle ${{ matrix.arch }}
+    needs: checks
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Version
+        env:
+          INPUT_VERSION: ${{ inputs.version }} # never spliced into the script itself
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then v="${GITHUB_REF_NAME#v}"; else v="${INPUT_VERSION}"; fi
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a version: $v"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - name: Build
+        run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.arch }}
+          path: dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  smoke:
+    name: Install test ${{ matrix.arch }}
+    needs: build
+    # Each bundle on its own architecture. The arm64 runners are free for
+    # public repositories; a private one without them: drop that line.
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.arch }}
+          path: dist
+      - name: Install on a clean Debian 13, use it, upgrade it
+        run: dev/release-smoke.sh dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
+
+  publish:
+    name: Publish
+    if: github.ref_type == 'tag'
+    needs: [build, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write     # the release
+      id-token: write     # build provenance
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum wspanel-*.tar.gz | tee SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/wspanel-*.tar.gz
+      - name: Release notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            echo "## Instalace"
+            echo
+            echo '```'
+            echo "curl -LO https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/wspanel-${{ needs.build.outputs.version }}-linux-amd64.tar.gz"
+            echo "tar -xzf wspanel-${{ needs.build.outputs.version }}-linux-amd64.tar.gz && cd wspanel && sudo ./install"
+            echo '```'
+            echo
+            echo "Aktualizace: rozbalte balíček a spusťte \`sudo ./install\` (nabídne aktualizaci se stávajícím nastavením)."
+            echo "Ověření: \`sha256sum -c SHA256SUMS\` a \`gh attestation verify <soubor> --repo ${GITHUB_REPOSITORY}\`."
+            echo
+            echo "## Změny"
+            echo
+            git log --no-merges --format='- %s' ${prev:+$prev..}"${GITHUB_REF_NAME}"
+          } > notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/SHA256SUMS \
+            --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre

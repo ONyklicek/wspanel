@@ -360,7 +360,7 @@ class ClientTenancyTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('site.create', Mockery::on(fn ($p) => $p['group'] === 'wsc_1' && $p['fpm_children'] === 4))
             ->andReturn(['mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'system_user' => 'web_g_example_com', 'home' => '/srv/sites/g.example.com', 'doc_root' => '/srv/sites/g.example.com/current/public']);
 
-        app(\App\Actions\Sites\CreateSite::class)->handle(['domain' => 'g.example.com', 'framework' => 'laravel', 'php_version' => '8.4']);
+        app(CreateSite::class)->handle(['domain' => 'g.example.com', 'framework' => 'laravel', 'php_version' => '8.4']);
 
         $this->assertSame($alice->id, Site::acrossClients()->where('domain', 'g.example.com')->value('client_id'));
     }
