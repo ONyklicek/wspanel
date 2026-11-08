@@ -3,17 +3,21 @@
 namespace App\Livewire\Server;
 
 use App\Actions\Firewall\ManageFirewall;
+use App\Actions\Firewall\ManageGeoblock;
 use App\Actions\Firewall\SyncFirewall;
 use App\Actions\ManagePanelAccess;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
+use App\Support\Countries;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\FirewallRuleResource;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
+use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
@@ -107,6 +111,30 @@ class ListFirewallRules extends ListPage
                         app(ManagePanelAccess::class)->set($list, (bool) ($data['public_hooks'] ?? true), request()->ip());
                         Toast::success($list === [] ? __('Panel je veřejný') : __('Přístup k panelu omezen'), $list === [] ? null : implode(', ', $list));
                     } catch (InvalidArgumentException|AgentException $e) {
+                        Toast::error(__('Neuloženo'), $e->getMessage());
+                    }
+                }),
+            Action::make('geoblock')
+                ->label(__('Blokování zemí'))
+                ->icon('outline:globe-europe-africa')
+                ->color(app(ManageGeoblock::class)->current()['countries'] === [] ? 'gray' : 'warning')
+                ->modalHeading(__('Blokování podle zemí'))
+                ->modalWidth('2xl')
+                ->modalDescription(__('Nová spojení z adres vybraných zemí server zahodí (rozsahy adres z ipdeny.com, obnovují se každý týden). Vaše současná adresa a adresy z Přístupu k panelu se neblokují nikdy. Rozpoznání země podle IP není dokonalé a VPN ho obejde: je to síto proti hromadným útokům, ne zámek.'))
+                ->fillFormUsing(fn () => app(ManageGeoblock::class)->current())
+                ->form([
+                    Select::make('countries')->label(__('Blokované země'))->multiple()->searchable()
+                        ->options(fn () => Countries::options())
+                        ->rules(['array', 'max:60', Rule::in(Countries::codes())]),
+                    Radio::make('scope')->label(__('Co blokovat'))
+                        ->options(['admin' => __('Jen správu serveru (SSH, panel na vlastním portu)'), 'all' => __('Celý server včetně webů a pošty')])
+                        ->default('admin')->required()->rules(['in:admin,all']),
+                ])
+                ->action(function (array $data) {
+                    try {
+                        app(ManageGeoblock::class)->set(array_values((array) ($data['countries'] ?? [])), (string) $data['scope'], request()->ip());
+                        Toast::success(($data['countries'] ?? []) === [] ? __('Blokování zemí vypnuto') : __('Blokování zemí uloženo'));
+                    } catch (AgentException $e) {
                         Toast::error(__('Neuloženo'), $e->getMessage());
                     }
                 }),

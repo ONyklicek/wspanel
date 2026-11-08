@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Firewall\ManageGeoblock;
 use App\Actions\Services\SyncServices;
 use App\Enums\ServiceType;
 use App\Livewire\Server\ListFirewallRules;
@@ -9,6 +10,7 @@ use App\Livewire\Server\ListServices;
 use App\Livewire\Sites\ListSites;
 use App\Models\FirewallRule;
 use App\Models\Service;
+use App\Models\Setting;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -178,5 +180,20 @@ class ServicesAndFirewallTest extends TestCase
 
         $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'add', ['action' => 'allow', 'port' => '70000', 'proto' => 'tcp', 'from' => ''])
             ->assertHasErrors();
+    }
+
+    public function test_countries_are_blocked_without_locking_out_the_administrator(): void
+    {
+        Setting::put('panel_access', ['allow' => ['10.8.0.0/24'], 'public_hooks' => true]);
+        $this->agent->shouldReceive('call')->once()->with('fw.geoblock', ['action' => 'set', 'countries' => ['cn', 'ru'], 'scope' => 'admin', 'allow' => ['10.8.0.0/24', '127.0.0.1']])
+            ->andReturn(['job_id' => 'g1']);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'g1'])
+            ->andReturn(['status' => 'done', 'output' => ['countries' => ['cn', 'ru'], 'scope' => 'admin', 'updated' => '2026-11-08T14:00:00Z']]);
+
+        $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'geoblock', ['countries' => ['cn', 'ru'], 'scope' => 'admin'])
+            ->assertHasNoErrors()->assertNotified('Blokování zemí uloženo');
+        $this->assertSame(['cn', 'ru'], app(ManageGeoblock::class)->current()['countries']);
+
+        $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'geoblock', ['countries' => ['xx'], 'scope' => 'admin'])->assertHasErrors();
     }
 }

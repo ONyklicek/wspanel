@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Firewall\ManageGeoblock;
 use Illuminate\Support\Facades\Schedule;
 
 // The DB mirrors of services and firewall rules are refreshed from the agent;
@@ -10,3 +11,5 @@ Schedule::command('panel:metrics')->everyMinute()->withoutOverlapping();
 Schedule::command('panel:alerts')->everyMinute()->withoutOverlapping();
 // Traffic stats from the edge's access logs (and pruning of old history).
 Schedule::command('panel:traffic')->everyFiveMinutes()->withoutOverlapping();
+// Blocking by country: the address ranges change, download them again weekly.
+Schedule::call(fn () => app(ManageGeoblock::class)->refresh())->name('geoblock-refresh')->weekly()->withoutOverlapping();

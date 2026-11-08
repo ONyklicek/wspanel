@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true,
 	"php.extension": true, "php.install": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -192,6 +192,7 @@ func Registry() map[string]Op {
 		{"fw.allow", true, fwAllow},
 		{"fw.deny", true, fwDeny},
 		{"fw.delete", true, fwDelete},
+		{"fw.geoblock", true, fwGeoblock},
 		{"config.validate", false, configValidate},
 		{"sys.services", false, sysServices},
 		{"sys.versions", false, sysVersions},

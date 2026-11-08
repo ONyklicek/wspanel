@@ -107,6 +107,21 @@ VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
 - Totéž jde nastavit při instalaci: `install.sh --panel-allow=10.8.0.0/24,203.0.113.7`.
 - Omezení se týká i Mailpitu a phpMyAdminu/Admineru (běží pod doménou panelu).
 
+## Blokování podle zemí
+
+**Server → Firewall → Blokování zemí:** nová spojení z adres vybraných zemí
+server zahodí. Rozsahy adres jsou z ipdeny.com a obnovují se každý týden.
+
+- **Jen správu serveru:** SSH a panel na vlastním portu. Weby a pošta zůstanou
+  dostupné odkudkoli. Panel sdílející port 443 s weby tím chráněný není (na to
+  je Přístup k panelu).
+- **Celý server:** i weby a pošta.
+
+Vaše adresa v okamžiku uložení a adresy z Přístupu k panelu se neblokují
+nikdy. Rozpoznání země podle IP není dokonalé a VPN ho obejde: je to síto
+proti hromadným útokům, ne zámek. Pravidla jsou vlastní tabulka nftables
+vedle UFW a obnoví se i po restartu serveru.
+
 ## Databáze z internetu
 
 Ve výchozím stavu poslouchají MariaDB a PostgreSQL jen lokálně. Otevřít je jde

@@ -163,7 +163,7 @@ export DEBIAN_FRONTEND=noninteractive
 log "Base packages"
 apt-get update -q
 apt-get install -y -q --no-install-recommends \
-  ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw \
+  ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw nftables \
   openssh-server fail2ban mc nano xz-utils iproute2 quota
 
 # ---------------------------------------------------------------- PHP (sury)

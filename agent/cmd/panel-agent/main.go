@@ -211,6 +211,7 @@ func binaries(cfg config.Config) map[string]string {
 		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
 		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
 		"clamav":             "/usr/lib/wspanel/clamav.sh", // enable|disable
+		"nft":                "/usr/sbin/nft",              // -f <the agent's own ruleset> only
 		"saslpasswd2":        "/usr/sbin/saslpasswd2",      // password on stdin (-p)
 		"setpriv":            "/usr/bin/setpriv",           // runs fixed binaries as a site user
 		"systemd-analyze":    "/usr/bin/systemd-analyze",
