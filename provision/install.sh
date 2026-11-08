@@ -671,11 +671,13 @@ if [[ -d /etc/roundcube ]]; then
 fi
 
 # The choices of this run, for the next upgrade ("./install" offers to keep
-# them). Paths of this bundle are left out: the next one has its own.
+# them). Left out: paths of this bundle (the next one has its own) and what
+# the panel manages from then on (who may open it: replaying the list from
+# the install would undo a change made in Firewall → Přístup k panelu).
 install -d -m 0755 /etc/wspanel
 saved=()
 for arg in "$@"; do
-  case "$arg" in --agent-bin=*|--panel-source=*) ;; *) saved+=("$arg") ;; esac
+  case "$arg" in --agent-bin=*|--panel-source=*|--panel-allow=*) ;; *) saved+=("$arg") ;; esac
 done
 printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
 chmod 0600 /etc/wspanel/install.flags
