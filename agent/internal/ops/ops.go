@@ -79,6 +79,8 @@ func Registry() map[string]Op {
 		{"dns.zone_delete", true, dnsZoneDelete},
 		{"dns.records", false, dnsRecords},
 		{"dns.record_set", true, dnsRecordSet},
+		{"dns.secondary", true, dnsSecondarySet},
+		{"dns.dnssec", true, dnsDNSSEC},
 		{"ssh.set", true, sshSet},
 		{"db.list", false, dbList},
 		{"db.create", true, dbCreate},

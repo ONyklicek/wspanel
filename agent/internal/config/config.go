@@ -138,6 +138,9 @@ type Config struct {
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
 	PowerDNSKey string `json:"powerdns_key"`
+	// PowerDNSConf: the agent's own PowerDNS settings (DNSSEC, zone
+	// transfers and NOTIFY to the secondary servers).
+	PowerDNSConf string `json:"powerdns_conf"`
 
 	// Build artifacts uploaded by CI (through the panel) for deploys that skip
 	// the build on the server. Root-owned dir the panel user may write into.
@@ -228,6 +231,7 @@ func Defaults() Config {
 		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
 		SRSExclude:        "/etc/postfix/wspanel_srs_exclude",
 		RspamdRatelimit:   "/etc/rspamd/local.d/ratelimit.conf",
+		PowerDNSConf:      "/etc/powerdns/pdns.d/wspanel-agent.conf",
 		DovecotUsers:      "/etc/dovecot/wspanel/users",
 		VmailRoot:         "/var/mail/vmail",
 		DovecotBlocked:    "/etc/dovecot/wspanel/blocked",

@@ -60,6 +60,28 @@ spravují po skupinách: všechny hodnoty jednoho názvu a typu dohromady.
 
 Název: `@` nebo prázdné = doména sama, jinak např. `www`, `mail`, `_dmarc`.
 
+## Sekundární DNS
+
+Když DNS běží jen na tomto serveru, jeho výpadek vezme s sebou weby i poštu
+všech domén. **DNS → Sekundární DNS** (jen správce) zadá druhé servery, které
+drží kopii zón (u jiného poskytovatele nebo druhý stroj):
+
+- **IP adresy:** jen ty si smí zóny stáhnout (AXFR) a při každé změně dostanou
+  NOTIFY. Na sekundárním serveru nastavte tento server jako primární
+  (master) pro dané zóny.
+- **Jména (NS):** nové zóny je dostanou jako nameservery vedle `ns1.<panel>`.
+  U zón založených dřív je doplňte do NS záznamů a u registrátora.
+
+Port 53 (UDP i TCP) je ve firewallu otevřený od instalace s lokálním DNS.
+
+## DNSSEC
+
+Detail lokální zóny → **DNSSEC**: zóna se začne podepisovat (klíč ECDSA
+P-256) a panel ukáže **DS záznam**, který vložíte u registrátora domény. Teprve
+pak ho resolvery ověřují. Vypnout jde až po potvrzení, že je DS záznam
+u registrátora odebraný (a uplynulo jeho TTL). S DS záznamem a bez podpisů
+by doménu resolvery odmítly jako podvrženou.
+
 ## Kontrola
 
 Detail zóny → **Kontrola DNS** ověří přes veřejné DNS:

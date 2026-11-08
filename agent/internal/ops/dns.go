@@ -124,7 +124,9 @@ func dnsZoneCreate(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		ns = append(ns, fqdn(n))
 	}
 	_, code, err := pdns(ctx, env, http.MethodPost, "/zones", map[string]any{
-		"name": fqdn(p.Domain), "kind": "Native", "nameservers": ns, "soa_edit_api": "DEFAULT",
+		// Master: secondary servers get NOTIFY on each change (and may transfer
+		// the zone if they are in allow-axfr-ips, dns.secondary).
+		"name": fqdn(p.Domain), "kind": "Master", "nameservers": ns, "soa_edit_api": "DEFAULT",
 	})
 	if code == http.StatusConflict {
 		return nil, protocol.Conflict("zone " + p.Domain + " already exists")

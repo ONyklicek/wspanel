@@ -114,7 +114,9 @@ class DnsAdvisor
     public static function defaultNameservers(): array
     {
         $panel = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
+        // With secondary servers, their names take the second place (a copy elsewhere).
+        $secondary = LocalDns::secondary()['nameservers'];
 
-        return ["ns1.{$panel}", "ns2.{$panel}"];
+        return $secondary !== [] ? ["ns1.{$panel}", ...$secondary] : ["ns1.{$panel}", "ns2.{$panel}"];
     }
 }

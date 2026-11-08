@@ -9,6 +9,7 @@ use App\Models\DnsZone;
 use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
+use App\Services\Dns\LocalDns;
 use App\Support\Toast;
 use App\Wire\Dns\RecordForm;
 use App\Wire\Resources\DnsZoneResource;
@@ -18,6 +19,7 @@ use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Infolists\Components\TextEntry;
 use NyonCode\WireCore\Infolists\Infolist;
+use NyonCode\WireForms\Components\Checkbox;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
@@ -35,6 +37,20 @@ class ViewDnsZone extends ViewPage
     public function getTitle(): ?string
     {
         return $this->zone()->domain;
+    }
+
+    /**
+     * The DS records a registrar wants: SHA-256 digests (type 2) first, the
+     * rest only when there is none.
+     *
+     * @param  list<string>  $ds
+     * @return list<string>
+     */
+    public static function preferredDs(array $ds): array
+    {
+        $sha256 = array_values(array_filter($ds, fn ($d) => preg_match('/^\d+ \d+ 2 /', $d)));
+
+        return $sha256 !== [] ? $sha256 : $ds;
     }
 
     public function infolist(): Infolist
@@ -86,6 +102,42 @@ class ViewDnsZone extends ViewPage
                         Toast::success($added === [] ? __('Nic nechybělo') : __('Přidáno: ').implode(', ', $added));
                         $this->dispatch('dns-changed');
                     } catch (DnsException|AgentException $e) {
+                        Toast::error(__('Nepodařilo se'), $e->getMessage());
+                    }
+                }),
+            Action::make('dnssec')
+                ->label('DNSSEC')
+                ->icon('outline:finger-print')
+                ->color('gray')
+                ->visible(fn () => $this->zone()->provider === DnsProvider::Local)
+                ->modalHeading(fn () => __('DNSSEC pro :domain', ['domain' => $this->zone()->domain]))
+                ->modalDescription(__('Podepisuje odpovědi zóny, takže je nikdo cestou nepodvrhne. Po zapnutí vložte DS záznam u registrátora domény; teprve pak ho resolvery ověřují.'))
+                ->fillFormUsing(fn () => ['enabled' => rescue(fn () => app(LocalDns::class)->dnssec($this->zone()->domain)['enabled'], false, report: false), 'ds_removed' => false])
+                ->form(fn () => [
+                    Placeholder::make('ds')->label(__('DS záznam pro registrátora'))
+                        ->content(fn () => implode("\n", self::preferredDs(rescue(fn () => app(LocalDns::class)->dnssec($this->zone()->domain)['ds'], [], report: false))) ?: __('Zóna zatím podepsaná není.')),
+                    Toggle::make('enabled')->label(__('Podepisovat zónu (DNSSEC)'))->live(),
+                    Checkbox::make('ds_removed')->label(__('DS záznam u registrátora jsem odebral (a uplynulo jeho TTL)'))
+                        ->helperText(__('Vypnutí s DS záznamem u registrátora doménu rozbije: resolvery ji odmítnou jako podvrženou.'))
+                        ->visible(fn ($get) => ! $get('enabled'))
+                        ->rules(fn ($get) => $get('enabled') ? [] : ['accepted'])
+                        ->validationMessages(['accepted' => __('Nejdřív odeberte DS záznam u registrátora.')]),
+                ])
+                ->action(function (array $data) {
+                    $dns = app(LocalDns::class);
+                    $domain = $this->zone()->domain;
+                    try {
+                        $now = $dns->dnssec($domain);
+                        if ((bool) $data['enabled'] === $now['enabled']) {
+                            Toast::success(__('Beze změny'));
+
+                            return;
+                        }
+                        $out = $dns->dnssec($domain, $data['enabled'] ? 'enable' : 'disable');
+                        $out['enabled']
+                            ? Toast::secret(__('DNSSEC zapnuto. U registrátora vložte DS záznam:'), implode("\n", self::preferredDs($out['ds'])))
+                            : Toast::success(__('DNSSEC vypnuto'));
+                    } catch (DnsException $e) {
                         Toast::error(__('Nepodařilo se'), $e->getMessage());
                     }
                 }),

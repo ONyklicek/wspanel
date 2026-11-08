@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Actions\Dns\ManageDnsZones;
 use App\Enums\DnsProvider;
 use App\Livewire\Dns\CreateDnsZone;
+use App\Livewire\Dns\ListDnsZones;
 use App\Livewire\Dns\ViewDnsZone;
 use App\Livewire\Dns\ZoneRecords;
 use App\Models\DnsZone;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Dns\DnsAdvisor;
 use App\Wire\Dns\RecordForm;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -138,5 +140,42 @@ class DnsTest extends TestCase
 
         $this->pageAction(Livewire::test(ViewDnsZone::class, ['record' => $zone->id]), 'add', ['name' => 'x', 'type' => 'PTR', 'ttl' => 600, 'records' => 'a'])
             ->assertHasErrors();
+    }
+
+    public function test_secondary_servers_become_the_second_nameserver_of_new_zones(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('dns.secondary', ['ips' => ['198.51.100.7'], 'nameservers' => ['ns2.provider.net']])
+            ->andReturn(['ips' => ['198.51.100.7'], 'nameservers' => ['ns2.provider.net']]);
+
+        $this->headerTableAction(Livewire::test(ListDnsZones::class), 'secondary', ['ips' => "198.51.100.7\n", 'nameservers' => 'ns2.provider.net'])
+            ->assertHasNoErrors()->assertNotified('Sekundární DNS uloženo');
+        $this->assertSame(['ns1.panel.example.com', 'ns2.provider.net'], DnsAdvisor::defaultNameservers());
+
+        $this->headerTableAction(Livewire::test(ListDnsZones::class), 'secondary', ['ips' => 'ns.example.com'])->assertHasErrors();
+    }
+
+    public function test_dnssec_shows_the_ds_record_and_is_switched_off_only_after_it_is_removed(): void
+    {
+        $zone = DnsZone::create(['domain' => 'example.com', 'provider' => DnsProvider::Local]);
+        $signed = ['domain' => 'example.com', 'enabled' => true, 'ds' => ['37583 13 1 1d6f', '37583 13 2 b0dce355', '37583 13 4 5936']];
+        $on = false;
+        $this->agent->shouldReceive('call')->with('dns.records', ['domain' => 'example.com'])->andReturn(['rrsets' => []]);
+        $this->agent->shouldReceive('call')->with('dns.dnssec', ['domain' => 'example.com', 'action' => 'get'])
+            ->andReturnUsing(function () use (&$on, $signed) {
+                return $on ? $signed : ['enabled' => false, 'ds' => null];
+            });
+        $this->agent->shouldReceive('call')->once()->with('dns.dnssec', ['domain' => 'example.com', 'action' => 'enable'])
+            ->andReturnUsing(function () use (&$on, $signed) {
+                $on = true;
+
+                return $signed;
+            });
+
+        $this->pageAction(Livewire::test(ViewDnsZone::class, ['record' => $zone->id]), 'dnssec', ['enabled' => true])
+            ->assertHasNoErrors()->assertNotified('37583 13 2 b0dce355');
+
+        $this->agent->shouldNotReceive('call')->with('dns.dnssec', ['domain' => 'example.com', 'action' => 'disable']);
+        $this->pageAction(Livewire::test(ViewDnsZone::class, ['record' => $zone->id]), 'dnssec', ['enabled' => false])->assertHasErrors();
+        $this->assertSame(['37583 13 2 b0dce355'], ViewDnsZone::preferredDs($signed['ds']));
     }
 }
