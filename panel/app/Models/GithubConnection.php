@@ -18,13 +18,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class GithubConnection extends Model
 {
-    protected $fillable = ['user_id', 'login', 'installation_id', 'token', 'last_used_at'];
+    protected $fillable = ['user_id', 'login', 'installation_id', 'repositories', 'token', 'last_used_at'];
 
     protected $hidden = ['token'];
 
     protected function casts(): array
     {
-        return ['token' => 'encrypted', 'last_used_at' => 'datetime'];
+        return ['token' => 'encrypted', 'repositories' => 'array', 'last_used_at' => 'datetime'];
     }
 
     protected static function booted(): void
@@ -50,6 +50,16 @@ class GithubConnection extends Model
     public function isApp(): bool
     {
         return $this->installation_id !== null;
+    }
+
+    /**
+     * Whether the panel may act on the repository through this connection:
+     * for an app installation only where the user is a GitHub admin (the
+     * installation token alone could do more); a token is limited by GitHub.
+     */
+    public function allows(string $repo): bool
+    {
+        return ! $this->isApp() || in_array($repo, $this->repositories ?? [], true);
     }
 
     /** API access: a fresh installation token for the app, else the stored token. */

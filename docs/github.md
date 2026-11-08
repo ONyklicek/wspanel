@@ -50,12 +50,18 @@ připojení tlačítkem** → **Pokračovat na GitHub**.
    patří vám) a vrátí vás do panelu.
 3. V tabulce přibude účet s typem *aplikací (tlačítkem)*.
 
+Panel nabídne jen repozitáře instalace, ve kterých jste na GitHubu
+**správce** (deploy klíče a webhooky smí přidávat jen správce repozitáře). Člen
+organizace s právy jen pro čtení nebo zápis přes panel víc práv nezíská, i když
+instalace obsahuje víc repozitářů. Když vám práva přidají, klikněte u účtu
+na **Repozitáře** a seznam se obnoví.
+
 Pro každou organizaci připojte zvlášť (Připojit GitHub → zvolit jinou
 organizaci). U organizace, kde nejste vlastník, instalaci schvaluje vlastník.
 Panel pak napíše „Nic k připojení“; po schválení klikněte znovu.
 
-**Repozitáře** u účtu otevře nastavení instalace na GitHubu: přidání nebo
-odebrání repozitáře, ke kterému má panel přístup.
+**Repozitáře** u účtu otevře instalaci na GitHubu (přidání nebo odebrání
+repozitáře) a po návratu obnoví seznam repozitářů, které spravujete.
 
 Bezpečnost tohoto toku:
 
@@ -67,7 +73,12 @@ Bezpečnost tohoto toku:
 - Panel neukládá žádný trvalý token: pro každé volání si s privátním klíčem
   aplikace (JWT) vyžádá token instalace platný hodinu, drží ho šifrovaně v cache
   a nechá ho vypršet.
-- **Odpojit** u účtu aplikaci z účtu na GitHubu i odinstaluje.
+- Instalaci panel připojí jen pro repozitáře, které přihlášený uživatel GitHubu
+  spravuje (`GET /user/installations/{id}/repositories`, `permissions.admin`).
+  Totéž znovu ověří při napojení webu.
+- **Odpojit** jen zapomene připojení v panelu. Aplikaci z účtu na GitHubu
+  nesmaže, protože instalaci můžou sdílet další uživatelé panelu.
+  Odinstalaci provede vlastník účtu na GitHubu (Settings → Applications).
 
 ### Oprávnění
 
@@ -188,7 +199,8 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 |---|---|
 | GitHub odmítl token | token vypršel nebo byl zrušen; vložte nový (API a CLI → GitHub) |
 | „Neplatný nebo prošlý návrat z GitHubu“ | návrat z GitHubu z jiné relace nebo podruhé; klikněte na Připojit GitHub znovu |
-| „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, nebo aplikace u účtu není nainstalovaná |
+| „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, aplikace u účtu není nainstalovaná, nebo v instalaci nespravujete žádný repozitář |
+| „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte u účtu na Repozitáře |
 | GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |

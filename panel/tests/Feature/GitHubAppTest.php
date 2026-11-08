@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Actions\Sites\ManageGitHub;
 use App\Models\GithubConnection;
 use App\Models\Setting;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\GitHub\GitHubApp;
+use App\Services\GitHub\GitHubException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -107,6 +109,10 @@ class GitHubAppTest extends TestCase
         $this->configureApp();
         Http::fake([
             'https://github.com/login/oauth/access_token' => Http::response(['access_token' => 'ghu_user']),
+            self::API.'/user/installations/7/repositories*' => Http::response(['repositories' => [
+                ['full_name' => 'acme/app', 'permissions' => ['admin' => true]],
+                ['full_name' => 'acme/payroll', 'permissions' => ['admin' => false, 'pull' => true]],
+            ]]),
             self::API.'/user/installations*' => Http::response(['installations' => [
                 ['id' => 7, 'app_id' => 42, 'account' => ['login' => 'acme', 'type' => 'Organization']],
                 ['id' => 8, 'app_id' => 99, 'account' => ['login' => 'other-app', 'type' => 'User']],
@@ -119,6 +125,7 @@ class GitHubAppTest extends TestCase
 
         $c = GithubConnection::query()->sole();
         $this->assertSame([$user->id, 7, 'acme', null], [$c->user_id, $c->installation_id, $c->login, $c->token]);
+        $this->assertSame(['acme/app'], $c->repositories, 'only repositories the user administers on GitHub');
         Http::assertSent(fn (Request $r) => $r->url() === 'https://github.com/login/oauth/access_token' && $r['client_secret'] === 'shh' && $r['code'] === 'c0de');
     }
 
@@ -136,6 +143,44 @@ class GitHubAppTest extends TestCase
         $this->assertSame(0, GithubConnection::query()->count());
     }
 
+    public function test_a_member_who_administers_nothing_in_the_installation_connects_nothing(): void
+    {
+        $this->configureApp();
+        Http::fake([
+            'https://github.com/login/oauth/access_token' => Http::response(['access_token' => 'ghu_member']),
+            self::API.'/user/installations/7/repositories*' => Http::response(['repositories' => [['full_name' => 'acme/app', 'permissions' => ['admin' => false, 'push' => true]]]]),
+            self::API.'/user/installations*' => Http::response(['installations' => [['id' => 7, 'app_id' => 42, 'account' => ['login' => 'acme', 'type' => 'Organization']]]]),
+        ]);
+        $this->actingAs(User::factory()->forClient()->create())->withSession(['github.connect_state' => 'st']);
+
+        $this->get('/github/callback?code=c0de&installation_id=7&state=st')->assertRedirect();
+
+        $this->assertSame(0, GithubConnection::query()->count());
+    }
+
+    public function test_an_app_connection_offers_and_links_only_administered_repositories(): void
+    {
+        $this->configureApp();
+        Http::fake([
+            self::API.'/app/installations/7/access_tokens' => Http::response(['token' => 'ghs_installation'], 201),
+            self::API.'/installation/repositories*' => Http::response(['repositories' => [['full_name' => 'acme/app', 'private' => true], ['full_name' => 'acme/payroll', 'private' => true]]]),
+        ]);
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $c = GithubConnection::query()->create(['user_id' => $user->id, 'login' => 'acme', 'installation_id' => 7, 'repositories' => ['acme/app']]);
+        $site = Site::create(['domain' => 'app.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active']);
+
+        $this->assertSame(['acme/app'], array_keys(app(ManageGitHub::class)->repositories($c)));
+        $this->assertSame([], app(ManageGitHub::class)->branches($c, 'acme/payroll'));
+        try {
+            app(ManageGitHub::class)->link($site, $c, ['repo' => 'acme/payroll', 'branch' => 'main', 'trigger' => 'branch', 'notify' => 'poll']);
+            $this->fail('a repository the user does not administer must be refused');
+        } catch (GitHubException $e) {
+            $this->assertStringContainsString('acme/payroll', $e->getMessage());
+        }
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/repos/acme/payroll'));
+    }
+
     public function test_api_calls_use_a_cached_installation_token_signed_by_the_app(): void
     {
         $this->configureApp();
@@ -146,7 +191,7 @@ class GitHubAppTest extends TestCase
         ]);
         $user = User::factory()->create();
         $this->actingAs($user);
-        $c = GithubConnection::query()->create(['user_id' => $user->id, 'login' => 'acme', 'installation_id' => 7]);
+        $c = GithubConnection::query()->create(['user_id' => $user->id, 'login' => 'acme', 'installation_id' => 7, 'repositories' => ['acme/app']]);
 
         $this->assertSame(['acme/app' => 'acme/app 🔒'], app(ManageGitHub::class)->repositories($c));
         $c->client()->branches('acme/app');
@@ -165,18 +210,20 @@ class GitHubAppTest extends TestCase
         Http::assertSent(fn (Request $r) => str_contains($r->url(), '/installation/repositories') && $r->hasHeader('Authorization', 'Bearer ghs_installation'));
     }
 
-    public function test_disconnecting_uninstalls_the_app_from_the_account(): void
+    public function test_disconnecting_leaves_the_installation_others_may_share(): void
     {
         $this->configureApp();
-        Http::fake([self::API.'/app/installations/7' => Http::response(null, 204)]);
+        Http::fake();
         $user = User::factory()->create();
+        $other = User::factory()->create();
+        GithubConnection::query()->withoutGlobalScope('owner')->create(['user_id' => $other->id, 'login' => 'acme', 'installation_id' => 7, 'repositories' => ['acme/web']]);
         $this->actingAs($user);
-        $c = GithubConnection::query()->create(['user_id' => $user->id, 'login' => 'acme', 'installation_id' => 7]);
+        $c = GithubConnection::query()->create(['user_id' => $user->id, 'login' => 'acme', 'installation_id' => 7, 'repositories' => ['acme/app']]);
 
         app(ManageGitHub::class)->disconnect($c);
 
-        Http::assertSent(fn (Request $r) => $r->method() === 'DELETE' && $r->url() === self::API.'/app/installations/7');
-        $this->assertSame(0, GithubConnection::query()->count());
+        Http::assertNothingSent();
+        $this->assertSame(1, GithubConnection::query()->withoutGlobalScope('owner')->count(), 'the other user keeps their connection');
     }
 
     public function test_the_page_offers_the_button_once_the_app_exists(): void

@@ -6,7 +6,6 @@ use App\Models\GithubConnection;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentException;
-use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubClient;
 use App\Services\GitHub\GitHubException;
 use Illuminate\Support\Facades\Cache;
@@ -44,7 +43,7 @@ class ManageGitHub
      * Connects installations of the panel's GitHub App that GitHub confirmed
      * belong to the signed-in GitHub user (one connection per installation).
      *
-     * @param  array<int, array{login: string, type: string}>  $installations
+     * @param  array<int, array{login: string, type: string, repositories: list<string>}>  $installations
      * @return list<GithubConnection>
      */
     public function connectInstallations(User $user, array $installations): array
@@ -53,7 +52,7 @@ class ManageGitHub
         foreach ($installations as $id => $i) {
             $out[] = GithubConnection::query()->withoutGlobalScope('owner')->updateOrCreate(
                 ['user_id' => $user->id, 'installation_id' => $id],
-                ['login' => $i['login'], 'token' => null, 'last_used_at' => now()],
+                ['login' => $i['login'], 'repositories' => array_values($i['repositories']), 'token' => null, 'last_used_at' => now()],
             );
         }
 
@@ -61,16 +60,15 @@ class ManageGitHub
     }
 
     /**
-     * Unlinks the account's sites (removing what the panel created on GitHub),
-     * uninstalls the app from the account (an app connection) and forgets it.
+     * Unlinks the account's sites (removing what the panel created on GitHub)
+     * and forgets the connection. The app stays installed on GitHub: other
+     * panel users may share the installation, and uninstalling is the
+     * account owner's decision there.
      */
     public function disconnect(GithubConnection $connection): void
     {
         foreach ($connection->sites()->get() as $site) {
             $this->unlink($site);
-        }
-        if ($connection->isApp() && ($app = GitHubApp::configured()) !== null) {
-            rescue(fn () => $app->deleteInstallation((int) $connection->installation_id), report: false);
         }
         $connection->delete();
     }
@@ -82,13 +80,20 @@ class ManageGitHub
      */
     public function repositories(GithubConnection $connection): array
     {
+        if ($connection->isApp()) {
+            // The installation's repositories this user administers (checked when connecting).
+            $mine = array_flip($connection->repositories ?? []);
+
+            return array_intersect_key(Cache::remember("github.repos.{$connection->id}", 300, fn () => $connection->client()->repositories()), $mine);
+        }
+
         return Cache::remember("github.repos.{$connection->id}", 300, fn () => $connection->client()->repositories());
     }
 
     /** @return array<string, string> */
     public function branches(GithubConnection $connection, string $repo): array
     {
-        if (! preg_match(GitHubClient::REPO_PATTERN, $repo)) {
+        if (! preg_match(GitHubClient::REPO_PATTERN, $repo) || ! $connection->allows($repo)) {
             return [];
         }
         $names = Cache::remember("github.branches.{$connection->id}.{$repo}", 120, fn () => $connection->client()->branches($repo));
@@ -104,6 +109,9 @@ class ManageGitHub
      */
     public function link(Site $site, GithubConnection $connection, array $data): array
     {
+        if (! $connection->allows($data['repo'])) {
+            throw new GitHubException(__('K repozitáři :repo nemáte na GitHubu práva správce (nebo ho instalace aplikace nezahrnuje). Po změně klikněte u účtu na Repozitáře.', ['repo' => $data['repo']]));
+        }
         $gh = $connection->client();
         $repo = $gh->repository($data['repo']); // access check before anything changes
         if ($site->github_repo !== null) {

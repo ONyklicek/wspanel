@@ -141,6 +141,33 @@ class GitHubApp
         return $out;
     }
 
+    /**
+     * Repositories of an installation in which the signed-in GitHub user is an
+     * administrator. The installation token may manage every repository of the
+     * installation; a member with read access must not gain more through the
+     * panel than GitHub gives them.
+     *
+     * @return list<string> owner/name
+     */
+    public function administeredRepositories(string $userToken, int $installation, int $pages = 5): array
+    {
+        $http = Http::baseUrl(GitHubClient::API)->withHeaders(self::headers())->withToken($userToken);
+        $out = [];
+        for ($page = 1; $page <= $pages; $page++) {
+            $batch = self::send($http, 'get', "/user/installations/{$installation}/repositories", ['per_page' => 100, 'page' => $page])['repositories'] ?? [];
+            foreach ($batch as $r) {
+                if (($r['permissions']['admin'] ?? false) === true) {
+                    $out[] = (string) $r['full_name'];
+                }
+            }
+            if (count($batch) < 100) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
     /** A token for one installation, valid an hour; cached until shortly before it expires. */
     public function installationToken(int $installation): string
     {
@@ -152,13 +179,6 @@ class GitHubApp
         Cache::put($key, Crypt::encryptString((string) $r['token']), now()->addMinutes(50));
 
         return (string) $r['token'];
-    }
-
-    /** Uninstalls the app from an account (when the user disconnects it in the panel). */
-    public function deleteInstallation(int $installation): void
-    {
-        self::send($this->asApp(), 'delete', "/app/installations/{$installation}", allowMissing: true);
-        Cache::forget("github.installation.{$this->id}.{$installation}");
     }
 
     /** A JWT signed with the app's private key (RS256), valid 9 minutes. */

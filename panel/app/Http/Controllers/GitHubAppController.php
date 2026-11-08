@@ -66,16 +66,24 @@ class GitHubAppController
         $app = GitHubApp::configured() ?? abort(404);
         $this->checkState($request, 'github.connect_state');
         try {
-            $mine = $app->userInstallations($app->userToken((string) $request->query('code')));
+            $userToken = $app->userToken((string) $request->query('code'));
+            $mine = $app->userInstallations($userToken);
             $id = $request->query('installation_id');
             if ($id !== null) {
                 abort_unless(ctype_digit((string) $id), 422);
                 $mine = array_intersect_key($mine, [(int) $id => true]);
             }
+            // Only what this GitHub user administers: deploy keys and webhooks are an admin's to add.
+            foreach ($mine as $installation => $i) {
+                $mine[$installation]['repositories'] = $app->administeredRepositories($userToken, $installation);
+                if ($mine[$installation]['repositories'] === []) {
+                    unset($mine[$installation]);
+                }
+            }
             if ($mine === []) {
                 Toast::warning(__('Nic k připojení'), $request->query('setup_action') === 'request'
                     ? __('Instalaci musí schválit vlastník organizace na GitHubu; pak klikněte na Připojit znovu.')
-                    : __('Aplikace :slug není u vašeho účtu GitHub nainstalovaná.', ['slug' => $app->slug]));
+                    : __('Aplikace :slug není nainstalovaná u účtu GitHub, kde spravujete aspoň jeden repozitář.', ['slug' => $app->slug]));
             } else {
                 $connected = $github->connectInstallations($request->user(), $mine);
                 Toast::success(__('GitHub připojen'), collect($connected)->map(fn ($c) => '@'.$c->login)->join(', '));

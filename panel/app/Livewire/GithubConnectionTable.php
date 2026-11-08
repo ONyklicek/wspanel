@@ -74,7 +74,7 @@ class GithubConnectionTable extends Component
                     ->url(fn (GithubConnection $record) => route('github.connect'))->navigate(false),
                 Action::make('disconnect')->label(__('Odpojit'))->icon('outline:trash')->color('danger')
                     ->requiresConfirmation()
-                    ->modalDescription(__('Panel z napojených repozitářů odebere svůj webhook a deploy klíč, odinstaluje svou GitHub aplikaci z účtu (byla-li připojená tlačítkem) a zapomene token. Nastavení deploye webů zůstane.'))
+                    ->modalDescription(__('Panel z napojených repozitářů odebere svůj webhook a deploy klíč a zapomene připojení. Aplikaci z účtu odinstalujete na GitHubu (Settings → Applications). Nastavení deploye webů zůstane.'))
                     ->action(function (GithubConnection $record) {
                         app(ManageGitHub::class)->disconnect($record);
                         Toast::success(__('GitHub odpojen'), '@'.$record->login);
