@@ -75,7 +75,7 @@ expect "panel requires login" "$(code panel.localhost /sites)" "302"
 expect "unknown host gets no site" "$(curl -sk -o /dev/null -w '%{http_code}' --resolve nothing.localhost:443:127.0.0.1 https://nothing.localhost/)" "000"
 
 php 'app(App\Actions\Services\SyncServices::class)->handle(); echo App\Models\Service::count();' >/dev/null
-check "services mirrored into the panel" test "$(php 'echo App\Models\Service::where("active_state","active")->count();' | tr -d '[:space:]')" -ge 7
+contains "services mirrored into the panel" "$(php 'echo App\Models\Service::where("active_state","active")->pluck("unit")->sort()->implode(",");')" "panel-proxy.service,panel-web.service"
 
 # ----------------------------------------------------------------------------
 section "Sites in all modes"
@@ -207,12 +207,13 @@ gitc init -q -b main && gitc add -A && gitc commit -qm v1 && gitc push -q /home/
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->configure(\$s, ['repo' => 'git@localhost:app.git', 'branch' => 'main', 'migrate' => true, 'assets' => true, 'auto_rollback' => true, 'keep' => 5, 'commands' => \"php artisan install:permissions --force\"]);
 file_put_contents('$W/deploy.pub', app(App\\Actions\\Sites\\ManageDeploys::class)->publicKey(\$s));" >/dev/null
 install -d -m 0700 -o git -g git /home/git/.ssh && cat "$W/deploy.pub" >/home/git/.ssh/authorized_keys && chown git:git /home/git/.ssh/authorized_keys
-# Start without APP_KEY (repeatable runs): the first deploy must answer 500 and roll back.
-php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, preg_replace('/^(APP_KEY|APP_NAME)=.*\\R/m', '', \$m->envGet(\$s)));" >/dev/null
+# A release that does not answer (broken on purpose) is rolled back.
+php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, 'WSP_E2E_BROKEN=1'.PHP_EOL.preg_replace('/^(APP_KEY|APP_NAME|WSP_E2E_BROKEN)=.*\\R/m', '', \$m->envGet(\$s)));" >/dev/null
 rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->start(\$s);" | tr -d '[:space:]')
-expect "deploy without APP_KEY rolls back (health check)" "$(wait_deploy app.localhost "$rel")" "rolled_back"
+expect "a release that answers 500 rolls back (health check)" "$(wait_deploy app.localhost "$rel")" "rolled_back"
 contains "site still serves the previous release" "$(https app.localhost /)" "app.localhost"
-php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, 'APP_NAME=Shop'.PHP_EOL.'APP_KEY=base64:'.base64_encode(random_bytes(32)).PHP_EOL.\$m->envGet(\$s));" >/dev/null
+check "  … and the deploy gave the app the APP_KEY it lacked" grep -q '^APP_KEY="base64:' /srv/sites/app.localhost/shared/.env
+php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class); \$m->envSet(\$s, 'APP_NAME=Shop'.PHP_EOL.preg_replace('/^(APP_NAME|WSP_E2E_BROKEN)=.*\\R/m', '', \$m->envGet(\$s)));" >/dev/null
 rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->start(\$s);" | tr -d '[:space:]')
 expect "deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
 contains "deployed app answers" "$(https app.localhost /)" "deploy-test-app v1"
@@ -1015,6 +1016,8 @@ php 'app(App\Actions\Sites\DeleteSite::class)->handle(App\Models\Site::where("do
 
 # ----------------------------------------------------------------------------
 section "Import from a cPanel backup"
+drop_imported() { php 'if ($d = App\Models\Database::acrossClients()->where("name","jan_app")->first()) app(App\Actions\Databases\ManageDatabases::class)->drop($d);' >/dev/null; mariadb -e 'DROP DATABASE IF EXISTS jan_app' 2>/dev/null; true; }
+drop_imported
 php 'if ($s = App\Models\Site::where("domain","imp.localhost")->first()) app(App\Actions\Sites\DeleteSite::class)->handle($s); app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "imp.localhost", "mode" => "classic", "framework" => "php", "php_version" => "8.4"]);' >/dev/null
 runuser -u web_imp_localhost -- bash -c 'cd /srv/sites/imp.localhost/tmp && rm -rf cp && mkdir -p cp/cpmove-jan/homedir/public_html cp/cpmove-jan/mysql \
   && echo "<?php echo \"imported-from-cpanel\";" > cp/cpmove-jan/homedir/public_html/index.php \
@@ -1023,7 +1026,9 @@ runuser -u web_imp_localhost -- bash -c 'cd /srv/sites/imp.localhost/tmp && rm -
 contains "the import finds the dump and restores it" "$(php '$s = App\Models\Site::where("domain","imp.localhost")->sole(); echo json_encode(app(App\Actions\Sites\ImportSite::class)->import($s, "cpmove-jan.tar.gz"));' 2>&1 | tail -1)" '"jan_app"'
 contains "  … the site serves the imported files" "$(https imp.localhost /)" "imported-from-cpanel"
 contains "  … and its database has the data" "$(mariadb -N -e 'SELECT k FROM jan_app.kv' 2>&1)" "moved"
+contains "  … imported as its own account, locked afterwards" "$(mariadb -N -e "SHOW CREATE USER 'jan_app-def'@'localhost'" 2>&1)" "ACCOUNT LOCK"
 php 'app(App\Actions\Sites\DeleteSite::class)->handle(App\Models\Site::where("domain","imp.localhost")->sole());' >/dev/null
+drop_imported
 
 # ----------------------------------------------------------------------------
 section "Delete cleans up"
