@@ -22,8 +22,14 @@ mkdir -p "$B/bin" "$OUT"
   -ldflags "-s -w -X wspanel/agent/internal/ops.Version=$VERSION" -o "$B/bin/panel-agent-linux-$ARCH" ./cmd/panel-agent)
 (cd "$ROOT/agent" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags '-s -w' -o "$B/bin/wspanel-linux-$ARCH" ./cmd/wspanel)
 
+# The agent as a Debian package too (where dpkg-deb is: the release workflow);
+# the installer puts it under apt, which then brings the agent's fixes.
+if command -v dpkg-deb >/dev/null; then
+  "$ROOT/provision/build-deb.sh" "$VERSION" "$ARCH" "$B/bin/panel-agent-linux-$ARCH" "$B/bin/wspanel-linux-$ARCH" "$B/bin" >/dev/null
+fi
+
 rsync -a --exclude='.DS_Store' "$ROOT/provision/" "$B/provision/"
-rm -f "$B/provision/bundle.sh"
+rm -f "$B/provision/bundle.sh" "$B/provision/build-deb.sh" "$B/provision/apt-repo.sh"
 install -m 0755 "$ROOT/provision/wspanel-install.sh" "$B/install"
 rm -f "$B/provision/wspanel-install.sh"
 rsync -a "$ROOT/docs/" "$B/docs/"

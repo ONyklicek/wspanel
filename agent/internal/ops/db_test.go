@@ -197,7 +197,7 @@ func TestBackupSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-backup-postgresql-shop.service"))
-	if !strings.Contains(svc, "ExecStart=/usr/local/sbin/panel-agent -config /etc/panel-agent/agent.json -backup postgresql/shop -keep 14") {
+	if !strings.Contains(svc, "ExecStart=/usr/sbin/panel-agent -config /etc/panel-agent/agent.json -backup postgresql/shop -keep 14") {
 		t.Errorf("service:\n%s", svc)
 	}
 	if s := readBackupSchedule(env, "postgresql", "shop"); s["frequency"] != "daily" || s["keep"] != 14 {

@@ -38,7 +38,8 @@ for arg in "$@"; do
 done
 
 run_install() {
-  "$HERE/provision/install.sh" --agent-bin="$AGENT" --panel-source="$HERE/panel" "$@"
+  # This script creates the administrator itself (or keeps the existing ones).
+  WSPANEL_ADMIN_BY_INSTALLER=1 "$HERE/provision/install.sh" --agent-bin="$AGENT" --panel-source="$HERE/panel" "$@"
 }
 
 create_admin() { # email name [password] -> prints the password (generated when none)

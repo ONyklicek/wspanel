@@ -90,7 +90,7 @@ func mountKnownHosts(env *Env, user, name string) string {
 func agentCommand(env *Env, flag, arg string) string {
 	bin, err := os.Executable()
 	if err != nil || env.Cfg.DryRun {
-		bin = "/usr/local/sbin/panel-agent"
+		bin = "/usr/sbin/panel-agent"
 	}
 	cfg := env.ConfigPath
 	if cfg == "" {

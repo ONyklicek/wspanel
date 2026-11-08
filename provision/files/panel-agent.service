@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/sbin/panel-agent -config /etc/panel-agent/agent.json
+ExecStart=/usr/sbin/panel-agent -config /etc/panel-agent/agent.json
 Restart=on-failure
 RestartSec=2s
 User=root

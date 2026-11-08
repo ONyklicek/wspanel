@@ -39,6 +39,13 @@ for unit in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-
 done
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units"
 
+if tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.deb$'; then
+  log "The agent as a package, apt set up"
+  on 'dpkg-query -W -f="\${Status}" wspanel-agent | grep -q "install ok installed"' || fail "wspanel-agent is not installed as a package"
+  [[ "$(on 'readlink /usr/local/sbin/panel-agent')" == /usr/sbin/panel-agent ]] || fail "the old agent path does not lead to the package's"
+  on 'test -s /etc/apt/sources.list.d/wspanel.sources -a -s /etc/apt/keyrings/wspanel.asc' || fail "no WSPanel apt source"
+fi
+
 log "Panel"
 code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve panel.localhost:443:127.0.0.1 https://panel.localhost/login')
 [[ $code == 200 ]] || fail "login page answered $code"
@@ -57,6 +64,8 @@ on 'printf "Subject: smoke\n\nok\n" | sendmail info@app.localhost'
 for _ in $(seq 1 20); do on 'doveadm mailbox status -u info@app.localhost messages INBOX | grep -q "messages=1"' && break; sleep 1; done
 on 'doveadm mailbox status -u info@app.localhost messages INBOX | grep -q "messages=1"' || fail "the message was not delivered"
 
+# The bundle's own apt channel is not published yet (that comes after this
+# test): the upgrade also shows that an unreachable repository stops nothing.
 log "Upgrade with the saved choices"
 on 'cd /root/wspanel && ./install --yes > /root/upgrade.log 2>&1' || fail "upgrade failed"
 [[ "$(tinker 'echo App\Models\User::count();')" == 1 ]] || fail "the upgrade changed the accounts"

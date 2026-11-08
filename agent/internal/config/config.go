@@ -193,7 +193,7 @@ func Defaults() Config {
 		// other site user can squat a port while its owner restarts.
 		NodePortMin:       600,
 		NodePortMax:       999,
-		AgentBinary:       "/usr/local/sbin/panel-agent",
+		AgentBinary:       "/usr/sbin/panel-agent",
 		AuthorizedKeysDir: "/etc/ssh/authorized_keys",
 		SSHGroup:          "wspanel-ssh",
 		SFTPGroup:         "wspanel-sftp",

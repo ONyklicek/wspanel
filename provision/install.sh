@@ -161,9 +161,22 @@ ARCH="$(uname -m)"
 
 export DEBIAN_FRONTEND=noninteractive
 
+# apt-get update that a WSPanel repository out of reach (GitHub Pages down)
+# does not stop: it is retried without that one source.
+apt_update() {
+  apt-get update -q && return 0
+  local src=/etc/apt/sources.list.d/wspanel.sources rc=0
+  [[ -f $src ]] || return 1
+  log "The WSPanel apt repository did not answer; continuing without it"
+  mv "$src" "$src.off"
+  apt-get update -q || rc=$?
+  mv "$src.off" "$src"
+  return $rc
+}
+
 # ---------------------------------------------------------------- base packages
 log "Base packages"
-apt-get update -q
+apt_update
 apt-get install -y -q --no-install-recommends \
   ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw nftables \
   openssh-server fail2ban mc nano xz-utils iproute2 quota
@@ -175,7 +188,7 @@ if [[ ! -f /etc/apt/sources.list.d/php.list ]]; then
   dpkg -i /tmp/debsuryorg-archive-keyring.deb
   echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" \
     > /etc/apt/sources.list.d/php.list
-  apt-get update -q
+  apt_update
 fi
 PHP_PKGS=()
 for v in "${PHP_LIST[@]}"; do
@@ -427,10 +440,50 @@ fi
 
 # ---------------------------------------------------------------- agent
 log "Agent"
-install -m 0755 "$AGENT_BIN" /usr/local/sbin/panel-agent
-# The wspanel CLI (REST API client), when built next to the agent.
-CLI_BIN="$(dirname "$AGENT_BIN")/$(basename "$AGENT_BIN" | sed 's/^panel-agent/wspanel/')"
-[[ -x "$CLI_BIN" ]] && install -m 0755 "$CLI_BIN" /usr/local/bin/wspanel
+DEB_ARCH="$(dpkg --print-architecture)"
+AGENT_DEB="$(ls "$(dirname "$AGENT_BIN")"/wspanel-agent_*_"$DEB_ARCH".deb 2>/dev/null | head -1 || true)"
+if [[ -n "$AGENT_DEB" ]]; then
+  # A release bundle: the agent as the wspanel-agent package, so that apt
+  # brings its fixes. Installed from the bundle itself, nothing downloaded.
+  dpkg -i "$AGENT_DEB" >/dev/null
+else
+  # From source (dev): the binaries as they are, in the same places.
+  install -m 0755 "$AGENT_BIN" /usr/sbin/panel-agent
+  CLI_BIN="$(dirname "$AGENT_BIN")/$(basename "$AGENT_BIN" | sed 's/^panel-agent/wspanel/')"
+  [[ -x "$CLI_BIN" ]] && install -m 0755 "$CLI_BIN" /usr/bin/wspanel
+fi
+# The old places, which timers and units written before still name.
+ln -sfn /usr/sbin/panel-agent /usr/local/sbin/panel-agent
+[[ -x /usr/bin/wspanel ]] && ln -sfn /usr/bin/wspanel /usr/local/bin/wspanel
+
+# The apt repository of the release this bundle is (GitHub Pages of its
+# repository): one channel per minor version (1.2, or 1.2-pre for release
+# candidates), so apt brings fixes of this line only; the next line comes
+# with the installer, together with its panel. Picked up by unattended
+# upgrades as well.
+APT_KEY="$HERE/files/wspanel-archive-keyring.asc"
+bundle_repo="$(cat "$HERE/../REPO" 2>/dev/null || true)"
+bundle_version="$(cat "$HERE/../VERSION" 2>/dev/null || true)"
+if [[ -n "$AGENT_DEB" && -s "$APT_KEY" && "$bundle_repo" =~ ^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ \
+      && "$bundle_version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-.+)?$ ]]; then
+  owner="${bundle_repo%%/*}"; name="${bundle_repo#*/}"
+  suite="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"; [[ -n "${BASH_REMATCH[3]}" ]] && suite+="-pre"
+  install -d -m 0755 /etc/apt/keyrings
+  install -m 0644 "$APT_KEY" /etc/apt/keyrings/wspanel.asc
+  cat > /etc/apt/sources.list.d/wspanel.sources <<SRC
+# Managed by the WSPanel installer: fixes of the agent (wspanel-agent).
+Types: deb
+URIs: https://${owner,,}.github.io/$name/apt
+Suites: $suite
+Components: main
+Signed-By: /etc/apt/keyrings/wspanel.asc
+SRC
+  cat > /etc/apt/apt.conf.d/52wspanel-unattended <<'CONF'
+// Managed by the WSPanel installer: fixes of the agent come with the daily
+// unattended upgrades (when those are on, Zabezpečení → Aktualizace).
+Unattended-Upgrade::Origins-Pattern { "origin=WSPanel"; };
+CONF
+fi
 json_list() { local out="" x; for x in "$@"; do out+="${out:+,}\"$x\""; done; printf '[%s]' "$out"; }
 cat > /etc/panel-agent/agent.json <<JSON
 {
@@ -689,7 +742,7 @@ printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
 chmod 0600 /etc/wspanel/install.flags
 
 log "Done. Panel: $PANEL_URL"
-if [[ -n "$PANEL_SOURCE" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then
+if [[ -n "$PANEL_SOURCE" && -z "${WSPANEL_ADMIN_BY_INSTALLER:-}" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then
   log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan wire:user"
 fi
 exit 0

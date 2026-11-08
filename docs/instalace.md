@@ -83,6 +83,16 @@ volby pamatuje v `/etc/wspanel/install.flags`), nebo projití otázek znovu.
 Bez otázek stačí `./install --yes`: bez dalších voleb použije ty uložené.
 Účty, weby, data ani nastavení se nemažou a správce se znovu nezakládá.
 
+Opravy agenta přicházejí i přes apt: instalace z vydání nainstaluje agenta
+jako balíček `wspanel-agent` a přidá apt repozitář WSPanelu
+(`/etc/apt/sources.list.d/wspanel.sources`, podepsaný klíčem
+`/etc/apt/keyrings/wspanel.asc`). Repozitář má kanál pro každou řadu verzí
+(`1.2` pro 1.2.x, `1.2-pre` pro předběžné verze), takže `apt upgrade`
+a automatické aktualizace (Zabezpečení → Aktualizace) přinesou jen opravy
+agenta téže řady. Na vyšší řadu (1.3) se přechází instalátorem, s panelem
+stejné verze. Když repozitář není dostupný, instalace ani aktualizace
+nespadne, jen ho vynechá.
+
 O nové verzi panel řekne sám: jednou denně se podívá do vydání na GitHubu
 (repozitář, ze kterého byl nainstalován) a novější verzi ukáže na Přehledu
 a v **Zabezpečení → Aktualizace** i s příkazem k aktualizaci; správcům pošle

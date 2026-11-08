@@ -115,6 +115,16 @@ CI je v `.github/workflows/`:
   balíčky, `SHA256SUMS`, záznam o původu buildu (build provenance) a seznam
   změn od předchozího tagu.
 
+  Po vydání job **Apt repository** přidá balíček agenta `wspanel-agent`
+  (`provision/build-deb.sh`) do apt repozitáře na GitHub Pages (větev
+  `gh-pages`, složka `apt/`, `provision/apt-repo.sh`): kanál pro každou
+  řadu verzí, nejnovějších 5 verzí v kanálu, indexy podepsané klíčem
+  z tajné proměnné `APT_SIGNING_KEY`. Servery mu věří podle veřejného klíče
+  `provision/files/wspanel-archive-keyring.asc` (otisk
+  `51525652EBC466696C479E9DEECED19A06101F1F`); výměna klíče = nový pár,
+  nový veřejný klíč v repozitáři i tajná proměnná, servery ho dostanou
+  s instalátorem další verze.
+
   Ručním spuštěním (Actions → Release → Run workflow, s číslem verze) se
   balíčky sestaví a otestují bez vydání.
 

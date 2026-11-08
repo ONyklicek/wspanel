@@ -39,7 +39,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 ## Příkaz wspanel
 
 Binárky pro Linux a macOS sestaví `make cli-build` (`build/wspanel-<os>-<arch>`).
-Na serveru je nainstalovaný jako `/usr/local/bin/wspanel`.
+Na serveru je nainstalovaný jako `/usr/bin/wspanel` (balíček `wspanel-agent`).
 
 ```sh
 wspanel login https://panel.example.com wspa_…   # uloží do ~/.config/wspanel/config.json (0600)
