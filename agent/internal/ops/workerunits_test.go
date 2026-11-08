@@ -136,3 +136,18 @@ func TestNodeSwitchesSlotsWithoutAGap(t *testing.T) {
 		t.Errorf("slot %q", st.Slot)
 	}
 }
+
+func TestServiceAppTargetsTheServingSlot(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "n2.example.com", "framework": "node", "mode": "node", "node_version": "22"}); err != nil {
+		t.Fatal(err)
+	}
+	_, l, _ := loadSite(env, "n2.example.com")
+	if ok, err := (&deployment{env: env, l: l, log: &strings.Builder{}}).blueGreenNode(t.Context()); err != nil || !ok {
+		t.Fatal(err)
+	}
+	unit, err := serviceParams{Service: "app", Domain: "n2.example.com"}.unit(env.Cfg)
+	if err != nil || unit != "wspanel-web_n2_example_com-appb.service" {
+		t.Errorf("app control must reach the serving slot, got %q %v", unit, err)
+	}
+}

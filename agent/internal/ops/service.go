@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -48,6 +49,13 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 			return "", err
 		}
 		name := appUnitName(validate.SiteUser(p.Domain))
+		// Node: the slot that serves now (the other one is idle or finishing).
+		if b, err := os.ReadFile(siteStatePath(cfg, p.Domain)); err == nil {
+			var st siteState
+			if json.Unmarshal(b, &st) == nil && st.Slot == "b" && st.PortB > 0 {
+				name = appUnitNameB(validate.SiteUser(p.Domain))
+			}
+		}
 		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
 			return "", protocol.NotFound(p.Domain + " has no app process (classic sites run in PHP-FPM)")
 		}

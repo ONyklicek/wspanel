@@ -144,6 +144,11 @@ func (d *deployment) blueGreenNode(ctx context.Context) (switched bool, err erro
 		_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", "--now", nl.AppUnit)
 		return false, nil
 	}
+	// Under the agent's lock, but the site must still be what we started from.
+	if now, _, err := loadSite(d.env, d.l.Domain); err != nil || now.Disabled || now.Mode != "node" || now.Slot != st.Slot {
+		_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", "--now", nl.AppUnit)
+		return false, fmt.Errorf("the site changed meanwhile; not switching")
+	}
 	if err := writeEdge(ctx, d.env, nl, &rb); err != nil {
 		rb.run()
 		_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", "--now", nl.AppUnit)
