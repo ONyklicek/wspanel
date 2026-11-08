@@ -4,12 +4,15 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\ManageXhprof;
+use App\Http\Middleware\EnsureTwoFactor;
 use App\Models\Client;
+use App\Models\Setting;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Features;
 use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
+use NyonCode\WireForms\Components\Radio;
 use NyonCode\WirePanels\Pages\Page;
 
 /**
@@ -95,6 +98,20 @@ class ModulesPage extends Page
                         Toast::error('Instalace selhala', $e->getMessage());
                     }
                     $this->redirect(self::url());
+                }),
+            Action::make('twoFactor')
+                ->label('Dvoufázové přihlášení')
+                ->icon('outline:lock-closed')
+                ->color('gray')
+                ->modalDescription('Kdo musí mít zapnuté dvoufázové přihlášení (aplikace v telefonu). Uživatel bez něj se po přihlášení dostane jen do profilu, kde si ho nastaví.')
+                ->fillFormUsing(fn () => ['policy' => (string) (Setting::get(EnsureTwoFactor::SETTING) ?? 'none')])
+                ->form([
+                    Radio::make('policy')->label('Vyžadovat')->options(['none' => 'Nikoho', 'clients' => 'Klienty', 'all' => 'Všechny (i správce)'])
+                        ->rules(['in:none,clients,all'])->required(),
+                ])
+                ->action(function (array $data) {
+                    Setting::put(EnsureTwoFactor::SETTING, $data['policy']);
+                    Toast::success('Uloženo');
                 }),
             Action::make('enableClients')
                 ->label('Zapnout klienty a balíčky')

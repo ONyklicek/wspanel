@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"wspanel/agent/internal/config"
 	"wspanel/agent/internal/fsx"
@@ -259,7 +260,36 @@ func validateCaddy(ctx context.Context, env *Env, name, path string) error {
 }
 
 func validateEdge(ctx context.Context, env *Env) error {
+	ensureAccessLogs(env)
 	return validateCaddy(ctx, env, "proxy", env.Cfg.ProxyConfig)
+}
+
+// ensureAccessLogs creates the sites' access logs as the edge's (validation
+// runs as root and would otherwise create them as root, which the edge then
+// cannot open), and gives back any that root created.
+func ensureAccessLogs(env *Env) {
+	if env.Cfg.DryRun {
+		return
+	}
+	owner, err := lookupOwner(env, env.Cfg.ProxyGroup)
+	if err != nil || owner.UID < 0 {
+		return
+	}
+	// Every site block on disk (a new site's block exists before its state).
+	blocks, _ := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy"))
+	for _, b := range blocks {
+		domain := strings.TrimSuffix(filepath.Base(b), ".caddy")
+		if validate.Domain(domain) != nil {
+			continue
+		}
+		path := filepath.Join(env.Cfg.AccessLogDir, domain+".log")
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|syscall.O_NOFOLLOW, 0o640)
+		if err != nil {
+			continue
+		}
+		_ = f.Chown(owner.UID, owner.GID)
+		_ = f.Close()
+	}
 }
 
 func validateWeb(ctx context.Context, env *Env) error {

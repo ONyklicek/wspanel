@@ -43,6 +43,7 @@ type siteLayout struct {
 	PoolFile         string
 	WebFile          string // web tier site block
 	XhguiDir         string
+	AccessLog        string // the edge's JSON access log of the site
 	Xhprof           bool
 	XhprofRatio      int
 	WebUser          string
@@ -112,6 +113,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		WebFile:          filepath.Join(cfg.WebSitesDir, st.Domain+".caddy"),
 		XhguiDir:         cfg.XhguiDir,
+		AccessLog:        filepath.Join(cfg.AccessLogDir, st.Domain+".log"),
 		WebUser:          cfg.WebUser,
 		WebSocket:        cfg.WebSocket,
 		DisableFunctions: DisableFunctions,

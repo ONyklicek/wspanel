@@ -110,6 +110,25 @@ blokuje hádání hesel. Hesla superuživatelů panel neukládá; agent uchováv
 hash hesla MariaDB root (v souboru čitelném jen pro root), aby mohl vytvořit
 síťový účet.
 
+## Aktualizace systému
+
+**Server → Aktualizace** ukáže balíčky k aktualizaci (bezpečnostní zvlášť)
+a jestli server čeká na restart (nové jádro nebo knihovny). Odtud jde
+nainstalovat jen bezpečnostní aktualizace, nebo všechny. Konfigurační soubory,
+které panel upravil, zůstanou: nová výchozí verze balíčku je nepřepíše.
+**Automatické bezpečnostní aktualizace** (unattended-upgrades) je nainstalují
+samy každý den.
+
+Na stejné stránce jsou adresy, které fail2ban zablokoval po opakovaně
+neúspěšném přihlášení (SSH, pošta). Jdou odtud odblokovat.
+
+## Dvoufázové přihlášení
+
+Každý uživatel si ho zapne v profilu (aplikace v telefonu, záložní kódy).
+**Server → Moduly → Dvoufázové přihlášení** ho může vyžadovat od klientů,
+nebo od všech. Uživatel bez něj se pak po přihlášení dostane jen do profilu,
+kde si ho nastaví.
+
 ## Docker Desktop (jen vývoj)
 
 Docker Desktop na Macu nevynucuje cgroup BPF `SocketBindDeny`. Dev kontejner

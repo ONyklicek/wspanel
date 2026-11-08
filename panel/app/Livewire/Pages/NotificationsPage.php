@@ -17,9 +17,9 @@ class NotificationsPage extends Page
 
     protected static ?string $navigationIcon = 'outline:bell-alert';
 
-    protected static ?string $navigationGroup = 'network';
+    protected static ?string $navigationGroup = 'account';
 
-    protected static int $navigationSort = 90;
+    protected static int $navigationSort = 10;
 
     /** "notifications" is the history of wire-module-notifications. */
     public static function key(): string

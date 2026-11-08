@@ -36,6 +36,8 @@ class HelpPage extends Page
         'databaze' => 'Databáze',
         'ssh-sftp' => 'SSH a SFTP',
         'posta' => 'Pošta',
+        'notifikace' => 'Notifikace',
+        'api' => 'API a CLI',
         'dns' => 'DNS',
         'vytizeni' => 'Vytížení serveru',
         'bezpecnost' => 'Bezpečnost',

@@ -952,6 +952,26 @@ check "a deleted mailbox's mail is gone" test ! -d /var/mail/vmail/shop.localhos
 check "the agent never stored a plain password" bash -c '! grep -rq "Alice-heslo-123" /var/lib/panel-agent /etc/dovecot/wspanel /var/log/panel-agent 2>/dev/null'
 
 # ----------------------------------------------------------------------------
+section "Traffic and uptime"
+TS=other.localhost
+for _ in $(seq 1 7); do https $TS "/e2e-traffic?x=$RANDOM" >/dev/null; done
+check "the edge writes the site's JSON access log" bash -c "grep -q e2e-traffic /var/log/panel-proxy/access/$TS.log"
+(cd /srv/panel/current && runuser -u panel -- php artisan panel:traffic >/dev/null 2>&1)
+contains "panel:traffic sums it by hour (query cut)" "$(php "$(site $TS) echo json_encode(App\Models\SiteTrafficHour::where('site_id', \$s->id)->get()->pluck('top.paths')->all());")" 'e2e-traffic":'
+(cd /srv/panel/current && runuser -u panel -- php artisan panel:sync >/dev/null 2>&1)
+check "uptime checks are kept" test "$(php "$(site $TS) echo App\Models\SiteHealthCheck::where('site_id', \$s->id)->count();" | tail -1)" -ge 1
+
+# ----------------------------------------------------------------------------
+section "REST API and CLI"
+TOKEN=$(php '$u = App\Models\User::query()->where("role","admin")->orWhereNull("role")->first(); echo App\Models\ApiToken::issue($u, "e2e", false, 1)[1];' | tail -1)
+api() { curl -sk --resolve panel.localhost:443:127.0.0.1 -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" "$@"; }
+contains "GET /api/v1/sites with a token" "$(api https://panel.localhost/api/v1/sites)" '"domain":"other.localhost"'
+contains "a read-only token cannot restart" "$(api -o /dev/null -w '%{http_code}' -X POST https://panel.localhost/api/v1/sites/other.localhost/restart)" "403"
+contains "no token, no API" "$(curl -sk -o /dev/null -w '%{http_code}' --resolve panel.localhost:443:127.0.0.1 -H 'Accept: application/json' https://panel.localhost/api/v1/sites)" "401"
+contains "the wspanel CLI is installed" "$(wspanel help 2>&1)" "wspanel deploy"
+php '$t = App\Models\ApiToken::withoutGlobalScopes()->where("name","e2e")->delete();' >/dev/null
+
+# ----------------------------------------------------------------------------
 section "XHProf + XHGui (per site)"
 check "XHGui is installed" test -f /usr/share/wspanel-xhgui/prepend.php
 XS=other.localhost

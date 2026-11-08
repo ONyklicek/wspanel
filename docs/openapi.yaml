@@ -1,0 +1,149 @@
+openapi: 3.1.0
+info:
+  title: WSPanel API
+  version: "1"
+  description: Personal tokens from the panel (Účet → API a CLI). A token acts as its user; a client's token sees only that client's resources.
+servers:
+  - url: https://panel.example.com/api/v1
+security:
+  - bearer: []
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: "wspa_… token"
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Site:
+      type: object
+      properties:
+        domain: { type: string }
+        mode: { type: string, enum: [classic, worker, node] }
+        framework: { type: string, enum: [laravel, symfony, php, node] }
+        php_version: { type: [string, "null"] }
+        status: { type: string }
+        enabled: { type: boolean }
+        healthy: { type: [boolean, "null"] }
+        url: { type: string, format: uri }
+    Deploy:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [running, success, failed, rolled_back] }
+        ref: { type: [string, "null"] }
+        commit: { type: [string, "null"] }
+        started: { type: [string, "null"] }
+        finished: { type: [string, "null"] }
+        error: { type: [string, "null"] }
+  responses:
+    Unauthenticated:
+      description: Missing, unknown or expired token (or a suspended client)
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ReadOnly:
+      description: The token may only read
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: No such site for this token's user
+  parameters:
+    domain:
+      name: domain
+      in: path
+      required: true
+      schema: { type: string }
+paths:
+  /me:
+    get:
+      summary: The token's user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  email: { type: string }
+                  role: { type: string, enum: [admin, client] }
+                  client_id: { type: [integer, "null"] }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /sites:
+    get:
+      summary: Sites
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Site" } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /sites/{domain}:
+    parameters: [{ $ref: "#/components/parameters/domain" }]
+    get:
+      summary: One site
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /sites/{domain}/deploys:
+    parameters: [{ $ref: "#/components/parameters/domain" }]
+    get:
+      summary: Deploy history
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Deploy" } }
+  /sites/{domain}/deploy:
+    parameters: [{ $ref: "#/components/parameters/domain" }]
+    post:
+      summary: Start a deploy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ref: { type: string, description: "tag, branch or commit" }
+      responses:
+        "202":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  release: { type: string }
+                  status: { type: string }
+        "403": { $ref: "#/components/responses/ReadOnly" }
+        "409": { description: A deploy is already running }
+        "422": { description: Invalid ref }
+  /sites/{domain}/restart:
+    parameters: [{ $ref: "#/components/parameters/domain" }]
+    post:
+      summary: Restart the app and its workers
+      responses:
+        "200": { description: Restarted }
+        "403": { $ref: "#/components/responses/ReadOnly" }
+  /databases:
+    get:
+      summary: Databases
+      responses: { "200": { description: OK } }
+  /mail/domains:
+    get:
+      summary: Mail domains
+      responses: { "200": { description: OK } }
+  /dns/zones:
+    get:
+      summary: DNS zones
+      responses: { "200": { description: OK } }

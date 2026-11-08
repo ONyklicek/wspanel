@@ -23,7 +23,9 @@ class Notifier
     public function broadcast(string $event, ?int $clientId, string $title, string $body = ''): int
     {
         $sent = 0;
-        $users = User::query()->get()->filter(fn (User $u) => $u->isAdmin() || ($clientId !== null && $u->client_id === $clientId));
+        // A suspended client's users are signed out of everything, notifications included.
+        $users = User::query()->with('client')->get()->filter(fn (User $u) => $u->isAdmin()
+            || ($clientId !== null && $u->client_id === $clientId && $u->client !== null && $u->client->suspended_at === null));
         foreach (NotificationChannel::withoutGlobalScopes()->whereIn('user_id', $users->pluck('id'))->where('enabled', true)->get() as $channel) {
             if ($channel->wants($event) && $this->send($channel, $title, $body)) {
                 $sent++;

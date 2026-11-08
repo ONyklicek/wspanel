@@ -421,6 +421,9 @@ fi
 # ---------------------------------------------------------------- agent
 log "Agent"
 install -m 0755 "$AGENT_BIN" /usr/local/sbin/panel-agent
+# The wspanel CLI (REST API client), when built next to the agent.
+CLI_BIN="$(dirname "$AGENT_BIN")/$(basename "$AGENT_BIN" | sed 's/^panel-agent/wspanel/')"
+[[ -x "$CLI_BIN" ]] && install -m 0755 "$CLI_BIN" /usr/local/bin/wspanel
 json_list() { local out="" x; for x in "$@"; do out+="${out:+,}\"$x\""; done; printf '[%s]' "$out"; }
 cat > /etc/panel-agent/agent.json <<JSON
 {

@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\V1Controller;
 use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
 use App\Http\Controllers\XhguiAuthController;
+use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureAccountActive;
+use App\Http\Middleware\EnsureTwoFactor;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -29,6 +32,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->middleware('throttle:120,1')
                 ->name('auth.xhgui');
 
+            // REST API v1: personal tokens (Authorization: Bearer wspa_…), no session.
+            Route::middleware(['throttle:api-v1', AuthenticateApiToken::class])->prefix('api/v1')->name('api.v1.')->group(function () {
+                Route::get('/me', [V1Controller::class, 'me'])->name('me');
+                Route::get('/sites', [V1Controller::class, 'sites'])->name('sites');
+                Route::get('/sites/{domain}', [V1Controller::class, 'showSite'])->name('sites.show');
+                Route::get('/sites/{domain}/deploys', [V1Controller::class, 'deploys'])->name('sites.deploys');
+                Route::post('/sites/{domain}/deploy', [V1Controller::class, 'deploy'])->name('sites.deploy');
+                Route::post('/sites/{domain}/restart', [V1Controller::class, 'restart'])->name('sites.restart');
+                Route::get('/databases', [V1Controller::class, 'databases'])->name('databases');
+                Route::get('/mail/domains', [V1Controller::class, 'mailDomains'])->name('mail.domains');
+                Route::get('/dns/zones', [V1Controller::class, 'dnsZones'])->name('dns.zones');
+            });
+
             // Deploy API for CI pipelines: bearer token, no session.
             Route::middleware('throttle:ci-deploy')->prefix('api/deploy/{hook}')->group(function () {
                 Route::post('/', [CiDeployController::class, 'trigger'])->name('api.deploy.trigger');
@@ -40,6 +56,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // A suspended client is signed out on its next request (Livewire's too).
         $middleware->appendToGroup('web', EnsureAccountActive::class);
+        // Two-factor sign-in, when the administrator requires it.
+        $middleware->appendToGroup('web', EnsureTwoFactor::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

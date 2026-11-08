@@ -349,7 +349,12 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 			return err
 		}
 		if st.Deploy == nil {
-			return protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
+			if p.Artifact == "" {
+				return protocol.Invalid("deploy is not configured for " + p.Domain + " (deploy.config)")
+			}
+			// A ready release (a copy from another site, a CI build): nothing to
+			// fetch or build, the defaults do.
+			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true}
 		}
 		if st.Disabled {
 			return protocol.Conflict(p.Domain + " is disabled; enable it before deploying")

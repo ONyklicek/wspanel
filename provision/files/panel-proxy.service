@@ -19,6 +19,9 @@ StateDirectory=panel-proxy
 StateDirectoryMode=0700
 RuntimeDirectory=panel-proxy
 RuntimeDirectoryMode=0700
+# Per-site access logs (the agent reads them for traffic stats).
+LogsDirectory=panel-proxy panel-proxy/access
+LogsDirectoryMode=0750
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=yes

@@ -8,7 +8,7 @@ PHP     ?= 8.3,8.4
 LDFLAGS := -s -w -X wspanel/agent/internal/ops.Version=$(VERSION)
 DEV     := docker compose -f dev/compose.yaml
 
-.PHONY: dev-demo test agent-test panel-test agent-build agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
+.PHONY: dev-demo test agent-test panel-test agent-build cli-build agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
 
 test: agent-test panel-test
 
@@ -22,6 +22,14 @@ panel-test:
 agent-build:
 	mkdir -p build
 	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -ldflags '$(LDFLAGS)' -o ../build/panel-agent-linux-$(ARCH) ./cmd/panel-agent
+	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -ldflags '-s -w' -o ../build/wspanel-linux-$(ARCH) ./cmd/wspanel
+
+## The wspanel CLI for Linux and macOS (both architectures).
+cli-build:
+	mkdir -p build
+	for os in linux darwin; do for arch in amd64 arm64; do \
+		(cd agent && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '-s -w' -o ../build/wspanel-$$os-$$arch ./cmd/wspanel) || exit 1; \
+	done; done
 
 ## Agent on macOS in dry-run mode: records commands instead of running them,
 ## writes files under var/dry-root. Panel's .env points AGENT_SOCKET at var/agent.sock.

@@ -189,41 +189,43 @@ func runSiteBackupMode(cfgPath, domain string, log *slog.Logger) error {
 // binaries is the executor allowlist: logical name -> absolute path.
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
-		"systemctl":        "/usr/bin/systemctl",
-		"useradd":          "/usr/sbin/useradd",
-		"userdel":          "/usr/sbin/userdel",
-		"usermod":          "/usr/sbin/usermod",
-		"groupadd":         "/usr/sbin/groupadd",
-		"groupdel":         "/usr/sbin/groupdel",
-		"chown":            "/usr/bin/chown",   // a site moving between clients (-h, never follows links)
-		"setfacl":          "/usr/bin/setfacl", // root: only the owning-group entry of a site home (no -R)
-		"findmnt":          "/usr/bin/findmnt",
-		"quotaon":          "/usr/sbin/quotaon", // -p only: is the group quota on
-		"setquota":         "/usr/sbin/setquota",
-		"chpasswd":         "/usr/sbin/chpasswd", // password on stdin only
-		"postconf":         "/usr/sbin/postconf",
-		"postmap":          "/usr/sbin/postmap",
-		"postqueue":        "/usr/sbin/postqueue",
-		"postsuper":        "/usr/sbin/postsuper",
-		"postfix":          "/usr/sbin/postfix", // reload only
-		"doveadm":          "/usr/bin/doveadm",  // quota get
-		"mail-hosting":     "/usr/lib/wspanel/mail-hosting.sh",
-		"xhprof":           "/usr/lib/wspanel/xhprof.sh",
-		"saslpasswd2":      "/usr/sbin/saslpasswd2", // password on stdin (-p)
-		"setpriv":          "/usr/bin/setpriv",      // runs fixed binaries as a site user
-		"systemd-analyze":  "/usr/bin/systemd-analyze",
-		"systemd-tmpfiles": "/usr/bin/systemd-tmpfiles",
-		"systemd-run":      "/usr/bin/systemd-run",
-		"mariadb":          "/usr/bin/mariadb",
-		"mariadb-dump":     "/usr/bin/mariadb-dump",
-		"apt-get":          "/usr/bin/apt-get",
-		"smbclient":        "/usr/bin/smbclient",
-		"journalctl":       "/usr/bin/journalctl",
-		"dpkg-query":       "/usr/bin/dpkg-query",
-		"apt-cache":        "/usr/bin/apt-cache",
-		"ufw":              cfg.UFWBinary,
-		"frankenphp":       cfg.FrankenPHPBin,
-		"frankenphp-new":   cfg.FrankenPHPBin + ".new", // update candidate, checked before the swap
+		"systemctl":          "/usr/bin/systemctl",
+		"useradd":            "/usr/sbin/useradd",
+		"userdel":            "/usr/sbin/userdel",
+		"usermod":            "/usr/sbin/usermod",
+		"groupadd":           "/usr/sbin/groupadd",
+		"groupdel":           "/usr/sbin/groupdel",
+		"chown":              "/usr/bin/chown",   // a site moving between clients (-h, never follows links)
+		"setfacl":            "/usr/bin/setfacl", // root: only the owning-group entry of a site home (no -R)
+		"findmnt":            "/usr/bin/findmnt",
+		"quotaon":            "/usr/sbin/quotaon", // -p only: is the group quota on
+		"setquota":           "/usr/sbin/setquota",
+		"chpasswd":           "/usr/sbin/chpasswd", // password on stdin only
+		"postconf":           "/usr/sbin/postconf",
+		"postmap":            "/usr/sbin/postmap",
+		"postqueue":          "/usr/sbin/postqueue",
+		"postsuper":          "/usr/sbin/postsuper",
+		"postfix":            "/usr/sbin/postfix", // reload only
+		"doveadm":            "/usr/bin/doveadm",  // quota get
+		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
+		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
+		"saslpasswd2":        "/usr/sbin/saslpasswd2", // password on stdin (-p)
+		"setpriv":            "/usr/bin/setpriv",      // runs fixed binaries as a site user
+		"systemd-analyze":    "/usr/bin/systemd-analyze",
+		"systemd-tmpfiles":   "/usr/bin/systemd-tmpfiles",
+		"systemd-run":        "/usr/bin/systemd-run",
+		"mariadb":            "/usr/bin/mariadb",
+		"mariadb-dump":       "/usr/bin/mariadb-dump",
+		"apt-get":            "/usr/bin/apt-get",
+		"unattended-upgrade": "/usr/bin/unattended-upgrade",
+		"fail2ban-client":    "/usr/bin/fail2ban-client",
+		"smbclient":          "/usr/bin/smbclient",
+		"journalctl":         "/usr/bin/journalctl",
+		"dpkg-query":         "/usr/bin/dpkg-query",
+		"apt-cache":          "/usr/bin/apt-cache",
+		"ufw":                cfg.UFWBinary,
+		"frankenphp":         cfg.FrankenPHPBin,
+		"frankenphp-new":     cfg.FrankenPHPBin + ".new", // update candidate, checked before the swap
 	}
 	// Every version the panel can install, so a version added at runtime
 	// (php.install) is usable without restarting the agent.

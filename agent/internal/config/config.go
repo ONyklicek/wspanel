@@ -91,6 +91,8 @@ type Config struct {
 	Fail2banDir    string `json:"fail2ban_dir"`
 
 	ProxyStorage string `json:"proxy_storage"`  // Caddy data dir of the edge (certificates)
+	AccessLogDir string `json:"access_log_dir"` // the edge's per-site JSON access logs (traffic stats)
+	AutoUpgrades string `json:"auto_upgrades"`  // apt's periodic config (automatic security updates)
 	ProxyCertDir string `json:"proxy_cert_dir"` // uploaded certificates (custom TLS)
 	DeployLogDir string `json:"deploy_log_dir"`
 	PanelDomain  string `json:"panel_domain"`
@@ -195,6 +197,8 @@ func Defaults() Config {
 		Fail2banDir:       "/etc/fail2ban",
 		BackupGroup:       "panel",
 		ProxyStorage:      "/var/lib/panel-proxy/caddy",
+		AccessLogDir:      "/var/log/panel-proxy/access",
+		AutoUpgrades:      "/etc/apt/apt.conf.d/20auto-upgrades",
 		ProxyCertDir:      "/etc/panel-proxy/certs",
 		DeployLogDir:      "/var/log/panel-agent/deploys",
 		SystemdDir:        "/etc/systemd/system",

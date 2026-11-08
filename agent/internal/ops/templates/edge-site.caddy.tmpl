@@ -11,7 +11,14 @@
 	header Content-Type "text/html; charset=utf-8"
 	header Retry-After 3600
 	respond `<!doctype html><html lang="cs"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Web je dočasně vypnutý</title><body style="font-family:system-ui;max-width:36rem;margin:5rem auto;padding:0 1rem;color:#333"><h1 style="font-size:1.4rem">Web je dočasně vypnutý</h1><p>Správce tento web vypnul. Zkuste to prosím později.</p></body></html>` 503
-	log
+	# Per-site access log (the panel's traffic stats read it).
+	log {
+		output file {{$.AccessLog}} {
+			roll_size 20MiB
+			roll_keep 3
+		}
+		format json
+	}
 }
 {{- else}}
 {{- if .Edge.HSTS}}
@@ -88,7 +95,14 @@
 {{- end}}
 		reverse_proxy {{.Upstream}}
 	}
-	log
+	# Per-site access log (the panel's traffic stats read it).
+	log {
+		output file {{$.AccessLog}} {
+			roll_size 20MiB
+			roll_keep 3
+		}
+		format json
+	}
 }
 {{- range .Edge.RedirectHosts}}
 

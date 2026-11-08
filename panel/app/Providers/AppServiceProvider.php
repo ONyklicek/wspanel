@@ -82,9 +82,11 @@ class AppServiceProvider extends ServiceProvider
             NavigationGroup::make('network')->label('Síť a pošta')->icon('outline:signal')->sort(20),
             NavigationGroup::make('server')->label('Server')->icon('outline:server-stack')->sort(30)
                 ->visible(fn (): bool => Gate::allows('admin')),
+            NavigationGroup::make('account')->label('Účet')->icon('outline:user-circle')->sort(80),
             NavigationGroup::make('help')->label('Nápověda')->icon('outline:question-mark-circle')->sort(90),
         ]);
         RateLimiter::for('webhooks', fn (Request $request) => Limit::perMinute(30)->by(($request->route('hook') ?? '').'|'.$request->ip()));
+        RateLimiter::for('api-v1', fn (Request $request) => Limit::perMinute(120)->by(hash('sha256', (string) $request->bearerToken()).'|'.$request->ip()));
         RateLimiter::for('ci-deploy', fn (Request $request) => Limit::perMinute(60)->by(($request->route('hook') ?? '').'|'.$request->ip()));
     }
 }

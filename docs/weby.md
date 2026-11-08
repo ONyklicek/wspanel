@@ -415,6 +415,20 @@ s Redisem): **Další → Valkey (Redis)**.
   vyprázdnit nebo restartovat.
 - U klientů omezuje paměť balíček (**Valkey na web**, 0 = nepovoleno).
 
+## Návštěvnost a dostupnost
+
+Záložka **Návštěvnost** u webu ukazuje za 24 hodin, 7 nebo 30 dní:
+
+- požadavky v čase, přenesená data, chyby 5xx, průměrnou odezvu a podíl robotů,
+- nejčastější stránky (bez query stringu), odkud lidé přišli (cizí weby)
+  a nejaktivnější IP adresy,
+- dostupnost v %: kontrola webu každou minutu, rovnou na backend.
+
+Edge zapisuje u každého webu JSON access log
+(`/var/log/panel-proxy/access/<doména>.log`, rotuje po 20 MiB, drží 3 soubory).
+Panel ho každých 5 minut sečte po hodinách a nic dalšího z něj neukládá.
+Návštěvnost se drží 90 dní, kontroly dostupnosti 30 dní.
+
 ## Profilování (XHProf + XHGui)
 
 Volitelný modul (`install.sh --xhprof=yes` nebo **Server → Moduly**). U webu

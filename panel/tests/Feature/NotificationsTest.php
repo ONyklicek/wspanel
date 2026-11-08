@@ -100,6 +100,18 @@ class NotificationsTest extends TestCase
         $this->assertCount(3, $this->postedFor($admin), 'the administrator hears everything');
     }
 
+    public function test_a_suspended_clients_users_hear_nothing(): void
+    {
+        $client = Client::factory()->create(['suspended_at' => now()]);
+        $user = User::factory()->forClient($client)->create();
+        $this->slack($user);
+        $this->problems = [['key' => 'site-down:c.cz', 'client_id' => $client->id, 'level' => 'danger', 'title' => 'c.cz neodpovídá', 'detail' => '']];
+        $this->artisan('panel:alerts');
+        $this->artisan('panel:alerts');
+
+        $this->assertSame([], $this->postedFor($user));
+    }
+
     public function test_webhooks_go_only_to_the_services_own_hosts(): void
     {
         foreach (['https://hooks.slack.com.evil.cz/services/x', 'http://127.0.0.1:11334/learnspam', 'https://hooks.slack.com/services/../../x'] as $url) {

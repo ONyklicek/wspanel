@@ -4,6 +4,7 @@ namespace App\Actions\Sites;
 
 use App\Enums\SiteStatus;
 use App\Models\Site;
+use App\Models\SiteHealthCheck;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 
@@ -22,8 +23,19 @@ class CheckSiteHealth
                 'health_error' => isset($h['error']) ? mb_substr((string) $h['error'], 0, 250) : null,
                 'health_checked_at' => now(),
             ]);
+            $this->record($site, (bool) ($h['ok'] ?? false), $h['status'] ?? null, $h['ms'] ?? null);
         } catch (AgentException $e) {
             $site->update(['health_ok' => false, 'health_status' => null, 'health_error' => mb_substr($e->getMessage(), 0, 250), 'health_checked_at' => now()]);
+            $this->record($site, false, null, null);
+        }
+    }
+
+    /** Uptime history: only while the site is meant to be up. */
+    private function record(Site $site, bool $ok, mixed $status, mixed $ms): void
+    {
+        if ($site->enabled) {
+            SiteHealthCheck::create(['site_id' => $site->id, 'checked_at' => now(), 'ok' => $ok,
+                'status' => is_numeric($status) ? (int) $status : null, 'ms' => is_numeric($ms) ? (int) $ms : null]);
         }
     }
 

@@ -17,6 +17,8 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | databázi a phpMyAdmin / Adminer | [Databáze](databaze.md) |
 | přístup k souborům | [SSH a SFTP](ssh-sftp.md) |
 | odesílat e-maily z webu, testovat je v Mailpitu | [Pošta](posta.md) |
+| dostat zprávu, když web spadne nebo doběhne deploy | [Notifikace](notifikace.md) |
+| ovládat panel ze skriptu nebo příkazové řádky | [API a CLI](api.md) |
 | spravovat DNS (na serveru nebo v Cloudflare) | [DNS](dns.md) |
 | fronty, Horizon, Reverb, plánovač | [Weby → Procesy a workery](weby.md#procesy-a-workery) |
 | vidět vytížení CPU, RAM, disku, kdo server zatěžuje | [Vytížení serveru](vytizeni.md) |
