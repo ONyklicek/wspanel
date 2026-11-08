@@ -79,6 +79,7 @@ class IntegrationsPage extends Page
     public function createAppAction(): Action
     {
         return Action::make('createApp')
+            ->visible(fn () => $this->isAdmin() && GitHubApp::configured() === null)
             ->label(__('Propojit s GitHubem'))
             ->icon('outline:link')
             ->url(route('github.app.create'))->navigate(false);
@@ -87,6 +88,7 @@ class IntegrationsPage extends Page
     public function organizationAppAction(): Action
     {
         return Action::make('organizationApp')
+            ->visible(fn () => $this->isAdmin() && GitHubApp::configured() === null)
             ->label(__('Aplikace pro organizaci'))
             ->color('gray')
             ->quiet()
@@ -98,7 +100,10 @@ class IntegrationsPage extends Page
                     ->rules(['regex:/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/']),
             ])
             ->modalSubmitActionLabel(__('Pokračovat na GitHub'))
-            ->action(fn (array $data) => $this->redirect(route('github.app.create', ['org' => $data['org']])));
+            ->action(function (array $data) {
+                Gate::authorize('admin');
+                $this->redirect(route('github.app.create', ['org' => $data['org']]));
+            });
     }
 
     /** The hand-over of the keys failed and the code from GitHub is still valid. */
@@ -113,6 +118,9 @@ class IntegrationsPage extends Page
     public function existingAppAction(): Action
     {
         return Action::make('existingApp')
+            // The panel's app is the administrator's: an action is callable by
+            // name, so hiding the button is not enough.
+            ->visible(fn () => $this->isAdmin() && GitHubApp::configured() === null)
             ->label(__('Mám už aplikaci na GitHubu'))
             ->color('gray')
             ->quiet()
@@ -130,6 +138,8 @@ class IntegrationsPage extends Page
             ])
             ->modalSubmitActionLabel(__('Ověřit a uložit'))
             ->action(function (array $data) {
+                Gate::authorize('admin');
+                abort_if(GitHubApp::configured() !== null, 409);
                 try {
                     $app = GitHubApp::createFromCredentials((int) $data['app_id'], trim($data['client_id']), trim($data['client_secret']), trim($data['private_key']));
                     session()->forget('github.app_pending');

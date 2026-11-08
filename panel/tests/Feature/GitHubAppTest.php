@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 /** Connecting GitHub with a button: the panel's GitHub App, created from a manifest. */
@@ -118,6 +119,24 @@ class GitHubAppTest extends TestCase
 
         $this->actingAs(User::factory()->create())->withSession(['github.app_pending' => ['code' => 'abcdefgh123', 'until' => time() - 1]]);
         $this->post('/github/app/retry')->assertStatus(410);
+    }
+
+    public function test_a_client_cannot_put_in_the_keys_of_an_app_of_their_own(): void
+    {
+        Http::fake([self::API.'/app' => Http::response(['id' => 66, 'slug' => 'evil', 'client_id' => 'Iv1.evil', 'owner' => ['login' => 'evil']])]);
+        $this->actingAs(User::factory()->forClient()->create());
+
+        try {
+            Livewire::test(IntegrationsPage::class)
+                ->call('mountAction', 'existingApp')
+                ->set('mountedActions.0.data', ['app_id' => 66, 'client_id' => 'Iv1.evil', 'client_secret' => 'secret-secret-secret-1', 'private_key' => $this->pem])
+                ->call('callMountedAction');
+        } catch (\Throwable) {
+            // refused is the point, however the engine reports it
+        }
+
+        $this->assertNull(GitHubApp::configured(), 'the panel\'s app is the administrator\'s');
+        Http::assertNothingSent();
     }
 
     public function test_an_existing_apps_keys_are_checked_with_github_before_they_are_kept(): void
