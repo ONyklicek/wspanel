@@ -23,7 +23,7 @@ class AuditPage extends Page
 
     protected static ?string $navigationIcon = 'outline:clipboard-document-list';
 
-    protected static ?string $navigationGroup = 'server';
+    protected static ?string $navigationGroup = 'security';
 
     protected static int $navigationSort = 40;
 }

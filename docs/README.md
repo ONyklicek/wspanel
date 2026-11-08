@@ -50,16 +50,20 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
 | **Hosting → Databáze → Servery** | heslo root / postgres, přístup k databázím z internetu, phpMyAdmin / Adminer přes všechny databáze |
 | **Hosting → Naplánované úlohy** | cron úlohy webů |
-| **Síť a pošta → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola |
-| **Síť a pošta → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
-| **Síť a pošta → Pošta** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, log |
-| **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané |
+| **Pošta → Schránky** | poštovní domény, schránky, aliasy, přesměrování, webmail, antispam, doručitelnost; limity odesílání a ochrana pošty (greylisting, antivir) |
+| **Pošta → Odesílání z webů** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, fronta, log |
+| **Síť → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola, sekundární DNS, DNSSEC |
+| **Síť → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
 | **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
-| **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Logy** | záznamy služeb serveru (pošta, proxy a certifikáty, SSH, fail2ban, DNS, agent, varování systému) s filtrem, obdobím a živým sledováním |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
-| **Server → Firewall** | pravidla UFW a přístup k panelu (z jakých adres) |
-| **Server → Audit** | co přesně a kdy agent na serveru udělal |
+| **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
+| **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané |
+| **Server → Moduly** | doinstalování klientů, pošty, XHProf; politika dvoufázového přihlášení |
+| **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
+| **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |
+| **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru |
+| **Zabezpečení → Audit** | co přesně a kdy agent na serveru udělal |
 | **Účet → Integrace** | propojení s GitHubem (tlačítkem nebo tokenem), připojené účty a organizace |
 | **Účet → API a CLI** | API tokeny pro skripty a příkaz `wspanel` |
 | **Dokumentace** | tato dokumentace |

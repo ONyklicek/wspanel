@@ -26,9 +26,9 @@ class UpdatesPage extends Page
 
     protected static ?string $navigationIcon = 'outline:arrow-path-rounded-square';
 
-    protected static ?string $navigationGroup = 'server';
+    protected static ?string $navigationGroup = 'security';
 
-    protected static int $navigationSort = 35;
+    protected static int $navigationSort = 30;
 
     /** @var array<string, mixed>|null */
     public ?array $updates = null;

@@ -89,8 +89,11 @@ class AppServiceProvider extends ServiceProvider
         // Menu sections. Entries name a group by key; the heading and order live here.
         app(NavigationGroups::class)->registerMany([
             NavigationGroup::make('hosting')->label(fn (): string => __('Hosting'))->icon('outline:globe-alt')->sort(10),
-            NavigationGroup::make('network')->label(fn (): string => __('Síť a pošta'))->icon('outline:signal')->sort(20),
-            NavigationGroup::make('server')->label(fn (): string => __('Server'))->icon('outline:server-stack')->sort(30)
+            NavigationGroup::make('mail')->label(fn (): string => __('Pošta'))->icon('outline:envelope')->sort(20),
+            NavigationGroup::make('network')->label(fn (): string => __('Síť'))->icon('outline:signal')->sort(30),
+            NavigationGroup::make('server')->label(fn (): string => __('Server'))->icon('outline:server-stack')->sort(40)
+                ->visible(fn (): bool => Gate::allows('admin')),
+            NavigationGroup::make('security')->label(fn (): string => __('Zabezpečení'))->icon('outline:shield-check')->sort(50)
                 ->visible(fn (): bool => Gate::allows('admin')),
             NavigationGroup::make('account')->label(fn (): string => __('Účet'))->icon('outline:user-circle')->sort(80),
             NavigationGroup::make('help')->label(fn (): string => __('Nápověda'))->icon('outline:question-mark-circle')->sort(90),

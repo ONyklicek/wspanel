@@ -1,6 +1,6 @@
 # Notifikace
 
-**Síť a pošta → Notifikace**: každý uživatel panelu si nastaví vlastní kanály.
+**Účet → Notifikace**: každý uživatel panelu si nastaví vlastní kanály.
 
 | Kanál | Co zadat |
 |---|---|

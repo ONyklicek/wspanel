@@ -26,7 +26,7 @@ class LocaleTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
 
-        $this->get('/sites')->assertOk()->assertSee('Weby')->assertSee('Síť a pošta')->assertSee('English');
+        $this->get('/sites')->assertOk()->assertSee('Weby')->assertSee('Zabezpečení')->assertSee('English');
     }
 
     public function test_a_user_who_chose_english_gets_english(): void
@@ -35,8 +35,8 @@ class LocaleTest extends TestCase
         Site::create(['domain' => 'app.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active']);
 
         $this->get('/sites')->assertOk()
-            ->assertSee('Sites')->assertSee('Network &amp; mail', false)->assertSee('New site')->assertSee('Čeština')
-            ->assertDontSee('Síť a pošta');
+            ->assertSee('Sites')->assertSee('Security')->assertSee('New site')->assertSee('Čeština')
+            ->assertDontSee('Zabezpečení');
         $this->get('/notification-channels')->assertOk()->assertSee('Notifications')->assertSee('Add channel');
         $this->get('/modules')->assertOk()->assertSee('Clients and packages')->assertSee('Install XHProf + XHGui');
     }

@@ -70,7 +70,7 @@ deploye je na stránce Deploy (klik na řádek v Historii). Dále:
 **Mail z webu nedorazil**
 1. **Pošta:** je web v režimu „odesílá“? V režimu „zachytává“ je zpráva v
    Mailpitu.
-2. **Pošta → Log pošty:** hledejte adresu příjemce.
+2. **Pošta → Odesílání z webů → Log pošty:** hledejte adresu příjemce.
    - `status=deferred` + `Connection timed out` znamená, že poskytovatel
      blokuje port 25. Nastavte relay.
    - `status=bounced` + `SPF`/`DKIM`/`DMARC` znamená, že chybí nebo nesedí DNS

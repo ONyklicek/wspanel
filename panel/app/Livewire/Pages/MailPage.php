@@ -28,17 +28,17 @@ class MailPage extends Page
     /** Server-wide settings: administrators only. */
     protected static ?string $permission = 'admin';
 
-    protected ?string $title = 'Odchozí pošta';
+    protected ?string $title = 'Odesílání pošty z webů';
 
     protected static ?string $slug = 'mail';
 
-    protected static ?string $navigationLabel = 'Pošta';
+    protected static ?string $navigationLabel = 'Odesílání z webů';
 
-    protected static ?string $navigationIcon = 'outline:envelope';
+    protected static ?string $navigationIcon = 'outline:paper-airplane';
 
-    protected static ?string $navigationGroup = 'network';
+    protected static ?string $navigationGroup = 'mail';
 
-    protected static int $navigationSort = 30;
+    protected static int $navigationSort = 20;
 
     /** @var array<string, mixed> */
     public array $status = [];

@@ -52,7 +52,7 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Firewall')->icon('outline:shield-check')->group('server')->sort(30)->visible(fn (): bool => Gate::allows('admin'));
+        return NavigationItem::make('Firewall')->icon('outline:shield-check')->group('security')->sort(10)->visible(fn (): bool => Gate::allows('admin'));
     }
 
     public function table(Table $table): Table

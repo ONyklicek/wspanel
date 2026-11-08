@@ -29,7 +29,9 @@ func TestCountriesAreBlockedFromTheirOwnRanges(t *testing.T) {
 	defer srv.Close()
 	old := geoSource
 	t.Cleanup(func() { geoSource = old })
-	geoSource = func(cc string, v6 bool) string { return srv.URL + "/" + cc + map[bool]string{false: ".v4", true: ".v6"}[v6] }
+	geoSource = func(cc string, v6 bool) string {
+		return srv.URL + "/" + cc + map[bool]string{false: ".v4", true: ".v6"}[v6]
+	}
 
 	if _, err := call(t, env, fwGeoblock, map[string]any{"action": "set", "countries": []string{"XX"}, "scope": "admin", "allow": []string{"203.0.113.9"}}); err != nil {
 		t.Fatal(err)

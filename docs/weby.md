@@ -43,7 +43,7 @@ Domény a HTTPS → HTTPS**.
 | **Interní certifikační autorita** | vnitřní síť, intranet, testy (`intranet.firma.lan`) | počítače, které web otevírají, jednou nainstalují kořenový certifikát serveru |
 | **Vlastní certifikát** | firemní CA, zakoupený certifikát | vložíte certifikát (PEM, i s mezilehlými) a soukromý klíč; panel ověří, že k sobě patří a platí pro doménu |
 
-**Kořenový certifikát interní CA** stáhnete v **Síť a pošta → SSL →
+**Kořenový certifikát interní CA** stáhnete v **Síť → SSL →
 Kořenový certifikát**. Instalace:
 - **Windows:** dvojklik → Nainstalovat certifikát → Místní počítač → Důvěryhodné
   kořenové certifikační autority (nebo rozeslat přes GPO),

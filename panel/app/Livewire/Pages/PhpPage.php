@@ -36,7 +36,7 @@ class PhpPage extends Page
 
     protected static ?string $navigationGroup = 'server';
 
-    protected static int $navigationSort = 15;
+    protected static int $navigationSort = 25;
 
     /** @var array<string, mixed> */
     public array $status = [];

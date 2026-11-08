@@ -14,7 +14,7 @@ Workspace, Microsoft 365, Seznam…) a nastavte jeho MX záznamy.
 | **Odesílá** | přes Postfix na serveru příjemcům (nebo přes relay) | produkce |
 | **Zachytává** | do **Mailpitu**, nic neodejde ven | vývoj, testy, staging, kopie produkce |
 
-Přepnutí: **Pošta** → u webu „Začít odesílat“ / „Zachytávat v Mailpitu“.
+Přepnutí: **Pošta → Odesílání z webů**, u webu „Začít odesílat“ / „Zachytávat v Mailpitu“.
 Workery a worker/Node weby změnu načtou po restartu webu.
 
 ## Jak to aplikace používají (nic nastavovat nemusíte)
@@ -31,7 +31,7 @@ Panel zapíše do `.env` webu:
 
 ## Mailpit: prohlížení zachycené pošty
 
-**Pošta → Otevřít Mailpit** (adresa `https://<panel>/mailpit/`). Je přístupný
+**Pošta → Odesílání z webů → Otevřít Mailpit** (adresa `https://<panel>/mailpit/`). Je přístupný
 jen po přihlášení do panelu. Ukazuje HTML i textovou podobu, hlavičky, přílohy
 a kontrolu odkazů. Uchovává posledních 5 000 zpráv.
 
@@ -39,7 +39,7 @@ a kontrolu odkazů. Uchovává posledních 5 000 zpráv.
 
 U každé domény, ze které web posílá:
 
-1. **Pošta → Vytvořit DKIM klíč.** Panel ukáže tři TXT záznamy:
+1. **Pošta → Odesílání z webů → Vytvořit DKIM klíč.** Panel ukáže tři TXT záznamy:
    - **SPF** (`v=spf1 ip4:<IP serveru> ~all`): kdo smí posílat poštu za doménu.
      Pokud doména posílá i odjinud (Google, Microsoft…), záznamy spojte do
      jednoho, např. `v=spf1 ip4:203.0.113.10 include:_spf.google.com ~all`.
@@ -56,7 +56,7 @@ Mnoho poskytovatelů blokuje odchozí port 25 a nová IP adresa nemá reputaci.
 Spolehlivější je posílat přes službu jako Mailgun, Amazon SES, Postmark nebo
 Brevo:
 
-1. **Pošta → Relay (SMTP poskytovatel):** server, port (obvykle 587),
+1. **Pošta → Odesílání z webů → Relay (SMTP poskytovatel):** server, port (obvykle 587),
    uživatel, heslo / API klíč. Spojení je vždy šifrované, heslo zůstane jen na
    serveru.
 2. Do SPF přidejte `include:` poskytovatele a u něj ověřte doménu.
@@ -76,18 +76,18 @@ Prázdný server = doručovat přímo.
 
 ## Log a fronta
 
-**Pošta → Fronta** ukáže zprávy, které čekají na doručení, a proč (server
+**Pošta → Odesílání z webů → Fronta** ukáže zprávy, které čekají na doručení, a proč (server
 příjemce neodpovídá, odložil je…). Jde je poslat znovu, nebo smazat jednotlivě
 či všechny.
 
-**Pošta → Log pošty:** doručení, odmítnutí a odložené zprávy (Postfix, OpenDKIM).
+**Pošta → Odesílání z webů → Log pošty:** doručení, odmítnutí a odložené zprávy (Postfix, OpenDKIM).
 Zprávy, které nejde doručit, Postfix
 zkouší znovu až 5 dní a pak je vrátí odesílateli.
 
 
 ## Schránky (příjem pošty)
 
-**Síť a pošta → Schránky → Přidat doménu**, pak v detailu domény. Schránky
+**Pošta → Schránky → Přidat doménu**, pak v detailu domény. Schránky
 a aliasy webu jsou i přímo u webu na záložce **Pošta**; tam jde poštu pro
 doménu webu i zřídit (u `www.firma.cz` pro `firma.cz`). Doména
 musí patřit vašemu webu (jeho doména, alias nebo nadřazená doména) nebo vaší

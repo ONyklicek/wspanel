@@ -84,7 +84,7 @@ aplikace nemůže zabrat jiný web (PHP, SSH ani jiný Node proces).
 ## Panel jen z vnitřní sítě
 
 Weby mohou být veřejné a panel přitom dostupný jen z vybraných adres (kancelář,
-VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
+VPN). **Zabezpečení → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
 (`10.8.0.0/24`, `203.0.113.7`). Ostatním panel odpovídá jako neexistující stránka
 (404), weby to neovlivní.
 
@@ -109,7 +109,7 @@ VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
 
 ## Blokování podle zemí
 
-**Server → Firewall → Blokování zemí:** nová spojení z adres vybraných zemí
+**Zabezpečení → Firewall → Blokování zemí:** nová spojení z adres vybraných zemí
 server zahodí. Rozsahy adres jsou z ipdeny.com a obnovují se každý týden.
 
 - **Jen správu serveru:** SSH a panel na vlastním portu. Weby a pošta zůstanou
@@ -134,7 +134,7 @@ síťový účet.
 
 ## Aktualizace systému
 
-**Server → Aktualizace** ukáže balíčky k aktualizaci (bezpečnostní zvlášť)
+**Zabezpečení → Aktualizace** ukáže balíčky k aktualizaci (bezpečnostní zvlášť)
 a jestli server čeká na restart (nové jádro nebo knihovny). Odtud jde
 nainstalovat jen bezpečnostní aktualizace, nebo všechny. Konfigurační soubory,
 které panel upravil, zůstanou: nová výchozí verze balíčku je nepřepíše.
@@ -143,7 +143,7 @@ samy každý den.
 
 ## Fail2ban
 
-**Server → Fail2ban** ukáže adresy, které fail2ban zablokoval po opakovaně
+**Zabezpečení → Fail2ban** ukáže adresy, které fail2ban zablokoval po opakovaně
 neúspěšném přihlášení (SSH, pošta, databáze), i to, co hlídá. Jdou odtud
 odblokovat.
 

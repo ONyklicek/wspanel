@@ -260,7 +260,7 @@ kontrole repozitáře nebo vypnutém deployi ji panel zase odebere. Panel každ�
 doručení ověří podpisem HMAC a přijme ho jen jednou. Zbytek panelu z internetu
 dostupný není.
 
-Kdo webhooky z internetu nechce vůbec: Server → Firewall → Přístup k panelu →
+Kdo webhooky z internetu nechce vůbec: Zabezpečení → Firewall → Přístup k panelu →
 vypnout *webhooky a CI API mohou zůstat veřejné*. Panel pak cestu odebere ze
 všech webů a nabízí jen kontrolu repozitáře každou minutu.
 

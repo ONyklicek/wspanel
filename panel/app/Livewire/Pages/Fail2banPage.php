@@ -25,9 +25,9 @@ class Fail2banPage extends Page
 
     protected static ?string $navigationIcon = 'outline:no-symbol';
 
-    protected static ?string $navigationGroup = 'server';
+    protected static ?string $navigationGroup = 'security';
 
-    protected static int $navigationSort = 32;
+    protected static int $navigationSort = 20;
 
     /** @var array<string, list<string>> */
     public array $bans = [];

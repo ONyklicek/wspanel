@@ -48,7 +48,7 @@ final class MailDomainResource implements DescribesResource, ProvidesNavigation,
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make(__('Schránky'))->icon('outline:inbox-stack')->group('network')->sort(25)
+        return NavigationItem::make(__('Schránky'))->icon('outline:inbox-stack')->group('mail')->sort(10)
             ->visible(fn (): bool => app(ManageMailHosting::class)->installed());
     }
 
