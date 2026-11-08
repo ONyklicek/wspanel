@@ -1,0 +1,18 @@
+Package: wspanel-agent
+Architecture: arm64
+Version: 1.2.0~rc2
+Priority: optional
+Section: admin
+Maintainer: WSPanel <noreply@github.com>
+Installed-Size: 15140
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc2_arm64.deb
+Size: 3950016
+MD5sum: 002e6d3baf5f8011b60a05feb0af9d10
+SHA1: 1d2ab20cda3178d8ad620955fceab24f05a17e51
+SHA256: e9a84235c2a8e933cd7a5b4ea1b44e444285d5cb70ea3708bac6e9b74fb3e15c
+SHA512: 3564646a9c1b045f002c9a13bd4960cd1eaec29ea03a1a0de42a82e68d49a536dc93a2a1dc2e2ed7e4d9e24fd307e2aade2a647457f77c4e3559926743851d8b
+Description: WSPanel agent and command line tool
+ The privileged agent of the WSPanel hosting panel (panel-agent) and its
+ command line client (wspanel). Installed and configured by the WSPanel
+ installer; updates of this package bring fixes of the agent.
+

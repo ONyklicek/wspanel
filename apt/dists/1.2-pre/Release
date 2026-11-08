@@ -1,0 +1,28 @@
+Architectures: amd64 arm64
+Codename: 1.2-pre
+Components: main
+Date: Sun, 08 Nov 2026 21:52:17 +0000
+Description: WSPanel agent, channel 1.2-pre
+Label: WSPanel
+Origin: WSPanel
+Suite: 1.2-pre
+MD5Sum:
+ bdce17cceb37b668cb89f497d31db673              798 main/binary-amd64/Packages
+ 7103366b95ef7a8316601c242584f0e5              529 main/binary-amd64/Packages.gz
+ bfce41e9158da0f0db0a8cb0a89226a1              798 main/binary-arm64/Packages
+ 0af91aefdec418cd0599ff6f954607bf              526 main/binary-arm64/Packages.gz
+SHA1:
+ 7a930a3b2effb720a823f0db3858b8bd260b8960              798 main/binary-amd64/Packages
+ fe074232c442e93eaf8b7b80b84d23abe362b360              529 main/binary-amd64/Packages.gz
+ b00c7f9ec7075731223056487a5dd0c12114102b              798 main/binary-arm64/Packages
+ c92426e99f9a76b8a624d03978c425cea8885917              526 main/binary-arm64/Packages.gz
+SHA256:
+ 08418dc0fc17de3f93a600c7b3275d47b60da97a320022a83e307898b2526f68              798 main/binary-amd64/Packages
+ 91c1342aad429eee273095ff7586127ae332121a5c66c79ec690bb4118dd5858              529 main/binary-amd64/Packages.gz
+ 9b285b02cd0d3130464b5622bb325e7b5c4d14afa9d86e17503ab7cb23bffafc              798 main/binary-arm64/Packages
+ 3bfb9d772b73602f8f0126650a6edea2feef8d39e3e2cce585c2b637b636bee1              526 main/binary-arm64/Packages.gz
+SHA512:
+ fc81ad783ab73a9bb6444232e1a831eb89cdd138bdbdcd00d00a89e396b229257061e69286f763b5835d4f2636067f1bdb826ae9a4f44270999bde386b3bbc38              798 main/binary-amd64/Packages
+ 65ecd44ea50b02a3fe86d26f4e19e8a0917740a43af1637741828d97118bea658c413d839ea6f6401a0dc319aab0c8350a90d28ba53ee7dc1f6e303ddc11e6b6              529 main/binary-amd64/Packages.gz
+ eac18c96a43af87217599be865b284981cfa986305ec84234953c341a41effdeacd7b31ffe47610cbed6a2754245b89f0609a291bf09ea8a29ed158af86c18bb              798 main/binary-arm64/Packages
+ 4621d171ac2a2e98d9d605a2f6735378c66b8d4470b384ce591a25873f7976de15a803655c1a85f92007f0e2f58353ba58d5b9216506165d0371bcffce4190d2              526 main/binary-arm64/Packages.gz
