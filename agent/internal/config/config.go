@@ -281,6 +281,10 @@ func (c *Config) resolve() error {
 
 func (c *Config) AllowedUIDs() []uint32 { return c.allowedUIDs }
 
+// AllowUIDs replaces who may connect: for tests, whose user is not in a
+// config file (Defaults() resolves nobody, so a Linux agent refuses all).
+func (c *Config) AllowUIDs(uids ...uint32) { c.allowedUIDs = uids }
+
 // PanelUnits are units the panel itself depends on: they may be restarted or
 // reloaded, but never stopped from the panel (it would cut off its own access).
 func (c *Config) PanelUnits() []string {

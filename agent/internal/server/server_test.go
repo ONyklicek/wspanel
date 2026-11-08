@@ -28,6 +28,7 @@ func TestSocketRoundTrip(t *testing.T) {
 	defer os.RemoveAll(dir)
 	cfg := config.Defaults()
 	cfg.DryRun = true
+	cfg.AllowUIDs(uint32(os.Getuid())) // on Linux the agent checks who connects
 	cfg.Socket = filepath.Join(dir, "a.sock")
 	cfg.AuditLog = filepath.Join(dir, "audit.log")
 
