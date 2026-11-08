@@ -17,7 +17,7 @@ func TestASiteMountsAnSMBShareWithItsOwnerAndASecretFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	user := "web_nas_example_com"
-	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-"+user+"-nas.service"))
+	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-"+user+".nas.service"))
 	for _, want := range []string{
 		// Mounted at root's own stage, never through the site user's folders...
 		`ExecStart=/usr/bin/mount -t cifs "//nas.firma.lan/Data/web/uploads" "` + filepath.Join(env.Cfg.StateDir, "mnt", "nas.example.com", "nas") + `" -o credentials=`,
@@ -43,7 +43,7 @@ func TestASiteMountsAnSMBShareWithItsOwnerAndASecretFile(t *testing.T) {
 	}
 	started := false
 	for _, c := range dr.Calls() {
-		started = started || (c.Name == "systemctl" && strings.Join(c.Args, " ") == "enable --now wspanel-mount-"+user+"-nas.service")
+		started = started || (c.Name == "systemctl" && strings.Join(c.Args, " ") == "enable --now wspanel-mount-"+user+".nas.service")
 	}
 	if !started {
 		t.Error("the unit was not started")
@@ -70,7 +70,7 @@ func TestAnFTPDiskGoesThroughRcloneAndRefusesUnitInjection(t *testing.T) {
 		"mount": map[string]any{"name": "box", "type": "ftp", "host": "ftp.example.net", "user": "u$HOME%n", "tls": "explicit", "read_only": true}}); err != nil {
 		t.Fatal(err)
 	}
-	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_ftp_example_com-box.service"))
+	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_ftp_example_com.box.service"))
 	for _, want := range []string{`/usr/bin/rclone mount ":ftp:"`, "--no-modtime", `--ftp-user="u$$HOME%%n"`, "--ftp-explicit-tls", "--read-only", "--default-permissions", "EnvironmentFile="} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("missing %q in\n%s", want, unit)
@@ -101,7 +101,7 @@ func TestAnSFTPDiskTrustsOnlyTheHostKeySeenWhenAdded(t *testing.T) {
 		t.Fatal(err)
 	}
 	known := mountKnownHosts(env, "web_s_example_com", "box")
-	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_s_example_com-box.service"))
+	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_s_example_com.box.service"))
 	if !strings.Contains(unit, `--sftp-known-hosts-file="`+known+`"`) {
 		t.Errorf("no known_hosts in\n%s", unit)
 	}
@@ -127,7 +127,31 @@ func TestDeletingASiteUnmountsOnlyItsOwnDisks(t *testing.T) {
 	if _, err := call(t, env, siteDelete, map[string]string{"domain": "x.cz", "confirm": "x.cz"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_x_cz-shop_com-nas.service")); err != nil {
+	if _, err := os.Stat(filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-web_x_cz-shop_com.nas.service")); err != nil {
 		t.Error("deleting x.cz removed the disk of x.cz-shop.com")
+	}
+}
+
+func TestDiskNamesNeverCollideAcrossSites(t *testing.T) {
+	env, _ := testEnv(t)
+	for _, d := range []string{"x.cz", "x.cz-shop.com"} {
+		if _, err := call(t, env, siteCreate, map[string]string{"domain": d, "framework": "php", "php_version": "8.4"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add := func(domain, name string) {
+		t.Helper()
+		if _, err := call(t, env, siteMountChange, map[string]any{"domain": domain, "action": "add", "password": "secret-" + domain,
+			"mount": map[string]any{"name": name, "type": "smb", "host": "h", "share": "s", "user": "u"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("x.cz-shop.com", "nas")
+	add("x.cz", "shop_com-nas") // web_x_cz + shop_com-nas against web_x_cz-shop_com + nas
+	if !strings.Contains(read2(t, mountSecretFile(env, "web_x_cz-shop_com", "nas")), "secret-x.cz-shop.com") {
+		t.Error("the other site's password was overwritten")
+	}
+	if mountUnit("web_x_cz", "shop_com-nas") == mountUnit("web_x_cz-shop_com", "nas") {
+		t.Error("unit names collide")
 	}
 }

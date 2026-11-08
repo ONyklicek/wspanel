@@ -57,13 +57,23 @@ var (
 	mountSecretRe = regexp.MustCompile(`^[^\x00-\x1f\x7f]{0,256}$`)
 )
 
-func mountUnit(user, name string) string { return "wspanel-mount-" + user + "-" + name + ".service" }
-func mountDir(l siteLayout) string       { return filepath.Join(l.Home, "mounts") }
+// Names a disk's unit and files by the site user and the disk with "." in
+// between: neither part can hold a dot (users have theirs replaced, disk
+// names allow none), so web_x_cz + shop_com-nas is never web_x_cz-shop_com
+// + nas, as it was with "-".
+func mountUnit(user, name string) string { return "wspanel-mount-" + user + "." + name + ".service" }
+
+// legacyMountUnit: the name before (user-name), only ever matched together
+// with the site named inside the unit.
+func legacyMountUnit(user, name string) string {
+	return "wspanel-mount-" + user + "-" + name + ".service"
+}
+func mountDir(l siteLayout) string { return filepath.Join(l.Home, "mounts") }
 func mountPoint(l siteLayout, name string) string {
 	return filepath.Join(mountDir(l), name)
 }
 func mountSecretFile(env *Env, user, name string) string {
-	return filepath.Join(env.Cfg.StateDir, "mounts", user+"-"+name+".secret")
+	return filepath.Join(env.Cfg.StateDir, "mounts", user, name+".secret")
 }
 
 // mountStage: where the disk is really mounted, root's own; the site sees
@@ -73,7 +83,7 @@ func mountStage(cfg config.Config, domain, name string) string {
 }
 
 func mountKnownHosts(env *Env, user, name string) string {
-	return filepath.Join(env.Cfg.StateDir, "mounts", user+"-"+name+".known_hosts")
+	return filepath.Join(env.Cfg.StateDir, "mounts", user, name+".known_hosts")
 }
 
 // agentCommand: this binary with its config, for a unit's ExecStartPost/ExecStop.
@@ -90,7 +100,7 @@ func agentCommand(env *Env, flag, arg string) string {
 }
 
 func mountCacheDir(user, name string) string {
-	return "/var/cache/wspanel-mounts/" + user + "-" + name
+	return "/var/cache/wspanel-mounts/" + user + "/" + name
 }
 
 // validate checks a mount (password apart) and normalizes it.
@@ -325,6 +335,9 @@ func siteMountChange(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 		if !mountSecretRe.MatchString(p.Password) {
 			return nil, protocol.Invalid("password: without control characters, up to 256")
 		}
+		if fsx.Exists(filepath.Join(env.Cfg.SystemdDir, mountUnit(l.User, m.Name))) {
+			return nil, protocol.Conflict("disk " + m.Name + " already exists")
+		}
 		if err := ensureMountTools(ctx, env, m.Type); err != nil {
 			return nil, err
 		}
@@ -474,9 +487,23 @@ func unitsWithoutMount(ctx context.Context, env *Env, st siteState, l siteLayout
 
 // stopMount unmounts and forgets a disk; the files on it are untouched.
 func stopMount(ctx context.Context, env *Env, l siteLayout, name string) error {
+	// A disk added before the unit names changed: only when the unit says
+	// it is this site's (the old name alone could be another site's).
+	legacy := filepath.Join(env.Cfg.SystemdDir, legacyMountUnit(l.User, name))
+	if b, err := os.ReadFile(legacy); err == nil && strings.Contains(string(b), "(site "+l.Domain+")") {
+		_, _ = env.Exec.Run(ctx, "systemctl", "disable", "--now", legacyMountUnit(l.User, name))
+		_ = os.Remove(legacy)
+		_ = os.Remove(filepath.Join(env.Cfg.StateDir, "mounts", l.User+"-"+name+".secret"))
+	}
 	unit := mountUnit(l.User, name)
 	unitFile := filepath.Join(env.Cfg.SystemdDir, unit)
 	if fsx.Exists(unitFile) {
+		// The unit's ExecStop does this too; here its failure is not ignored.
+		if !env.Cfg.DryRun {
+			if err := UnbindSiteMount(env.Cfg, l.Domain, name); err != nil {
+				return err
+			}
+		}
 		if _, err := env.Exec.Run(ctx, "systemctl", "disable", "--now", unit); err != nil {
 			return err
 		}
@@ -489,6 +516,8 @@ func stopMount(ctx context.Context, env *Env, l siteLayout, name string) error {
 	_ = os.Remove(mountSecretFile(env, l.User, name))
 	_ = os.Remove(mountKnownHosts(env, l.User, name))
 	_ = os.RemoveAll(mountCacheDir(l.User, name))
+	_ = os.Remove(filepath.Dir(mountCacheDir(l.User, name)))
+	_ = os.Remove(filepath.Dir(mountSecretFile(env, l.User, name)))
 	_ = os.Remove(mountStage(env.Cfg, l.Domain, name))
 	_ = os.Remove(filepath.Dir(mountStage(env.Cfg, l.Domain, name))) // the site's, once its last disk is gone
 	// Only an empty folder, never what was on the disk; a lazy unmount
