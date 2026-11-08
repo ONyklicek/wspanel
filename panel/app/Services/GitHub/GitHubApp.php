@@ -53,7 +53,8 @@ class GitHubApp
     /**
      * The manifest GitHub creates the app from. Callbacks go through the
      * browser, so a panel on an internal address works too; the app has no
-     * webhook of its own (sites get repository webhooks or are watched).
+     * webhook of its own (sites get repository webhooks or are watched), so
+     * the manifest carries no hook_attributes at all.
      *
      * @return array<string, mixed>
      */
@@ -69,7 +70,9 @@ class GitHubApp
             'callback_urls' => [route('github.callback')],
             'request_oauth_on_install' => true,
             'public' => true, // clients install it on their own accounts
-            'hook_attributes' => ['url' => $url.'/hooks/github-app', 'active' => false],
+            // No hook_attributes: GitHub validates its URL even with the webhook
+            // off and refuses a panel on a local address ("Invalid GitHub App
+            // configuration"). The app needs no webhook; sites have their own.
             'default_permissions' => self::PERMISSIONS,
             'default_events' => [],
         ];

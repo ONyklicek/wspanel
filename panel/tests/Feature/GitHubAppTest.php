@@ -55,7 +55,7 @@ class GitHubAppTest extends TestCase
         $this->assertSame(route('github.app.created'), $manifest['redirect_url']);
         $this->assertSame([route('github.callback')], $manifest['callback_urls']);
         $this->assertSame('write', $manifest['default_permissions']['administration']);
-        $this->assertFalse($manifest['hook_attributes']['active'], 'the app needs no webhook of its own');
+        $this->assertArrayNotHasKey('hook_attributes', $manifest, 'no webhook of its own: GitHub would validate its URL and refuse a local panel');
     }
 
     public function test_only_an_administrator_creates_the_app(): void

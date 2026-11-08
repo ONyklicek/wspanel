@@ -296,6 +296,7 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 | „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, aplikace u účtu není nainstalovaná, nebo v instalaci nespravujete žádný repozitář |
 | „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte na Propojit s GitHubem znovu |
 | „This page has expired“ po kliknutí na tlačítko v tabulce | opraveno (tlačítka v hlavičce tabulek volala neexistující metodu); aktualizujte panel |
+| GitHub hlásí „Invalid GitHub App configuration“ | starší panel posílal v manifestu webhook aplikace s lokální adresou, kterou GitHub odmítne; aktualizujte panel a klikněte na Propojit s GitHubem znovu |
 | GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |
