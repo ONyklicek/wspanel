@@ -15,6 +15,7 @@ return [
     'version' => env('PANEL_VERSION'),
     'release_repo' => env('PANEL_RELEASE_REPO'),
     'release_token' => env('PANEL_RELEASE_TOKEN'),
+    'install_method' => env('PANEL_INSTALL_METHOD', 'bundle'), // apt | bundle
     'public_ipv6' => env('PANEL_PUBLIC_IPV6'),
 
     // Hosting clients with packages and limits (optional, install.sh --clients=yes;

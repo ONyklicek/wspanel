@@ -64,6 +64,16 @@ class PanelReleaseTest extends TestCase
         Livewire::test(UpdatesPage::class)->assertSee('k dispozici nová verze')->assertSee('releases/latest/download/get.sh');
     }
 
+    public function test_a_server_installed_through_apt_is_told_the_apt_command(): void
+    {
+        config(['panel.install_method' => 'apt']);
+        $this->github('v1.3.0');
+        PanelRelease::check();
+        $this->actingAs(User::factory()->create());
+
+        $this->assertStringContainsString('sudo wspanel-update', collect(Attention::items())->firstWhere('level', 'info')['detail']);
+    }
+
     public function test_the_same_or_an_older_release_is_no_news(): void
     {
         foreach (['v1.2.0', 'v1.1.9', 'v1.2.0-rc1'] as $tag) {

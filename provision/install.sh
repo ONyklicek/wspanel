@@ -442,10 +442,13 @@ fi
 log "Agent"
 DEB_ARCH="$(dpkg --print-architecture)"
 AGENT_DEB="$(ls "$(dirname "$AGENT_BIN")"/wspanel-agent_*_"$DEB_ARCH".deb 2>/dev/null | head -1 || true)"
+agent_packaged() { dpkg-query -W -f='${Status}' wspanel-agent 2>/dev/null | grep -q 'ok installed'; }
 if [[ -n "$AGENT_DEB" ]]; then
   # A release bundle: the agent as the wspanel-agent package, so that apt
   # brings its fixes. Installed from the bundle itself, nothing downloaded.
   dpkg -i "$AGENT_DEB" >/dev/null
+elif [[ "$(readlink -f "$AGENT_BIN")" == /usr/sbin/panel-agent ]] && agent_packaged; then
+  : # installed through apt (wspanel-install): the package is in place already
 else
   # From source (dev): the binaries as they are, in the same places.
   install -m 0755 "$AGENT_BIN" /usr/sbin/panel-agent
@@ -460,11 +463,11 @@ ln -sfn /usr/sbin/panel-agent /usr/local/sbin/panel-agent
 # repository): one channel per minor version (1.2, or 1.2-pre for release
 # candidates), so apt brings fixes of this line only; the next line comes
 # with the installer, together with its panel. Picked up by unattended
-# upgrades as well.
+# upgrades as well. WSPANEL_APT_URI: a mirror (or a test repository).
 APT_KEY="$HERE/files/wspanel-archive-keyring.asc"
 bundle_repo="$(cat "$HERE/../REPO" 2>/dev/null || true)"
 bundle_version="$(cat "$HERE/../VERSION" 2>/dev/null || true)"
-if [[ -n "$AGENT_DEB" && -s "$APT_KEY" && "$bundle_repo" =~ ^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ \
+if agent_packaged && [[ -s "$APT_KEY" && "$bundle_repo" =~ ^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ \
       && "$bundle_version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-.+)?$ ]]; then
   owner="${bundle_repo%%/*}"; name="${bundle_repo#*/}"
   suite="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"; [[ -n "${BASH_REMATCH[3]}" ]] && suite+="-pre"
@@ -473,7 +476,7 @@ if [[ -n "$AGENT_DEB" && -s "$APT_KEY" && "$bundle_repo" =~ ^([A-Za-z0-9_.-]+)/(
   cat > /etc/apt/sources.list.d/wspanel.sources <<SRC
 # Managed by the WSPanel installer: fixes of the agent (wspanel-agent).
 Types: deb
-URIs: https://${owner,,}.github.io/$name/apt
+URIs: ${WSPANEL_APT_URI:-https://${owner,,}.github.io/$name/apt}
 Suites: $suite
 Components: main
 Signed-By: /etc/apt/keyrings/wspanel.asc
@@ -593,6 +596,9 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   [[ "$bundle_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] && set_panel_env PANEL_VERSION "$bundle_version"
   bundle_repo="$(cat "$HERE/../REPO" 2>/dev/null || true)"
   [[ "$bundle_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && set_panel_env PANEL_RELEASE_REPO "$bundle_repo"
+  # How the next version comes: apt (wspanel-update) or a release bundle (get.sh).
+  [[ -n "${WSPANEL_VIA_APT:-}" ]] && set_panel_env PANEL_INSTALL_METHOD apt
+  [[ -z "${WSPANEL_VIA_APT:-}" && "$bundle_version" =~ ^[0-9] ]] && set_panel_env PANEL_INSTALL_METHOD bundle
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs

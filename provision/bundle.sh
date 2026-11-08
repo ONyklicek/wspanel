@@ -29,7 +29,7 @@ if command -v dpkg-deb >/dev/null; then
 fi
 
 rsync -a --exclude='.DS_Store' "$ROOT/provision/" "$B/provision/"
-rm -f "$B/provision/bundle.sh" "$B/provision/build-deb.sh" "$B/provision/apt-repo.sh"
+rm -f "$B/provision/bundle.sh" "$B/provision/build-deb.sh" "$B/provision/build-installer-deb.sh" "$B/provision/apt-repo.sh"
 install -m 0755 "$ROOT/provision/wspanel-install.sh" "$B/install"
 rm -f "$B/provision/wspanel-install.sh"
 rsync -a "$ROOT/docs/" "$B/docs/"

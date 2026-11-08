@@ -149,7 +149,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy (za NATem zadejte ručně) |
 | `--public-https-port=` / `--public-ssh-port=` | 443 / 22 | porty, jak je vidí klienti (jen pro přesměrování portů, např. dev kontejner) |
 | `--panel-allow=` | veřejný | panel jen z těchto adres/sítí, např. `10.8.0.0/24,203.0.113.7`; `any` = zase veřejný (viz [Bezpečnost](bezpecnost.md#panel-jen-z-vnitřní-sítě)) |
-| `--local-certs` | – | jen pro vývoj: certifikáty z lokální CA místo Let's Encrypt |
+| `--local-certs` | – | certifikáty od vlastní certifikační autority serveru místo Let's Encrypt (panel i weby ve vnitřní síti, vývoj) |
 | `--allow-unenforced-socket-bind` | – | jen Docker Desktop (viz [Bezpečnost](bezpecnost.md)) |
 
 ## Co instalace nastaví

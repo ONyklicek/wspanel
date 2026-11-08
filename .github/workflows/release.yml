@@ -59,19 +59,36 @@ jobs:
           name: bundle-${{ matrix.arch }}
           path: dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
+      # The wspanel package (installer and panel, any architecture): once.
+      - name: The wspanel package
+        if: matrix.arch == 'amd64'
+        run: provision/build-installer-deb.sh dist/wspanel-*-linux-amd64.tar.gz dist/deb
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'amd64'
+        with:
+          name: deb-wspanel
+          path: dist/deb/wspanel_*_all.deb
+          if-no-files-found: error
 
   smoke:
-    name: Install test ${{ matrix.arch }}
+    name: Install test ${{ matrix.arch }} (${{ matrix.via }})
     needs: build
-    # Each bundle on its own architecture. The arm64 runners are free for
-    # public repositories; a private one without them: drop that line.
+    # Each bundle on its own architecture, and the apt way (README "Instalace
+    # přes apt") from the packages. The arm64 runners are free for public
+    # repositories; a private one without them: drop that entry.
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
             runner: ubuntu-24.04
+            via: bundle
           - arch: arm64
             runner: ubuntu-24.04-arm
+            via: bundle
+          - arch: amd64
+            runner: ubuntu-24.04
+            via: apt
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -80,8 +97,19 @@ jobs:
         with:
           name: bundle-${{ matrix.arch }}
           path: dist
-      - name: Install on a clean Debian 13, use it, upgrade it
+      - name: Install on a clean Debian 13, use it, upgrade it (bundle)
+        if: matrix.via == 'bundle'
         run: dev/release-smoke.sh dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
+      - uses: actions/download-artifact@v4
+        if: matrix.via == 'apt'
+        with:
+          name: deb-wspanel
+          path: dist/debs
+      - name: Install on a clean Debian 13 through apt, use it, wspanel-update
+        if: matrix.via == 'apt'
+        run: |
+          tar -xzf dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz -C dist/debs --strip-components=2 --wildcards 'wspanel/bin/*.deb'
+          dev/release-smoke.sh --apt dist/debs
 
   publish:
     name: Publish
@@ -101,18 +129,23 @@ jobs:
           pattern: bundle-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb-wspanel
+          path: dist
       - name: One-command installer
         run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
       - name: Agent packages (.deb) from the bundles
         run: for b in dist/wspanel-*.tar.gz; do tar -xzf "$b" -C dist --strip-components=2 --wildcards 'wspanel/bin/*.deb'; done; ls dist/*.deb
       - name: Checksums
         working-directory: dist
-        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb get.sh | tee SHA256SUMS
+        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb get.sh | tee SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
             dist/wspanel-agent_*.deb
+            dist/wspanel_*_all.deb
             dist/get.sh
       - name: Release notes
         run: |
@@ -140,7 +173,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/get.sh dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/get.sh dist/SHA256SUMS \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
 
   apt:

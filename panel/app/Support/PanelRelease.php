@@ -112,6 +112,11 @@ final class PanelRelease
     /** The command that upgrades this server (the installer keeps its settings). */
     public static function upgradeCommand(): string
     {
+        // Installed through apt: the packages and the installer in one step.
+        if (config('panel.install_method') === 'apt') {
+            return 'sudo wspanel-update';
+        }
+
         return 'curl -fsSL https://github.com/'.(self::repo() ?? '<vlastník>/<repozitář>').'/releases/latest/download/get.sh | sudo bash';
     }
 }

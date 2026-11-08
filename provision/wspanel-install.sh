@@ -14,7 +14,9 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
-AGENT="$HERE/bin/panel-agent-linux-$ARCH"
+# The agent of this bundle; installed through apt (wspanel-install), the
+# wspanel-agent package's.
+AGENT="${WSPANEL_AGENT_BIN:-$HERE/bin/panel-agent-linux-$ARCH}"
 TITLE="WSPanel $(cat "$HERE/VERSION" 2>/dev/null || echo dev)"
 
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }

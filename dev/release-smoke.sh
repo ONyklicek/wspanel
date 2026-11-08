@@ -4,10 +4,17 @@
 # Used by the release workflow before anything is published; runs locally too:
 #
 #   dev/release-smoke.sh dist/wspanel-1.2.0-linux-amd64.tar.gz
+#   dev/release-smoke.sh --apt <dir with wspanel_*.deb and wspanel-agent_*.deb>
+#
+# --apt installs the way the README's "Instalace přes apt" does: from an apt
+# repository built in the container out of those packages (signed with a
+# throwaway key), then upgrades with wspanel-update.
 #
 # Needs Docker with privileged containers (systemd as PID 1, cgroup v2).
 set -euo pipefail
-BUNDLE=${1:?bundle .tar.gz}
+MODE=bundle
+if [[ "${1:-}" == --apt ]]; then MODE=apt; shift; fi
+BUNDLE=${1:?bundle .tar.gz or (with --apt) a directory of .deb files}
 NAME=${SMOKE_CONTAINER:-wspanel-smoke}
 IMAGE=wspanel-smoke-base
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,13 +31,38 @@ trap '[[ -n "${SMOKE_KEEP:-}" ]] || docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --hostname "$NAME" --privileged --cgroupns=host \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock --tmpfs /tmp "$IMAGE" >/dev/null
 for _ in $(seq 1 30); do on 'systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"' && break; sleep 1; done
-docker cp "$BUNDLE" "$NAME:/root/bundle.tar.gz"
-on 'cd /root && tar -xzf bundle.tar.gz' 2>&1 | grep -q . && fail "the bundle does not unpack cleanly (warnings above)"
-
-log "Install (every module), unattended"
-on 'cd /root/wspanel && ./install --yes --panel-domain=panel.localhost --local-certs \
-  --db=mariadb,postgres --php=8.3,8.4 --mail=capture --dns=powerdns --clients=yes --mail-hosting=yes --xhprof=yes \
-  --allow-unenforced-socket-bind --admin-email=admin@smoke.test > /root/install.log 2>&1' || fail "install failed"
+FLAGS='--yes --panel-domain=panel.localhost --local-certs --db=mariadb,postgres --php=8.3,8.4 --mail=capture --dns=powerdns --clients=yes --mail-hosting=yes --xhprof=yes --allow-unenforced-socket-bind --admin-email=admin@smoke.test'
+if [[ $MODE == bundle ]]; then
+  docker cp "$BUNDLE" "$NAME:/root/bundle.tar.gz"
+  on 'cd /root && tar -xzf bundle.tar.gz' 2>&1 | grep -q . && fail "the bundle does not unpack cleanly (warnings above)"
+  log "Install (every module), unattended"
+  on "cd /root/wspanel && ./install $FLAGS > /root/install.log 2>&1" || fail "install failed"
+else
+  log "An apt repository of these packages (throwaway key) on 127.0.0.1:8099"
+  docker exec "$NAME" mkdir -p /root/debs /root/tools
+  docker cp "$BUNDLE/." "$NAME:/root/debs/"
+  docker cp "$HERE/../provision/apt-repo.sh" "$NAME:/root/tools/apt-repo.sh"
+  on 'apt-get update -q >/dev/null && apt-get install -y -q --no-install-recommends gnupg apt-utils dpkg-dev python3 >/dev/null' || fail "tools"
+  on 'export GNUPGHOME=/root/gnupg; mkdir -m 700 -p $GNUPGHOME
+      gpg --batch --quiet --passphrase "" --quick-generate-key "smoke <smoke@test>" ed25519 sign never
+      gpg --armor --export > /root/test-key.asc
+      /root/tools/apt-repo.sh /srv/apt-test/apt /root/test-key.asc /root/debs/*.deb >/dev/null' || fail "building the repository"
+  on 'cd /srv/apt-test && setsid nohup python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 < /dev/null &'
+  sleep 1
+  channel=$(ls "$BUNDLE"/wspanel_*.deb | head -1 | grep -q "~" && echo pre || echo stable)
+  log "Install through apt (channel $channel), unattended"
+  # Word for word the README, but this repository's address.
+  on "install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL http://127.0.0.1:8099/apt/wspanel-archive-keyring.asc -o /etc/apt/keyrings/wspanel.asc
+      printf 'Types: deb\nURIs: http://127.0.0.1:8099/apt\nSuites: $channel\nComponents: main\nSigned-By: /etc/apt/keyrings/wspanel.asc\n' > /etc/apt/sources.list.d/wspanel.sources
+      apt-get update -q > /root/apt.log 2>&1 && apt-get install -y -q wspanel >> /root/apt.log 2>&1" || fail "apt install wspanel (see /root/apt.log)"
+  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-install $FLAGS > /root/install.log 2>&1" || fail "wspanel-install failed"
+  log "The server follows its line's channel"
+  line=$(on "dpkg-query -W -f='\${Version}' wspanel" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+  [[ $channel == pre ]] && line="$line-pre"
+  on "grep -qx 'Suites: $line' /etc/apt/sources.list.d/wspanel.sources" || fail "apt does not follow the channel $line"
+  on 'grep -q "^PANEL_INSTALL_METHOD=apt" /srv/panel/shared/.env' || fail "the panel does not know it was installed through apt"
+fi
 on 'grep -q "^Password:" /root/install.log' || fail "no admin account was created"
 
 log "Services"
@@ -39,7 +71,7 @@ for unit in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-
 done
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units"
 
-if tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.deb$'; then
+if [[ $MODE == apt ]] || tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.deb$'; then
   log "The agent as a package, apt set up"
   on 'dpkg-query -W -f="\${Status}" wspanel-agent | grep -q "install ok installed"' || fail "wspanel-agent is not installed as a package"
   [[ "$(on 'readlink /usr/local/sbin/panel-agent')" == /usr/sbin/panel-agent ]] || fail "the old agent path does not lead to the package's"
@@ -67,7 +99,11 @@ on 'doveadm mailbox status -u info@app.localhost messages INBOX | grep -q "messa
 # The bundle's own apt channel is not published yet (that comes after this
 # test): the upgrade also shows that an unreachable repository stops nothing.
 log "Upgrade with the saved choices"
-on 'cd /root/wspanel && ./install --yes > /root/upgrade.log 2>&1' || fail "upgrade failed"
+if [[ $MODE == bundle ]]; then
+  on 'cd /root/wspanel && ./install --yes > /root/upgrade.log 2>&1' || fail "upgrade failed"
+else
+  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-update --yes > /root/upgrade.log 2>&1" || fail "wspanel-update failed"
+fi
 [[ "$(tinker 'echo App\Models\User::count();')" == 1 ]] || fail "the upgrade changed the accounts"
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units after the upgrade"
 code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/')

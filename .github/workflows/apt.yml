@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a release tag: $TAG"; exit 1; }
-          gh release download "$TAG" --pattern 'wspanel-agent_*.deb' --dir dist
+          gh release download "$TAG" --pattern 'wspanel-agent_*.deb' --pattern 'wspanel_*_all.deb' --dir dist
           ls -l dist
       - name: Signing key
         env:
@@ -64,7 +64,7 @@ jobs:
             git -C site switch --orphan gh-pages
           fi
       - name: Update the repository
-        run: provision/apt-repo.sh site/apt provision/files/wspanel-archive-keyring.asc dist/wspanel-agent_*.deb
+        run: provision/apt-repo.sh site/apt provision/files/wspanel-archive-keyring.asc dist/*.deb
       - name: Publish
         run: |
           touch site/.nojekyll
