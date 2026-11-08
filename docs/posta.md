@@ -222,6 +222,16 @@ Povolený odesílatel platí, jen když projde SPF: Rspamd zahodí každou hlavi
 `Authentication-Results`, kterou si zpráva přinese, a doplní vlastní. Prahy
 jsou společné pro celý server (odmítnout od 15 bodů, Junk od 6).
 
+**Schránky → Ochrana pošty** (jen správce) zapne pro celý server:
+
+- **Greylisting:** podezřelou zprávu (od 4 bodů) od odesílatele, kterého
+  server ještě neviděl, poprvé odmítne na 5 minut. Skutečné poštovní servery
+  to zkusí znovu, většina spamu ne. Taková pošta pak přijde o pár minut
+  později. Běžná pošta s nízkým skóre se nezdržuje.
+- **Antivir (ClamAV):** každá příchozí zpráva se kontroluje na viry, nakažená
+  se odmítne. ClamAV potřebuje asi 1 GB paměti; při zapnutí se nainstaluje
+  a stáhne databázi virů (několik minut), při vypnutí se zastaví.
+
 Statistiky učení drží Rspamd ve vlastní instanci Valkey (jen unix socket).
 Jeho rozhraní (učení, statistiky) chce heslo i z localhostu, které má jen
 root a doručovací proces.

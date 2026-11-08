@@ -126,6 +126,9 @@ type Config struct {
 	// RspamdRatelimit: Rspamd's ratelimit settings, how much a mailbox and
 	// a site's SMTP login may send per hour (from mail.json).
 	RspamdRatelimit string `json:"rspamd_ratelimit"`
+	// Rspamd: greylisting (an include of actions.conf) and the ClamAV scan.
+	RspamdActions   string `json:"rspamd_actions"`
+	RspamdAntivirus string `json:"rspamd_antivirus"`
 	DovecotUsers    string `json:"dovecot_users"`
 	VmailRoot       string `json:"vmail_root"`
 	DovecotBlocked  string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
@@ -231,6 +234,8 @@ func Defaults() Config {
 		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
 		SRSExclude:        "/etc/postfix/wspanel_srs_exclude",
 		RspamdRatelimit:   "/etc/rspamd/local.d/ratelimit.conf",
+		RspamdActions:     "/etc/rspamd/local.d/wspanel-actions.inc",
+		RspamdAntivirus:   "/etc/rspamd/local.d/antivirus.conf",
 		PowerDNSConf:      "/etc/powerdns/pdns.d/wspanel-agent.conf",
 		DovecotUsers:      "/etc/dovecot/wspanel/users",
 		VmailRoot:         "/var/mail/vmail",

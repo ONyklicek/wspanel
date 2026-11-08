@@ -346,3 +346,40 @@ func TestAMailboxChangesItsOwnPasswordOnlyWithTheCurrentOne(t *testing.T) {
 		t.Error("an unknown mailbox must be refused like a wrong password")
 	}
 }
+
+func TestGreylistingAndAntivirusAreSwitchedServerWide(t *testing.T) {
+	env, dr := mailTestEnv(t)
+	ran := func(name, arg string) bool {
+		for _, c := range dr.Calls() {
+			if c.Name == name && len(c.Args) > 0 && c.Args[0] == arg {
+				return true
+			}
+		}
+		return false
+	}
+	if _, err := call(t, env, mailFiltersSet, map[string]any{"greylist": true, "antivirus": true}); err != nil {
+		t.Fatal(err)
+	}
+	if g := read2(t, env.Cfg.RspamdActions); !strings.Contains(g, "greylist = 4;") {
+		t.Errorf("greylisting not on:\n%s", g)
+	}
+	if av := read2(t, env.Cfg.RspamdAntivirus); !strings.Contains(av, `servers = "/run/clamav/clamd.ctl"`) || !strings.Contains(av, `action = "reject"`) {
+		t.Errorf("antivirus config:\n%s", av)
+	}
+	if !ran("clamav", "enable") {
+		t.Error("ClamAV must be installed and started first")
+	}
+
+	if _, err := call(t, env, mailFiltersSet, map[string]any{"greylist": false, "antivirus": false}); err != nil {
+		t.Fatal(err)
+	}
+	if g := read2(t, env.Cfg.RspamdActions); !strings.Contains(g, "greylist = null;") {
+		t.Errorf("greylisting not off:\n%s", g)
+	}
+	if _, err := os.Stat(env.Cfg.RspamdAntivirus); !os.IsNotExist(err) {
+		t.Error("the antivirus config must go when it is off")
+	}
+	if !ran("clamav", "disable") {
+		t.Error("ClamAV must be stopped")
+	}
+}

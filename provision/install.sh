@@ -368,6 +368,8 @@ install -d -m 0755 /usr/lib/wspanel
 install -m 0755 "$HERE/mail-hosting.sh" /usr/lib/wspanel/mail-hosting.sh
 install -d -m 0755 /usr/lib/wspanel/files/webmail
 install -m 0644 "$HERE"/files/webmail/* /usr/lib/wspanel/files/webmail/
+# ClamAV for incoming mail (optional, switched on in the panel).
+install -m 0755 "$HERE/clamav.sh" /usr/lib/wspanel/clamav.sh
 # XHProf + XHGui (optional): the script the agent also runs when added later.
 install -m 0755 "$HERE/xhprof.sh" /usr/lib/wspanel/xhprof.sh
 install -d -m 0755 /usr/lib/wspanel/files/xhgui /usr/lib/wspanel/files/xhgui/xhgui /usr/lib/wspanel/files/xhgui/collector

@@ -455,4 +455,15 @@ class MailHostingTest extends TestCase
         $this->actingAs(User::factory()->forClient(Client::factory()->create())->create());
         $this->assertFalse($this->headerActionVisible(Livewire::test(ListMailDomains::class), 'limits'));
     }
+
+    public function test_the_administrator_switches_greylisting_and_the_antivirus(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('mail.hosting')->andReturn(['installed' => true, 'filters' => ['greylist' => false, 'antivirus' => false]]);
+        $this->agent->shouldReceive('call')->once()->with('mail.filters.set', ['greylist' => true, 'antivirus' => true])->andReturn(['job_id' => 'j1']);
+        $this->agent->shouldReceive('call')->with('job.status', Mockery::any())->andReturn(['status' => 'done', 'output' => ['filters' => []]]);
+
+        $this->headerTableAction(Livewire::test(ListMailDomains::class), 'filters', ['greylist' => true, 'antivirus' => true])
+            ->assertHasNoErrors()->assertNotified('Ochrana pošty uložena');
+    }
 }

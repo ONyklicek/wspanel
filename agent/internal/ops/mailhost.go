@@ -55,6 +55,16 @@ type mailSpam struct {
 type mailState struct {
 	Domains map[string]*mailDomain `json:"domains"`
 	Limits  *mailLimits            `json:"limits,omitempty"` // nil = the defaults
+	Filters mailFilters            `json:"filters"`
+}
+
+// mailFilters: the server-wide extras of the spam filter.
+type mailFilters struct {
+	// Greylist: a suspicious message (score 4+) from a sender not seen
+	// before is refused for 5 minutes; real servers retry, most spam does not.
+	Greylist bool `json:"greylist"`
+	// Antivirus: ClamAV (clamav.sh) scans every message; a virus is refused.
+	Antivirus bool `json:"antivirus"`
 }
 
 // mailLimits: how many messages per hour one mailbox, and one site's SMTP
@@ -251,6 +261,9 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if err := writeRatelimit(ctx, env, st); err != nil {
 		return err
 	}
+	if err := writeRspamdFilters(ctx, env, st); err != nil {
+		return err
+	}
 	return writeMailEdge(ctx, env, st, names)
 }
 
@@ -290,6 +303,103 @@ func writeRatelimit(ctx context.Context, env *Env, st *mailState) error {
 	}
 	_, err := env.Exec.Run(ctx, "systemctl", "reload-or-restart", "rspamd.service")
 	return err
+}
+
+// writeRspamdFilters renders greylisting and the ClamAV scan; reloads Rspamd
+// when either changed.
+func writeRspamdFilters(ctx context.Context, env *Env, st *mailState) error {
+	if env.Cfg.RspamdActions == "" || env.Cfg.RspamdAntivirus == "" {
+		return nil
+	}
+	greylist := "# Managed by WSPanel agent (mail.json): greylisting off.\ngreylist = null;\n"
+	if st.Filters.Greylist {
+		greylist = "# Managed by WSPanel agent (mail.json): greylisting from score 4.\ngreylist = 4;\n"
+	}
+	changed, err := writeIfChanged(env, env.Cfg.RspamdActions, greylist)
+	if err != nil {
+		return err
+	}
+	av := ""
+	if st.Filters.Antivirus {
+		av = `# Managed by WSPanel agent (mail.json): ClamAV, a virus is refused.
+clamav {
+  type = "clamav";
+  servers = "/run/clamav/clamd.ctl";
+  action = "reject";
+  message = "Message refused: virus found (${VIRUS})";
+  symbol = "CLAM_VIRUS";
+  scan_mime_parts = true;
+  max_size = 26214400;
+}
+`
+	}
+	if av == "" {
+		if _, statErr := os.Stat(env.Cfg.RspamdAntivirus); statErr == nil {
+			if err := os.Remove(env.Cfg.RspamdAntivirus); err != nil {
+				return err
+			}
+			changed = true
+		}
+	} else {
+		c, err := writeIfChanged(env, env.Cfg.RspamdAntivirus, av)
+		if err != nil {
+			return err
+		}
+		changed = changed || c
+	}
+	if !changed {
+		return nil
+	}
+	_, err = env.Exec.Run(ctx, "systemctl", "reload-or-restart", "rspamd.service")
+	return err
+}
+
+func writeIfChanged(env *Env, path, content string) (bool, error) {
+	if old, err := os.ReadFile(path); err == nil && string(old) == content {
+		return false, nil
+	}
+	if err := env.FS.MkdirAll(filepath.Dir(path), 0o755, fsx.Root); err != nil {
+		return false, err
+	}
+	return true, env.FS.WriteFile(path, []byte(content), 0o644, fsx.Root)
+}
+
+// mailFiltersSet switches greylisting and the antivirus (installing and
+// starting ClamAV first, or stopping it). Async: ClamAV's first start loads
+// its signatures, which takes a while.
+func mailFiltersSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p mailFilters
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := requireHosting(env); err != nil {
+		return nil, err
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	var log string
+	if p.Antivirus != st.Filters.Antivirus {
+		action := map[bool]string{true: "enable", false: "disable"}[p.Antivirus]
+		if !p.Antivirus {
+			// Stop scanning before clamd goes away.
+			st.Filters.Antivirus = false
+			if err := saveMail(ctx, env, st); err != nil {
+				return nil, err
+			}
+		}
+		res, err := env.Exec.Run(ctx, "clamav", action)
+		if err != nil {
+			return nil, err
+		}
+		log = tail(res.Stdout, 2000)
+	}
+	st.Filters = p
+	if err := saveMail(ctx, env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"filters": st.Filters, "log": log}, nil
 }
 
 // mailLimitsSet sets the sending limits (messages per hour, 0 = none).
@@ -583,6 +693,7 @@ func mailHostingStatus(ctx context.Context, env *Env, raw json.RawMessage) (any,
 	}
 	out["domains"] = len(st.Domains)
 	out["limits"] = st.limits()
+	out["filters"] = st.Filters
 	return out, nil
 }
 

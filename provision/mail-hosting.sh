@@ -249,6 +249,8 @@ cat >/etc/rspamd/local.d/actions.conf <<'RSPAMD'
 reject = 15;
 add_header = 6;
 greylist = null;
+# Greylisting when switched on in the panel (agent, mail.json).
+.include(try=true; priority=10; duplicate=replace) "$LOCAL_CONFDIR/local.d/wspanel-actions.inc"
 RSPAMD
 cat >/etc/rspamd/local.d/milter_headers.conf <<'RSPAMD'
 # Managed by WSPanel: X-Spam: Yes on spam (Sieve moves it to Junk). Every

@@ -13,6 +13,7 @@ use Illuminate\Validation\Rule;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
+use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListMailDomains extends ListPage
@@ -48,6 +49,29 @@ class ListMailDomains extends ListPage
                         $this->redirect(MailDomainResource::url('view', $d));
                     } catch (AgentException $e) {
                         Toast::error(__('Doménu se nepodařilo přidat'), $e->getMessage());
+                    }
+                }),
+            Action::make('filters')
+                ->label(__('Ochrana pošty'))
+                ->icon('outline:shield-check')
+                ->color('gray')
+                ->visible(fn () => Gate::allows('admin') && app(ManageMailHosting::class)->installed())
+                ->modalDescription(__('Doplňky antispamu pro celý server. Rspamd hodnotí každou zprávu i bez nich.'))
+                ->fillFormUsing(fn () => app(ManageMailHosting::class)->filters())
+                ->form([
+                    Toggle::make('greylist')->label(__('Greylisting'))
+                        ->helperText(__('Podezřelou zprávu (od 4 bodů) od neznámého odesílatele server poprvé odmítne na 5 minut. Skutečné servery to zkusí znovu, většina spamu ne. Taková pošta pak dorazí o pár minut později.')),
+                    Toggle::make('antivirus')->label(__('Antivir (ClamAV)'))
+                        ->helperText(__('Každá příchozí zpráva se kontroluje na viry, nakažená se odmítne. ClamAV potřebuje asi 1 GB paměti; při zapnutí se nainstaluje a stáhne databázi virů (několik minut).')),
+                ])
+                ->action(function (array $data) {
+                    abort_unless(Gate::allows('admin'), 403);
+                    try {
+                        app(ManageMailHosting::class)->setFilters((bool) $data['greylist'], (bool) $data['antivirus'])
+                            ? Toast::success(__('Ochrana pošty uložena'))
+                            : Toast::warning(__('Ještě se nastavuje'), __('Instalace ClamAV pokračuje na pozadí.'));
+                    } catch (AgentException $e) {
+                        Toast::error(__('Ochranu pošty se nepodařilo uložit'), $e->getMessage());
                     }
                 }),
             Action::make('limits')

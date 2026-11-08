@@ -54,6 +54,29 @@ class ManageMailHosting
         Cache::forget('mail.hosting.status');
     }
 
+    /** @return array{greylist: bool, antivirus: bool} */
+    public function filters(): array
+    {
+        $f = rescue(fn () => $this->status(), [], report: false)['filters'] ?? [];
+
+        return ['greylist' => (bool) ($f['greylist'] ?? false), 'antivirus' => (bool) ($f['antivirus'] ?? false)];
+    }
+
+    /**
+     * Greylisting and the antivirus. Switching ClamAV on installs and starts
+     * it first (a job that may take minutes); false when it did not finish.
+     *
+     * @throws AgentException
+     */
+    public function setFilters(bool $greylist, bool $antivirus): bool
+    {
+        $job = $this->agent->call('mail.filters.set', ['greylist' => $greylist, 'antivirus' => $antivirus]);
+        $done = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 900) !== null : true;
+        Cache::forget('mail.hosting.status');
+
+        return $done;
+    }
+
     public function installed(): bool
     {
         return (bool) (rescue(fn () => $this->status(), [], report: false)['installed'] ?? false);
