@@ -80,3 +80,82 @@ func gracefulWorkerRestart(ctx context.Context, env *Env, l siteLayout) (bool, e
 	}
 	return true, nil
 }
+
+// removeNodeSlots removes both slots' units of a Node site (mode change, delete).
+func removeNodeSlots(ctx context.Context, env *Env, l siteLayout) {
+	for _, name := range []string{appUnitName(l.User), appUnitNameB(l.User)} {
+		if path := filepath.Join(env.Cfg.SystemdDir, name); fileIn(env.Cfg.SystemdDir, name) {
+			_ = removeUnit(ctx, env, path)
+		}
+	}
+}
+
+// blueGreenNode switches a Node site to the new release without a gap: the
+// idle slot starts with the new code on its own port, and only when it
+// answers does the edge send visitors there; the old slot then finishes its
+// requests and stops. When the new one does not answer, visitors never
+// leave the old one. Reports whether the switch happened (failed = the
+// caller rolls the release back).
+func (d *deployment) blueGreenNode(ctx context.Context) (switched bool, err error) {
+	st, cur, err := loadSite(d.env, d.l.Domain)
+	if err != nil {
+		return false, err
+	}
+	if st.PortB == 0 {
+		if st.PortB, err = allocatePort(d.env); err != nil {
+			return false, err
+		}
+		if err := saveSiteState(d.env, st); err != nil {
+			return false, err
+		}
+	}
+	next := st
+	next.Slot = "b"
+	if st.Slot == "b" {
+		next.Slot = ""
+	}
+	nl, err := layout(d.env.Cfg, next)
+	if err != nil {
+		return false, err
+	}
+	data, entry, err := appUnitData(d.env, nl)
+	if err != nil {
+		return false, err
+	}
+	var rb undo
+	started, err := installUnit(ctx, d.env, nl.AppUnitFile, data, entry, &rb)
+	if err != nil {
+		rb.run()
+		return false, err
+	}
+	if !started {
+		return false, fmt.Errorf("the new release has no %s", entry)
+	}
+	d.logf("started %s on 127.0.0.1:%d with the new release\n", nl.AppUnit, nl.Port)
+	ready := false
+	for i := 0; i < 60 && !ready; i++ {
+		ready = probeSite(ctx, d.env, nl)["ok"] == true
+		if !ready {
+			time.Sleep(time.Second)
+		}
+	}
+	if !ready {
+		d.logf("%s does not answer; visitors stay on %s\n", nl.AppUnit, cur.AppUnit)
+		_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", "--now", nl.AppUnit)
+		return false, nil
+	}
+	if err := writeEdge(ctx, d.env, nl, &rb); err != nil {
+		rb.run()
+		_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", "--now", nl.AppUnit)
+		return false, err
+	}
+	if err := saveSiteState(d.env, next); err != nil {
+		return false, err
+	}
+	d.logf("edge now sends visitors to %s\n", nl.AppUnit)
+	// The old slot finishes the requests it has (TimeoutStopSec), then stops.
+	_, _ = d.env.Exec.Run(ctx, "systemctl", "disable", cur.AppUnit)
+	_, _ = d.env.Exec.Run(ctx, "systemctl", "stop", "--no-block", cur.AppUnit)
+	d.l = nl
+	return true, nil
+}

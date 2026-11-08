@@ -85,6 +85,9 @@ const DisableFunctions = "exec,passthru,shell_exec,system,proc_open,popen,pcntl_
 
 func appUnitName(user string) string { return "wspanel-" + user + "-app.service" }
 
+// appUnitNameB is a Node site's second slot (zero-downtime deploys).
+func appUnitNameB(user string) string { return "wspanel-" + user + "-appb.service" }
+
 func layout(cfg config.Config, st siteState) (siteLayout, error) {
 	user := validate.SiteUser(st.Domain)
 	l := siteLayout{
@@ -154,7 +157,13 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		_, l.WorkerFile, l.WorkerEnv = workerEntry(st.Framework, l.Home)
 		l.WorkerIndex = workerIndex(st.Framework)
 	case "node":
-		l.Upstream = "127.0.0.1:" + strconv.Itoa(st.Port)
+		// The slot that serves now: its port, its unit.
+		if st.Slot == "b" && st.PortB > 0 {
+			l.Port = st.PortB
+			l.AppUnit = appUnitNameB(user)
+			l.AppUnitFile = filepath.Join(cfg.SystemdDir, appUnitNameB(user))
+		}
+		l.Upstream = "127.0.0.1:" + strconv.Itoa(l.Port)
 	}
 	if !fsx.Within(cfg.SitesRoot, l.Home) {
 		return l, protocol.Invalid("domain resolves outside sites root")
@@ -595,6 +604,7 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := removeSiteBackupSchedule(ctx, env, l.User); err != nil {
 		return nil, err
 	}
+	removeNodeSlots(ctx, env, l)
 	for _, typ := range siteWorkerTypes(env, l.User) {
 		if err := removeWorker(ctx, env, l, typ); err != nil {
 			return nil, err

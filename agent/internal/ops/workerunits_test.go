@@ -93,3 +93,46 @@ func TestMaintenancePageWithBypass(t *testing.T) {
 		t.Error("the page must come down")
 	}
 }
+
+func TestNodeSwitchesSlotsWithoutAGap(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "n.example.com", "framework": "node", "mode": "node", "node_version": "22"}); err != nil {
+		t.Fatal(err)
+	}
+	st0, l, _ := loadSite(env, "n.example.com")
+	before := len(dr.Calls())
+	d := &deployment{env: env, l: l, log: &strings.Builder{}}
+	switched, err := d.blueGreenNode(t.Context())
+	if err != nil || !switched {
+		t.Fatalf("switch: %v %v", switched, err)
+	}
+	st, nl, _ := loadSite(env, "n.example.com")
+	if st.Slot != "b" || st.PortB == 0 || st.PortB == st0.Port || nl.Port != st.PortB {
+		t.Fatalf("state after the switch: %+v", st)
+	}
+	edge, _ := os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "n.example.com.caddy"))
+	if !strings.Contains(string(edge), "reverse_proxy 127.0.0.1:"+itoa(st.PortB)) {
+		t.Errorf("the edge must send visitors to the new slot:\n%s", edge)
+	}
+	var seq []string
+	for _, c := range dr.Calls()[before:] {
+		if c.Name == "systemctl" {
+			seq = append(seq, c.String())
+		}
+	}
+	got := strings.Join(seq, "\n")
+	start := strings.Index(got, "start wspanel-web_n_example_com-appb.service")
+	reload := strings.Index(got, "reload panel-proxy")
+	stopOld := strings.Index(got, "stop --no-block wspanel-web_n_example_com-app.service")
+	if start < 0 || stopOld < 0 || start > stopOld || (reload >= 0 && reload > stopOld) {
+		t.Errorf("new slot first, then the edge, then the old slot:\n%s", got)
+	}
+	// And back on the next one.
+	d = &deployment{env: env, l: nl, log: &strings.Builder{}}
+	if ok, err := d.blueGreenNode(t.Context()); err != nil || !ok {
+		t.Fatal(err)
+	}
+	if st, _, _ := loadSite(env, "n.example.com"); st.Slot != "" {
+		t.Errorf("slot %q", st.Slot)
+	}
+}

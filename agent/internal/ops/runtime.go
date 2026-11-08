@@ -84,6 +84,7 @@ func allocatePort(env *Env) (int, error) {
 		used[st.Port] = true
 		used[st.ReverbPort] = true
 		used[st.ValkeyPort] = true
+		used[st.PortB] = true
 		if st.Valkey != nil {
 			used[st.Valkey.Port] = true
 		}

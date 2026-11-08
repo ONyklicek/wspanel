@@ -721,6 +721,7 @@ $s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "client-b.loc
 app(App\Actions\Databases\ManageDatabases::class)->create("mariadb", "app", $s);' >/dev/null
 gb=$(php 'echo App\Models\Client::where("name","e2e-b")->value("linux_group");' | tr -d '[:space:]')
 expect "client's own site is in the client's group" "$(id -gn web_client-b_localhost 2>/dev/null || id -gn web_client_b_localhost)" "$gb"
+for _ in $(seq 1 20); do [[ "$(code client-b.localhost /)" == 200 ]] && break; sleep 0.5; done # the new FPM pool comes up with the reload
 expect "client's own site answers" "$(code client-b.localhost /)" "200"
 contains "database credentials written into its .env (as the site user)" "$(cat /srv/sites/client-b.localhost/shared/.env)" "DB_DATABASE=\"c"
 contains "file manager lists the client's site" "$(php '$s = App\Models\Site::where("domain","client-b.localhost")->sole(); echo json_encode(app(App\Actions\Sites\ManageFiles::class)->list($s, ""));')" "releases"
@@ -801,6 +802,14 @@ if [[ -S /run/wspanel-sites/web_worker_localhost/admin.sock ]]; then
 	wait
 	expect "worker mode: PHP workers restart without a failed request" "$(grep -v '^$' "$W/codes" | sort -u | tr '\n' ' ')" "200 "
 fi
+rm -f "$W/ncodes"
+(for i in $(seq 1 200); do code node.localhost / >>"$W/ncodes"; echo >>"$W/ncodes"; done) &
+sleep 0.3
+php "$(site node.localhost) app(App\\Actions\\Sites\\ControlSite::class)->restart(\$s);" >/dev/null
+wait
+expect "Node: a restart goes through the other slot, no failed request" "$(grep -v '^$' "$W/ncodes" | sort -u | tr '\n' ' ')" "200 "
+contains "Node now serves from the other slot" "$(cat /var/lib/panel-agent/sites/node.localhost.json)" '"port_b"'
+
 
 # ----------------------------------------------------------------------------
 section "Delete cleans up"

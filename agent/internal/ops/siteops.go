@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -168,8 +169,20 @@ func siteRestart(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		}
 		done = append(done, unit+" (reload)")
 	}
+	// Node: through the other slot, so visitors never see the restart.
+	skipApp := false
+	if l.Mode == "node" && !l.Disabled && fsx.Exists(l.AppUnitFile) {
+		d := &deployment{env: env, l: l, log: io.Discard}
+		if switched, err := d.blueGreenNode(ctx); err == nil && switched {
+			done = append(done, d.l.AppUnit+" (zero-downtime)")
+			skipApp = true
+		}
+	}
 	for _, u := range siteUnits(env, l) {
 		if u != l.AppUnit && !p.Workers {
+			continue
+		}
+		if u == l.AppUnit && skipApp {
 			continue
 		}
 		if !fsx.Exists(filepath.Join(l.Home, "current", unitEntry(env, l, u))) {

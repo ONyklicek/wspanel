@@ -30,6 +30,7 @@ func managedCgroups(cfg config.Config, root, username string) map[string]bool {
 		m[root+"/system.slice/"+config.ForVersion(cfg.FPMUnit, v)] = true
 	}
 	m[root+"/system.slice/"+appUnitName(username)] = true
+	m[root+"/system.slice/"+appUnitNameB(username)] = true
 	for _, t := range WorkerTypes {
 		m[root+"/system.slice/"+legacyWorkerUnit(username, t)] = true
 	}

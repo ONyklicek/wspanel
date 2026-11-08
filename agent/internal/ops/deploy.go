@@ -421,6 +421,8 @@ type deployment struct {
 	artifact string // pre-built release from CI: no git, no composer/npm
 	// maintenance: this deploy put the maintenance page up
 	maintenance bool
+	// newFailed: the new release's process never answered (Node: visitors stayed on the old one)
+	newFailed bool
 }
 
 func (d *deployment) logf(format string, a ...any) { fmt.Fprintf(d.log, format, a...) }
@@ -779,6 +781,18 @@ func (d *deployment) restartServices(ctx context.Context) {
 				units = append(units, l.AppUnit)
 			}
 		}
+	case "node":
+		if l.Disabled {
+			units = append(units, l.AppUnit)
+			break
+		}
+		switched, err := d.blueGreenNode(ctx)
+		if err != nil {
+			d.logf("zero-downtime switch: %v; restarting the process\n", err)
+			units = append(units, d.l.AppUnit)
+		} else if !switched {
+			d.newFailed = true
+		}
 	default:
 		units = append(units, l.AppUnit)
 	}
@@ -794,6 +808,10 @@ func (d *deployment) restartServices(ctx context.Context) {
 }
 
 func (d *deployment) healthy(ctx context.Context) (bool, string) {
+	if d.newFailed {
+		d.newFailed = false
+		return false, "the new release's process did not start answering"
+	}
 	var last string
 	for i := 0; i < 10; i++ { // apps need a moment to start after a restart
 		res := probeSite(ctx, d.env, d.l)

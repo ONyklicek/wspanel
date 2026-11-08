@@ -101,6 +101,9 @@ func teardownBackend(ctx context.Context, env *Env, l siteLayout, mode, next str
 				return err
 			}
 		}
+		if next != "node" {
+			removeNodeSlots(ctx, env, l)
+		}
 		if mode == "worker" {
 			_ = os.Remove(l.InstanceConfig)
 			_ = os.Remove(l.TmpfilesFile)
