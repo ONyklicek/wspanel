@@ -260,6 +260,22 @@ class GitHubDeployTest extends TestCase
         $this->assertStringNotContainsString("openActionModal('github')", $html);
     }
 
+    public function test_githubs_refusal_of_a_local_webhook_address_is_explained(): void
+    {
+        // The exact answer GitHub gives for panel.localhost (seen against the real API).
+        $this->fakeGitHub([self::API.'/repos/acme/app/hooks' => Http::response(['message' => 'Validation Failed', 'errors' => [
+            ['resource' => 'Hook', 'code' => 'custom', 'field' => 'url', 'message' => "url is not supported because it isn't reachable over the public Internet (panel.localhost)"],
+        ]], 422)]);
+
+        try {
+            app(ManageGitHub::class)->link($this->site, $this->connection(), ['repo' => 'acme/app', 'branch' => 'main', 'trigger' => 'branch', 'notify' => 'webhook']);
+            $this->fail('GitHub refused the webhook');
+        } catch (GitHubException $e) {
+            $this->assertStringContainsString('kontrolu repozitáře každou minutu', $e->getMessage());
+        }
+        $this->assertNull($this->site->fresh()->github_repo, 'nothing half-linked');
+    }
+
     public function test_a_local_panel_is_not_public(): void
     {
         foreach (['https://panel.localhost:8443' => false, 'https://10.0.0.5' => false, 'https://panel.firma.lan' => false, 'https://panel.example.com' => true] as $url => $public) {

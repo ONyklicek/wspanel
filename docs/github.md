@@ -76,8 +76,9 @@ V okně vyberte:
 - **Repozitář** a **Větev**: nabízí se jen repozitáře, které spravujete,
 - **Co nasadit**: každý push do větve, nebo jen nový release / tag,
 - **Jak se panel o změně dozví**: *Webhook*, když je panel dostupný z internetu.
-  *Kontrola každou minutu*, když panel běží ve vnitřní síti (panel tu správnou
-  volbu předvyplní),
+  Když běží ve vnitřní síti (`localhost`, `*.lan`, privátní IP), nabídne jen
+  *kontrolu každou minutu*: GitHub webhook na adresu, kterou z internetu nevidí,
+  odmítne („isn't reachable over the public Internet“),
 - **Uložit CI token do secretů**: jen pokud budete nasazovat hotový build
   z GitHub Actions.
 
@@ -301,5 +302,6 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |
 | Repozitář chybí v seznamu | u aplikace: Spravovat přístup → přidat ho do instalace, pak Propojit s GitHubem znovu; u tokenu: *Repository access* nebo chybí práva správce. Seznam se obnovuje po 5 minutách |
+| „GitHub odmítl adresu webhooku: panel není dostupný z internetu“ | panel běží na adrese, kterou GitHub nevidí; zvolte kontrolu repozitáře každou minutu (deploy proběhne do minuty po pushi) |
 | Webhook v GitHubu hlásí chyby doručení | panel není z internetu dostupný; přepněte na kontrolu každou minutu (GitHub → Napojit znovu) |
 | Deploy se v GitHubu neukazuje | build z CI s commitem, který v repozitáři není, se přeskočí; jinak počkejte minutu (hlásí se při `panel:sync`) |

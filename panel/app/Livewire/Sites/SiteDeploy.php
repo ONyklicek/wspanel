@@ -273,11 +273,17 @@ class SiteDeploy extends ViewPage
                 Radio::make('trigger')->label(__('Co nasadit'))->rules([Options::rule()])
                     ->options(['branch' => __('Každý push do větve'), 'tags' => __('Nový release nebo tag')])
                     ->required(),
+                // GitHub refuses a webhook to an address it cannot reach
+                // (panel.localhost, *.lan, private IPs): only watching is offered then.
                 Radio::make('notify')->label(__('Jak se panel o změně dozví'))->rules([Options::rule()])
-                    ->options(['webhook' => __('Webhook (GitHub zavolá panel)'), 'poll' => __('Panel se každou minutu podívá do repozitáře')])
+                    ->options(self::panelIsPublic()
+                        ? ['webhook' => __('Webhook (GitHub zavolá panel)'), 'poll' => __('Panel se každou minutu podívá do repozitáře')]
+                        : ['poll' => __('Panel se každou minutu podívá do repozitáře')])
                     ->descriptions([
                         'webhook' => __('Okamžité. Panel musí být z internetu dostupný na :url.', ['url' => rtrim((string) config('app.url'), '/')]),
-                        'poll' => __('Pro panel ve vnitřní síti nebo za NATem: nic nemusí volat dovnitř.'),
+                        'poll' => self::panelIsPublic()
+                            ? __('Pro panel ve vnitřní síti nebo za NATem: nic nemusí volat dovnitř.')
+                            : __('Panel běží na adrese :url, kterou GitHub z internetu nevidí, takže webhook nejde. Změnu panel zjistí do minuty.', ['url' => rtrim((string) config('app.url'), '/')]),
                     ])
                     ->required(),
                 Toggle::make('ci_secret')->label(__('Uložit CI token do secretů repozitáře (WSPANEL_TOKEN)'))

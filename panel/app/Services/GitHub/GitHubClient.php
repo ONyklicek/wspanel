@@ -188,6 +188,13 @@ class GitHubClient
         $msg = (string) ($response->json('message') ?? 'HTTP '.$response->status());
         $detail = collect((array) $response->json('errors'))->map(fn ($e) => is_array($e) ? ($e['message'] ?? $e['code'] ?? '') : (string) $e)->filter()->join('; ');
 
+        if (str_contains($detail, 'reachable over the public Internet')) {
+            return __('GitHub odmítl adresu webhooku: panel není dostupný z internetu. Zvolte kontrolu repozitáře každou minutu.');
+        }
+        if (str_contains($detail, 'key is already in use')) {
+            return __('GitHub: tento deploy klíč už je v jiném repozitáři (nebo tady přidaný ručně). Odeberte ho tam (Settings → Deploy keys) a napojte znovu.');
+        }
+
         return match ($response->status()) {
             401 => __('GitHub odmítl token (vypršel nebo byl zrušen).'),
             403, 404 => __('GitHub: :message. Token nemá přístup k repozitáři nebo mu chybí oprávnění (Administration, Webhooks, Deployments, Secrets).', ['message' => $msg]),
