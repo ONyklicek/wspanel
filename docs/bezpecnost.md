@@ -126,8 +126,11 @@ které panel upravil, zůstanou: nová výchozí verze balíčku je nepřepíše
 **Automatické bezpečnostní aktualizace** (unattended-upgrades) je nainstalují
 samy každý den.
 
-Na stejné stránce jsou adresy, které fail2ban zablokoval po opakovaně
-neúspěšném přihlášení (SSH, pošta). Jdou odtud odblokovat.
+## Fail2ban
+
+**Server → Fail2ban** ukáže adresy, které fail2ban zablokoval po opakovaně
+neúspěšném přihlášení (SSH, pošta, databáze), i to, co hlídá. Jdou odtud
+odblokovat.
 
 ## Dvoufázové přihlášení
 

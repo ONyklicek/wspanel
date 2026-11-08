@@ -9,7 +9,7 @@ use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WirePanels\Pages\Page;
 
-/** System updates, automatic security updates and fail2ban's bans. */
+/** System updates and automatic security updates. */
 class UpdatesPage extends Page
 {
     use TranslatesPageText;
@@ -18,7 +18,7 @@ class UpdatesPage extends Page
 
     protected static ?string $permission = 'admin';
 
-    protected ?string $title = 'Aktualizace a zabezpečení';
+    protected ?string $title = 'Aktualizace systému';
 
     protected static ?string $slug = 'updates';
 
@@ -33,9 +33,6 @@ class UpdatesPage extends Page
     /** @var array<string, mixed>|null */
     public ?array $updates = null;
 
-    /** @var array<string, list<string>> */
-    public array $bans = [];
-
     public ?string $error = null;
 
     public function mount(): void
@@ -47,7 +44,6 @@ class UpdatesPage extends Page
     {
         try {
             $this->updates = app(ManageUpdates::class)->status($refresh);
-            $this->bans = app(ManageUpdates::class)->bans();
             $this->error = null;
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
@@ -68,17 +64,6 @@ class UpdatesPage extends Page
             Toast::success($on ? __('Bezpečnostní aktualizace se instalují samy') : __('Automatické aktualizace vypnuty'));
         } catch (AgentException $e) {
             Toast::error(__('Změna selhala'), $e->getMessage());
-        }
-        $this->load();
-    }
-
-    public function unban(string $ip): void
-    {
-        try {
-            app(ManageUpdates::class)->unban($ip);
-            Toast::success(__(':ip odblokována', ['ip' => $ip]));
-        } catch (AgentException $e) {
-            Toast::error(__('Odblokování selhalo'), $e->getMessage());
         }
         $this->load();
     }

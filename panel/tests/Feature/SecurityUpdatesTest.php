@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureTwoFactor;
+use App\Livewire\Pages\Fail2banPage;
 use App\Livewire\Pages\UpdatesPage;
 use App\Models\Client;
 use App\Models\Setting;
@@ -53,18 +54,27 @@ class SecurityUpdatesTest extends TestCase
         $this->actingAs(User::factory()->create())->get('/sites')->assertRedirect(route('wire.users.profile'));
     }
 
-    public function test_the_updates_page_lists_packages_and_unbans_an_address(): void
+    public function test_the_updates_page_lists_packages_only(): void
     {
         $this->actingAs(User::factory()->create());
         $this->agent->shouldReceive('call')->with('sys.updates', [])->andReturn([
             'packages' => [['name' => 'libssl3t64', 'from' => '3.5.1-1', 'to' => '3.5.1-1+deb13u1', 'security' => true]],
             'reboot_required' => true, 'auto_security' => false,
         ]);
+        $this->agent->shouldNotReceive('call')->with('fail2ban.status');
+
+        Livewire::test(UpdatesPage::class)
+            ->assertSee('libssl3t64')->assertSee('bezpečnostní')->assertSee('Server potřebuje restart')->assertDontSee('fail2ban');
+    }
+
+    public function test_the_fail2ban_page_lists_and_unbans_an_address(): void
+    {
+        $this->actingAs(User::factory()->create());
         $this->agent->shouldReceive('call')->with('fail2ban.status')->andReturn(['jails' => ['sshd' => ['203.0.113.5']]]);
         $this->agent->shouldReceive('call')->once()->with('fail2ban.unban', ['ip' => '203.0.113.5'])->andReturn([]);
 
-        Livewire::test(UpdatesPage::class)
-            ->assertSee('libssl3t64')->assertSee('bezpečnostní')->assertSee('Server potřebuje restart')->assertSee('203.0.113.5')
+        Livewire::test(Fail2banPage::class)
+            ->assertSee('203.0.113.5')->assertSee('sshd')
             ->call('unban', '203.0.113.5')
             ->assertNotified();
     }
@@ -74,5 +84,6 @@ class SecurityUpdatesTest extends TestCase
         $this->actingAs(User::factory()->forClient(Client::factory()->create())->create());
 
         $this->get('/updates')->assertForbidden();
+        $this->get('/fail2ban')->assertForbidden();
     }
 }

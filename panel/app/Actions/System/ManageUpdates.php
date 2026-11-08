@@ -6,7 +6,7 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
 
-/** System updates (apt) and fail2ban's bans, through the agent. */
+/** System updates (apt), through the agent. */
 class ManageUpdates
 {
     public function __construct(
@@ -40,21 +40,5 @@ class ManageUpdates
     public function setAutoSecurity(bool $enabled): void
     {
         $this->agent->call('sys.auto_updates', ['enabled' => $enabled]);
-    }
-
-    /**
-     * @return array<string, list<string>> jail => banned addresses
-     *
-     * @throws AgentException
-     */
-    public function bans(): array
-    {
-        return $this->agent->call('fail2ban.status')['jails'] ?? [];
-    }
-
-    /** @throws AgentException */
-    public function unban(string $ip): void
-    {
-        $this->agent->call('fail2ban.unban', ['ip' => $ip]);
     }
 }
