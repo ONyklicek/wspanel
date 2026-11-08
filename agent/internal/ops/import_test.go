@@ -45,3 +45,39 @@ func TestImportedWordPressGetsTheSitesDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestImportedSQLRunsAsAnAccountOfThatDatabaseOnly(t *testing.T) {
+	env, dr := testEnv(t)
+	env.Cfg.ArtifactDir = t.TempDir()
+	if err := restoreUntrusted(t.Context(), env, "old_example_com", strings.NewReader(
+		"CREATE DEFINER=`root`@`localhost` TRIGGER t BEFORE INSERT ON x FOR EACH ROW SET @a = 1;\n/*!50013 DEFINER=`jan`@`%` SQL SECURITY DEFINER */\n")); err != nil {
+		t.Fatal(err)
+	}
+	var grant, restore executor.Call
+	for _, c := range dr.Calls() {
+		if c.Name == "mariadb" && strings.Contains(c.Stdin, "GRANT ALL PRIVILEGES ON `old\\_example\\_com`.* TO 'old_example_com-def'@'localhost'") {
+			grant = c
+		}
+		if c.Name == "mariadb" && len(c.Args) > 0 && strings.HasPrefix(c.Args[0], "--defaults-extra-file=") {
+			restore = c
+		}
+	}
+	if grant.Name == "" {
+		t.Fatal("a temporary user with rights on the one database")
+	}
+	if restore.Name == "" || strings.Contains(strings.Join(restore.Args, " "), "password") {
+		t.Fatalf("restored as that user, the password not in argv: %v", restore)
+	}
+	if strings.Contains(restore.Stdin, "DEFINER=") || !strings.Contains(restore.Stdin, "CREATE  TRIGGER t") {
+		t.Errorf("definers dropped, the rest kept:\n%s", restore.Stdin)
+	}
+	locked := false
+	for _, c := range dr.Calls() {
+		if c.Name == "mariadb" && strings.Contains(c.Stdin, "ALTER USER 'old_example_com-def'@'localhost' ACCOUNT LOCK") {
+			locked = true
+		}
+	}
+	if !locked {
+		t.Error("the account is locked afterwards (its objects keep working, nobody signs in)")
+	}
+}

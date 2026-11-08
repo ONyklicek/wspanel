@@ -97,7 +97,9 @@ func (m mariadb) create(ctx context.Context, env *Env, name, pw string) error {
 
 func (m mariadb) drop(ctx context.Context, env *Env, name string) error {
 	hosts := append([]string{"localhost", "127.0.0.1", "%"}, mariadbNetHosts(loadDBServer(env)["mariadb"])...)
-	_, err := m.sql(ctx, env, fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS %s;", name, mariadbAccounts(name, slices.Compact(hosts))))
+	// <db>-def: the account an imported dump's objects belong to (see restoreUntrusted).
+	_, err := m.sql(ctx, env, fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS %s; DROP USER IF EXISTS '%s'@'localhost';",
+		name, mariadbAccounts(name, slices.Compact(hosts)), importDefiner(name)))
 	return err
 }
 

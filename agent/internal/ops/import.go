@@ -1,14 +1,18 @@
 package ops
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 	"wspanel/agent/internal/validate"
 )
@@ -141,17 +145,14 @@ func siteImport(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		if file == "" || !strings.HasPrefix(file, work) {
 			continue
 		}
-		eng, err := engineFor(env, "mariadb")
-		if err != nil {
-			return nil, err
-		}
-		// Read as the site user, restored with the sandboxed client.
+		// Read as the site user; restored as a temporary database user who may
+		// touch only this database (the dump is anyone's SQL).
 		pr, pw := io.Pipe()
 		go func() {
 			_, err := env.Exec.RunIO(ctx, nil, pw, "setpriv", append(user, "/usr/bin/cat", file)...)
 			pw.CloseWithError(err)
 		}()
-		if err := eng.restore(ctx, env, db, pr); err != nil {
+		if err := restoreUntrusted(ctx, env, db, pr); err != nil {
 			_ = pr.Close()
 			return nil, err
 		}
@@ -173,6 +174,70 @@ func siteImport(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		}
 	}
 	return out, nil
+}
+
+// restoreUntrusted feeds SQL from outside (an imported dump) to MariaDB as
+// an account with rights on the target database only (<db>-def): USE, GRANT
+// or a statement on another database fails instead of running as root.
+// DEFINER clauses naming other accounts are dropped, so triggers, views and
+// routines belong to that account; it stays (locked: nobody signs in with
+// it, its objects keep working) and goes with the database.
+func restoreUntrusted(ctx context.Context, env *Env, db string, r io.Reader) error {
+	login := importDefiner(db)
+	pw := newPassword()
+	m := mariadb{}
+	if _, err := m.sql(ctx, env, fmt.Sprintf("CREATE USER IF NOT EXISTS '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; "+
+		"ALTER USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s' ACCOUNT UNLOCK; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'localhost';",
+		login, pw, grantPattern(db))); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = m.sql(context.WithoutCancel(ctx), env, fmt.Sprintf("ALTER USER '%s'@'localhost' ACCOUNT LOCK;", login))
+	}()
+	if err := env.FS.MkdirAll(env.Cfg.ArtifactDir, 0o700, fsx.Root); err != nil {
+		return err
+	}
+	cnf := filepath.Join(env.Cfg.ArtifactDir, "import-"+randomHex(6)+".cnf")
+	if err := env.FS.WriteFile(cnf, []byte("[client]\nuser="+login+"\npassword="+pw+"\n"), 0o600, fsx.Root); err != nil {
+		return err
+	}
+	defer os.Remove(cnf)
+	_, err := env.Exec.RunIO(ctx, withoutDefiners(r), io.Discard, "mariadb", "--defaults-extra-file="+cnf,
+		"--protocol=socket", "--sandbox", "--default-character-set=utf8mb4", db)
+	return err
+}
+
+// importDefiner is the account an import's objects belong to.
+func importDefiner(db string) string { return db + "-def" } // "-": never a database name, so never another database's own user
+
+var definerRe = regexp.MustCompile("(?i)DEFINER\\s*=\\s*(`[^`]*`|'[^']*'|[A-Za-z0-9_]+)@(`[^`]*`|'[^']*'|[A-Za-z0-9_.%-]+)")
+
+// withoutDefiners removes DEFINER=user@host from the SQL as it streams.
+func withoutDefiners(r io.Reader) io.Reader {
+	pr, pw := io.Pipe()
+	go func() {
+		br := bufio.NewReaderSize(r, 1<<20)
+		for {
+			line, err := br.ReadString('\n')
+			if line != "" {
+				if strings.Contains(strings.ToUpper(line), "DEFINER") {
+					line = definerRe.ReplaceAllString(line, "")
+				}
+				if _, werr := io.WriteString(pw, line); werr != nil {
+					pw.CloseWithError(werr)
+					return
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				pw.CloseWithError(err)
+				return
+			}
+		}
+	}()
+	return pr
 }
 
 var wpDefineRe = regexp.MustCompile(`define\(\s*['"](DB_NAME|DB_USER|DB_PASSWORD|DB_HOST)['"]\s*,\s*(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")\s*\)`)

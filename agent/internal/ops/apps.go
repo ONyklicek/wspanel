@@ -63,7 +63,9 @@ func siteAppInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	if _, err := env.Exec.Run(ctx, "setpriv", append(user, "/usr/bin/curl", "-fsSL", "--max-time", "300", "-o", archive, "https://wordpress.org/latest.tar.gz")...); err != nil {
 		return nil, err
 	}
-	defer func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "setpriv", append(user, "/usr/bin/rm", "-f", archive)...) }()
+	defer func() {
+		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "setpriv", append(user, "/usr/bin/rm", "-f", archive)...)
+	}()
 	var want, got strings.Builder
 	if _, err := env.Exec.RunIO(ctx, nil, &want, "setpriv", append(user, "/usr/bin/curl", "-fsSL", "--max-time", "30", "https://wordpress.org/latest.tar.gz.sha1")...); err != nil {
 		return nil, err

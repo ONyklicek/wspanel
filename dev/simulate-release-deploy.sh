@@ -30,6 +30,7 @@ step "Panel: the site, its database, workers and a CI token"
 TOKEN=$(php_panel '
 $s = App\Models\Site::where("domain", "'$DOMAIN'")->first();
 if ($s) { app(App\Actions\Sites\DeleteSite::class)->handle($s); }
+if ($d = App\Models\Database::acrossClients()->where("name", "intranet_local")->first()) { app(App\Actions\Databases\ManageDatabases::class)->drop($d); }
 $s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "'$DOMAIN'", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 app(App\Actions\Databases\ManageDatabases::class)->create("mariadb", "intranet_local", $s);
 echo "TOKEN=".app(App\Actions\Sites\ManageCiToken::class)->generate($s)."\n";' | sed -n 's/^TOKEN=//p')
@@ -57,8 +58,11 @@ Route::get('/', fn () => response()->json([
 ]));
 PHP
   as_ci cp /var/tmp/sim-routes.php $CI/repo/routes/web.php
+  # A real repository has its lockfile committed (npm ci needs it).
+  (cd $CI/repo && as_ci npm install --no-audit --no-fund --loglevel=error >/dev/null)
   ok "repository ready"
 else
+  [[ -f $CI/repo/package-lock.json ]] || (cd $CI/repo && as_ci npm install --no-audit --no-fund --loglevel=error >/dev/null)
   ok "repository from the last run"
 fi
 
