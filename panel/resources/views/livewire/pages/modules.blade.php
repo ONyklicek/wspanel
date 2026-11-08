@@ -19,6 +19,13 @@
             <p class="text-xs text-gray-500">Při instalaci: <span class="font-mono">install.sh --mail-hosting=yes</span>.</p>
         </div>
     </x-wire::section>
+    <x-wire::section heading="Profilování PHP (XHProf + XHGui)">
+        <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+            <p>Kolik času a paměti zabraly jednotlivé funkce aplikace, s přehledem v XHGui. Zapíná se u každého webu zvlášť (PHP-FPM); profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web.</p>
+            <p>Stav: <x-wire::badge :color="$this->xhprof() ? 'success' : 'gray'">{{ $this->xhprof() ? 'nainstalováno' : 'nenainstalováno' }}</x-wire::badge></p>
+            <p class="text-xs text-gray-500">Při instalaci: <span class="font-mono">install.sh --xhprof=yes</span>.</p>
+        </div>
+    </x-wire::section>
     <x-wire::section heading="Databázové servery">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <p>Nainstalované: {{ implode(', ', $this->dbEngines()) ?: 'žádný' }}. Další doinstalujete v Hosting → Databáze → Servery (při instalaci <span class="font-mono">--db=mariadb,postgres</span>).</p>

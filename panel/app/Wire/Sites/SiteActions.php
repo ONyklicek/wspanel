@@ -16,6 +16,7 @@ use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageWebRules;
 use App\Actions\Sites\ManageWorkers;
+use App\Actions\Sites\ManageXhprof;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Models\Client;
@@ -635,6 +636,27 @@ final class SiteActions
             }));
     }
 
+    /** XHProf profiling into the site's own XHGui (classic sites). */
+    public static function xhprof(): Action
+    {
+        return Action::make('xhprof')
+            ->label('Profilování (XHProf)')
+            ->icon('outline:chart-bar')
+            ->visible(fn (Site $record) => $record->isOperational() && $record->mode === SiteMode::Classic && app(ManageXhprof::class)->installed())
+            ->modalHeading(fn (Site $record) => "Profilování {$record->domain}")
+            ->modalDescription('XHProf změří, kolik času a paměti zabraly jednotlivé funkce, a výsledky ukáže XHGui. Profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web. Profilování zpomaluje měřené požadavky, na produkci měřte jen část.')
+            ->fillFormUsing(fn (Site $record) => ['enabled' => $record->xhprof !== null, 'ratio' => $record->xhprof['ratio'] ?? 100])
+            ->form([
+                Toggle::make('enabled')->label('Profilovat požadavky')->live(),
+                TextInput::make('ratio')->label('Kolik požadavků měřit (%)')->integer()->visibleWhen('enabled', true)->requiredIf('enabled', true)
+                    ->rules(['nullable', 'integer', 'between:1,100']),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt('Profilování se nepodařilo nastavit', function () use ($record, $data) {
+                app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null);
+                Toast::success($data['enabled'] ? 'Profilování zapnuto' : 'Profilování vypnuto', $data['enabled'] ? 'Výsledky: '.ManageXhprof::viewerUrl($record) : null);
+            }));
+    }
+
     public static function valkeyFlush(): Action
     {
         return Action::make('valkeyFlush')
@@ -689,7 +711,7 @@ final class SiteActions
     {
         return [
             self::credentials(), self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::webRules(), self::addWorker(),
+            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::xhprof(), self::webRules(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::assignClient(), self::delete(),
         ];

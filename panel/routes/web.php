@@ -10,10 +10,12 @@ use App\Http\Controllers\ForwardAuthController;
 use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use App\Http\Controllers\OpenWebmailController;
+use App\Http\Controllers\XhguiAuthController;
 use Illuminate\Support\Facades\Route;
 
 // Edge forward_auth for Mailpit (outside the panel group: answers 204 or redirects).
 Route::get('/auth/check', ForwardAuthController::class)->name('auth.check');
+Route::get('/auth/xhgui', XhguiAuthController::class)->name('auth.xhgui');
 
 Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');

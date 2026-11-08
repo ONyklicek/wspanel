@@ -19,7 +19,7 @@ decorate_workers_output = no
 security.limit_extensions = .php
 
 env[TMPDIR] = {{.Home}}/tmp
-php_admin_value[open_basedir] = {{.Home}}/
+php_admin_value[open_basedir] = {{.Home}}/{{if .Xhprof}}:{{.XhguiDir}}/{{end}}
 php_admin_value[upload_tmp_dir] = {{.Home}}/tmp
 php_admin_value[sys_temp_dir] = {{.Home}}/tmp
 php_admin_value[session.save_path] = {{.Home}}/tmp
@@ -39,4 +39,11 @@ php_{{if .Flag}}flag{{else}}value{{end}}[{{.Key}}] = {{.Value}}
 ; Production OPcache: no file stat on each request. Code changes take effect
 ; on the FPM reload every deploy does (manual edits need a reload too).
 php_admin_flag[opcache.validate_timestamps] = off
+{{- end}}
+{{- if .Xhprof}}
+; XHProf: {{.XhprofRatio}} % of requests profiled into the site's own XHGui ({{.Home}}/xhgui).
+php_admin_value[extension] = xhprof.so
+php_admin_value[auto_prepend_file] = {{.XhguiDir}}/prepend.php
+env[WSP_XHGUI_SPOOL] = {{.Home}}/xhgui/spool.jsonl
+env[WSP_XHGUI_RATIO] = {{.XhprofRatio}}
 {{- end}}

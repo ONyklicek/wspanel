@@ -42,6 +42,10 @@ type siteLayout struct {
 	Socket           string // FPM socket
 	PoolFile         string
 	WebFile          string // web tier site block
+	XhguiFile        string // web tier: the panel's /xhgui/<domain>/ viewer
+	XhguiDir         string
+	Xhprof           bool
+	XhprofRatio      int
 	WebUser          string
 	WebSocket        string
 	DisableFunctions string
@@ -101,11 +105,15 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 
 		OpcacheProduction: st.OpcacheProduction,
 		Disabled:          st.Disabled,
+		Xhprof:            st.Xhprof != nil && st.Mode == "classic",
+		XhprofRatio:       xhprofRatio(st),
 		FPMChildren:       defaultFPMChildren,
 		User:              user,
 		Home:              filepath.Join(cfg.SitesRoot, st.Domain),
 
 		WebFile:          filepath.Join(cfg.WebSitesDir, st.Domain+".caddy"),
+		XhguiFile:        filepath.Join(cfg.XhguiWebDir, st.Domain+".caddy"),
+		XhguiDir:         cfg.XhguiDir,
 		WebUser:          cfg.WebUser,
 		WebSocket:        cfg.WebSocket,
 		DisableFunctions: DisableFunctions,

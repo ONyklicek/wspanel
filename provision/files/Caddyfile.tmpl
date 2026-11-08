@@ -49,6 +49,17 @@ __PANEL_ADDRESS__ {
 			}
 		}
 
+		# A site's XHGui (XHProf profiles): only panel users who may see that site.
+		handle /xhgui/* {
+			forward_auth unix//run/panel-web/web.sock {
+				uri /auth/xhgui
+				header_up Host wspanel-panel.internal
+			}
+			reverse_proxy unix//run/panel-web/web.sock {
+				header_up Host wspanel-panel.internal
+			}
+		}
+
 		# The web tier knows the panel under a fixed internal name, so the panel
 		# may share a domain with a site (example.com:8443 beside example.com).
 		handle {

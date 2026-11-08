@@ -46,6 +46,7 @@ PANEL_DOMAIN=""
 PANEL_PORT=443
 CLIENTS=no
 MAIL_HOSTING=no
+XHPROF=no
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -73,6 +74,7 @@ for arg in "$@"; do
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
+    --xhprof=*) XHPROF="${arg#*=}" ;; # yes: XHProf + XHGui, switchable per site (Server → Moduly later)
     --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
@@ -99,6 +101,7 @@ done
 [[ "${ID:-}" == "debian" && "${VERSION_CODENAME:-}" == "trixie" ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
 [[ "$CLIENTS" == yes || "$CLIENTS" == no ]] || die "--clients must be yes or no"
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
+[[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 if [[ -z "$PANEL_DOMAIN" ]]; then
   [[ $PANEL_PORT -ne 443 ]] || die "--panel-domain is required (or give --panel-port to reach the panel at the server's IP address)"
@@ -362,9 +365,20 @@ install -d -m 0755 /usr/lib/wspanel
 install -m 0755 "$HERE/mail-hosting.sh" /usr/lib/wspanel/mail-hosting.sh
 install -d -m 0755 /usr/lib/wspanel/files/webmail
 install -m 0644 "$HERE"/files/webmail/* /usr/lib/wspanel/files/webmail/
+# XHProf + XHGui (optional): the script the agent also runs when added later.
+install -m 0755 "$HERE/xhprof.sh" /usr/lib/wspanel/xhprof.sh
+install -d -m 0755 /usr/lib/wspanel/files/xhgui /usr/lib/wspanel/files/xhgui/xhgui /usr/lib/wspanel/files/xhgui/collector
+install -m 0644 "$HERE"/files/xhgui/*.php /usr/lib/wspanel/files/xhgui/
+install -m 0644 "$HERE"/files/xhgui/xhgui/composer.* /usr/lib/wspanel/files/xhgui/xhgui/
+install -m 0644 "$HERE"/files/xhgui/collector/composer.* /usr/lib/wspanel/files/xhgui/collector/
+install -d -m 0755 /etc/panel-web/xhgui
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
   /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
+fi
+if [[ $XHPROF == yes || -f /usr/share/wspanel-xhgui/prepend.php ]]; then
+  log "XHProf + XHGui"
+  /usr/lib/wspanel/xhprof.sh "${PHP_LIST[@]}"
 fi
 
 # ---------------------------------------------------------------- DNS (optional)

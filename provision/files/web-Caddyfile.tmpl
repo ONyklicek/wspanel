@@ -30,6 +30,10 @@ http://wspanel-panel.internal {
 		file_server
 	}
 
+	# Sites' XHGui viewers (agent, one per site with XHProf on), each in its
+	# site's own pool.
+	import /etc/panel-web/xhgui/*.caddy
+
 	handle {
 		root * /srv/panel/current/public
 		php_fastcgi unix//run/php/php8.4-panel.sock {

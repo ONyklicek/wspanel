@@ -60,6 +60,12 @@ type siteState struct {
 	ValkeyPort int `json:"valkey_port,omitempty"`
 	// Valkey: the site's own Valkey server, nil = none.
 	Valkey *valkeyConfig `json:"valkey,omitempty"`
+	// Xhprof: classic mode, requests profiled into the site's own XHGui; nil = off.
+	Xhprof *xhprofConfig `json:"xhprof,omitempty"`
+}
+
+type xhprofConfig struct {
+	Ratio int `json:"ratio"` // percent of requests profiled, 1-100
 }
 
 func siteStatePath(cfg config.Config, domain string) string {

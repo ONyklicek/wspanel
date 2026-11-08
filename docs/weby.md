@@ -415,6 +415,22 @@ s Redisem): **Další → Valkey (Redis)**.
   vyprázdnit nebo restartovat.
 - U klientů omezuje paměť balíček (**Valkey na web**, 0 = nepovoleno).
 
+## Profilování (XHProf + XHGui)
+
+Volitelný modul (`install.sh --xhprof=yes` nebo **Server → Moduly**). U webu
+v režimu PHP-FPM ho zapnete v **Další → Profilování** a zvolíte, kolik procent
+požadavků měřit (na produkci jen část, měření požadavek zpomalí).
+
+- Rozšíření XHProf se načte jen do poolu webů, které profilování mají zapnuté,
+  jinde PHP neovlivní.
+- Profily zůstávají v adresáři webu (`xhgui/`), zapisuje je uživatel webu.
+  Proměnné prostředí (hesla v `.env`) se do profilů neukládají.
+- **Otevřít XHGui** v detailu webu: `https://<panel>/xhgui/<doména>/`. XHGui
+  běží v poolu webu pod jeho uživatelem a čte jen jeho profily. Otevře ho jen
+  přihlášený uživatel panelu, který web vidí (klient jen svoje weby).
+- V režimu FrankenPHP worker profilování nejde (aplikace zůstává v paměti
+  a měřil by se jen její start).
+
 ## Změna režimu a verze
 
 - **Změnit režim** (např. classic → worker): nový backend naběhne vedle

@@ -1,0 +1,51 @@
+{
+    "name": "perftools/xhgui",
+    "description": "A web based interface for viewing profile data collected by XHProf",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "XHGui\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "XHGui\\Test\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.4.0",
+            "ext-mongodb": "1.11.0"
+        },
+        "sort-packages": true,
+        "platform-check": "php-only"
+    },
+    "require": {
+        "php": "^8.0",
+        "ext-json": "*",
+        "pimple/pimple": "^3.0",
+        "slim/flash": "^0.4.0",
+        "slim/slim": "^3.12",
+        "slim/twig-view": "^2.5",
+        "symfony/options-resolver": "^6.0",
+        "twig/twig": "^3.19"
+    },
+    "require-dev": {
+        "ocramius/lazy-property": "^1.0 || ~2.1.0",
+        "symfony/phpunit-bridge": "^7.2"
+    },
+    "suggest": {
+        "ext-pdo": "Required to pdo backend."
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@phpunit-setup"
+        ],
+        "check-cs": "ecs check --ansi",
+        "cover": "simple-phpunit --coverage-clover=unittest-coverage.clover",
+        "fix-cs": "ecs check --fix --ansi",
+        "openurl": "open http://xhgui.127.0.0.1.nip.io:8142",
+        "phpunit-setup": "test $COMPOSER_DEV_MODE = 0 || simple-phpunit --version",
+        "test": "simple-phpunit"
+    }
+}

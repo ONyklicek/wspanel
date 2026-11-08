@@ -81,6 +81,9 @@ func teardownBackend(ctx context.Context, env *Env, l siteLayout, mode, next str
 		if err := removeCaddyBlock(ctx, env, l.WebFile, env.Cfg.WebUnit, validateWeb); err != nil {
 			return err
 		}
+		if err := removeCaddyBlock(ctx, env, l.XhguiFile, env.Cfg.WebUnit, validateWeb); err != nil {
+			return err
+		}
 		for _, v := range env.Cfg.PHPVersions { // pools of any version
 			if err := removePool(ctx, env, filepath.Join(config.ForVersion(env.Cfg.FPMPoolDir, v), l.User+".conf"), v); err != nil {
 				return err

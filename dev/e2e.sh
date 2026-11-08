@@ -946,6 +946,26 @@ check "a deleted mailbox's mail is gone" test ! -d /var/mail/vmail/shop.localhos
 check "the agent never stored a plain password" bash -c '! grep -rq "Alice-heslo-123" /var/lib/panel-agent /etc/dovecot/wspanel /var/log/panel-agent 2>/dev/null'
 
 # ----------------------------------------------------------------------------
+section "XHProf + XHGui (per site)"
+check "XHGui is installed" test -f /usr/share/wspanel-xhgui/prepend.php
+XS=other.localhost
+php "$(site $XS) app(App\Actions\Sites\ManageXhprof::class)->set(\$s, 100);" >/dev/null
+rm -f /srv/sites/$XS/xhgui/spool.jsonl
+for _ in 1 2 3; do https $XS / >/dev/null; done
+check "requests are profiled into the site's own spool" test -s /srv/sites/$XS/xhgui/spool.jsonl
+check "  … owned by the site user" bash -c "[[ \$(stat -c %U /srv/sites/$XS/xhgui/spool.jsonl) == web_other_localhost ]]"
+viewer() { curl -s --unix-socket /run/panel-web/web.sock -H "Host: wspanel-panel.internal" "http://x/xhgui/$XS$1"; }
+contains "the site's XHGui lists its runs" "$(viewer /)" "XHGui - Run list"
+check "  … imported from the spool into its SQLite" bash -c "[[ ! -s /srv/sites/$XS/xhgui/spool.jsonl ]] && [[ \$(sqlite3 /srv/sites/$XS/xhgui/xhgui.sqlite3 'select count(*) from results') -ge 3 ]]"
+RUN=$(sqlite3 /srv/sites/$XS/xhgui/xhgui.sqlite3 'select id from results limit 1')
+contains "  … and shows a run's functions" "$(viewer "/run/view?id=$RUN")" "main()"
+contains "the viewer through the edge needs a panel login" "$(curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' --resolve panel.localhost:443:127.0.0.1 https://panel.localhost/xhgui/$XS/)" "/login"
+check "the XHGui cache is not writable by sites" bash -c '[[ $(stat -c %U /usr/share/wspanel-xhgui/xhgui/cache) == root ]] && ! runuser -u web_other_localhost -- touch /usr/share/wspanel-xhgui/xhgui/cache/x 2>/dev/null'
+php "$(site $XS) app(App\Actions\Sites\ManageXhprof::class)->set(\$s, null);" >/dev/null
+check "switched off: the pool no longer loads XHProf" bash -c "! grep -q xhprof /etc/php/*/fpm/pool.d/web_other_localhost.conf"
+check "  … and its viewer is gone" test ! -f /etc/panel-web/xhgui/$XS.caddy
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

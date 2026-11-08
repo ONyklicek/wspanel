@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\Mail\ManageMailHosting;
+use App\Actions\Sites\ManageXhprof;
 use App\Models\Client;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -50,6 +51,11 @@ class ModulesPage extends Page
         return array_map(fn ($e) => $e->getLabel(), rescue(fn () => app(SystemInfo::class)->dbEngines(), [], report: false));
     }
 
+    public function xhprof(): bool
+    {
+        return app(ManageXhprof::class)->installed();
+    }
+
     public function mailHosting(): bool
     {
         return app(ManageMailHosting::class)->installed();
@@ -68,6 +74,22 @@ class ModulesPage extends Page
                     try {
                         app(ManageMailHosting::class)->install()
                             ? Toast::success('Pošta nainstalována', 'Přidejte domény v Síť a pošta → Schránky.')
+                            : Toast::warning('Instalace ještě běží', 'Stav se ukáže za chvíli.');
+                    } catch (AgentException $e) {
+                        Toast::error('Instalace selhala', $e->getMessage());
+                    }
+                    $this->redirect(self::url());
+                }),
+            Action::make('installXhprof')
+                ->label('Nainstalovat XHProf + XHGui')
+                ->icon('outline:chart-bar')
+                ->visible(fn () => ! app(ManageXhprof::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Další → Profilování), načte se jen do poolu webů, které ho mají zapnuté.')
+                ->action(function () {
+                    try {
+                        app(ManageXhprof::class)->install()
+                            ? Toast::success('XHProf nainstalován', 'Zapnete ho u webu v menu Další → Profilování.')
                             : Toast::warning('Instalace ještě běží', 'Stav se ukáže za chvíli.');
                     } catch (AgentException $e) {
                         Toast::error('Instalace selhala', $e->getMessage());

@@ -5,6 +5,7 @@ namespace App\Livewire\Sites;
 use App\Actions\Sites\ManageDeploys;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageValkey;
+use App\Actions\Sites\ManageXhprof;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -117,6 +118,11 @@ class ViewSite extends ViewPage
                 TextEntry::make('valkey')->label('Valkey (Redis)')
                     ->state(fn () => $this->valkeyState($site))
                     ->actions($site->valkey !== null ? [SiteActions::valkeyFlush()->size('sm'), SiteActions::valkeyRestart()->size('sm')] : []),
+                TextEntry::make('xhprof')->label('Profilování (XHProf)')
+                    ->visible(fn () => $site->xhprof !== null)
+                    ->state(fn () => 'měří '.($site->xhprof['ratio'] ?? 100).' % požadavků')
+                    ->actions([Action::make('openXhgui')->label('Otevřít XHGui')->icon('outline:chart-bar')->color('gray')->size('sm')
+                        ->url(ManageXhprof::viewerUrl($site), openInNewTab: true)]),
                 TextEntry::make('mail')->label('Pošta')
                     ->state(fn () => $site->mail_mode === 'capture' ? 'zachytává se v Mailpitu' : 'odesílá se')
                     ->badge()->color($site->mail_mode === 'capture' ? 'warning' : 'success'),

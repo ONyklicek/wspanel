@@ -43,6 +43,10 @@ type Config struct {
 	WebUnit       string `json:"web_unit"`
 	WebConfig     string `json:"web_config"`
 	WebSitesDir   string `json:"web_sites_dir"`
+	// XHProf + XHGui (optional, xhprof.sh): the shared code and the panel's
+	// per-site viewer blocks.
+	XhguiDir    string `json:"xhgui_dir"`
+	XhguiWebDir string `json:"xhgui_web_dir"`
 	WebSocket     string `json:"web_socket"`
 	FrankenPHPBin string `json:"frankenphp_bin"`
 	DefaultPHPVer string `json:"default_php_version"`
@@ -159,6 +163,8 @@ func Defaults() Config {
 		WebUnit:       "panel-web.service",
 		WebConfig:     "/etc/panel-web/Caddyfile",
 		WebSitesDir:   "/etc/panel-web/sites",
+		XhguiDir:      "/usr/share/wspanel-xhgui",
+		XhguiWebDir:   "/etc/panel-web/xhgui",
 		WebSocket:     "/run/panel-web/web.sock",
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",
