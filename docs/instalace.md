@@ -9,7 +9,32 @@
   Mailpit, fnm).
 - Doporučeno: alespoň 2 GB RAM a 20 GB disku.
 
-## Instalace z balíčku (doporučeno)
+## Instalace jedním příkazem (doporučeno)
+
+Na čistém Debianu 13 (amd64 nebo arm64):
+
+```
+curl -fsSL https://github.com/<vlastník>/<repozitář>/releases/latest/download/get.sh | sudo bash
+```
+
+Skript stáhne nejnovější vydání pro architekturu serveru, ověří ho proti
+`SHA256SUMS` daného vydání, rozbalí ho do `/var/lib/wspanel-installer/<verze>/`
+a spustí průvodce (viz níže). Na serveru, kde už WSPanel je, týž příkaz
+aktualizuje: průvodce nabídne ponechat stávající nastavení.
+
+- Konkrétní verze: `… | sudo env WSPANEL_VERSION=1.2.0 bash`
+- Bez otázek: `… | sudo bash -s -- --yes --panel-domain=panel.example.com --acme-email=admin@example.com --db=mariadb --admin-email=admin@example.com`
+- Vydání v soukromém repozitáři (s tokenem, který ho smí číst):
+  ```
+  gh release download --repo <vlastník>/<repozitář> --pattern get.sh
+  sudo env WSPANEL_TOKEN="$(gh auth token)" bash get.sh
+  ```
+
+Kdo nechce spouštět skript přímo z internetu, stáhne `get.sh`, prohlédne ho
+a spustí `sudo bash get.sh`, nebo ověří jeho původ:
+`gh attestation verify get.sh --repo <vlastník>/<repozitář>`.
+
+## Instalace z balíčku
 
 Jeden archiv obsahuje instalátor, provisioning, zdroják panelu, agenta
 a příkaz `wspanel`:

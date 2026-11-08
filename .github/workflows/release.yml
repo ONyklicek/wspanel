@@ -99,24 +99,31 @@ jobs:
           pattern: bundle-*
           path: dist
           merge-multiple: true
+      - name: One-command installer
+        run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
       - name: Checksums
         working-directory: dist
-        run: sha256sum wspanel-*.tar.gz | tee SHA256SUMS
+        run: sha256sum wspanel-*.tar.gz get.sh | tee SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/wspanel-*.tar.gz
+          subject-path: |
+            dist/wspanel-*.tar.gz
+            dist/get.sh
       - name: Release notes
         run: |
           prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           {
             echo "## Instalace"
             echo
+            echo "Na čistém Debianu 13 (amd64 nebo arm64), jedním příkazem:"
+            echo
             echo '```'
-            echo "curl -LO https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/wspanel-${{ needs.build.outputs.version }}-linux-amd64.tar.gz"
-            echo "tar -xzf wspanel-${{ needs.build.outputs.version }}-linux-amd64.tar.gz && cd wspanel && sudo ./install"
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/get.sh | sudo bash"
             echo '```'
             echo
-            echo "Aktualizace: rozbalte balíček a spusťte \`sudo ./install\` (nabídne aktualizaci se stávajícím nastavením)."
+            echo "Tato verze: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/get.sh | sudo env WSPANEL_VERSION=${{ needs.build.outputs.version }} bash\`."
+            echo "Ručně: stáhnout \`wspanel-${{ needs.build.outputs.version }}-linux-<arch>.tar.gz\`, rozbalit a spustit \`sudo ./install\`."
+            echo "Aktualizace: týž příkaz na nainstalovaném serveru (nabídne aktualizaci se stávajícím nastavením)."
             echo "Ověření: \`sha256sum -c SHA256SUMS\` a \`gh attestation verify <soubor> --repo ${GITHUB_REPOSITORY}\`."
             echo
             echo "## Změny"
@@ -128,5 +135,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/get.sh dist/SHA256SUMS \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre

@@ -32,7 +32,7 @@ for arg in "$@"; do
     --yes|-y) YES=1 ;;
     --admin-email=*) ADMIN_EMAIL="${arg#*=}" ;;
     --admin-name=*) ADMIN_NAME="${arg#*=}" ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -euo/{/^#/p;}' "$0"; exit 0 ;;
     *) PASS+=("$arg") ;;
   esac
 done
