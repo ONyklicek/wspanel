@@ -16,7 +16,7 @@ class ForwardAuthController extends Controller
     public function __invoke(Request $request): Response
     {
         if (auth()->check()) {
-            return Gate::allows('admin') ? response()->noContent() : response('Jen pro správce serveru.', 403);
+            return Gate::allows('admin') ? response()->noContent() : response(__('Jen pro správce serveru.'), 403);
         }
 
         $uri = (string) $request->header('X-Forwarded-Uri', '/');

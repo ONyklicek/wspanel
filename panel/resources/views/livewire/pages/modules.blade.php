@@ -1,34 +1,34 @@
 <div class="space-y-6">
-    <x-wire::section heading="Klienti a balíčky">
+    <x-wire::section :heading="__('Klienti a balíčky')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <p>Hostování pro víc klientů: každý klient se přihlásí do panelu jen ke svým webům, databázím a DNS, s limity podle balíčku a kvótou disku. Bez modulu je panel pro jednoho správce.</p>
+            <p>{{ __('Hostování pro víc klientů: každý klient se přihlásí do panelu jen ke svým webům, databázím a DNS, s limity podle balíčku a kvótou disku. Bez modulu je panel pro jednoho správce.') }}</p>
             <p>
-                Stav:
-                <x-wire::badge :color="$this->clientsEnabled() ? 'success' : 'gray'">{{ $this->clientsEnabled() ? 'zapnuto' : 'vypnuto' }}</x-wire::badge>
+                {{ __('Stav:') }}
+                <x-wire::badge :color="$this->clientsEnabled() ? 'success' : 'gray'">{{ $this->clientsEnabled() ? __('zapnuto') : __('vypnuto') }}</x-wire::badge>
                 @if ($this->clientsEnabled())
-                    · klientů: {{ $this->clientCount() }}
+                    {{ __('· klientů:') }} {{ $this->clientCount() }}
                 @endif
             </p>
-            <p class="text-xs text-gray-500">Při instalaci: <span class="font-mono">install.sh --clients=yes</span>. Vypnout jde, jen když nejsou žádní klienti.</p>
+            <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --clients=yes</span>{{ __('. Vypnout jde, jen když nejsou žádní klienti.') }}</p>
         </div>
     </x-wire::section>
-    <x-wire::section heading="Pošta: schránky (IMAP, POP3, antispam)">
+    <x-wire::section :heading="__('Pošta: schránky (IMAP, POP3, antispam)')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <p>Příjem pošty pro domény webů, schránky s kvótou, aliasy, přeposílání a automatické odpovědi; odesílání z poštovních programů přes 587/465; Rspamd přesouvá spam do složky Junk. Odesílání pošty z webů funguje i bez toho.</p>
-            <p>Stav: <x-wire::badge :color="$this->mailHosting() ? 'success' : 'gray'">{{ $this->mailHosting() ? 'nainstalováno' : 'nenainstalováno' }}</x-wire::badge></p>
-            <p class="text-xs text-gray-500">Při instalaci: <span class="font-mono">install.sh --mail-hosting=yes</span>.</p>
+            <p>{{ __('Příjem pošty pro domény webů, schránky s kvótou, aliasy, přeposílání a automatické odpovědi; odesílání z poštovních programů přes 587/465; Rspamd přesouvá spam do složky Junk. Odesílání pošty z webů funguje i bez toho.') }}</p>
+            <p>{{ __('Stav:') }} <x-wire::badge :color="$this->mailHosting() ? 'success' : 'gray'">{{ $this->mailHosting() ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge></p>
+            <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --mail-hosting=yes</span>.</p>
         </div>
     </x-wire::section>
-    <x-wire::section heading="Profilování PHP (XHProf + XHGui)">
+    <x-wire::section :heading="__('Profilování PHP (XHProf + XHGui)')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <p>Kolik času a paměti zabraly jednotlivé funkce aplikace, s přehledem v XHGui. Zapíná se u každého webu zvlášť (PHP-FPM); profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web.</p>
-            <p>Stav: <x-wire::badge :color="$this->xhprof() ? 'success' : 'gray'">{{ $this->xhprof() ? 'nainstalováno' : 'nenainstalováno' }}</x-wire::badge></p>
-            <p class="text-xs text-gray-500">Při instalaci: <span class="font-mono">install.sh --xhprof=yes</span>.</p>
+            <p>{{ __('Kolik času a paměti zabraly jednotlivé funkce aplikace, s přehledem v XHGui. Zapíná se u každého webu zvlášť (PHP-FPM); profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web.') }}</p>
+            <p>{{ __('Stav:') }} <x-wire::badge :color="$this->xhprof() ? 'success' : 'gray'">{{ $this->xhprof() ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge></p>
+            <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --xhprof=yes</span>.</p>
         </div>
     </x-wire::section>
-    <x-wire::section heading="Databázové servery">
+    <x-wire::section :heading="__('Databázové servery')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <p>Nainstalované: {{ implode(', ', $this->dbEngines()) ?: 'žádný' }}. Další doinstalujete v Hosting → Databáze → Servery (při instalaci <span class="font-mono">--db=mariadb,postgres</span>).</p>
+            <p>{{ __('Nainstalované:') }} {{ implode(', ', $this->dbEngines()) ?: __('žádný') }}{{ __('. Další doinstalujete v Hosting → Databáze → Servery (při instalaci') }} <span class="font-mono">--db=mariadb,postgres</span>).</p>
         </div>
     </x-wire::section>
 </div>

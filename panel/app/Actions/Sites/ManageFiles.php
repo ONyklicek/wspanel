@@ -45,7 +45,7 @@ class ManageFiles
     public function write(Site $site, string $path, string $content, ?int $ifMtime = null): void
     {
         if (strlen($content) > self::MAX_SAVE) {
-            throw new AgentException('invalid_params', 'Soubor je na uložení z prohlížeče příliš velký (max. 900 kB), použijte SFTP.', 'site.files');
+            throw new AgentException('invalid_params', __('Soubor je na uložení z prohlížeče příliš velký (max. 900 kB), použijte SFTP.'), 'site.files');
         }
         $this->call($site, array_filter(['action' => 'write', 'path' => $path, 'content' => $content, 'if_mtime' => $ifMtime], fn ($v) => $v !== null));
     }
@@ -87,7 +87,7 @@ class ManageFiles
         $name = 'up-'.bin2hex(random_bytes(16));
         $target = $this->artifactDir().'/'.$name;
         if (! @copy($localPath, $target)) {
-            throw new RuntimeException('Soubor se nepodařilo předat agentovi.');
+            throw new RuntimeException(__('Soubor se nepodařilo předat agentovi.'));
         }
         @chmod($target, 0600);
         try {
@@ -103,7 +103,7 @@ class ManageFiles
         $out = $this->call($site, ['action' => 'download', 'path' => $path]);
         $name = (string) ($out['download'] ?? '');
         if (! preg_match('/^dl-[0-9a-f]{32}$/', $name)) {
-            throw new RuntimeException('Agent nevrátil soubor ke stažení.');
+            throw new RuntimeException(__('Agent nevrátil soubor ke stažení.'));
         }
 
         return $this->artifactDir().'/'.$name;

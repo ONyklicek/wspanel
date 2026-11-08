@@ -62,16 +62,17 @@ final class Limits
             return;
         }
         if ($client->isSuspended()) {
-            throw LimitReachedException::make('Účet je pozastavený.');
+            throw LimitReachedException::make(__('Účet je pozastavený.'));
         }
         [$column, $label] = self::COUNTED[$key];
+        $label = __($label);
         $limit = $client->limit($column);
         if ($limit === null) {
             return;
         }
         $used = $this->used($client, $key);
         if ($used + $adding > (int) $limit) {
-            throw LimitReachedException::make("Limit balíčku: {$label} {$used} z {$limit}. Pro víc kontaktujte správce.");
+            throw LimitReachedException::make(__('Limit balíčku: :label :used z :limit. Pro víc kontaktujte správce.', ['label' => $label, 'used' => $used, 'limit' => $limit]));
         }
     }
 
@@ -96,11 +97,11 @@ final class Limits
         $mode = $mode instanceof SiteMode ? $mode->value : $mode;
         $modes = $client->limit('allowed_modes');
         if (is_array($modes) && $modes !== [] && ! in_array($mode, $modes, true)) {
-            throw LimitReachedException::make('Tento režim webu balíček nepovoluje.');
+            throw LimitReachedException::make(__('Tento režim webu balíček nepovoluje.'));
         }
         $versions = $client->limit('allowed_php');
         if ($php !== null && is_array($versions) && $versions !== [] && ! in_array($php, $versions, true)) {
-            throw LimitReachedException::make("PHP {$php} balíček nepovoluje.");
+            throw LimitReachedException::make(__('PHP :php balíček nepovoluje.', ['php' => $php]));
         }
     }
 
@@ -119,10 +120,10 @@ final class Limits
             return;
         }
         if ((int) $limit === 0) {
-            throw LimitReachedException::make('Valkey balíček nepovoluje.');
+            throw LimitReachedException::make(__('Valkey balíček nepovoluje.'));
         }
         if ($memoryMb > (int) $limit) {
-            throw LimitReachedException::make("Balíček povoluje Valkey nejvýš {$limit} MB na web.");
+            throw LimitReachedException::make(__('Balíček povoluje Valkey nejvýš :limit MB na web.', ['limit' => $limit]));
         }
     }
 
@@ -135,7 +136,7 @@ final class Limits
         $allowed = $client->sshLimit();
         $rank = [SshAccess::Off->value => 0, SshAccess::Sftp->value => 1, SshAccess::Shell->value => 2];
         if ($rank[$wanted->value] > $rank[$allowed->value]) {
-            throw LimitReachedException::make($allowed === SshAccess::Off ? 'SSH ani SFTP balíček nepovoluje.' : 'Balíček povoluje jen SFTP.');
+            throw LimitReachedException::make($allowed === SshAccess::Off ? __('SSH ani SFTP balíček nepovoluje.') : __('Balíček povoluje jen SFTP.'));
         }
     }
 
@@ -158,7 +159,7 @@ final class Limits
         $out = [];
         foreach (self::COUNTED as $key => [$column, $label, $unit]) {
             $limit = $client->limit($column);
-            $out[$key] = ['label' => $label, 'unit' => $unit, 'used' => $this->used($client, $key), 'limit' => $limit === null ? null : (int) $limit];
+            $out[$key] = ['label' => __($label), 'unit' => $unit, 'used' => $this->used($client, $key), 'limit' => $limit === null ? null : (int) $limit];
         }
 
         return $out;

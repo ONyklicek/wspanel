@@ -4,7 +4,8 @@ namespace App\Enums;
 
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum Framework: string implements HasLabel {
+enum Framework: string implements HasLabel
+{
     case Laravel = 'laravel';
     case Symfony = 'symfony';
     case Php = 'php';
@@ -17,10 +18,10 @@ enum Framework: string implements HasLabel {
         return match ($this) {
             self::Laravel => 'Laravel',
             self::Symfony => 'Symfony',
-            self::Php => 'Čisté PHP (bez frameworku)',
+            self::Php => __('Čisté PHP (bez frameworku)'),
             self::Nuxt => 'Nuxt',
             self::Next => 'Next.js',
-            self::Node => 'Node (server.js)',
+            self::Node => __('Node (server.js)'),
         };
     }
 

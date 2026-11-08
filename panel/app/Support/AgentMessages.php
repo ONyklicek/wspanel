@@ -31,6 +31,10 @@ final class AgentMessages
         if ($message === null || $message === '') {
             return $message;
         }
+        // In English the agent's own words are the message.
+        if (function_exists('app') && app()->bound('translator') && app()->getLocale() === 'en') {
+            return trim($message);
+        }
         $m = trim($message);
 
         foreach (self::rules() as $pattern => $replace) {

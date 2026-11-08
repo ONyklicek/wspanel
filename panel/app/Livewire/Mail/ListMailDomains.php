@@ -3,6 +3,7 @@
 namespace App\Livewire\Mail;
 
 use App\Actions\Mail\ManageMailHosting;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -14,35 +15,37 @@ use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListMailDomains extends ListPage
 {
+    use TranslatesPageText;
+
     protected static ?string $resource = MailDomainResource::class;
 
     public function getSubheading(): ?string
     {
         return app(ManageMailHosting::class)->installed()
-            ? 'Server přijímá poštu pro tyto domény. Do DNS domény patří MX záznam na '.ManageMailHosting::mailHost().'.'
-            : 'Příjem pošty není nainstalovaný (Server → Moduly).';
+            ? __('Server přijímá poštu pro tyto domény. Do DNS domény patří MX záznam na ').ManageMailHosting::mailHost().'.'
+            : __('Příjem pošty není nainstalovaný (Server → Moduly).');
     }
 
     protected function headerActions(): array
     {
         return [
             Action::make('addDomain')
-                ->label('Přidat doménu')
+                ->label(__('Přidat doménu'))
                 ->icon('outline:plus')
                 ->visible(fn () => app(ManageMailHosting::class)->installed())
                 ->form([
-                    Select::make('domain')->label('Doména')->required()
+                    Select::make('domain')->label(__('Doména'))->required()
                         ->options(fn () => Site::query()->orderBy('domain')->pluck('domain', 'domain')->all())
-                        ->helperText('Doména některého z vašich webů.')
+                        ->helperText(__('Doména některého z vašich webů.'))
                         ->rules([fn () => Rule::in(Site::query()->pluck('domain')->all())]),
                 ])
                 ->action(function (array $data) {
                     try {
                         $d = app(ManageMailHosting::class)->addDomain($data['domain']);
-                        Toast::success('Doména přidána', 'Založte v ní schránky. MX záznam: '.ManageMailHosting::mailHost());
+                        Toast::success(__('Doména přidána'), __('Založte v ní schránky. MX záznam: ').ManageMailHosting::mailHost());
                         $this->redirect(MailDomainResource::url('view', $d));
                     } catch (AgentException $e) {
-                        Toast::error('Doménu se nepodařilo přidat', $e->getMessage());
+                        Toast::error(__('Doménu se nepodařilo přidat'), $e->getMessage());
                     }
                 }),
         ];

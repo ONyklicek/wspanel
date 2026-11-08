@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Enums\NotificationChannelType;
 use App\Models\NotificationChannel;
 use App\Services\Notify\Notifier;
+use App\Support\Lang;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use Illuminate\Contracts\View\View;
@@ -42,7 +43,7 @@ class NotificationChannelTable extends Component
             default => (function () use ($type, $data) {
                 $url = trim((string) $data['url']);
                 if (! preg_match((string) $type->webhookPattern(), $url)) {
-                    throw ValidationException::withMessages(['url' => 'Adresa webhooku '.$type->getLabel().' má jiný tvar.']);
+                    throw ValidationException::withMessages(['url' => 'Adresa webhooku '.$type->getLabel().__(' má jiný tvar.')]);
                 }
 
                 return ['url' => $url];
@@ -54,15 +55,15 @@ class NotificationChannelTable extends Component
     private static function fields(): array
     {
         return [
-            Select::make('type')->label('Kam')->options(NotificationChannelType::class)->rules([Options::rule(NotificationChannelType::class)])->default('email')->required()->live(),
-            TextInput::make('name')->label('Název')->required()->rules(['string', 'max:100']),
-            TextInput::make('address')->label('E-mail')->email()->visibleWhen('type', 'email')->requiredIf('type', 'email')->rules(['nullable', 'email:rfc', 'max:200']),
-            TextInput::make('url')->label('Webhook URL')->visibleWhen('type', ['slack', 'discord'])->requiredIf('type', ['slack', 'discord'])
-                ->helperText('Slack: Incoming Webhook (https://hooks.slack.com/…), Discord: Integrace → Webhook.')->rules(['nullable', 'url', 'max:300']),
-            TextInput::make('token')->label('Token bota')->password()->revealable()->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')
-                ->helperText('Od @BotFather.')->rules(['nullable', 'regex:/^[0-9]{5,15}:[A-Za-z0-9_-]{20,60}$/']),
-            TextInput::make('chat_id')->label('Chat ID')->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')->rules(['nullable', 'regex:/^-?[0-9]{3,20}$|^@[A-Za-z0-9_]{5,40}$/']),
-            CheckboxList::make('events')->label('Posílat')->options(NotificationChannel::EVENTS)->default(['problems', 'resolved'])->required(),
+            Select::make('type')->label(__('Kam'))->options(NotificationChannelType::class)->rules([Options::rule(NotificationChannelType::class)])->default('email')->required()->live(),
+            TextInput::make('name')->label(__('Název'))->required()->rules(['string', 'max:100']),
+            TextInput::make('address')->label(__('E-mail'))->email()->visibleWhen('type', 'email')->requiredIf('type', 'email')->rules(['nullable', 'email:rfc', 'max:200']),
+            TextInput::make('url')->label(__('Webhook URL'))->visibleWhen('type', ['slack', 'discord'])->requiredIf('type', ['slack', 'discord'])
+                ->helperText(__('Slack: Incoming Webhook (https://hooks.slack.com/…), Discord: Integrace → Webhook.'))->rules(['nullable', 'url', 'max:300']),
+            TextInput::make('token')->label(__('Token bota'))->password()->revealable()->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')
+                ->helperText(__('Od @BotFather.'))->rules(['nullable', 'regex:/^[0-9]{5,15}:[A-Za-z0-9_-]{20,60}$/']),
+            TextInput::make('chat_id')->label(__('Chat ID'))->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')->rules(['nullable', 'regex:/^-?[0-9]{3,20}$|^@[A-Za-z0-9_]{5,40}$/']),
+            CheckboxList::make('events')->label(__('Posílat'))->options(Lang::values(NotificationChannel::EVENTS))->default(['problems', 'resolved'])->required(),
         ];
     }
 
@@ -72,56 +73,56 @@ class NotificationChannelTable extends Component
             ->stackedOnMobile()
             ->query(NotificationChannel::query())
             ->columns([
-                TextColumn::make('name')->label('Název')->weight('medium'),
-                TextColumn::make('type')->label('Kam')->formatStateUsing(fn ($state) => $state instanceof NotificationChannelType ? $state->getLabel() : $state),
-                TextColumn::make('events')->label('Posílá')->state(fn (NotificationChannel $r) => collect($r->events ?? [])->map(fn ($e) => NotificationChannel::EVENTS[$e] ?? $e)->join(', ')),
-                BadgeColumn::make('state')->label('Stav')
-                    ->state(fn (NotificationChannel $r) => ! $r->enabled ? 'vypnuto' : ($r->last_error ? 'chyba' : 'aktivní'))
-                    ->colorUsing(fn ($state) => ['aktivní' => 'success', 'chyba' => 'danger'][$state] ?? 'gray'),
-                TextColumn::make('last_error')->label('Poslední chyba')->limit(80)->placeholder('—'),
+                TextColumn::make('name')->label(__('Název'))->weight('medium'),
+                TextColumn::make('type')->label(__('Kam'))->formatStateUsing(fn ($state) => $state instanceof NotificationChannelType ? $state->getLabel() : $state),
+                TextColumn::make('events')->label(__('Posílá'))->state(fn (NotificationChannel $r) => collect($r->events ?? [])->map(fn ($e) => __(NotificationChannel::EVENTS[$e] ?? $e))->join(', ')),
+                BadgeColumn::make('state')->label(__('Stav'))
+                    ->state(fn (NotificationChannel $r) => ! $r->enabled ? 'vypnuto' : ($r->last_error ? 'chyba' : __('aktivní')))
+                    ->colorUsing(fn ($state) => [__('aktivní') => 'success', 'chyba' => 'danger'][$state] ?? 'gray'),
+                TextColumn::make('last_error')->label(__('Poslední chyba'))->limit(80)->placeholder('—'),
             ])
             ->headerActions([
-                Action::make('create')->label('Přidat kanál')->icon('outline:plus')
+                Action::make('create')->label(__('Přidat kanál'))->icon('outline:plus')
                     ->form(self::fields())
                     ->action(function (array $data) {
                         NotificationChannel::create(['type' => $data['type'], 'name' => $data['name'], 'config' => self::config($data),
                             'events' => array_values($data['events'] ?? []), 'enabled' => true]);
-                        Toast::success('Kanál přidán', 'Vyzkoušejte ho tlačítkem Zkusit.');
+                        Toast::success(__('Kanál přidán'), __('Vyzkoušejte ho tlačítkem Zkusit.'));
                     }),
             ])
             ->actions([
-                Action::make('test')->label('Zkusit')->icon('outline:paper-airplane')->color('gray')
+                Action::make('test')->label(__('Zkusit'))->icon('outline:paper-airplane')->color('gray')
                     ->action(function (NotificationChannel $record) {
                         if (RateLimiter::tooManyAttempts('notify-test:'.$record->id, 3)) {
-                            Toast::warning('Zkuste to za chvíli');
+                            Toast::warning(__('Zkuste to za chvíli'));
 
                             return;
                         }
                         RateLimiter::hit('notify-test:'.$record->id, 60);
-                        app(Notifier::class)->send($record, 'Zkušební zpráva z WSPanelu', 'Takhle budou vypadat upozornění.')
-                            ? Toast::success('Odesláno')
-                            : Toast::error('Odeslání selhalo', (string) $record->fresh()->last_error);
+                        app(Notifier::class)->send($record, __('Zkušební zpráva z WSPanelu'), __('Takhle budou vypadat upozornění.'))
+                            ? Toast::success(__('Odesláno'))
+                            : Toast::error(__('Odeslání selhalo'), (string) $record->fresh()->last_error);
                     }),
                 ActionGroup::make([
-                    Action::make('edit')->label('Upravit')->icon('outline:pencil')
+                    Action::make('edit')->label(__('Upravit'))->icon('outline:pencil')
                         ->fillFormUsing(fn (NotificationChannel $r) => ['name' => $r->name, 'events' => $r->events, 'enabled' => $r->enabled])
                         ->form([
-                            TextInput::make('name')->label('Název')->required()->rules(['string', 'max:100']),
-                            CheckboxList::make('events')->label('Posílat')->options(NotificationChannel::EVENTS)->required(),
-                            Toggle::make('enabled')->label('Zapnuto'),
+                            TextInput::make('name')->label(__('Název'))->required()->rules(['string', 'max:100']),
+                            CheckboxList::make('events')->label(__('Posílat'))->options(Lang::values(NotificationChannel::EVENTS))->required(),
+                            Toggle::make('enabled')->label(__('Zapnuto')),
                         ])
                         ->action(function (NotificationChannel $record, array $data) {
                             $record->update(['name' => $data['name'], 'events' => array_values($data['events'] ?? []), 'enabled' => (bool) $data['enabled']]);
-                            Toast::success('Uloženo');
+                            Toast::success(__('Uloženo'));
                         }),
-                    Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->requiresConfirmation()
+                    Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->requiresConfirmation()
                         ->action(function (NotificationChannel $record) {
                             $record->delete();
-                            Toast::success('Kanál smazán');
+                            Toast::success(__('Kanál smazán'));
                         }),
                 ]),
             ])
-            ->emptyState('Zatím žádný kanál', 'Přidejte e-mail, Slack, Discord nebo Telegram.', 'outline:bell')
+            ->emptyState(__('Zatím žádný kanál'), __('Přidejte e-mail, Slack, Discord nebo Telegram.'), 'outline:bell')
             ->searchable(false)
             ->paginated(false);
     }

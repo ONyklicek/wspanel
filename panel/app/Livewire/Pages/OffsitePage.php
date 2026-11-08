@@ -3,7 +3,9 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManageOffsite;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
+use App\Support\Lang;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use NyonCode\WireCore\Actions\Action;
@@ -15,6 +17,8 @@ use NyonCode\WirePanels\Pages\Page;
 /** Copies of all backups in S3-compatible storage outside the server. */
 class OffsitePage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.offsite';
 
     /** Server-wide settings: administrators only. */
@@ -71,37 +75,37 @@ class OffsitePage extends Page
 
     public function typeLabel(): string
     {
-        return ManageOffsite::TYPES[$this->status['config']['type'] ?? 's3'] ?? 'S3';
+        return __(ManageOffsite::TYPES[$this->status['config']['type'] ?? 's3'] ?? 'S3');
     }
 
     protected function headerActions(): array
     {
-        $providers = array_map(fn (array $p) => $p['label'], ManageOffsite::PROVIDERS);
+        $providers = array_map(fn (array $p) => __($p['label']), ManageOffsite::PROVIDERS);
         $secretHelp = $this->status['has_secret']
-            ? 'Prázdné = ponechat uložené (jen když se nemění server, port, účet, šifrování ani sdílená složka). Uloží se jen na serveru (root, 0600).'
-            : 'Uloží se jen na serveru (root, 0600), panel ho neuchovává.';
+            ? __('Prázdné = ponechat uložené (jen když se nemění server, port, účet, šifrování ani sdílená složka). Uloží se jen na serveru (root, 0600).')
+            : __('Uloží se jen na serveru (root, 0600), panel ho neuchovává.');
 
         return [
             Action::make('signingKey')
-                ->label('Klíč pro ověření záloh')
+                ->label(__('Klíč pro ověření záloh'))
                 ->icon('outline:key')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalHeading('Zobrazit klíč pro ověření záloh?')
-                ->modalDescription('Každá kopie mimo server je podepsaná tímto klíčem a panel stáhne zpět jen kopii s platným podpisem. Uložte si ho bezpečně mimo server (správce hesel): na novém serveru ho zadáte v nastavení úložiště a staré zálohy půjde ověřit. Kdo klíč zná, dokáže podepsat podvrženou zálohu.')
+                ->modalHeading(__('Zobrazit klíč pro ověření záloh?'))
+                ->modalDescription(__('Každá kopie mimo server je podepsaná tímto klíčem a panel stáhne zpět jen kopii s platným podpisem. Uložte si ho bezpečně mimo server (správce hesel): na novém serveru ho zadáte v nastavení úložiště a staré zálohy půjde ověřit. Kdo klíč zná, dokáže podepsat podvrženou zálohu.'))
                 ->action(function () {
                     try {
-                        Toast::secret('Klíč pro ověření záloh', app(ManageOffsite::class)->signingKey());
+                        Toast::secret(__('Klíč pro ověření záloh'), app(ManageOffsite::class)->signingKey());
                     } catch (AgentException $e) {
-                        Toast::error('Klíč se nepodařilo načíst', $e->getMessage());
+                        Toast::error(__('Klíč se nepodařilo načíst'), $e->getMessage());
                     }
                 }),
             Action::make('configure')
-                ->label($this->status['configured'] ? 'Upravit úložiště' : 'Nastavit úložiště')
+                ->label($this->status['configured'] ? __('Upravit úložiště') : __('Nastavit úložiště'))
                 ->icon('outline:cog-6-tooth')
                 ->slideOver()
-                ->modalHeading('Úložiště pro zálohy')
-                ->modalDescription('Panel nejdřív zkusí do úložiště zapsat, přečíst a smazat zkušební soubor; uloží se jen funkční nastavení.')
+                ->modalHeading(__('Úložiště pro zálohy'))
+                ->modalDescription(__('Panel nejdřív zkusí do úložiště zapsat, přečíst a smazat zkušební soubor; uloží se jen funkční nastavení.'))
                 ->fillFormUsing(function () {
                     $c = $this->status['config'];
                     $configured = $this->status['configured'];
@@ -131,14 +135,14 @@ class OffsitePage extends Page
                     ];
                 })
                 ->form([
-                    Toggle::make('enabled')->label('Kopírovat nové zálohy mimo server'),
-                    Select::make('type')->label('Typ úložiště')->options(ManageOffsite::TYPES)->required()->live()
+                    Toggle::make('enabled')->label(__('Kopírovat nové zálohy mimo server')),
+                    Select::make('type')->label(__('Typ úložiště'))->options(Lang::values(ManageOffsite::TYPES))->required()->live()
                         ->rules(['required', 'in:'.implode(',', array_keys(ManageOffsite::TYPES))]),
 
                     // S3
-                    Select::make('provider')->label('Poskytovatel')->options($providers)->rules([Options::rule()])->live()
+                    Select::make('provider')->label(__('Poskytovatel'))->options($providers)->rules([Options::rule()])->live()
                         ->visibleWhen('type', 's3')
-                        ->helperText('Vyplní adresu a region; upravte je podle svého účtu.')
+                        ->helperText(__('Vyplní adresu a region; upravte je podle svého účtu.'))
                         ->afterStateUpdated(function ($state, $set) {
                             $p = ManageOffsite::PROVIDERS[$state] ?? null;
                             if ($p !== null) {
@@ -147,59 +151,59 @@ class OffsitePage extends Page
                                 $set('path_style', $p['path_style']);
                             }
                         }),
-                    TextInput::make('endpoint')->label('Adresa (endpoint)')->placeholder('https://s3.eu-central-1.amazonaws.com')
+                    TextInput::make('endpoint')->label(__('Adresa (endpoint)'))->placeholder('https://s3.eu-central-1.amazonaws.com')
                         ->visibleWhen('type', 's3')->requiredIf('type', 's3')->rules(['nullable', 'url:https,http', 'max:255']),
-                    TextInput::make('region')->label('Region')->placeholder('eu-central-1, u R2 auto')
+                    TextInput::make('region')->label(__('Region'))->placeholder(__('eu-central-1, u R2 auto'))
                         ->visibleWhen('type', 's3')->rules(['nullable', 'regex:/^[a-z0-9-]{0,40}$/']),
-                    TextInput::make('bucket')->label('Bucket')
+                    TextInput::make('bucket')->label(__('Bucket'))
                         ->visibleWhen('type', 's3')->requiredIf('type', 's3')->rules(['nullable', 'regex:/^[a-z0-9][a-z0-9.\-_]{1,62}$/']),
-                    Toggle::make('path_style')->label('Adresovat bucket v cestě (path-style)')->visibleWhen('type', 's3')
-                        ->helperText('Zapnuto pro většinu S3 kompatibilních úložišť; u Amazonu S3 vypnuto.'),
-                    TextInput::make('access_key')->label('Access key')
+                    Toggle::make('path_style')->label(__('Adresovat bucket v cestě (path-style)'))->visibleWhen('type', 's3')
+                        ->helperText(__('Zapnuto pro většinu S3 kompatibilních úložišť; u Amazonu S3 vypnuto.')),
+                    TextInput::make('access_key')->label(__('Access key'))
                         ->visibleWhen('type', 's3')->requiredIf('type', 's3')->rules(['nullable', 'max:256']),
-                    TextInput::make('secret_key')->label('Secret key')->password()->revealable()
+                    TextInput::make('secret_key')->label(__('Secret key'))->password()->revealable()
                         ->visibleWhen('type', 's3')->rules(['nullable', 'max:256'])->helperText($secretHelp),
 
                     // FTP, SMB
-                    TextInput::make('host')->label('Server')->placeholder('nas.example.com nebo 192.168.1.10')
+                    TextInput::make('host')->label(__('Server'))->placeholder(__('nas.example.com nebo 192.168.1.10'))
                         ->visibleWhen('type', ['ftp', 'smb'])->requiredIf('type', ['ftp', 'smb'])->rules(['nullable', 'regex:/^[A-Za-z0-9][A-Za-z0-9.\-:\[\]]{0,252}$/']),
-                    TextInput::make('port')->label('Port')->numeric()->placeholder('výchozí')
+                    TextInput::make('port')->label(__('Port'))->numeric()->placeholder(__('výchozí'))
                         ->visibleWhen('type', ['ftp', 'smb'])->rules(['nullable', 'integer', 'min:1', 'max:65535']),
-                    Select::make('ftp_tls')->label('Šifrování')->options(ManageOffsite::FTP_TLS)->live()
+                    Select::make('ftp_tls')->label(__('Šifrování'))->options(Lang::values(ManageOffsite::FTP_TLS))->live()
                         ->visibleWhen('type', 'ftp')->rules(['nullable', 'in:'.implode(',', array_keys(ManageOffsite::FTP_TLS))])
                         ->helperText(fn ($get) => $get('ftp_tls') === 'none'
-                            ? 'Heslo i zálohy (včetně .env webů) půjdou sítí čitelně. Jen pro důvěryhodnou vnitřní síť.'
-                            : 'Přihlášení i přenos dat jsou šifrované.'),
-                    TextInput::make('tls_pin')->label('Otisk certifikátu (SHA-256)')->placeholder('AB:CD:… (jen pro vlastní certifikát NASu)')
+                            ? __('Heslo i zálohy (včetně .env webů) půjdou sítí čitelně. Jen pro důvěryhodnou vnitřní síť.')
+                            : __('Přihlášení i přenos dat jsou šifrované.')),
+                    TextInput::make('tls_pin')->label(__('Otisk certifikátu (SHA-256)'))->placeholder(__('AB:CD:… (jen pro vlastní certifikát NASu)'))
                         ->visibleWhen('type', 'ftp')->rules(['nullable', 'regex:/^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$/'])
-                        ->helperText('Prázdné = certifikát musí vydat důvěryhodná autorita. Když server používá vlastní certifikát, panel při testu ukáže jeho otisk; po ověření ho sem vložte.'),
-                    TextInput::make('share')->label('Sdílená složka')->placeholder('zalohy')
+                        ->helperText(__('Prázdné = certifikát musí vydat důvěryhodná autorita. Když server používá vlastní certifikát, panel při testu ukáže jeho otisk; po ověření ho sem vložte.')),
+                    TextInput::make('share')->label(__('Sdílená složka'))->placeholder('zalohy')
                         ->visibleWhen('type', 'smb')->requiredIf('type', 'smb')->rules(['nullable', 'regex:/^[A-Za-z0-9._\-$ ]{1,80}$/']),
-                    TextInput::make('username')->label('Uživatel')
+                    TextInput::make('username')->label(__('Uživatel'))
                         ->visibleWhen('type', ['ftp', 'smb'])->requiredIf('type', ['ftp', 'smb'])->rules(['nullable', 'max:128', 'not_regex:/["\r\n]/']),
-                    TextInput::make('password')->label('Heslo')->password()->revealable()
+                    TextInput::make('password')->label(__('Heslo'))->password()->revealable()
                         ->visibleWhen('type', ['ftp', 'smb'])->rules(['nullable', 'max:256'])->helperText($secretHelp),
-                    TextInput::make('smb_domain')->label('Doména / pracovní skupina')->placeholder('nepovinné, např. WORKGROUP')
+                    TextInput::make('smb_domain')->label(__('Doména / pracovní skupina'))->placeholder(__('nepovinné, např. WORKGROUP'))
                         ->visibleWhen('type', 'smb')->rules(['nullable', 'max:128', 'not_regex:/["\r\n]/']),
-                    Toggle::make('smb_encrypt')->label('Vyžadovat šifrování SMB3')->visibleWhen('type', 'smb')
-                        ->helperText('Doporučeno; vypněte jen pro starší NAS bez podpory šifrování.'),
+                    Toggle::make('smb_encrypt')->label(__('Vyžadovat šifrování SMB3'))->visibleWhen('type', 'smb')
+                        ->helperText(__('Doporučeno; vypněte jen pro starší NAS bez podpory šifrování.')),
 
                     // Common
-                    TextInput::make('prefix')->label('Složka')->placeholder('např. muj-server')->rules(['nullable', 'regex:/^[A-Za-z0-9._\-\/]{0,200}$/', 'not_regex:/\.\./'])
-                        ->helperText('Hodí se, když jedno úložiště sdílí víc serverů.'),
-                    TextInput::make('keep_days')->label('Uchovávat kopie (dní)')->numeric()->required()->rules(['required', 'integer', 'min:1', 'max:3650'])
-                        ->helperText('Starší kopie se mažou po každém nahrání; nejnovější kopie zůstává vždy.'),
-                    TextInput::make('signing_key')->label('Klíč pro ověření záloh z jiného serveru')->password()->revealable()
+                    TextInput::make('prefix')->label(__('Složka'))->placeholder(__('např. muj-server'))->rules(['nullable', 'regex:/^[A-Za-z0-9._\-\/]{0,200}$/', 'not_regex:/\.\./'])
+                        ->helperText(__('Hodí se, když jedno úložiště sdílí víc serverů.')),
+                    TextInput::make('keep_days')->label(__('Uchovávat kopie (dní)'))->numeric()->required()->rules(['required', 'integer', 'min:1', 'max:3650'])
+                        ->helperText(__('Starší kopie se mažou po každém nahrání; nejnovější kopie zůstává vždy.')),
+                    TextInput::make('signing_key')->label(__('Klíč pro ověření záloh z jiného serveru'))->password()->revealable()
                         ->rules(['nullable', 'regex:/^[0-9a-fA-F]{64}$/'])
-                        ->helperText('Jen při obnově na novém serveru: vložte klíč starého serveru, aby šlo jeho zálohy ověřit. Jinak nechte prázdné.'),
+                        ->helperText(__('Jen při obnově na novém serveru: vložte klíč starého serveru, aby šlo jeho zálohy ověřit. Jinak nechte prázdné.')),
                 ])
-                ->modalSubmitActionLabel('Otestovat a uložit')
+                ->modalSubmitActionLabel(__('Otestovat a uložit'))
                 ->action(function (array $data) {
                     try {
                         app(ManageOffsite::class)->save($data);
-                        Toast::success($data['enabled'] ? 'Úložiště funguje, nové zálohy se budou kopírovat' : 'Uloženo, kopírování je vypnuté');
+                        Toast::success($data['enabled'] ? __('Úložiště funguje, nové zálohy se budou kopírovat') : __('Uloženo, kopírování je vypnuté'));
                     } catch (AgentException $e) {
-                        Toast::error('Úložiště se nepodařilo nastavit', $e->getMessage());
+                        Toast::error(__('Úložiště se nepodařilo nastavit'), $e->getMessage());
                     }
                     $this->refreshStatus();
                 }),

@@ -54,6 +54,10 @@ docs/       tato dokumentace (v panelu v menu Dokumentace)
 4. Volání z panelu přes `AgentClient::call()` v akci v `panel/app/Actions`.
 5. Případně kontrola v `dev/e2e.sh`.
 
+## Překlady
+
+Texty panelu se píšou česky a obalují do `__('…')`; český text je zároveň klíčem. Anglický překlad je v `panel/lang/en.json` (klíč = česká věta). Při nové větě ji přidejte i tam, jinak se v angličtině zobrazí česky. Hodnoty se proměnnými pište s placeholdery (`__('Web :domain smazán', ['domain' => $d])`), ne skládáním řetězců. Popisky v konstantách (`const`, výchozí hodnoty vlastností) se překládají až při použití: `__($label)` nebo `App\Support\Lang::values($pole)`. Chybové hlášky agenta (anglicky) převádí do češtiny `AgentMessages`; v angličtině se ukazují v originále.
+
 ## Simulace release flow (GitHub Release → Actions → panel)
 
 ```

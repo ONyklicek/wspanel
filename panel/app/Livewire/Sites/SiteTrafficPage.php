@@ -24,7 +24,7 @@ class SiteTrafficPage extends ViewPage
     {
         $site = $this->nativeRecord();
 
-        return 'Návštěvnost · '.($site instanceof Site ? $site->domain : 'web');
+        return __('Návštěvnost · ').($site instanceof Site ? $site->domain : 'web');
     }
 
     public function infolist(): Infolist

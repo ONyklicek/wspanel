@@ -28,7 +28,7 @@ class ManageDnsZones
     {
         // A client's zone never covers (or sits inside) another owner's names.
         if (CurrentClient::restricted() && DomainOwnership::takenByAnother($data['domain'], CurrentClient::id())) {
-            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
+            throw new AgentException('forbidden', __('Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.'), 'panel');
         }
         $provider = DnsProvider::from($data['provider']);
         $attributes = [

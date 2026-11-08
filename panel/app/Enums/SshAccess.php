@@ -5,7 +5,8 @@ namespace App\Enums;
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasColor;
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum SshAccess: string implements HasColor, HasLabel {
+enum SshAccess: string implements HasColor, HasLabel
+{
     case Off = 'off';
     case Sftp = 'sftp';
     case Shell = 'shell';
@@ -13,8 +14,8 @@ enum SshAccess: string implements HasColor, HasLabel {
     public function getLabel(): string
     {
         return match ($this) {
-            self::Off => 'Vypnuto',
-            self::Sftp => 'Jen SFTP',
+            self::Off => __('Vypnuto'),
+            self::Sftp => __('Jen SFTP'),
             self::Shell => 'SSH + SFTP',
         };
     }
@@ -22,9 +23,9 @@ enum SshAccess: string implements HasColor, HasLabel {
     public function getDescription(): string
     {
         return match ($this) {
-            self::Off => 'Žádné přihlášení.',
-            self::Sftp => 'Přenos souborů, bez shellu.',
-            self::Shell => 'Shell s composerem, npm, git, mc a nano. Verze PHP a Node odpovídají webu.',
+            self::Off => __('Žádné přihlášení.'),
+            self::Sftp => __('Přenos souborů, bez shellu.'),
+            self::Shell => __('Shell s composerem, npm, git, mc a nano. Verze PHP a Node odpovídají webu.'),
         };
     }
 

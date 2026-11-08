@@ -34,7 +34,7 @@ class Deployment extends Model
 
     public function statusLabel(): string
     {
-        return ['running' => 'běží', 'success' => 'nasazeno', 'failed' => 'selhal', 'rolled_back' => 'vráceno zpět'][$this->status] ?? $this->status;
+        return ['running' => __('běží'), 'success' => 'nasazeno', 'failed' => 'selhal', 'rolled_back' => __('vráceno zpět')][$this->status] ?? $this->status;
     }
 
     public function statusColor(): string

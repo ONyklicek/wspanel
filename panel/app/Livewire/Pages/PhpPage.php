@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManagePhp;
 use App\Enums\SiteMode;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -18,6 +19,8 @@ use NyonCode\WirePanels\Pages\Page;
  */
 class PhpPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.php';
 
     /** Server-wide settings: administrators only. */
@@ -74,19 +77,19 @@ class PhpPage extends Page
 
         return [
             Action::make('installVersion')
-                ->label('Doinstalovat verzi PHP')
+                ->label(__('Doinstalovat verzi PHP'))
                 ->icon('outline:plus')
                 ->visible($installable !== [])
-                ->modalDescription('Nainstaluje PHP-FPM a obvyklá rozšíření (intl, mbstring, xml, curl, zip, gd, redis…) včetně ovladačů databází. Weby pak verzi zvolí v Další → Změnit verzi.')
-                ->form([Select::make('version')->rules([Options::rule()])->label('Verze')->required()
+                ->modalDescription(__('Nainstaluje PHP-FPM a obvyklá rozšíření (intl, mbstring, xml, curl, zip, gd, redis…) včetně ovladačů databází. Weby pak verzi zvolí v Další → Změnit verzi.'))
+                ->form([Select::make('version')->rules([Options::rule()])->label(__('Verze'))->required()
                     ->options(collect($installable)->mapWithKeys(fn ($v) => [$v => "PHP {$v}"])->all())])
                 ->action(function (array $data) {
                     try {
                         app(ManagePhp::class)->install($data['version'])
-                            ? Toast::success("PHP {$data['version']} nainstalováno")
-                            : Toast::success("Instalace PHP {$data['version']} běží na pozadí", 'Obnovte stránku za pár minut.');
+                            ? Toast::success(__('PHP :version nainstalováno', ['version' => $data['version']]))
+                            : Toast::success(__('Instalace PHP :version běží na pozadí', ['version' => $data['version']]), __('Obnovte stránku za pár minut.'));
                     } catch (AgentException $e) {
-                        Toast::error('Instalace selhala', $e->getMessage());
+                        Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
                     $this->refreshStatus();
                 }),
@@ -116,14 +119,14 @@ class PhpPage extends Page
         $missing = array_values(array_diff($v['available'] ?? [], $v['extensions'] ?? []));
 
         return Action::make('addExtension_'.str_replace('.', '_', $version))
-            ->label('Přidat rozšíření')
+            ->label(__('Přidat rozšíření'))
             ->icon('outline:plus')
             ->color('gray')
             ->size('sm')
             ->disabled($missing === [])
-            ->modalHeading("PHP {$version}: přidat rozšíření")
-            ->modalDescription('Nainstaluje balíček php'.$version.'-… z repozitáře a plynule znovu načte PHP-FPM.')
-            ->form([Select::make('extension')->label('Rozšíření')->searchable()->required()->rules([Options::rule()])
+            ->modalHeading(__('PHP :version: přidat rozšíření', ['version' => $version]))
+            ->modalDescription(__('Nainstaluje balíček php').$version.__('-… z repozitáře a plynule znovu načte PHP-FPM.'))
+            ->form([Select::make('extension')->label(__('Rozšíření'))->searchable()->required()->rules([Options::rule()])
                 ->options(array_combine($missing, $missing))])
             ->action(fn (array $data) => $this->runExtension($version, $data['extension'], 'install'));
     }
@@ -133,16 +136,16 @@ class PhpPage extends Page
         $installed = $this->version($version)['extensions'] ?? [];
 
         return Action::make('removeExtension_'.str_replace('.', '_', $version))
-            ->label('Odebrat rozšíření')
+            ->label(__('Odebrat rozšíření'))
             ->icon('outline:minus')
             ->color('gray')
             ->size('sm')
             ->disabled($installed === [])
-            ->modalHeading("PHP {$version}: odebrat rozšíření")
-            ->modalDescription('Weby na této verzi, které rozšíření používají, přestanou fungovat.')
-            ->form([Select::make('extension')->label('Rozšíření')->searchable()->required()->rules([Options::rule()])
+            ->modalHeading(__('PHP :version: odebrat rozšíření', ['version' => $version]))
+            ->modalDescription(__('Weby na této verzi, které rozšíření používají, přestanou fungovat.'))
+            ->form([Select::make('extension')->label(__('Rozšíření'))->searchable()->required()->rules([Options::rule()])
                 ->options(array_combine($installed, $installed))])
-            ->modalSubmitActionLabel('Odebrat')
+            ->modalSubmitActionLabel(__('Odebrat'))
             ->action(fn (array $data) => $this->runExtension($version, $data['extension'], 'remove'));
     }
 
@@ -150,12 +153,12 @@ class PhpPage extends Page
     {
         try {
             $done = app(ManagePhp::class)->extension($version, $extension, $action);
-            $verb = $action === 'install' ? 'nainstalováno' : 'odebráno';
+            $verb = $action === 'install' ? __('nainstalováno') : __('odebráno');
             $done
                 ? Toast::success("PHP {$version}: {$extension} {$verb}")
-                : Toast::success("PHP {$version}: {$extension} se zpracovává na pozadí", 'Obnovte stránku za chvíli.');
+                : Toast::success(__('PHP :version: :extension se zpracovává na pozadí', ['version' => $version, 'extension' => $extension]), __('Obnovte stránku za chvíli.'));
         } catch (AgentException $e) {
-            Toast::error('Změna rozšíření selhala', $e->getMessage());
+            Toast::error(__('Změna rozšíření selhala'), $e->getMessage());
         }
         $this->refreshStatus();
     }

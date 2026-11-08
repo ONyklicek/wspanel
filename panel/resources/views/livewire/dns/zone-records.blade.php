@@ -1,5 +1,5 @@
 <div>
-    <x-wire::section heading="Záznamy" description="Spravují se po skupinách: všechny hodnoty jednoho názvu a typu dohromady.">
+    <x-wire::section :heading="__('Záznamy')" :description="__('Spravují se po skupinách: všechny hodnoty jednoho názvu a typu dohromady.')">
         {{ $this->table }}
     </x-wire::section>
 </div>

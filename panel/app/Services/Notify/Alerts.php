@@ -28,27 +28,27 @@ class Alerts
                 $out[] = ['key' => $key, 'client_id' => $client, 'level' => $level, 'title' => $title, 'detail' => $detail];
             };
             foreach (Service::query()->with('site')->where('active_state', 'failed')->get() as $s) {
-                $add('service:'.$s->unit, $s->site?->client_id, 'danger', 'Služba neběží: '.$s->label(), $s->unit);
+                $add('service:'.$s->unit, $s->site?->client_id, 'danger', __('Služba neběží: ').$s->label(), $s->unit);
             }
             foreach (Site::acrossClients()->where('status', SiteStatus::Active)->where('enabled', true)->where('health_ok', false)->get() as $site) {
-                $add('site-down:'.$site->domain, $site->client_id, 'danger', "{$site->domain} neodpovídá", trim('HTTP '.($site->health_status ?? '—').' '.($site->health_error ?? '')));
+                $add('site-down:'.$site->domain, $site->client_id, 'danger', __(':domain neodpovídá', ['domain' => $site->domain]), trim('HTTP '.($site->health_status ?? '—').' '.($site->health_error ?? '')));
             }
             $owners = Site::acrossClients()->pluck('client_id', 'domain');
             foreach (Certificate::query()->whereIn('status', ['expired', 'missing', 'expiring'])->get() as $c) {
                 $add('cert:'.$c->domain.':'.$c->status, $owners[$c->domain] ?? null, $c->status === 'expiring' ? 'warning' : 'danger',
                     match ($c->status) {
-                        'expired' => "Certifikát vypršel: {$c->domain}", 'missing' => "Chybí certifikát: {$c->domain}", default => "Certifikát brzy vyprší: {$c->domain}"
-                    }, (string) ($c->last_error ?? ($c->not_after ? 'platí do '.$c->not_after->format('j. n. Y') : '')));
+                        'expired' => __('Certifikát vypršel: :domain', ['domain' => $c->domain]), 'missing' => __('Chybí certifikát: :domain', ['domain' => $c->domain]), default => __('Certifikát brzy vyprší: :domain', ['domain' => $c->domain])
+                    }, (string) ($c->last_error ?? ($c->not_after ? __('platí do ').$c->not_after->format('j. n. Y') : '')));
             }
             try {
                 foreach (app(ServerMetrics::class)->now()['filesystems'] ?? [] as $f) {
                     $pct = $f['total'] > 0 ? 100 * $f['used'] / $f['total'] : 0;
                     if ($pct >= 90) {
-                        $add('disk:'.$f['mount'], null, $pct >= 95 ? 'danger' : 'warning', "Disk {$f['mount']} je zaplněný z ".round($pct).' %', 'Volno '.Number::fileSize($f['free'], 1));
+                        $add('disk:'.$f['mount'], null, $pct >= 95 ? 'danger' : 'warning', __('Disk :mount je zaplněný z ', ['mount' => $f['mount']]).round($pct).' %', 'Volno '.Number::fileSize($f['free'], 1));
                     }
                 }
             } catch (AgentException $e) {
-                $add('agent', null, 'danger', 'Agent neodpovídá', $e->getMessage());
+                $add('agent', null, 'danger', __('Agent neodpovídá'), $e->getMessage());
             }
 
             return $out;

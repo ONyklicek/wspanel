@@ -29,7 +29,7 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
 
     public static function label(): string
     {
-        return 'Vytížení';
+        return __('Vytížení');
     }
 
     private function metrics(): ?array
@@ -44,39 +44,39 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
     public function widgets(): array
     {
         $m = $this->metrics();
-        $ranges = collect(ServerMetrics::RANGES)->map(fn ($r) => $r[0])->all();
+        $ranges = collect(ServerMetrics::RANGES)->map(fn ($r) => __($r[0]))->all();
 
         return [
-            StatsOverviewWidget::make()->key('live')->heading('Teď (obnova každých 5 s)')->columnSpan(2)->columns(4)
+            StatsOverviewWidget::make()->key('live')->heading(__('Teď (obnova každých 5 s)'))->columnSpan(2)->columns(4)
                 ->pollingInterval('5s')->stats($this->liveStats($m)),
             $this->chart('cpu', 'Procesor (%)', ['cpu' => ['CPU', '#f59e0b'], 'iowait' => ['iowait', '#ef4444']], $ranges),
-            $this->chart('memory', 'Paměť (GB)', ['mem_used' => ['RAM', '#3b82f6'], 'swap_used' => ['swap', '#a855f7'], 'mem_total' => ['celkem', '#94a3b8']], $ranges, 1 << 30),
-            $this->chart('load', 'Zátěž (load 1 min)', ['load1' => ['load', '#10b981']], $ranges),
-            $this->chart('network', 'Síť (MB/s)', ['net_rx' => ['příchozí', '#0ea5e9'], 'net_tx' => ['odchozí', '#f97316']], $ranges, 1 << 20),
-            $this->chart('disk_io', 'Disk – čtení a zápis (MB/s)', ['io_read' => ['čtení', '#14b8a6'], 'io_write' => ['zápis', '#e11d48']], $ranges, 1 << 20),
-            $this->chart('disk_usage', 'Zaplnění disku (%)', ['disk_percent' => ['obsazeno', '#64748b']], $ranges),
+            $this->chart('memory', __('Paměť (GB)'), ['mem_used' => ['RAM', '#3b82f6'], 'swap_used' => ['swap', '#a855f7'], 'mem_total' => ['celkem', '#94a3b8']], $ranges, 1 << 30),
+            $this->chart('load', __('Zátěž (load 1 min)'), ['load1' => ['load', '#10b981']], $ranges),
+            $this->chart('network', __('Síť (MB/s)'), ['net_rx' => [__('příchozí'), '#0ea5e9'], 'net_tx' => [__('odchozí'), '#f97316']], $ranges, 1 << 20),
+            $this->chart('disk_io', __('Disk – čtení a zápis (MB/s)'), ['io_read' => [__('čtení'), '#14b8a6'], 'io_write' => [__('zápis'), '#e11d48']], $ranges, 1 << 20),
+            $this->chart('disk_usage', __('Zaplnění disku (%)'), ['disk_percent' => ['obsazeno', '#64748b']], $ranges),
             CustomWidget::make()->key('sites')
                 ->columnSpan(2)->pollingInterval('15s')
                 ->view('livewire.monitoring.table')
-                ->viewData(['heading' => 'Vytížení podle webů', 'description' => 'Součet všech procesů webu (PHP-FPM, aplikace, workery, úlohy). CPU v % jednoho jádra; místo na disku se přepočítává po 15 minutách.',
-                    'columns' => ['domain' => 'Web', 'cpu_label' => 'CPU', 'rss_label' => 'Paměť', 'processes' => 'Procesů', 'disk_label' => 'Na disku'],
-                    'rows' => $this->siteRows($m), 'link' => 'url', 'empty' => 'Žádné weby.']),
+                ->viewData(['heading' => __('Vytížení podle webů'), 'description' => __('Součet všech procesů webu (PHP-FPM, aplikace, workery, úlohy). CPU v % jednoho jádra; místo na disku se přepočítává po 15 minutách.'),
+                    'columns' => ['domain' => __('Web'), 'cpu_label' => 'CPU', 'rss_label' => __('Paměť'), 'processes' => __('Procesů'), 'disk_label' => __('Na disku')],
+                    'rows' => $this->siteRows($m), 'link' => 'url', 'empty' => __('Žádné weby.')]),
             CustomWidget::make()->key('filesystems')
                 ->view('livewire.monitoring.table')
-                ->viewData(['heading' => 'Disky', 'description' => 'Inody = počet souborů; když dojdou, nejde zapisovat ani při volném místě.', 'columns' => ['mount' => 'Oddíl', 'used_pct' => 'Obsazeno', 'free' => 'Volno', 'total' => 'Celkem', 'inodes' => 'Inody'],
+                ->viewData(['heading' => __('Disky'), 'description' => __('Inody = počet souborů; když dojdou, nejde zapisovat ani při volném místě.'), 'columns' => ['mount' => __('Oddíl'), 'used_pct' => __('Obsazeno'), 'free' => __('Volno'), 'total' => __('Celkem'), 'inodes' => __('Inody')],
                     'rows' => collect($m['filesystems'] ?? [])->map(fn ($f) => [
                         'mount' => $f['mount'].' ('.$f['type'].')',
                         'used_pct' => $f['total'] > 0 ? round(100 * $f['used'] / $f['total']).' %' : '—',
                         'free' => Number::fileSize($f['free'], 1), 'total' => Number::fileSize($f['total'], 1),
                         'inodes' => $f['inodes_total'] > 0 ? round(100 * (1 - $f['inodes_free'] / $f['inodes_total'])).' %' : '—',
-                    ])->all(), 'empty' => 'Žádné oddíly.']),
+                    ])->all(), 'empty' => __('Žádné oddíly.')]),
             CustomWidget::make()->key('processes')->pollingInterval('15s')
                 ->view('livewire.monitoring.table')
-                ->viewData(['heading' => 'Nejnáročnější procesy', 'description' => 'Podle CPU a paměti, měřeno teď.', 'columns' => ['name' => 'Proces', 'user' => 'Uživatel', 'cpu' => 'CPU', 'rss' => 'Paměť'],
+                ->viewData(['heading' => __('Nejnáročnější procesy'), 'description' => __('Podle CPU a paměti, měřeno teď.'), 'columns' => ['name' => 'Proces', 'user' => __('Uživatel'), 'cpu' => 'CPU', 'rss' => __('Paměť')],
                     'rows' => collect($m['top'] ?? [])->map(fn ($p) => [
                         'name' => $p['name'], 'hint' => mb_strimwidth((string) $p['cmd'], 0, 80, '…'), 'user' => $p['user'],
                         'cpu' => Number::format($p['cpu'], 1).' %', 'rss' => Number::fileSize($p['rss'], 1),
-                    ])->all(), 'empty' => 'Žádné procesy.']),
+                    ])->all(), 'empty' => __('Žádné procesy.')]),
         ];
     }
 
@@ -109,7 +109,7 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
     private function liveStats(?array $m): array
     {
         if ($m === null) {
-            return [Stat::make('Server', 'agent nedostupný')->color('danger')];
+            return [Stat::make('Server', __('agent nedostupný'))->color('danger')];
         }
         $cpus = max(1, (int) ($m['cpus'] ?? 1));
         $mem = $m['memory'] ?? [];
@@ -125,17 +125,17 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
         return [
             Stat::make('CPU', Number::format($m['cpu']['percent'] ?? 0, 1).' %')->icon('outline:cpu-chip')
                 ->description("{$cpus} jader · iowait ".Number::format($m['cpu']['iowait'] ?? 0, 1).' %')->color($level((float) ($m['cpu']['percent'] ?? 0), 70, 90)),
-            Stat::make('Paměť', Number::format($memPct, 0).' %')->icon('outline:circle-stack')
+            Stat::make(__('Paměť'), Number::format($memPct, 0).' %')->icon('outline:circle-stack')
                 ->description(Number::fileSize($mem['used'] ?? 0, 1).' z '.Number::fileSize($mem['total'] ?? 0, 1).' · cache '.Number::fileSize($mem['cache'] ?? 0, 1))->color($level($memPct, 80, 92)),
-            Stat::make('Zátěž', Number::format($load[0], 2))->icon('outline:chart-bar')
-                ->description('5 min '.Number::format($load[1], 2).' · 15 min '.Number::format($load[2], 2).' · '.($m['processes'] ?? 0).' procesů')->color($level($load[0] / $cpus, 0.7, 1.0)),
+            Stat::make(__('Zátěž'), Number::format($load[0], 2))->icon('outline:chart-bar')
+                ->description('5 min '.Number::format($load[1], 2).' · 15 min '.Number::format($load[2], 2).' · '.($m['processes'] ?? 0).__(' procesů'))->color($level($load[0] / $cpus, 0.7, 1.0)),
             Stat::make('Disk', Number::format($disk, 0).' %')->icon('outline:server')
                 ->description($fullest ? $fullest['mount'].' · volno '.Number::fileSize($fullest['free'], 1) : '—')->color($level($disk, 80, 90)),
-            Stat::make('Swap', ($mem['swap_total'] ?? 0) > 0 ? Number::format($swapPct, 0).' %' : 'není')->icon('outline:arrows-right-left')
-                ->description(($mem['swap_total'] ?? 0) > 0 ? Number::fileSize($mem['swap_used'], 1).' z '.Number::fileSize($mem['swap_total'], 1) : 'server nemá swap')->color($level($swapPct, 30, 70)),
-            Stat::make('Síť', '↓ '.$rate($m['net']['rx_bps'] ?? 0))->icon('outline:arrows-up-down')->description('↑ '.$rate($m['net']['tx_bps'] ?? 0))->color('gray'),
-            Stat::make('Disk I/O', 'čtení '.$rate($m['io']['read_bps'] ?? 0))->icon('outline:arrow-path')->description('zápis '.$rate($m['io']['write_bps'] ?? 0))->color('gray'),
-            Stat::make('Běží', intdiv($up, 86400).' d '.intdiv($up % 86400, 3600).' h')->icon('outline:clock')->description('od posledního restartu serveru')->color('gray'),
+            Stat::make('Swap', ($mem['swap_total'] ?? 0) > 0 ? Number::format($swapPct, 0).' %' : __('není'))->icon('outline:arrows-right-left')
+                ->description(($mem['swap_total'] ?? 0) > 0 ? Number::fileSize($mem['swap_used'], 1).' z '.Number::fileSize($mem['swap_total'], 1) : __('server nemá swap'))->color($level($swapPct, 30, 70)),
+            Stat::make(__('Síť'), '↓ '.$rate($m['net']['rx_bps'] ?? 0))->icon('outline:arrows-up-down')->description('↑ '.$rate($m['net']['tx_bps'] ?? 0))->color('gray'),
+            Stat::make('Disk I/O', __('čtení ').$rate($m['io']['read_bps'] ?? 0))->icon('outline:arrow-path')->description(__('zápis ').$rate($m['io']['write_bps'] ?? 0))->color('gray'),
+            Stat::make(__('Běží'), intdiv($up, 86400).' d '.intdiv($up % 86400, 3600).' h')->icon('outline:clock')->description(__('od posledního restartu serveru'))->color('gray'),
         ];
     }
 
@@ -166,6 +166,6 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Vytížení')->icon('outline:chart-bar')->group('server')->sort(10)->visible(fn (): bool => Gate::allows('admin'));
+        return NavigationItem::make(__('Vytížení'))->icon('outline:chart-bar')->group('server')->sort(10)->visible(fn (): bool => Gate::allows('admin'));
     }
 }

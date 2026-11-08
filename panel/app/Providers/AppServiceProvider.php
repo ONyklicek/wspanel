@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\SetLocale;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Support\Features;
@@ -12,11 +13,13 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
 use NyonCode\WireCore\Core\Plugin\PluginManager;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroup;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroups;
 use NyonCode\WireCore\Foundation\Enums\Hook;
+use NyonCode\WireCore\Foundation\View\PageChrome;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -76,14 +79,18 @@ class AppServiceProvider extends ServiceProvider
             return $payload;
         }, for: 'users');
 
+        // Language switch in the user menu; component round trips keep the language.
+        $this->app->make(PageChrome::class)->add('partials.locale-menu', PageChrome::USER_MENU, sort: 90);
+        Livewire::addPersistentMiddleware([SetLocale::class]);
+
         // Menu sections. Entries name a group by key; the heading and order live here.
         app(NavigationGroups::class)->registerMany([
-            NavigationGroup::make('hosting')->label('Hosting')->icon('outline:globe-alt')->sort(10),
-            NavigationGroup::make('network')->label('Síť a pošta')->icon('outline:signal')->sort(20),
-            NavigationGroup::make('server')->label('Server')->icon('outline:server-stack')->sort(30)
+            NavigationGroup::make('hosting')->label(fn (): string => __('Hosting'))->icon('outline:globe-alt')->sort(10),
+            NavigationGroup::make('network')->label(fn (): string => __('Síť a pošta'))->icon('outline:signal')->sort(20),
+            NavigationGroup::make('server')->label(fn (): string => __('Server'))->icon('outline:server-stack')->sort(30)
                 ->visible(fn (): bool => Gate::allows('admin')),
-            NavigationGroup::make('account')->label('Účet')->icon('outline:user-circle')->sort(80),
-            NavigationGroup::make('help')->label('Nápověda')->icon('outline:question-mark-circle')->sort(90),
+            NavigationGroup::make('account')->label(fn (): string => __('Účet'))->icon('outline:user-circle')->sort(80),
+            NavigationGroup::make('help')->label(fn (): string => __('Nápověda'))->icon('outline:question-mark-circle')->sort(90),
         ]);
         RateLimiter::for('webhooks', fn (Request $request) => Limit::perMinute(30)->by(($request->route('hook') ?? '').'|'.$request->ip()));
         RateLimiter::for('api-v1', fn (Request $request) => Limit::perMinute(120)->by(hash('sha256', (string) $request->bearerToken()).'|'.$request->ip()));

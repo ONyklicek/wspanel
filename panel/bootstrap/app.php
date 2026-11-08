@@ -7,6 +7,7 @@ use App\Http\Controllers\XhguiAuthController;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureAccountActive;
 use App\Http\Middleware\EnsureTwoFactor;
+use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -55,6 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // A suspended client is signed out on its next request (Livewire's too).
+        $middleware->appendToGroup('web', SetLocale::class);
         $middleware->appendToGroup('web', EnsureAccountActive::class);
         // Two-factor sign-in, when the administrator requires it.
         $middleware->appendToGroup('web', EnsureTwoFactor::class);

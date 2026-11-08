@@ -77,6 +77,6 @@ class XhguiAuthController extends Controller
 
     private function deny(): Response
     {
-        return response('<!doctype html><meta charset="utf-8"><title>XHGui</title><p style="font-family:system-ui;margin:3rem">Profily otevřete z panelu: detail webu → Profilování → Otevřít XHGui.</p>', 403, ['Content-Type' => 'text/html; charset=utf-8']);
+        return response(__('<!doctype html><meta charset="utf-8"><title>XHGui</title><p style="font-family:system-ui;margin:3rem">Profily otevřete z panelu: detail webu → Profilování → Otevřít XHGui.</p>'), 403, ['Content-Type' => 'text/html; charset=utf-8']);
     }
 }

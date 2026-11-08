@@ -26,6 +26,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
+use App\Support\Lang;
 use App\Support\Limits;
 use App\Support\Toast;
 use App\Support\WebRules\RulesConverter;
@@ -78,7 +79,7 @@ final class SiteActions
     public static function open(): Action
     {
         return Action::make('open')
-            ->label('Otevřít web')
+            ->label(__('Otevřít web'))
             ->icon('outline:arrow-top-right-on-square')
             ->color('gray')
             ->url(fn (Site $record) => $record->url(), true);
@@ -87,7 +88,7 @@ final class SiteActions
     public static function deploy(): Action
     {
         return Action::make('deploy')
-            ->label('Deploy')
+            ->label(__('Deploy'))
             ->icon('outline:rocket-launch')
             ->color('primary')
             ->visible(fn (Site $record) => $record->isOperational() && $record->enabled)
@@ -97,81 +98,81 @@ final class SiteActions
     public static function restart(): Action
     {
         return Action::make('restart')
-            ->label('Restartovat')
+            ->label(__('Restartovat'))
             ->icon('outline:arrow-path')
             ->color('gray')
             ->visible(fn (Site $record) => $record->isOperational() && $record->enabled)
             ->modalHeading(fn (Site $record) => "Restartovat {$record->domain}?")
             ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Classic
-                ? 'PHP-FPM se plynule znovu načte (rozpracované požadavky doběhnou) a vyprázdní se OPcache. Bez výpadku.'
-                : 'Proces aplikace se zastaví a znovu spustí. Web bude pár sekund nedostupný.')
-            ->form([Toggle::make('workers')->label('Restartovat i workery (fronty, Horizon, Reverb…)')->default(true)])
-            ->modalSubmitActionLabel('Restartovat')
-            ->action(fn (Site $record, array $data) => self::attempt('Restart selhal', function () use ($record, $data) {
+                ? __('PHP-FPM se plynule znovu načte (rozpracované požadavky doběhnou) a vyprázdní se OPcache. Bez výpadku.')
+                : __('Proces aplikace se zastaví a znovu spustí. Web bude pár sekund nedostupný.'))
+            ->form([Toggle::make('workers')->label(__('Restartovat i workery (fronty, Horizon, Reverb…)'))->default(true)])
+            ->modalSubmitActionLabel(__('Restartovat'))
+            ->action(fn (Site $record, array $data) => self::attempt(__('Restart selhal'), function () use ($record, $data) {
                 $done = app(ControlSite::class)->restart($record, (bool) ($data['workers'] ?? false));
-                Toast::success("{$record->domain} restartován", implode(', ', $done) ?: null);
+                Toast::success(__(':domain restartován', ['domain' => $record->domain]), implode(', ', $done) ?: null);
             }));
     }
 
     public static function disable(): Action
     {
         return Action::make('disable')
-            ->label('Vypnout web')
+            ->label(__('Vypnout web'))
             ->icon('outline:power')
             ->color('danger')
             ->visible(fn (Site $record) => $record->isOperational() && $record->enabled)
             ->requiresConfirmation()
             ->modalHeading(fn (Site $record) => "Vypnout {$record->domain}?")
-            ->modalDescription('Návštěvníci uvidí stránku „Web je dočasně vypnutý“ (HTTP 503). Zastaví se proces aplikace, workery i naplánované úlohy a po restartu serveru se samy nespustí. Soubory, databáze ani nastavení se nemění.')
-            ->modalSubmitActionLabel('Vypnout')
-            ->action(fn (Site $record) => self::attempt('Vypnutí selhalo', function () use ($record) {
+            ->modalDescription(__('Návštěvníci uvidí stránku „Web je dočasně vypnutý“ (HTTP 503). Zastaví se proces aplikace, workery i naplánované úlohy a po restartu serveru se samy nespustí. Soubory, databáze ani nastavení se nemění.'))
+            ->modalSubmitActionLabel(__('Vypnout'))
+            ->action(fn (Site $record) => self::attempt(__('Vypnutí selhalo'), function () use ($record) {
                 app(ControlSite::class)->disable($record);
-                Toast::success("{$record->domain} je vypnutý");
+                Toast::success(__(':domain je vypnutý', ['domain' => $record->domain]));
             }));
     }
 
     public static function enable(): Action
     {
         return Action::make('enable')
-            ->label('Zapnout web')
+            ->label(__('Zapnout web'))
             ->icon('outline:play')
             ->color('success')
             ->visible(fn (Site $record) => $record->isOperational() && ! $record->enabled)
-            ->action(fn (Site $record) => self::attempt('Zapnutí selhalo', function () use ($record) {
+            ->action(fn (Site $record) => self::attempt(__('Zapnutí selhalo'), function () use ($record) {
                 app(ControlSite::class)->enable($record);
-                Toast::success("{$record->domain} je zapnutý");
+                Toast::success(__(':domain je zapnutý', ['domain' => $record->domain]));
             }));
     }
 
     public static function switchMode(): Action
     {
         return Action::make('switchMode')
-            ->label('Změnit režim')
+            ->label(__('Změnit režim'))
             ->icon('outline:arrows-right-left')
             ->visible(fn (Site $record) => $record->isOperational())
-            ->modalHeading(fn (Site $record) => "Změnit režim webu {$record->domain}")
-            ->modalDescription('Nový backend se připraví vedle starého a proxy se přepne, až bude hotový. Když něco selže, web běží dál jako dosud.')
+            ->modalHeading(fn (Site $record) => __('Změnit režim webu :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('Nový backend se připraví vedle starého a proxy se přepne, až bude hotový. Když něco selže, web běží dál jako dosud.'))
             ->form(fn (Site $record) => SiteFields::runtime($record->mode->value))
             ->modalWidth('2xl')
-            ->action(fn (Site $record, array $data) => self::attempt('Změna režimu selhala', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Změna režimu selhala'), function () use ($record, $data) {
                 app(ChangeRuntime::class)->switchMode($record, $data);
-                Toast::success("{$record->domain}: režim změněn", $record->runtimeLabel());
+                Toast::success(__(':domain: režim změněn', ['domain' => $record->domain]), $record->runtimeLabel());
             }));
     }
 
     public static function setVersion(): Action
     {
         return Action::make('setVersion')
-            ->label('Změnit verzi')
+            ->label(__('Změnit verzi'))
             ->icon('outline:adjustments-horizontal')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Worker)
-            ->modalHeading(fn (Site $record) => "Změnit verzi pro {$record->domain}")
+            ->modalHeading(fn (Site $record) => __('Změnit verzi pro :domain', ['domain' => $record->domain]))
             ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Classic
-                ? 'Nový FPM pool naběhne vedle starého a web se na něj přepne. Bez výpadku.'
-                : 'Proces se restartuje s novou verzí (krátký výpadek).')
+                ? __('Nový FPM pool naběhne vedle starého a web se na něj přepne. Bez výpadku.')
+                : __('Proces se restartuje s novou verzí (krátký výpadek).'))
             ->form(fn (Site $record) => [
                 Select::make('version')->rules([Options::rule()])
-                    ->label($record->mode === SiteMode::Classic ? 'Verze PHP' : 'Verze Node')
+                    ->label($record->mode === SiteMode::Classic ? __('Verze PHP') : __('Verze Node'))
                     ->options(collect($record->mode === SiteMode::Classic
                         ? Limits::filterPhp(Limits::forCurrentUser(), app(SystemInfo::class)->phpVersionOptions())
                         : app(SystemInfo::class)->nodeVersionOptions())
@@ -179,7 +180,7 @@ final class SiteActions
                         ->all())
                     ->required(),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Změna verze selhala', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Změna verze selhala'), function () use ($record, $data) {
                 app(ChangeRuntime::class)->setVersion($record, $data['version']);
                 Toast::success("{$record->domain}: {$record->runtimeLabel()}");
             }));
@@ -188,36 +189,36 @@ final class SiteActions
     public static function checkHealth(): Action
     {
         return Action::make('checkHealth')
-            ->label('Ověřit odezvu')
+            ->label(__('Ověřit odezvu'))
             ->icon('outline:heart')
             ->visible(fn (Site $record) => $record->isOperational())
             ->action(function (Site $record) {
                 app(CheckSiteHealth::class)->handle($record);
                 $record->health_ok
-                    ? Toast::success("{$record->domain} odpovídá", "HTTP {$record->health_status}")
-                    : Toast::error("{$record->domain} neodpovídá", (string) $record->health_error);
+                    ? Toast::success(__(':domain odpovídá', ['domain' => $record->domain]), "HTTP {$record->health_status}")
+                    : Toast::error(__(':domain neodpovídá', ['domain' => $record->domain]), (string) $record->health_error);
             });
     }
 
     public static function createDatabase(): Action
     {
         return Action::make('createDatabase')
-            ->label('Nová databáze')
+            ->label(__('Nová databáze'))
             ->icon('outline:circle-stack')
             ->visible(fn (Site $record) => $record->isOperational() && app(SystemInfo::class)->dbEngines() !== [])
-            ->modalDescription('Údaje (host, jméno, heslo) zapíše server rovnou do .env webu; heslo se nikde nezobrazuje.')
+            ->modalDescription(__('Údaje (host, jméno, heslo) zapíše server rovnou do .env webu; heslo se nikde nezobrazuje.'))
             ->form(fn (Site $record) => [
-                Select::make('engine')->rules([Options::rule()])->label('Engine')->required()
+                Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->required()
                     ->options(collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()])->all())
                     ->default(app(SystemInfo::class)->dbEngines()[0]->value ?? null),
-                TextInput::make('name')->label('Název (i uživatel)')->required()->maxLength(32)
+                TextInput::make('name')->label(__('Název (i uživatel)'))->required()->maxLength(32)
                     ->default(substr(preg_replace('/[^a-z0-9]+/', '_', $record->domain), 0, 32))
                     ->rules(['max:32', 'regex:/^[a-z][a-z0-9_]{0,31}$/'])
-                    ->validationMessages(['regex' => 'Malá písmena, číslice a podtržítko, začíná písmenem.']),
+                    ->validationMessages(['regex' => __('Malá písmena, číslice a podtržítko, začíná písmenem.')]),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Databázi se nepodařilo vytvořit', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Databázi se nepodařilo vytvořit'), function () use ($record, $data) {
                 $name = app(ManageDatabases::class)->create($data['engine'], $data['name'], $record)['database']->name;
-                Toast::success("Databáze {$name} vytvořena", 'Údaje jsou v .env webu.');
+                Toast::success(__('Databáze :name vytvořena', ['name' => $name]), __('Údaje jsou v .env webu.'));
             }));
     }
 
@@ -228,51 +229,52 @@ final class SiteActions
             ->icon('outline:command-line')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "SSH / SFTP pro {$record->domain}")
-            ->modalDescription(fn (Site $record) => "Přihlášení jako {$record->system_user} (port ".config('panel.ssh_port').'), jen v rámci tohoto webu. Přesměrování portů je zakázané, opakovaně chybná přihlášení zablokuje fail2ban.')
+            ->modalDescription(fn (Site $record) => __('Přihlášení jako :system_user (port ', ['system_user' => $record->system_user]).config('panel.ssh_port').__('), jen v rámci tohoto webu. Přesměrování portů je zakázané, opakovaně chybná přihlášení zablokuje fail2ban.'))
             ->modalWidth('2xl')
             ->fillFormUsing(fn (Site $record) => ['access' => $record->ssh_access->value, 'keys' => (string) $record->ssh_keys, 'password_mode' => 'keep'])
             ->form(fn (Site $record) => [
-                Radio::make('access')->label('Přístup')->options(SshAccess::class)->segmented()->required()->live(),
+                Radio::make('access')->label(__('Přístup'))->options(SshAccess::class)->segmented()->required()->live(),
                 Radio::make('password_mode')->rules([Options::rule()])
-                    ->label('Heslo')
+                    ->label(__('Heslo'))
                     ->options($record->ssh_password
-                        ? ['keep' => 'Ponechat současné', 'generate' => 'Vygenerovat nové', 'set' => 'Zadat vlastní', 'remove' => 'Zrušit (jen klíče)']
-                        : ['keep' => 'Bez hesla (jen klíče)', 'generate' => 'Vygenerovat heslo', 'set' => 'Zadat vlastní'])
-                    ->descriptions(['generate' => 'Ukáže se jednou po uložení, panel hesla neukládá.'])
+                        ? ['keep' => __('Ponechat současné'), 'generate' => __('Vygenerovat nové'), 'set' => __('Zadat vlastní'), 'remove' => __('Zrušit (jen klíče)')]
+                        : ['keep' => __('Bez hesla (jen klíče)'), 'generate' => __('Vygenerovat heslo'), 'set' => __('Zadat vlastní')])
+                    ->descriptions(['generate' => __('Ukáže se jednou po uložení, panel hesla neukládá.')])
                     ->required()
                     ->live()
                     ->hiddenWhen('access', SshAccess::Off->value),
                 TextInput::make('password')
-                    ->label('Nové heslo')
+                    ->label(__('Nové heslo'))
                     ->password()
                     ->revealable()
                     ->minLength(12)
                     ->maxLength(128)
                     ->rules(['min:12', 'max:128', 'regex:/^[\x20-\x39\x3b-\x7e]+$/'])
-                    ->validationMessages(['regex' => 'Jen tisknutelné ASCII znaky bez dvojtečky.'])
-                    ->helperText('Alespoň 12 znaků.')
+                    ->validationMessages(['regex' => __('Jen tisknutelné ASCII znaky bez dvojtečky.')])
+                    ->helperText(__('Alespoň 12 znaků.'))
                     ->visible(fn ($get) => $get('password_mode') === 'set' && $get('access') !== SshAccess::Off->value)
                     ->requiredIf('password_mode', 'set'),
                 Textarea::make('keys')
-                    ->label('Veřejné klíče')
+                    ->label(__('Veřejné klíče'))
                     ->rows(4)
-                    ->placeholder('ssh-ed25519 AAAA… jmeno@pocitac')
-                    ->helperText('Jeden na řádek. Klíč je bezpečnější než heslo.')
+                    ->placeholder(__('ssh-ed25519 AAAA… jmeno@pocitac'))
+                    ->helperText(__('Jeden na řádek. Klíč je bezpečnější než heslo.'))
                     ->hiddenWhen('access', SshAccess::Off->value)
                     ->required(fn ($get) => ! in_array($get('password_mode') ?? 'keep', ['generate', 'set'], true)
                         && ! ($record->ssh_password && ($get('password_mode') ?? 'keep') === 'keep'))
                     ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                         if (trim((string) $value) !== '' && ManageSsh::parseKeys((string) $value) === []) {
-                            $fail('Nenašel jsem žádný platný klíč.');
+                            $fail(__('Nenašel jsem žádný platný klíč.'));
                         }
                     }])
-                    ->validationMessages(['required' => 'Zadejte veřejný klíč, nebo nastavte heslo.']),            ])
+                    ->validationMessages(['required' => __('Zadejte veřejný klíč, nebo nastavte heslo.')]),            ])
             ->action(function (Site $record, array $data) {
-                self::attempt('Nastavení SSH selhalo', function () use ($record, $data) {
+                self::attempt(__('Nastavení SSH selhalo'), function () use ($record, $data) {
                     $generated = app(ManageSsh::class)->handle($record, $data['access'], (string) ($data['keys'] ?? ''), (string) ($data['password_mode'] ?? 'keep'), $data['password'] ?? null);
                     $login = 'sftp -P '.config('panel.ssh_port').' '.$record->sshTarget();
                     $generated !== null
-                        ? Toast::secret("SSH pro {$record->domain}: {$record->ssh_access->getLabel()}", "{$login}\nHeslo (zobrazí se jen teď): {$generated}")
+                        ? Toast::secret("SSH pro {$record->domain}: {$record->ssh_access->getLabel()}", __(':login
+Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $generated]))
                         : Toast::success("SSH pro {$record->domain}: {$record->ssh_access->getLabel()}", $record->ssh_access === SshAccess::Off ? null : $login);
                 });
             });
@@ -281,7 +283,7 @@ final class SiteActions
     public static function tls(): Action
     {
         return Action::make('tls')
-            ->label('HTTPS / certifikát')
+            ->label(__('HTTPS / certifikát'))
             ->icon('outline:lock-closed')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "HTTPS pro {$record->domain}")
@@ -289,93 +291,93 @@ final class SiteActions
             ->fillFormUsing(fn (Site $record) => ['mode' => $record->tls_mode ?? 'auto'])
             ->form([
                 Radio::make('mode')->rules([Options::rule()])
-                    ->label('Odkud je certifikát')
-                    ->options(ManageTls::MODES)
+                    ->label(__('Odkud je certifikát'))
+                    ->options(Lang::values(ManageTls::MODES))
                     ->descriptions([
-                        'auto' => 'Veřejná doména mířící na server. Vydává a obnovuje se sám, zdarma.',
-                        'internal' => 'Domény ve vnitřní síti a testy. Vydá ho server; počítače jednou nainstalují kořenový certifikát (SSL → Kořenový certifikát).',
-                        'custom' => 'Firemní CA nebo zakoupený certifikát. Obnovu hlídáte sami (panel upozorní 14 dní předem).',
+                        'auto' => __('Veřejná doména mířící na server. Vydává a obnovuje se sám, zdarma.'),
+                        'internal' => __('Domény ve vnitřní síti a testy. Vydá ho server; počítače jednou nainstalují kořenový certifikát (SSL → Kořenový certifikát).'),
+                        'custom' => __('Firemní CA nebo zakoupený certifikát. Obnovu hlídáte sami (panel upozorní 14 dní předem).'),
                     ])
                     ->required()
                     ->live(),
                 Textarea::make('cert')
-                    ->label('Certifikát (PEM, včetně mezilehlých)')
+                    ->label(__('Certifikát (PEM, včetně mezilehlých)'))
                     ->placeholder('-----BEGIN CERTIFICATE-----')
                     ->rows(6)
                     ->visibleWhen('mode', 'custom')
                     ->requiredIf('mode', 'custom'),
                 Textarea::make('key')
-                    ->label('Privátní klíč (PEM, bez hesla)')
+                    ->label(__('Privátní klíč (PEM, bez hesla)'))
                     ->placeholder('-----BEGIN PRIVATE KEY-----')
                     ->rows(5)
                     ->visibleWhen('mode', 'custom')
                     ->requiredIf('mode', 'custom'),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Certifikát se nepodařilo nastavit', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Certifikát se nepodařilo nastavit'), function () use ($record, $data) {
                 $out = app(ManageTls::class)->set($record, $data['mode'], $data['cert'] ?? null, $data['key'] ?? null);
                 $cert = $out['certificate'] ?? null;
-                Toast::success("{$record->domain}: ".ManageTls::MODES[$data['mode']], $cert
-                    ? 'Vydal '.$cert['issuer'].', platí do '.Carbon::parse($cert['not_after'])->format('j. n. Y').'.'
-                    : 'Certifikát se vydá během chvíle.');
+                Toast::success("{$record->domain}: ".__(ManageTls::MODES[$data['mode']]), $cert
+                    ? 'Vydal '.$cert['issuer'].__(', platí do ').Carbon::parse($cert['not_after'])->format('j. n. Y').'.'
+                    : __('Certifikát se vydá během chvíle.'));
             }));
     }
 
     public static function addWorker(): Action
     {
         return Action::make('addWorker')
-            ->label('Přidat worker')
+            ->label(__('Přidat worker'))
             ->icon('outline:cpu-chip')
             ->visible(fn (Site $record) => $record->isOperational()
                 && ! $record->framework->isNode()
                 && app(SystemInfo::class)->workerTypes($record->framework->value) !== [])
-            ->modalDescription('Worker běží jako systemd služba pod uživatelem webu se sandboxem a po pádu se sám restartuje. Před prvním deployem se jen zaregistruje.')
+            ->modalDescription(__('Worker běží jako systemd služba pod uživatelem webu se sandboxem a po pádu se sám restartuje. Před prvním deployem se jen zaregistruje.'))
             ->form(fn (Site $record) => [
                 Select::make('worker')->rules([Options::rule()])
-                    ->label('Typ')
+                    ->label(__('Typ'))
                     ->options(collect(app(SystemInfo::class)->workerTypes($record->framework->value))
                         ->mapWithKeys(fn (string $t) => [$t => $t === 'scheduler'
-                            ? ($record->framework->value === 'laravel' ? 'Plánovač (artisan schedule:work)' : 'Plánovač (messenger:consume scheduler_default)')
-                            : (self::WORKER_LABELS[$t] ?? $t)])
+                            ? ($record->framework->value === 'laravel' ? __('Plánovač (artisan schedule:work)') : __('Plánovač (messenger:consume scheduler_default)'))
+                            : __(self::WORKER_LABELS[$t] ?? $t)])
                         ->all())
                     ->required(),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Worker se nepodařilo přidat', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Worker se nepodařilo přidat'), function () use ($record, $data) {
                 $out = app(ManageWorkers::class)->create($record, $data['worker']);
-                $body = ($out['started'] ?? false) ? 'Běží.' : 'Zaregistrován, spustí se po prvním deployi.';
+                $body = ($out['started'] ?? false) ? __('Běží.') : __('Zaregistrován, spustí se po prvním deployi.');
                 $body .= match ($data['worker']) {
-                    'reverb' => ' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).',
-                    'horizon' => ' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).',
-                    'pulsework' => ' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).',
+                    'reverb' => __(' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).'),
+                    'horizon' => __(' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).'),
+                    'pulsework' => __(' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).'),
                     default => '',
                 };
-                Toast::success('Worker přidán', $body);
+                Toast::success(__('Worker přidán'), $body);
             }));
     }
 
     public static function delete(): Action
     {
         return Action::make('delete')
-            ->label('Smazat web')
+            ->label(__('Smazat web'))
             ->icon('outline:trash')
             ->color('danger')
             ->modalHeading(fn (Site $record) => "Smazat web {$record->domain}?")
-            ->modalDescription('Odebere procesy, konfiguraci proxy a systémového uživatele. Soubory se přesunou do koše na serveru (/srv/sites/.trash), databáze zůstanou.')
+            ->modalDescription(__('Odebere procesy, konfiguraci proxy a systémového uživatele. Soubory se přesunou do koše na serveru (/srv/sites/.trash), databáze zůstanou.'))
             ->modalIcon('outline:trash', 'danger')
             ->form(fn (Site $record) => [
                 TextInput::make('confirm')
-                    ->label('Pro potvrzení napište doménu')
+                    ->label(__('Pro potvrzení napište doménu'))
                     ->placeholder($record->domain)
                     ->required()
                     ->rules(['in:'.$record->domain])
-                    ->validationMessages(['in' => 'Doména nesouhlasí.']),
+                    ->validationMessages(['in' => __('Doména nesouhlasí.')]),
             ])
-            ->modalSubmitActionLabel('Smazat web')
+            ->modalSubmitActionLabel(__('Smazat web'))
             ->action(function (Site $record) {
                 try {
                     app(DeleteSite::class)->handle($record);
-                    Toast::success("Web {$record->domain} smazán");
+                    Toast::success(__('Web :domain smazán', ['domain' => $record->domain]));
                 } catch (AgentException $e) {
-                    Toast::error('Smazání selhalo', $e->getMessage());
+                    Toast::error(__('Smazání selhalo'), $e->getMessage());
                 }
             })
             ->successRedirect(fn () => SiteResource::url('index'));
@@ -391,23 +393,23 @@ final class SiteActions
         $f = ManagePhpSettings::FIELDS;
         // Form keys cannot hold a dot (it would nest the state): date.timezone -> date__timezone.
         $k = fn (string $key) => str_replace('.', '__', $key);
-        $size = fn (string $key) => TextInput::make($k($key))->label($f[$key][0])->placeholder('výchozí '.$f[$key][1])
+        $size = fn (string $key) => TextInput::make($k($key))->label(__($f[$key][0]))->placeholder(__('výchozí ').__($f[$key][1]))
             ->rules(['nullable', 'regex:/^(-1|[0-9]{1,6}[KMGkmg]?)$/'])
-            ->validationMessages(['regex' => 'Velikost jako 256M nebo 1G.']);
-        $int = fn (string $key, int $min, int $max) => TextInput::make($k($key))->label($f[$key][0])->placeholder('výchozí '.$f[$key][1])
+            ->validationMessages(['regex' => __('Velikost jako 256M nebo 1G.')]);
+        $int = fn (string $key, int $min, int $max) => TextInput::make($k($key))->label(__($f[$key][0]))->placeholder(__('výchozí ').__($f[$key][1]))
             ->integer()->rules(['nullable', 'integer', "between:{$min},{$max}"]);
-        $choice = fn (string $key, array $options) => Select::make($k($key))->label($f[$key][0])->options($options)
-            ->placeholder('výchozí ('.($options[$f[$key][1]] ?? $f[$key][1]).')')->rules([Options::rule()]);
-        $onOff = ['on' => 'zapnuto', 'off' => 'vypnuto'];
+        $choice = fn (string $key, array $options) => Select::make($k($key))->label(__($f[$key][0]))->options($options)
+            ->placeholder(__('výchozí (').($options[$f[$key][1]] ?? $f[$key][1]).')')->rules([Options::rule()]);
+        $onOff = ['on' => __('zapnuto'), 'off' => __('vypnuto')];
 
         return Action::make('phpSettings')
-            ->label('PHP nastavení')
+            ->label(__('PHP nastavení'))
             ->icon('outline:adjustments-horizontal')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Node)
-            ->modalHeading(fn (Site $record) => "PHP nastavení: {$record->domain}")
+            ->modalHeading(fn (Site $record) => __('PHP nastavení: :domain', ['domain' => $record->domain]))
             ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Worker
-                ? 'Hodnoty php.ini pro FrankenPHP tohoto webu. Po uložení se aplikace restartuje.'
-                : 'Hodnoty php.ini pro PHP-FPM pool tohoto webu (PHP '.$record->php_version.'). Po uložení se PHP plynule znovu načte. Prázdné pole = výchozí hodnota.')
+                ? __('Hodnoty php.ini pro FrankenPHP tohoto webu. Po uložení se aplikace restartuje.')
+                : __('Hodnoty php.ini pro PHP-FPM pool tohoto webu (PHP :version). Po uložení se PHP plynule znovu načte. Prázdné pole = výchozí hodnota.', ['version' => $record->php_version]))
             ->modalWidth('3xl')
             ->fillFormUsing(fn (Site $record) => collect($record->php_settings ?? [])->mapWithKeys(fn ($v, $key) => [str_replace('.', '__', $key) => $v])->all())
             ->form(fn (Site $record) => [
@@ -421,19 +423,19 @@ final class SiteActions
                     $int('session.gc_maxlifetime', 60, 2592000),
                     Select::make('date__timezone')->label($f['date.timezone'][0])->searchable()
                         ->options(array_combine(timezone_identifiers_list(), timezone_identifiers_list()))
-                        ->placeholder('výchozí ('.config('app.timezone', 'UTC').')')->rules([Options::rule()]),
-                    $choice('display_errors', $onOff)->helperText('Na produkci nechte vypnuté: chyby jsou v logu webu.'),
-                    $choice('error_reporting', ['production' => 'produkční (bez deprecated)', 'all' => 'vše (E_ALL)', 'errors' => 'jen fatální chyby']),
+                        ->placeholder(__('výchozí (').config('app.timezone', 'UTC').')')->rules([Options::rule()]),
+                    $choice('display_errors', $onOff)->helperText(__('Na produkci nechte vypnuté: chyby jsou v logu webu.')),
+                    $choice('error_reporting', ['production' => __('produkční (bez deprecated)'), 'all' => __('vše (E_ALL)'), 'errors' => __('jen fatální chyby')]),
                     $choice('allow_url_fopen', $onOff),
                     $choice('short_open_tag', $onOff),
-                    $record->mode === SiteMode::Worker ? $int('worker_threads', 1, 64)->helperText('Víc workerů = víc souběžných požadavků i víc paměti.') : null,
-                    $record->mode === SiteMode::Worker ? $int('max_requests', 0, 100000)->helperText('Chrání před únikem paměti; 0 = nikdy.') : null,
+                    $record->mode === SiteMode::Worker ? $int('worker_threads', 1, 64)->helperText(__('Víc workerů = víc souběžných požadavků i víc paměti.')) : null,
+                    $record->mode === SiteMode::Worker ? $int('max_requests', 0, 100000)->helperText(__('Chrání před únikem paměti; 0 = nikdy.')) : null,
                 ]))),
             ])
-            ->modalSubmitActionLabel('Uložit')
-            ->action(fn (Site $record, array $data) => self::attempt('PHP nastavení se nepodařilo uložit', function () use ($record, $data) {
+            ->modalSubmitActionLabel(__('Uložit'))
+            ->action(fn (Site $record, array $data) => self::attempt(__('PHP nastavení se nepodařilo uložit'), function () use ($record, $data) {
                 $applied = app(ManagePhpSettings::class)->set($record, collect($data)->mapWithKeys(fn ($v, $key) => [str_replace('__', '.', $key) => $v])->all());
-                Toast::success('PHP nastavení uloženo', $applied === [] ? 'Všechny hodnoty jsou výchozí.' : count($applied).' vlastních hodnot.');
+                Toast::success(__('PHP nastavení uloženo'), $applied === [] ? __('Všechny hodnoty jsou výchozí.') : count($applied).__(' vlastních hodnot.'));
             }));
     }
 
@@ -448,75 +450,75 @@ final class SiteActions
         };
 
         return Action::make('edge')
-            ->label('Domény a přístup')
+            ->label(__('Domény a přístup'))
             ->icon('outline:globe-europe-africa')
             ->visible(fn (Site $record) => $record->isOperational())
-            ->modalHeading(fn (Site $record) => "Domény a přístup: {$record->domain}")
-            ->modalDescription('Zpracuje proxy před aplikací: další domény (každá dostane certifikát), přesměrování, ochranu heslem nebo IP adresou a hlavičky odpovědí.')
+            ->modalHeading(fn (Site $record) => __('Domény a přístup: :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('Zpracuje proxy před aplikací: další domény (každá dostane certifikát), přesměrování, ochranu heslem nebo IP adresou a hlavičky odpovědí.'))
             ->modalWidth('4xl')
             ->fillFormUsing(fn (Site $record) => ManageEdge::formData($record))
             ->form(fn (Site $record) => [
                 Tabs::make()->schema([
-                    Tab::make('domains')->label('Domény')->icon('outline:globe-alt')->schema([
-                        Tags::make('aliases')->label('Další domény webu')
-                            ->helperText('Web odpovídá i na nich (stejný obsah). Musí mířit na tento server.')
+                    Tab::make('domains')->label(__('Domény'))->icon('outline:globe-alt')->schema([
+                        Tags::make('aliases')->label(__('Další domény webu'))
+                            ->helperText(__('Web odpovídá i na nich (stejný obsah). Musí mířit na tento server.'))
                             ->rules([$domainRule]),
-                        Tags::make('redirect_hosts')->label('Domény přesměrované na '.$record->domain)
-                            ->helperText('Např. www.'.$record->domain.' nebo stará doména. Přesměrují trvale (308) i s cestou.')
+                        Tags::make('redirect_hosts')->label(__('Domény přesměrované na ').$record->domain)
+                            ->helperText(__('Např. www.').$record->domain.__(' nebo stará doména. Přesměrují trvale (308) i s cestou.'))
                             ->suggestions(str_starts_with($record->domain, 'www.') ? [substr($record->domain, 4)] : ['www.'.$record->domain])
                             ->rules([$domainRule]),
                     ]),
-                    Tab::make('redirects')->label('Přesměrování')->icon('outline:arrow-uturn-right')->schema([
-                        Repeater::make('redirects')->label('Pravidla přesměrování')->table()->addButtonLabel('Přidat přesměrování')->schema([
-                            TextInput::make('from')->label('Z cesty')->placeholder('/stara-stranka nebo /blog/*')->required()
+                    Tab::make('redirects')->label(__('Přesměrování'))->icon('outline:arrow-uturn-right')->schema([
+                        Repeater::make('redirects')->label(__('Pravidla přesměrování'))->table()->addButtonLabel(__('Přidat přesměrování'))->schema([
+                            TextInput::make('from')->label(__('Z cesty'))->placeholder(__('/stara-stranka nebo /blog/*'))->required()
                                 ->rules(['regex:~^/[A-Za-z0-9._\~!$&\'()+,;=:@%/-]{0,200}(/\*)?$~'])
-                                ->validationMessages(['regex' => 'Cesta začíná lomítkem; /blog/* přesměruje celou sekci.']),
-                            TextInput::make('to')->label('Na')->placeholder('/nova-stranka nebo https://…')->required()
+                                ->validationMessages(['regex' => __('Cesta začíná lomítkem; /blog/* přesměruje celou sekci.')]),
+                            TextInput::make('to')->label(__('Na'))->placeholder(__('/nova-stranka nebo https://…'))->required()
                                 ->rules(['regex:~^(/[^\s"{}\\\\]{0,300}|https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[^\s"{}\\\\]{0,300})?)$~'])
                                 ->validationMessages(['regex' => 'Cesta na tomto webu nebo adresa https://…']),
-                            Select::make('code')->label('Typ')->options([301 => '301 trvalé', 302 => '302 dočasné', 308 => '308 trvalé (zachová metodu)', 307 => '307 dočasné (zachová metodu)'])
+                            Select::make('code')->label(__('Typ'))->options([301 => __('301 trvalé'), 302 => __('302 dočasné'), 308 => __('308 trvalé (zachová metodu)'), 307 => __('307 dočasné (zachová metodu)')])
                                 ->default(301)->required()->rules([Options::rule()]),
                         ]),
                     ]),
-                    Tab::make('protection')->label('Ochrana')->icon('outline:lock-closed')->schema([
-                        Radio::make('auth_mode')->label('Heslo')->options(['off' => 'Bez hesla', 'site' => 'Celý web', 'path' => 'Jen část webu'])
+                    Tab::make('protection')->label(__('Ochrana'))->icon('outline:lock-closed')->schema([
+                        Radio::make('auth_mode')->label(__('Heslo'))->options(['off' => __('Bez hesla'), 'site' => __('Celý web'), 'path' => __('Jen část webu')])
                             ->segmented()->default('off')->live()->required()->rules([Options::rule()]),
                         Grid::make()->columns(['default' => 1, 'md' => 3])->schema([
-                            TextInput::make('auth_path')->label('Cesta')->placeholder('/admin')->visibleWhen('auth_mode', 'path')->requiredIf('auth_mode', 'path')
+                            TextInput::make('auth_path')->label(__('Cesta'))->placeholder('/admin')->visibleWhen('auth_mode', 'path')->requiredIf('auth_mode', 'path')
                                 ->rules(['nullable', 'regex:~^/[A-Za-z0-9._\-/]{0,200}$~']),
-                            TextInput::make('auth_user')->label('Uživatel')->hiddenWhen('auth_mode', 'off')->requiredIf('auth_mode', ['site', 'path'])
+                            TextInput::make('auth_user')->label(__('Uživatel'))->hiddenWhen('auth_mode', 'off')->requiredIf('auth_mode', ['site', 'path'])
                                 ->rules(['nullable', 'regex:/^[A-Za-z0-9._-]{1,32}$/']),
-                            TextInput::make('auth_password')->label('Heslo')->password()->revealable()->hiddenWhen('auth_mode', 'off')
+                            TextInput::make('auth_password')->label(__('Heslo'))->password()->revealable()->hiddenWhen('auth_mode', 'off')
                                 ->rules(['nullable', 'min:8', 'max:128'])
-                                ->helperText(fn () => ($record->edge_settings['auth_user'] ?? null) ? 'Prázdné = ponechat současné.' : null),
+                                ->helperText(fn () => ($record->edge_settings['auth_user'] ?? null) ? __('Prázdné = ponechat současné.') : null),
                         ]),
-                        Textarea::make('allow_ips')->label('Povolené IP adresy')->rows(3)->placeholder("203.0.113.7\n10.8.0.0/24")
-                            ->helperText('Prázdné = kdokoli. Ostatní dostanou 403. Jedna adresa nebo síť na řádek.')
+                        Textarea::make('allow_ips')->label(__('Povolené IP adresy'))->rows(3)->placeholder("203.0.113.7\n10.8.0.0/24")
+                            ->helperText(__('Prázdné = kdokoli. Ostatní dostanou 403. Jedna adresa nebo síť na řádek.'))
                             ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                                 foreach (ManageDatabaseServers::parseAllow((string) $value) as $ip) {
                                     if (! ManageDatabaseServers::validAddress($ip)) {
-                                        $fail("{$ip} není IP adresa ani síť.");
+                                        $fail(__(':ip není IP adresa ani síť.', ['ip' => $ip]));
                                     }
                                 }
                             }]),
-                        TextInput::make('allow_path')->label('Platí pro cestu')->placeholder('/ = celý web')->default('/')
+                        TextInput::make('allow_path')->label(__('Platí pro cestu'))->placeholder(__('/ = celý web'))->default('/')
                             ->rules(['nullable', 'regex:~^/[A-Za-z0-9._\-/]{0,200}$~']),
                     ]),
-                    Tab::make('headers')->label('Hlavičky')->icon('outline:shield-check')->schema([
-                        Toggle::make('hsts')->label('HSTS (prohlížeč pak web otevírá jen přes HTTPS, rok)'),
-                        Toggle::make('security_headers')->label('Bezpečnostní hlavičky (nosniff, SAMEORIGIN, Referrer-Policy, Permissions-Policy)'),
-                        Repeater::make('headers')->label('Vlastní hlavičky')->table()->addButtonLabel('Přidat hlavičku')->schema([
-                            TextInput::make('name')->label('Název')->placeholder('X-Robots-Tag')->required()->rules(['regex:/^[A-Za-z0-9-]{1,64}$/']),
-                            TextInput::make('value')->label('Hodnota')->placeholder('noindex')->required()
-                                ->rules(['regex:/^[ !#-\[\]-z|~]{1,500}$/'])->validationMessages(['regex' => 'Bez uvozovek, zpětných lomítek a složených závorek.']),
+                    Tab::make('headers')->label(__('Hlavičky'))->icon('outline:shield-check')->schema([
+                        Toggle::make('hsts')->label(__('HSTS (prohlížeč pak web otevírá jen přes HTTPS, rok)')),
+                        Toggle::make('security_headers')->label(__('Bezpečnostní hlavičky (nosniff, SAMEORIGIN, Referrer-Policy, Permissions-Policy)')),
+                        Repeater::make('headers')->label(__('Vlastní hlavičky'))->table()->addButtonLabel(__('Přidat hlavičku'))->schema([
+                            TextInput::make('name')->label(__('Název'))->placeholder(__('X-Robots-Tag'))->required()->rules(['regex:/^[A-Za-z0-9-]{1,64}$/']),
+                            TextInput::make('value')->label(__('Hodnota'))->placeholder('noindex')->required()
+                                ->rules(['regex:/^[ !#-\[\]-z|~]{1,500}$/'])->validationMessages(['regex' => __('Bez uvozovek, zpětných lomítek a složených závorek.')]),
                         ]),
                     ]),
                 ]),
             ])
-            ->modalSubmitActionLabel('Uložit')
-            ->action(fn (Site $record, array $data) => self::attempt('Nastavení se nepodařilo uložit', function () use ($record, $data) {
+            ->modalSubmitActionLabel(__('Uložit'))
+            ->action(fn (Site $record, array $data) => self::attempt(__('Nastavení se nepodařilo uložit'), function () use ($record, $data) {
                 app(ManageEdge::class)->set($record, $data);
-                Toast::success('Domény a přístup uloženy', 'Nové domény dostanou certifikát během chvíle.');
+                Toast::success(__('Domény a přístup uloženy'), __('Nové domény dostanou certifikát během chvíle.'));
             }));
     }
 
@@ -527,19 +529,19 @@ final class SiteActions
     public static function credentials(): Action
     {
         return Action::make('credentials')
-            ->label('Přístupové údaje')
+            ->label(__('Přístupové údaje'))
             ->icon('outline:key')
             ->color('gray')
             ->visible(fn (Site $record) => $record->isOperational())
-            ->modalHeading(fn (Site $record) => "Přístupové údaje: {$record->domain}")
-            ->modalDescription('Pro aplikace, které se nastavují ručně (WordPress, instalátory). Údaje panel čte z .env webu, nikde jinde je neukládá.')
+            ->modalHeading(fn (Site $record) => __('Přístupové údaje: :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('Pro aplikace, které se nastavují ručně (WordPress, instalátory). Údaje panel čte z .env webu, nikde jinde je neukládá.'))
             ->modalWidth('3xl')
-            ->modalSubmitActionLabel('Zavřít')
+            ->modalSubmitActionLabel(__('Zavřít'))
             ->infolist(function (Site $record) {
                 try {
                     $c = app(ControlSite::class)->credentials($record);
                 } catch (AgentException $e) {
-                    return [TextEntry::make('error')->label('Chyba')->state(fn () => $e->getMessage())];
+                    return [TextEntry::make('error')->label(__('Chyba'))->state(fn () => $e->getMessage())];
                 }
                 $entry = fn (string $key, string $label, ?string $value) => TextEntry::make($key)->label($label)->state(fn () => $value ?? '—')->copyable($value !== null);
                 $db = $c['database'] ?? null;
@@ -547,24 +549,24 @@ final class SiteActions
                     Section::make('sftp')->label('SFTP / SSH')->columns(2)->schema([
                         $entry('sftp_host', 'Server', (string) (config('panel.ssh_host') ?: request()->getHost())),
                         $entry('sftp_port', 'Port', (string) config('panel.ssh_port', 22)),
-                        $entry('sftp_user', 'Uživatel', $record->system_user),
-                        $entry('sftp_auth', 'Přihlášení', $record->ssh_access === SshAccess::Off ? 'vypnuto (Další → SSH / SFTP)' : ($record->ssh_password ? 'klíč nebo heslo' : 'jen klíč')),
+                        $entry('sftp_user', __('Uživatel'), $record->system_user),
+                        $entry('sftp_auth', __('Přihlášení'), $record->ssh_access === SshAccess::Off ? __('vypnuto (Další → SSH / SFTP)') : ($record->ssh_password ? __('klíč nebo heslo') : __('jen klíč'))),
                     ]),
                 ];
-                $sections[] = Section::make('db')->label('Databáze')->columns(2)->schema($db === null
-                    ? [TextEntry::make('db_none')->label('')->state(fn () => 'Web zatím nemá databázi v .env (Další → Nová databáze ji vytvoří a zapíše).')]
+                $sections[] = Section::make('db')->label(__('Databáze'))->columns(2)->schema($db === null
+                    ? [TextEntry::make('db_none')->label('')->state(fn () => __('Web zatím nemá databázi v .env (Další → Nová databáze ji vytvoří a zapíše).'))]
                     : [
-                        $entry('db_host', 'Server (host)', ($db['host'] ?? '127.0.0.1').(($db['port'] ?? '') !== '' ? ':'.$db['port'] : '')),
-                        $entry('db_name', 'Databáze', $db['database'] ?? null),
-                        $entry('db_user', 'Uživatel', $db['username'] ?? null),
-                        $entry('db_password', 'Heslo', $db['password'] ?? null),
+                        $entry('db_host', __('Server (host)'), ($db['host'] ?? '127.0.0.1').(($db['port'] ?? '') !== '' ? ':'.$db['port'] : '')),
+                        $entry('db_name', __('Databáze'), $db['database'] ?? null),
+                        $entry('db_user', __('Uživatel'), $db['username'] ?? null),
+                        $entry('db_password', __('Heslo'), $db['password'] ?? null),
                     ]);
                 if (isset($c['valkey'])) {
-                    $sections[] = Section::make('valkey')->label('Valkey (Redis)')->columns(2)->schema(collect($c['valkey'])
+                    $sections[] = Section::make('valkey')->label(__('Valkey (Redis)'))->columns(2)->schema(collect($c['valkey'])
                         ->map(fn ($v, $k) => $entry('valkey_'.strtolower($k), $k, (string) $v))->values()->all());
                 }
                 if (isset($c['mail'])) {
-                    $sections[] = Section::make('mail')->label('Odchozí pošta (SMTP)')->columns(2)->schema(collect($c['mail'])
+                    $sections[] = Section::make('mail')->label(__('Odchozí pošta (SMTP)'))->columns(2)->schema(collect($c['mail'])
                         ->map(fn ($v, $k) => $entry('mail_'.strtolower($k), $k, (string) $v))->values()->all());
                 }
 
@@ -576,30 +578,30 @@ final class SiteActions
     public static function webRules(): Action
     {
         return Action::make('webRules')
-            ->label('Pravidla webserveru')
+            ->label(__('Pravidla webserveru'))
             ->icon('outline:code-bracket')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "Pravidla webserveru: {$record->domain}")
-            ->modalDescription('Vlastní pravidla v syntaxi Caddy (přesměrování, přepisy URL, hlavičky, cache, komprese, limit velikosti požadavku). Platí v pořadí, jak jsou napsaná, za přístupovými pravidly panelu a před aplikací. Před nasazením je zkontroluje server; chybná se nepoužijí.')
+            ->modalDescription(__('Vlastní pravidla v syntaxi Caddy (přesměrování, přepisy URL, hlavičky, cache, komprese, limit velikosti požadavku). Platí v pořadí, jak jsou napsaná, za přístupovými pravidly panelu a před aplikací. Před nasazením je zkontroluje server; chybná se nepoužijí.'))
             ->modalWidth('4xl')
             ->fillFormUsing(fn (Site $record) => ['rules' => $record->web_rules ?? '', 'import' => ''])
             ->form([
-                CodeEditor::make('rules')->label('Pravidla (Caddy)')->language('caddyfile')->withLineNumbers()->minHeight(260)->maxLength(16384)
+                CodeEditor::make('rules')->label(__('Pravidla (Caddy)'))->language('caddyfile')->withLineNumbers()->minHeight(260)->maxLength(16384)
                     ->rules(['nullable', 'string', 'max:16384'])
-                    ->helperText('Např.: header /assets/* Cache-Control "public, max-age=31536000" · redir /stary /novy 301 · encode gzip zstd'),
-                Textarea::make('import')->label('Převést z nginx nebo .htaccess')->rows(4)
+                    ->helperText(__('Např.: header /assets/* Cache-Control "public, max-age=31536000" · redir /stary /novy 301 · encode gzip zstd')),
+                Textarea::make('import')->label(__('Převést z nginx nebo .htaccess'))->rows(4)
                     ->placeholder("location ~* \\.(css|js)$ { expires 30d; }\nRewriteRule ^blog/(.*)$ /novinky/$1 [R=301,L]")
-                    ->helperText('Vložte pravidla a stiskněte Převést: doplní se dolů do pravidel. Co převést nejde, zůstane jako komentář.')
-                    ->hintAction(Action::make('convert')->label('Převést')->icon('outline:arrows-right-left')
+                    ->helperText(__('Vložte pravidla a stiskněte Převést: doplní se dolů do pravidel. Co převést nejde, zůstane jako komentář.'))
+                    ->hintAction(Action::make('convert')->label(__('Převést'))->icon('outline:arrows-right-left')
                         ->action(function ($get, $set) {
                             $converted = app(RulesConverter::class)->convert((string) $get('import'));
                             $set('rules', trim(trim((string) $get('rules'))."\n".$converted));
                             $set('import', '');
                         })),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Pravidla se nepodařilo uložit', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Pravidla se nepodařilo uložit'), function () use ($record, $data) {
                 app(ManageWebRules::class)->set($record, (string) ($data['rules'] ?? ''));
-                Toast::success(filled($data['rules'] ?? null) ? 'Pravidla platí' : 'Pravidla odebrána');
+                Toast::success(filled($data['rules'] ?? null) ? __('Pravidla platí') : __('Pravidla odebrána'));
             }));
     }
 
@@ -607,11 +609,11 @@ final class SiteActions
     public static function valkey(): Action
     {
         return Action::make('valkey')
-            ->label('Valkey (Redis)')
+            ->label(__('Valkey (Redis)'))
             ->icon('outline:bolt')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "Valkey pro {$record->domain}")
-            ->modalDescription('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).')
+            ->modalDescription(__('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).'))
             ->fillFormUsing(fn (Site $record) => [
                 'enabled' => $record->valkey !== null,
                 'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,
@@ -620,21 +622,21 @@ final class SiteActions
                 'use' => $record->valkey['use'] ?? [],
             ])
             ->form([
-                Toggle::make('enabled')->label('Zapnout Valkey pro tento web')->live(),
-                TextInput::make('maxmemory_mb')->label('Paměť (MB)')->integer()->minValue(8)->maxValue(65536)
+                Toggle::make('enabled')->label(__('Zapnout Valkey pro tento web'))->live(),
+                TextInput::make('maxmemory_mb')->label(__('Paměť (MB)'))->integer()->minValue(8)->maxValue(65536)
                     ->rules(['integer', 'between:8,65536'])->visibleWhen('enabled', true)->requiredIf('enabled', true),
-                Select::make('policy')->label('Když se paměť zaplní')->options(ManageValkey::POLICIES)->rules([Options::rule()])
+                Select::make('policy')->label(__('Když se paměť zaplní'))->options(Lang::values(ManageValkey::POLICIES))->rules([Options::rule()])
                     ->visibleWhen('enabled', true)->requiredIf('enabled', true),
-                Toggle::make('persist')->label('Ukládat data na disk (přežijí restart)')->visibleWhen('enabled', true)
-                    ->helperText('Pro fronty a session ano, pro čistou cache není třeba.'),
-                CheckboxList::make('use')->label('Aplikace v něm má')->visibleWhen('enabled', true)
+                Toggle::make('persist')->label(__('Ukládat data na disk (přežijí restart)'))->visibleWhen('enabled', true)
+                    ->helperText(__('Pro fronty a session ano, pro čistou cache není třeba.')),
+                CheckboxList::make('use')->label(__('Aplikace v něm má'))->visibleWhen('enabled', true)
                     ->options(fn (Site $record) => ManageValkey::uses($record))
                     ->visible(fn (Site $record) => ManageValkey::uses($record) !== [])
-                    ->helperText('Panel nastaví ovladače v .env; nezaškrtnuté vrátí na výchozí (database). Fronty a session nemají být v paměti, která maže klíče: zvolte „nic nemaže“.'),
+                    ->helperText(__('Panel nastaví ovladače v .env; nezaškrtnuté vrátí na výchozí (database). Fronty a session nemají být v paměti, která maže klíče: zvolte „nic nemaže“.')),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Valkey se nepodařilo nastavit', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Valkey se nepodařilo nastavit'), function () use ($record, $data) {
                 app(ManageValkey::class)->set($record, $data);
-                Toast::success($data['enabled'] ? 'Valkey běží' : 'Valkey vypnut', $data['enabled'] ? 'Připojení je v .env webu.' : null);
+                Toast::success($data['enabled'] ? __('Valkey běží') : __('Valkey vypnut'), $data['enabled'] ? __('Připojení je v .env webu.') : null);
             }));
     }
 
@@ -642,17 +644,17 @@ final class SiteActions
     public static function import(): Action
     {
         return Action::make('import')
-            ->label('Importovat web (cPanel, archiv)')
+            ->label(__('Importovat web (cPanel, archiv)'))
             ->icon('outline:arrow-down-on-square')
             ->visible(fn (Site $record) => $record->isOperational() && $record->framework->value === 'php')
-            ->modalDescription('Nahrajte přes SFTP do složky tmp webu zálohu z cPanelu (cpmove-….tar.gz) nebo archiv souborů webu (.tar.gz). Soubory se rozbalí do webu, každý dump databáze do nové databáze webu (MariaDB). WordPress dostane v wp-config.php přístup k nové databázi.')
+            ->modalDescription(__('Nahrajte přes SFTP do složky tmp webu zálohu z cPanelu (cpmove-….tar.gz) nebo archiv souborů webu (.tar.gz). Soubory se rozbalí do webu, každý dump databáze do nové databáze webu (MariaDB). WordPress dostane v wp-config.php přístup k nové databázi.'))
             ->form([
-                TextInput::make('file')->label('Soubor v tmp/')->placeholder('cpmove-jan.tar.gz')->required()
-                    ->rules(['regex:/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(tar\.gz|tgz)$/'])->validationMessages(['regex' => 'Název souboru .tar.gz ve složce tmp webu.']),
+                TextInput::make('file')->label(__('Soubor v tmp/'))->placeholder('cpmove-jan.tar.gz')->required()
+                    ->rules(['regex:/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(tar\.gz|tgz)$/'])->validationMessages(['regex' => __('Název souboru .tar.gz ve složce tmp webu.')]),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Import se nepodařil', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Import se nepodařil'), function () use ($record, $data) {
                 $out = app(ImportSite::class)->import($record, $data['file']);
-                Toast::success('Web importován', ($out['databases'] ?? []) ? 'Databáze: '.implode(', ', $out['databases']).(isset($out['wp_config']) ? '; wp-config.php upraven.' : '') : 'Bez databází.');
+                Toast::success(__('Web importován'), ($out['databases'] ?? []) ? __('Databáze: ').implode(', ', $out['databases']).(isset($out['wp_config']) ? '; wp-config.php upraven.' : '') : __('Bez databází.'));
             }));
     }
 
@@ -660,24 +662,24 @@ final class SiteActions
     public static function staging(): Action
     {
         return Action::make('staging')
-            ->label(fn (Site $record) => $record->staging_of ? 'Nasadit staging na produkci' : 'Vytvořit staging')
+            ->label(fn (Site $record) => $record->staging_of ? __('Nasadit staging na produkci') : __('Vytvořit staging'))
             ->icon('outline:beaker')
             ->visible(fn (Site $record) => $record->isOperational() && ($record->staging_of !== null || ! Site::query()->where('staging_of', $record->id)->exists()))
             ->modalHeading(fn (Site $record) => $record->staging_of ? 'Staging '.$record->domain.' → produkce' : 'Staging pro '.$record->domain)
             ->modalDescription(fn (Site $record) => $record->staging_of
-                ? 'Nejdřív se zazálohuje produkce (soubory i databáze). Soubory se nasadí jako běžný deploy: když nová verze neodpoví, vrátí se předchozí. Databáze produkce se přepíše databází stagingu.'
-                : 'Kopie webu na '.ManageStaging::stagingDomain($record).': aktuální verze, sdílené soubory (bez .env) a kopie databází. Pošta stagingu se vždy zachytává v Mailpitu, vyhledávače ho neindexují. Potřebuje DNS záznam pro tu adresu.')
+                ? __('Nejdřív se zazálohuje produkce (soubory i databáze). Soubory se nasadí jako běžný deploy: když nová verze neodpoví, vrátí se předchozí. Databáze produkce se přepíše databází stagingu.')
+                : 'Kopie webu na '.ManageStaging::stagingDomain($record).__(': aktuální verze, sdílené soubory (bez .env) a kopie databází. Pošta stagingu se vždy zachytává v Mailpitu, vyhledávače ho neindexují. Potřebuje DNS záznam pro tu adresu.'))
             ->form(fn (Site $record) => $record->staging_of ? [
-                Toggle::make('files')->label('Soubory (aktuální verze aplikace)')->default(true),
-                Toggle::make('databases')->label('Databáze (přepíše data produkce)')->default(false),
+                Toggle::make('files')->label(__('Soubory (aktuální verze aplikace)'))->default(true),
+                Toggle::make('databases')->label(__('Databáze (přepíše data produkce)'))->default(false),
             ] : [])
-            ->action(fn (Site $record, array $data) => self::attempt('Staging se nepodařil', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Staging se nepodařil'), function () use ($record, $data) {
                 if ($record->staging_of) {
                     app(ManageStaging::class)->push($record, (bool) ($data['files'] ?? false), (bool) ($data['databases'] ?? false));
-                    Toast::success('Staging je na produkci', 'Záloha produkce z doby před nasazením je v Zálohách.');
+                    Toast::success(__('Staging je na produkci'), __('Záloha produkce z doby před nasazením je v Zálohách.'));
                 } else {
                     $staging = app(ManageStaging::class)->create($record);
-                    Toast::success('Staging běží', $staging->url());
+                    Toast::success(__('Staging běží'), $staging->url());
                 }
             }));
     }
@@ -686,47 +688,47 @@ final class SiteActions
     public static function xhprof(): Action
     {
         return Action::make('xhprof')
-            ->label('Profilování (XHProf)')
+            ->label(__('Profilování (XHProf)'))
             ->icon('outline:chart-bar')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode === SiteMode::Classic && app(ManageXhprof::class)->installed())
-            ->modalHeading(fn (Site $record) => "Profilování {$record->domain}")
-            ->modalDescription('XHProf změří, kolik času a paměti zabraly jednotlivé funkce, a výsledky ukáže XHGui. Profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web. Profilování zpomaluje měřené požadavky, na produkci měřte jen část.')
+            ->modalHeading(fn (Site $record) => __('Profilování :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('XHProf změří, kolik času a paměti zabraly jednotlivé funkce, a výsledky ukáže XHGui. Profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web. Profilování zpomaluje měřené požadavky, na produkci měřte jen část.'))
             ->fillFormUsing(fn (Site $record) => ['enabled' => $record->xhprof !== null, 'ratio' => $record->xhprof['ratio'] ?? 100])
             ->form([
-                Toggle::make('enabled')->label('Profilovat požadavky')->live(),
-                TextInput::make('ratio')->label('Kolik požadavků měřit (%)')->integer()->visibleWhen('enabled', true)->requiredIf('enabled', true)
+                Toggle::make('enabled')->label(__('Profilovat požadavky'))->live(),
+                TextInput::make('ratio')->label(__('Kolik požadavků měřit (%)'))->integer()->visibleWhen('enabled', true)->requiredIf('enabled', true)
                     ->rules(['nullable', 'integer', 'between:1,100']),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt('Profilování se nepodařilo nastavit', function () use ($record, $data) {
+            ->action(fn (Site $record, array $data) => self::attempt(__('Profilování se nepodařilo nastavit'), function () use ($record, $data) {
                 app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null);
-                Toast::success($data['enabled'] ? 'Profilování zapnuto' : 'Profilování vypnuto', $data['enabled'] ? 'Výsledky otevřete v detailu webu (Otevřít XHGui).' : null);
+                Toast::success($data['enabled'] ? __('Profilování zapnuto') : __('Profilování vypnuto'), $data['enabled'] ? __('Výsledky otevřete v detailu webu (Otevřít XHGui).') : null);
             }));
     }
 
     public static function valkeyFlush(): Action
     {
         return Action::make('valkeyFlush')
-            ->label('Vyprázdnit Valkey')
+            ->label(__('Vyprázdnit Valkey'))
             ->icon('outline:trash')
             ->color('danger')
             ->visible(fn (Site $record) => $record->valkey !== null)
             ->requiresConfirmation()
-            ->modalHeading(fn (Site $record) => "Smazat všechny klíče ve Valkey webu {$record->domain}?")
-            ->action(fn (Site $record) => self::attempt('Valkey se nepodařilo vyprázdnit', function () use ($record) {
+            ->modalHeading(fn (Site $record) => __('Smazat všechny klíče ve Valkey webu :domain?', ['domain' => $record->domain]))
+            ->action(fn (Site $record) => self::attempt(__('Valkey se nepodařilo vyprázdnit'), function () use ($record) {
                 app(ManageValkey::class)->flush($record);
-                Toast::success('Valkey vyprázdněn');
+                Toast::success(__('Valkey vyprázdněn'));
             }));
     }
 
     public static function valkeyRestart(): Action
     {
         return Action::make('valkeyRestart')
-            ->label('Restartovat Valkey')
+            ->label(__('Restartovat Valkey'))
             ->icon('outline:arrow-path')
             ->visible(fn (Site $record) => $record->valkey !== null)
-            ->action(fn (Site $record) => self::attempt('Valkey se nepodařilo restartovat', function () use ($record) {
+            ->action(fn (Site $record) => self::attempt(__('Valkey se nepodařilo restartovat'), function () use ($record) {
                 app(ManageValkey::class)->restart($record);
-                Toast::success('Valkey restartován');
+                Toast::success(__('Valkey restartován'));
             }));
     }
 
@@ -734,11 +736,11 @@ final class SiteActions
     public static function assignClient(): Action
     {
         return Action::make('assignClient')
-            ->label('Přiřadit klientovi')
+            ->label(__('Přiřadit klientovi'))
             ->icon('outline:user-group')
             ->visible(fn () => Gate::allows('clients') && Client::query()->exists())
-            ->modalHeading(fn (Site $record) => "Vlastník webu {$record->domain}")
-            ->modalDescription('S webem přejdou i jeho databáze a DNS zóna. Limity balíčku se tu nekontrolují.')
+            ->modalHeading(fn (Site $record) => __('Vlastník webu :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('S webem přejdou i jeho databáze a DNS zóna. Limity balíčku se tu nekontrolují.'))
             ->fillFormUsing(fn (Site $record) => ['client_id' => $record->client_id])
             ->form([SiteFields::client()])
             ->action(function (Site $record, array $data) {
@@ -746,9 +748,9 @@ final class SiteActions
                 $client = filled($data['client_id'] ?? null) ? Client::findOrFail($data['client_id']) : null;
                 try {
                     app(ManageClients::class)->assignSite($record, $client);
-                    Toast::success('Vlastník změněn', $client ? "Web teď patří klientovi {$client->name}." : 'Web teď patří správci.');
+                    Toast::success(__('Vlastník změněn'), $client ? __('Web teď patří klientovi :name.', ['name' => $client->name]) : __('Web teď patří správci.'));
                 } catch (AgentException $e) {
-                    Toast::error('Vlastníka se nepodařilo změnit', $e->getMessage());
+                    Toast::error(__('Vlastníka se nepodařilo změnit'), $e->getMessage());
                 }
             });
     }

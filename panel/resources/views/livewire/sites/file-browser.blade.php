@@ -1,7 +1,7 @@
 <div class="space-y-3">
-    <nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="Cesta">
+    <nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="{{ __('Cesta') }}">
         @if ($path !== '.')
-            <x-wire::button size="sm" color="gray" icon="outline:arrow-up" wire:click="up">Nahoru</x-wire::button>
+            <x-wire::button size="sm" color="gray" icon="outline:arrow-up" wire:click="up">{{ __('Nahoru') }}</x-wire::button>
         @endif
         @foreach ($this->breadcrumbs() as $i => $crumb)
             @if ($i > 0)<span class="text-gray-400">/</span>@endif

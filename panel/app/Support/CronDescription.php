@@ -18,14 +18,14 @@ final class CronDescription
         $at = fn () => sprintf('%d:%02d', (int) $hour, (int) $min);
 
         return match (true) {
-            $f === ['*', '*', '*', '*', '*'] => 'každou minutu',
-            preg_match('/^\*\/(\d+)$/', $min, $m) === 1 && $hour === '*' && $dom === '*' && $mon === '*' && $dow === '*' => "každých {$m[1]} minut",
-            $num($min) && $hour === '*' && $dom === '*' && $mon === '*' && $dow === '*' => sprintf('každou hodinu v :%02d', (int) $min),
-            $num($min) && preg_match('/^\*\/(\d+)$/', $hour, $m) === 1 && $dom === '*' && $mon === '*' && $dow === '*' => sprintf('každých %d hodin v :%02d', (int) $m[1], (int) $min),
-            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $dow === '*' => 'denně v '.$at(),
-            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $dow === '1-5' => 'v pracovní dny v '.$at(),
-            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $num($dow) && (int) $dow <= 7 => self::DAYS[(int) $dow].' v '.$at(),
-            $num($min) && $num($hour) && $num($dom) && $mon === '*' && $dow === '*' => "každý měsíc {$dom}. den v ".$at(),
+            $f === ['*', '*', '*', '*', '*'] => __('každou minutu'),
+            preg_match('/^\*\/(\d+)$/', $min, $m) === 1 && $hour === '*' && $dom === '*' && $mon === '*' && $dow === '*' => __('každých :m minut', ['m' => $m[1]]),
+            $num($min) && $hour === '*' && $dom === '*' && $mon === '*' && $dow === '*' => sprintf(__('každou hodinu v :%02d'), (int) $min),
+            $num($min) && preg_match('/^\*\/(\d+)$/', $hour, $m) === 1 && $dom === '*' && $mon === '*' && $dow === '*' => sprintf(__('každých %d hodin v :%02d'), (int) $m[1], (int) $min),
+            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $dow === '*' => __('denně v ').$at(),
+            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $dow === '1-5' => __('v pracovní dny v ').$at(),
+            $num($min) && $num($hour) && $dom === '*' && $mon === '*' && $num($dow) && (int) $dow <= 7 => __(self::DAYS[(int) $dow]).__(' v ').$at(),
+            $num($min) && $num($hour) && $num($dom) && $mon === '*' && $dow === '*' => __('každý měsíc :dom. den v ', ['dom' => $dom]).$at(),
             default => null,
         };
     }

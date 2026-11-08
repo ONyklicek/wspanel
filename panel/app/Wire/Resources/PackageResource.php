@@ -67,12 +67,12 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function label(): string
     {
-        return 'Balíček';
+        return __('Balíček');
     }
 
     public static function pluralLabel(): string
     {
-        return 'Balíčky';
+        return __('Balíčky');
     }
 
     public static function pages(): array
@@ -82,7 +82,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Balíčky')->icon('outline:cube')->parent(ClientResource::class)->sort(10)
+        return NavigationItem::make(__('Balíčky'))->icon('outline:cube')->parent(ClientResource::class)->sort(10)
             ->visible(fn (): bool => Gate::allows('clients'));
     }
 
@@ -91,26 +91,26 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
     {
         $numeric = [];
         foreach (self::NUMERIC as $column => $label) {
-            $numeric[] = TextInput::make($column)->label($label)->integer()->minValue(0)
-                ->rules(['nullable', 'integer', 'min:0', 'max:10000000'])->placeholder('neomezeno');
+            $numeric[] = TextInput::make($column)->label(__($label))->integer()->minValue(0)
+                ->rules(['nullable', 'integer', 'min:0', 'max:10000000'])->placeholder(__('neomezeno'));
         }
 
         return [
             Grid::make()->columns(2)->schema([
-                TextInput::make('name')->label('Název')->required()->maxLength(64)->rules(['max:64']),
-                TextInput::make('description')->label('Popis')->maxLength(255)->rules(['max:255']),
+                TextInput::make('name')->label(__('Název'))->required()->maxLength(64)->rules(['max:64']),
+                TextInput::make('description')->label(__('Popis'))->maxLength(255)->rules(['max:255']),
             ]),
-            Section::make('limits')->label('Limity (prázdné = neomezeno)')->schema([
+            Section::make('limits')->label(__('Limity (prázdné = neomezeno)'))->schema([
                 Grid::make()->columns(['default' => 1, 'sm' => 2, 'lg' => 3])->schema($numeric),
             ]),
-            Section::make('features')->label('Co smí')->schema([
+            Section::make('features')->label(__('Co smí'))->schema([
                 Select::make('ssh')->label('SSH / SFTP')->options(collect(SshAccess::cases())->mapWithKeys(fn (SshAccess $a) => [$a->value => $a->getLabel()])->all())
                     ->rules([Options::rule()])->default(SshAccess::Shell->value)->required(),
-                CheckboxList::make('allowed_modes')->label('Režimy webu (nic = všechny)')
+                CheckboxList::make('allowed_modes')->label(__('Režimy webu (nic = všechny)'))
                     ->options(collect(SiteMode::cases())->mapWithKeys(fn (SiteMode $m) => [$m->value => $m->getLabel()])->all()),
-                CheckboxList::make('allowed_php')->label('Verze PHP (nic = všechny nainstalované)')
+                CheckboxList::make('allowed_php')->label(__('Verze PHP (nic = všechny nainstalované)'))
                     ->options(fn () => app(SystemInfo::class)->phpVersionOptions()),
-                Toggle::make('offsite')->label('Off-site kopie záloh')->default(true),
+                Toggle::make('offsite')->label(__('Off-site kopie záloh'))->default(true),
             ]),
         ];
     }
@@ -135,17 +135,17 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
             ->stackedOnMobile()
             ->query(Package::query()->withCount('clients'))
             ->columns([
-                TextColumn::make('name')->label('Balíček')->weight('medium')->searchable()->sortable()
+                TextColumn::make('name')->label(__('Balíček'))->weight('medium')->searchable()->sortable()
                     ->description(fn (Package $record) => $record->description),
-                TextColumn::make('max_sites')->label('Weby')->state(fn (Package $record) => $limit($record->max_sites)),
-                TextColumn::make('max_databases')->label('Databáze')->state(fn (Package $record) => $limit($record->max_databases)),
-                TextColumn::make('disk_quota_mb')->label('Disk')->state(fn (Package $record) => $record->disk_quota_mb === null ? '∞' : round($record->disk_quota_mb / 1024, 1).' GB'),
+                TextColumn::make('max_sites')->label(__('Weby'))->state(fn (Package $record) => $limit($record->max_sites)),
+                TextColumn::make('max_databases')->label(__('Databáze'))->state(fn (Package $record) => $limit($record->max_databases)),
+                TextColumn::make('disk_quota_mb')->label(__('Disk'))->state(fn (Package $record) => $record->disk_quota_mb === null ? '∞' : round($record->disk_quota_mb / 1024, 1).' GB'),
                 BadgeColumn::make('ssh')->label('SSH'),
-                TextColumn::make('clients_count')->label('Klientů')->sortable(),
+                TextColumn::make('clients_count')->label(__('Klientů'))->sortable(),
             ])
             ->actions([
-                Action::make('edit')->label('Upravit')->icon('outline:pencil-square')->onlyIcon()->tooltip('Upravit balíček')
-                    ->modalHeading(fn (Package $record) => "Balíček {$record->name}")
+                Action::make('edit')->label(__('Upravit'))->icon('outline:pencil-square')->onlyIcon()->tooltip(__('Upravit balíček'))
+                    ->modalHeading(fn (Package $record) => __('Balíček :name', ['name' => $record->name]))
                     ->modalWidth('4xl')
                     ->fillFormUsing(fn (Package $record) => $record->only(array_merge(['name', 'description', 'offsite', 'allowed_modes', 'allowed_php'], array_keys(self::NUMERIC)))
                         + ['ssh' => $record->ssh?->value, 'allowed_modes' => $record->allowed_modes ?? [], 'allowed_php' => $record->allowed_php ?? []])
@@ -161,18 +161,18 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
                             }
                         }
                         $failed === []
-                            ? Toast::success('Balíček uložen', 'Změna platí hned pro všechny jeho klienty.')
-                            : Toast::warning('Balíček uložen, u některých klientů se server nepodařilo upravit', implode("\n", $failed));
+                            ? Toast::success(__('Balíček uložen'), __('Změna platí hned pro všechny jeho klienty.'))
+                            : Toast::warning(__('Balíček uložen, u některých klientů se server nepodařilo upravit'), implode("\n", $failed));
                     }),
-                Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->tooltip('Smazat balíček')
+                Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->onlyIcon()->tooltip(__('Smazat balíček'))
                     ->visible(fn (Package $record) => $record->clients_count === 0)
                     ->requiresConfirmation()
                     ->action(function (Package $record) {
                         $record->delete();
-                        Toast::success('Balíček smazán');
+                        Toast::success(__('Balíček smazán'));
                     }),
             ])
-            ->emptyState('Zatím žádný balíček', 'Balíček je sada limitů (weby, databáze, disk…), kterou dáte klientům.', 'outline:cube')
+            ->emptyState(__('Zatím žádný balíček'), __('Balíček je sada limitů (weby, databáze, disk…), kterou dáte klientům.'), 'outline:cube')
             ->defaultSort('name');
     }
 }

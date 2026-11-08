@@ -26,7 +26,7 @@ class OpenDatabaseServerToolController
         }
 
         return response()
-            ->view('dbtools.open', ['action' => $access['signon_path'], 'token' => $access['token'], 'tool' => $tool, 'label' => 'všechny databáze '.$engineCase->getLabel()])
+            ->view('dbtools.open', ['action' => $access['signon_path'], 'token' => $access['token'], 'tool' => $tool, 'label' => __('všechny databáze ').$engineCase->getLabel()])
             ->header('Cache-Control', 'no-store')
             ->header('Referrer-Policy', 'no-referrer');
     }

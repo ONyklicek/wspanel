@@ -4,7 +4,8 @@ namespace App\Enums;
 
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum ServiceType: string implements HasLabel {
+enum ServiceType: string implements HasLabel
+{
     case PhpFpm = 'php-fpm';
     case Proxy = 'proxy';
     case Web = 'web';
@@ -18,13 +19,13 @@ enum ServiceType: string implements HasLabel {
     {
         return match ($this) {
             self::PhpFpm => 'PHP-FPM',
-            self::Proxy => 'Proxy (TLS)',
+            self::Proxy => __('Proxy (TLS)'),
             self::Web => 'Web (statika + FastCGI)',
             self::MariaDb => 'MariaDB',
             self::PostgreSql => 'PostgreSQL',
             self::Valkey => 'Valkey',
             self::Worker => 'Worker',
-            self::App => 'Aplikace (worker / Node)',
+            self::App => __('Aplikace (worker / Node)'),
         };
     }
 

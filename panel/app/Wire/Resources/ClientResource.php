@@ -36,12 +36,12 @@ final class ClientResource implements DescribesResource, ProvidesNavigation, Pro
 
     public static function label(): string
     {
-        return 'Klient';
+        return __('Klient');
     }
 
     public static function pluralLabel(): string
     {
-        return 'Klienti';
+        return __('Klienti');
     }
 
     public static function pages(): array
@@ -64,19 +64,19 @@ final class ClientResource implements DescribesResource, ProvidesNavigation, Pro
             ->stackedOnMobile()
             ->query(Client::query()->with('package')->withCount(['sites' => fn ($q) => $q->withoutGlobalScope('client')]))
             ->columns([
-                TextColumn::make('name')->label('Klient')->weight('medium')->searchable()->sortable()
+                TextColumn::make('name')->label(__('Klient'))->weight('medium')->searchable()->sortable()
                     ->description(fn (Client $record) => $record->company ?: $record->email),
-                TextColumn::make('package.name')->label('Balíček')->placeholder('bez balíčku'),
-                TextColumn::make('sites_count')->label('Weby')->sortable()
+                TextColumn::make('package.name')->label(__('Balíček'))->placeholder(__('bez balíčku')),
+                TextColumn::make('sites_count')->label(__('Weby'))->sortable()
                     ->state(fn (Client $record) => $record->sites_count.' / '.ClientActions::show($record->limit('max_sites'), $record->package !== null || array_key_exists('max_sites', $record->overrides ?? []))),
-                BadgeColumn::make('state')->label('Stav')
-                    ->state(fn (Client $record) => $record->isSuspended() ? 'pozastavený' : 'aktivní')
-                    ->colors(['aktivní' => 'success', 'pozastavený' => 'danger']),
-                TextColumn::make('created_at')->label('Od')->date('j. n. Y')->sortable()->toggleable(),
+                BadgeColumn::make('state')->label(__('Stav'))
+                    ->state(fn (Client $record) => $record->isSuspended() ? __('pozastavený') : __('aktivní'))
+                    ->colors([__('aktivní') => 'success', __('pozastavený') => 'danger']),
+                TextColumn::make('created_at')->label(__('Od'))->date('j. n. Y')->sortable()->toggleable(),
             ])
             ->recordUrl(fn (Client $record) => self::url('view', $record))
             ->actions([ActionGroup::make(ClientActions::more())])
-            ->emptyState('Zatím žádný klient', 'Klient vlastní weby, databáze a DNS zóny a přihlašuje se do panelu jen ke svým věcem.', 'outline:user-group')
+            ->emptyState(__('Zatím žádný klient'), __('Klient vlastní weby, databáze a DNS zóny a přihlašuje se do panelu jen ke svým věcem.'), 'outline:user-group')
             ->defaultSort('name');
     }
 }

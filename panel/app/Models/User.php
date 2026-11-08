@@ -16,7 +16,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Passkeys\Contracts\PasskeyUser;
 use Laravel\Passkeys\PasskeyAuthenticatable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'client_id'])]
+#[Fillable(['name', 'email', 'password', 'role', 'client_id', 'locale'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -49,7 +49,7 @@ class User extends Authenticatable implements PasskeyUser
         static::updating(function (User $user): void {
             $actor = auth()->id();
             if ($user->isDirty('password') && $actor !== null && $actor !== $user->id) {
-                throw new AuthorizationException('Heslo jiného uživatele měnit nelze. Ať si ho změní sám, případně přes „Zapomenuté heslo“.');
+                throw new AuthorizationException(__('Heslo jiného uživatele měnit nelze. Ať si ho změní sám, případně přes „Zapomenuté heslo“.'));
             }
         });
     }

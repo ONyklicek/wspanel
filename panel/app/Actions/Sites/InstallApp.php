@@ -46,18 +46,18 @@ class InstallApp
     {
         $app = $data['app'];
         if (! isset(self::APPS[$app])) {
-            throw new AgentException('invalid_params', 'Neznámá aplikace.', 'panel');
+            throw new AgentException('invalid_params', __('Neznámá aplikace.'), 'panel');
         }
         $engines = array_map(fn (DatabaseEngine $e) => $e->value, app(SystemInfo::class)->dbEngines());
         if ($app === 'wordpress' && ! in_array('mariadb', $engines, true)) {
-            throw new AgentException('conflict', 'WordPress potřebuje MariaDB (Hosting → Databáze → Servery).', 'panel');
+            throw new AgentException('conflict', __('WordPress potřebuje MariaDB (Hosting → Databáze → Servery).'), 'panel');
         }
         $site = $this->createSite->handle([
             'domain' => $data['domain'], 'framework' => $app === 'wordpress' ? 'php' : $app, 'mode' => 'classic',
             'php_version' => ($data['php_version'] ?? null) ?: app(SystemInfo::class)->defaultPhpVersion(),
         ] + array_filter(['client_id' => $data['client_id'] ?? null, 'tls' => $data['tls'] ?? null]));
         if ($site->status === SiteStatus::Failed) {
-            throw new AgentException('op_failed', 'Web se nepodařilo založit: '.$site->last_error, 'panel');
+            throw new AgentException('op_failed', __('Web se nepodařilo založit: ').$site->last_error, 'panel');
         }
         $engine = $app === 'wordpress' ? 'mariadb' : ($engines[0] ?? null);
         if ($engine !== null) {
@@ -68,14 +68,14 @@ class InstallApp
             $job = $this->agent->call('site.app_install', ['domain' => $site->domain, 'app' => 'wordpress']);
             $done = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) !== null : true;
 
-            return ['site' => $site, 'note' => $done ? 'Otevřete web a dokončete instalaci WordPressu (název, účet správce).' : 'WordPress se ještě rozbaluje, za chvíli otevřete web.'];
+            return ['site' => $site, 'note' => $done ? __('Otevřete web a dokončete instalaci WordPressu (název, účet správce).') : __('WordPress se ještě rozbaluje, za chvíli otevřete web.')];
         }
 
         $this->appEnv($site, $app);
         $this->deploys->configure($site, self::SKELETONS[$app] + ['migrate' => $app === 'laravel' && $engine !== null, 'assets' => false, 'auto_rollback' => true, 'keep' => 5]);
         $this->deploys->start($site);
 
-        return ['site' => $site, 'note' => 'Běží první deploy oficiální kostry ('.self::SKELETONS[$app]['repo'].'). Pak web nasazujte ze svého repozitáře (Deploy → Nastavení).'];
+        return ['site' => $site, 'note' => __('Běží první deploy oficiální kostry (').self::SKELETONS[$app]['repo'].__('). Pak web nasazujte ze svého repozitáře (Deploy → Nastavení).')];
     }
 
     /** The secrets a fresh skeleton needs before its first request. */

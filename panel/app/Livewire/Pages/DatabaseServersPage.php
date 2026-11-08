@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Databases\ManageDatabaseServers;
 use App\Enums\DatabaseEngine;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
@@ -24,6 +25,8 @@ use NyonCode\WirePanels\Pages\Page;
  */
 class DatabaseServersPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.database-servers';
 
     /** Server-wide settings: administrators only. */
@@ -96,12 +99,12 @@ class DatabaseServersPage extends Page
 
         return $engine === 'mariadb'
             ? [
-                'Superuživatel' => "mariadb -h {$host} -P {$port} -u root -p --ssl",
-                'Databáze webu' => "mariadb -h {$host} -P {$port} -u <název databáze> -p --ssl <název databáze>",
+                __('Superuživatel') => "mariadb -h {$host} -P {$port} -u root -p --ssl",
+                __('Databáze webu') => __('mariadb -h :host -P :port -u <název databáze> -p --ssl <název databáze>', ['host' => $host, 'port' => $port]),
             ]
             : [
-                'Superuživatel' => "psql \"host={$host} port={$port} user=postgres dbname=postgres sslmode=require\"",
-                'Databáze webu' => "psql \"host={$host} port={$port} user=<název databáze> dbname=<název databáze> sslmode=require\"",
+                __('Superuživatel') => "psql \"host={$host} port={$port} user=postgres dbname=postgres sslmode=require\"",
+                __('Databáze webu') => __('psql "host=:host port=:port user=<název databáze> dbname=<název databáze> sslmode=require"', ['host' => $host, 'port' => $port]),
             ];
     }
 
@@ -123,50 +126,50 @@ class DatabaseServersPage extends Page
         $hasPassword = (bool) ($this->servers[$engine]['root_password'] ?? false);
 
         return Action::make("rootPassword_{$engine}")
-            ->label($hasPassword ? 'Změnit heslo' : 'Nastavit heslo')
+            ->label($hasPassword ? __('Změnit heslo') : __('Nastavit heslo'))
             ->icon('outline:key')
             ->color('gray')
-            ->modalHeading("Heslo uživatele {$user} ({$label})")
-            ->modalDescription("Superuživatel {$user} vidí a smí měnit všechny databáze. Heslo potřebujete pro připojení z vlastního klienta (TablePlus, DBeaver, DataGrip…) nebo z jiného serveru. Panel heslo neukládá; správa serveru na něm nezávisí.")
+            ->modalHeading(__('Heslo uživatele :user (:label)', ['user' => $user, 'label' => $label]))
+            ->modalDescription(__('Superuživatel :user vidí a smí měnit všechny databáze. Heslo potřebujete pro připojení z vlastního klienta (TablePlus, DBeaver, DataGrip…) nebo z jiného serveru. Panel heslo neukládá; správa serveru na něm nezávisí.', ['user' => $user]))
             ->form([
                 Radio::make('mode')->rules([Options::rule()])
-                    ->label('Heslo')
+                    ->label(__('Heslo'))
                     ->options(array_filter([
-                        'generate' => 'Vygenerovat silné heslo',
-                        'own' => 'Zadat vlastní',
-                        'remove' => $hasPassword ? 'Zrušit heslo (jen ze serveru)' : null,
+                        'generate' => __('Vygenerovat silné heslo'),
+                        'own' => __('Zadat vlastní'),
+                        'remove' => $hasPassword ? __('Zrušit heslo (jen ze serveru)') : null,
                     ]))
-                    ->descriptions(['generate' => 'Zobrazí se jednou po uložení.', 'remove' => "Přihlášení {$user} po síti přestane fungovat."])
+                    ->descriptions(['generate' => __('Zobrazí se jednou po uložení.'), 'remove' => __('Přihlášení :user po síti přestane fungovat.', ['user' => $user])])
                     ->default('generate')
                     ->required()
                     ->live(),
                 TextInput::make('password')
-                    ->label('Nové heslo')
+                    ->label(__('Nové heslo'))
                     ->password()
                     ->revealable()
                     ->minLength(16)
                     ->maxLength(128)
                     ->rules(['min:16', 'max:128', 'regex:/^[A-Za-z0-9!#$%&()*+,\-.\/:;<=>?@\[\]^_{|}~]+$/'])
-                    ->validationMessages(['regex' => 'Písmena, číslice a interpunkce bez uvozovek, zpětného lomítka, backticku a mezer.'])
-                    ->helperText('Alespoň 16 znaků.')
+                    ->validationMessages(['regex' => __('Písmena, číslice a interpunkce bez uvozovek, zpětného lomítka, backticku a mezer.')])
+                    ->helperText(__('Alespoň 16 znaků.'))
                     ->visibleWhen('mode', 'own')
                     ->requiredIf('mode', 'own'),
             ])
-            ->modalSubmitActionLabel('Uložit')
+            ->modalSubmitActionLabel(__('Uložit'))
             ->action(function (array $data) use ($engine, $user, $label) {
                 $servers = app(ManageDatabaseServers::class);
                 try {
                     if ($data['mode'] === 'remove') {
                         $servers->removeRootPassword($engine);
-                        Toast::success("Heslo uživatele {$user} zrušeno", 'Přihlásit se jde jen ze serveru.');
+                        Toast::success(__('Heslo uživatele :user zrušeno', ['user' => $user]), __('Přihlásit se jde jen ze serveru.'));
                     } else {
                         $generated = $servers->setRootPassword($engine, $data['mode'] === 'own' ? $data['password'] : null);
                         $generated !== null
-                            ? Toast::secret("Heslo uživatele {$user} ({$label})", "Uživatel {$user}, heslo (zobrazí se jen teď): {$generated}")
-                            : Toast::success("Heslo uživatele {$user} nastaveno");
+                            ? Toast::secret(__('Heslo uživatele :user (:label)', ['user' => $user, 'label' => $label]), __('Uživatel :user, heslo (zobrazí se jen teď): :generated', ['user' => $user, 'generated' => $generated]))
+                            : Toast::success(__('Heslo uživatele :user nastaveno', ['user' => $user]));
                     }
                 } catch (AgentException $e) {
-                    Toast::error('Heslo se nepodařilo nastavit', $e->getMessage());
+                    Toast::error(__('Heslo se nepodařilo nastavit'), $e->getMessage());
                 }
                 $this->refreshStatus();
             });
@@ -179,10 +182,10 @@ class DatabaseServersPage extends Page
         $clientIp = request()->ip();
 
         return Action::make("access_{$engine}")
-            ->label('Přístup z internetu')
+            ->label(__('Přístup z internetu'))
             ->icon('outline:globe-europe-africa')
-            ->modalHeading("{$label}: přístup z internetu")
-            ->modalDescription('Připojení zvenku jde vždy jen šifrovaně (TLS) a s heslem. Opakovaně chybná přihlášení zablokuje fail2ban. Weby na tomto serveru se připojují lokálně a změna je neovlivní.')
+            ->modalHeading(__(':label: přístup z internetu', ['label' => $label]))
+            ->modalDescription(__('Připojení zvenku jde vždy jen šifrovaně (TLS) a s heslem. Opakovaně chybná přihlášení zablokuje fail2ban. Weby na tomto serveru se připojují lokálně a změna je neovlivní.'))
             ->modalWidth('2xl')
             ->fillFormUsing(fn () => [
                 'access' => ManageDatabaseServers::access($this->servers[$engine] ?? []),
@@ -190,68 +193,68 @@ class DatabaseServersPage extends Page
             ])
             ->form([
                 Radio::make('access')->rules([Options::rule()])
-                    ->label('Kdo se může připojit')
+                    ->label(__('Kdo se může připojit'))
                     ->options([
-                        ManageDatabaseServers::ACCESS_LOCAL => 'Jen tento server',
-                        ManageDatabaseServers::ACCESS_ALLOWLIST => 'Vybrané adresy',
-                        ManageDatabaseServers::ACCESS_ANYWHERE => 'Kdokoli z internetu',
+                        ManageDatabaseServers::ACCESS_LOCAL => __('Jen tento server'),
+                        ManageDatabaseServers::ACCESS_ALLOWLIST => __('Vybrané adresy'),
+                        ManageDatabaseServers::ACCESS_ANYWHERE => __('Kdokoli z internetu'),
                     ])
                     ->descriptions([
-                        ManageDatabaseServers::ACCESS_LOCAL => "Port {$port} je zavřený. Ze svého počítače se připojíte přes SSH tunel.",
-                        ManageDatabaseServers::ACCESS_ALLOWLIST => "Port {$port} se otevře jen pro zadané IP adresy a sítě (kancelář, VPN, CI).",
-                        ManageDatabaseServers::ACCESS_ANYWHERE => "Port {$port} bude otevřený celému internetu a roboti začnou zkoušet hesla. Jen se silnými hesly.",
+                        ManageDatabaseServers::ACCESS_LOCAL => __('Port :port je zavřený. Ze svého počítače se připojíte přes SSH tunel.', ['port' => $port]),
+                        ManageDatabaseServers::ACCESS_ALLOWLIST => __('Port :port se otevře jen pro zadané IP adresy a sítě (kancelář, VPN, CI).', ['port' => $port]),
+                        ManageDatabaseServers::ACCESS_ANYWHERE => __('Port :port bude otevřený celému internetu a roboti začnou zkoušet hesla. Jen se silnými hesly.', ['port' => $port]),
                     ])
                     ->colors([ManageDatabaseServers::ACCESS_ANYWHERE => 'danger'])
                     ->cards()
                     ->required()
                     ->live(),
                 Textarea::make('allow')
-                    ->label('Povolené adresy')
+                    ->label(__('Povolené adresy'))
                     ->rows(4)
                     ->placeholder("203.0.113.7\n10.8.0.0/24")
-                    ->helperText('Jedna IP adresa nebo síť (CIDR) na řádek.'.($clientIp ? " Vaše adresa: {$clientIp}." : ''))
+                    ->helperText(__('Jedna IP adresa nebo síť (CIDR) na řádek.').($clientIp ? __(' Vaše adresa: :client_ip.', ['client_ip' => $clientIp]) : ''))
                     ->visibleWhen('access', ManageDatabaseServers::ACCESS_ALLOWLIST)
                     ->requiredIf('access', ManageDatabaseServers::ACCESS_ALLOWLIST)
                     ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                         $list = ManageDatabaseServers::parseAllow((string) $value);
                         if (count($list) > 50) {
-                            $fail('Nejvýš 50 adres.');
+                            $fail(__('Nejvýš 50 adres.'));
                         }
                         foreach ($list as $entry) {
                             if (! ManageDatabaseServers::validAddress($entry)) {
-                                $fail("{$entry} není IP adresa ani síť.");
+                                $fail(__(':entry není IP adresa ani síť.', ['entry' => $entry]));
 
                                 return;
                             }
                         }
                     }]),
                 Checkbox::make('understood')
-                    ->label("Rozumím, že {$label} bude dostupná z celého internetu.")
+                    ->label(__('Rozumím, že :label bude dostupná z celého internetu.', ['label' => $label]))
                     ->visibleWhen('access', ManageDatabaseServers::ACCESS_ANYWHERE)
                     // Hidden (and so not validated) unless "anywhere" is chosen.
                     ->rules(['accepted'])
-                    ->validationMessages(['accepted' => 'Potvrďte, že rozumíte riziku.']),
+                    ->validationMessages(['accepted' => __('Potvrďte, že rozumíte riziku.')]),
                 Placeholder::make('users')
-                    ->label('Kdo se přihlásí')
+                    ->label(__('Kdo se přihlásí'))
                     ->content($engine === 'mariadb'
-                        ? 'Vlastníci databází (stejné jméno a heslo jako v .env webu) a root, pokud má nastavené heslo.'
-                        : 'Vlastníci databází (stejné jméno a heslo jako v .env webu) a postgres, pokud má nastavené heslo.')
+                        ? __('Vlastníci databází (stejné jméno a heslo jako v .env webu) a root, pokud má nastavené heslo.')
+                        : __('Vlastníci databází (stejné jméno a heslo jako v .env webu) a postgres, pokud má nastavené heslo.'))
                     ->hiddenWhen('access', ManageDatabaseServers::ACCESS_LOCAL),
             ])
-            ->modalSubmitActionLabel('Uložit')
+            ->modalSubmitActionLabel(__('Uložit'))
             ->action(function (array $data) use ($engine, $label, $port) {
                 try {
                     $out = app(ManageDatabaseServers::class)->setAccess($engine, $data['access'], ManageDatabaseServers::parseAllow($data['allow'] ?? ''));
                     match ($data['access']) {
-                        ManageDatabaseServers::ACCESS_LOCAL => Toast::success("{$label} je dostupná jen z tohoto serveru", "Port {$port} je zavřený."),
-                        ManageDatabaseServers::ACCESS_ANYWHERE => Toast::warning("{$label} je dostupná z internetu", "Port {$port} je otevřený všem. Připojení jen přes TLS."),
-                        default => Toast::success("{$label} je dostupná z vybraných adres", implode(', ', $out['allow'] ?? [])),
+                        ManageDatabaseServers::ACCESS_LOCAL => Toast::success(__(':label je dostupná jen z tohoto serveru', ['label' => $label]), __('Port :port je zavřený.', ['port' => $port])),
+                        ManageDatabaseServers::ACCESS_ANYWHERE => Toast::warning(__(':label je dostupná z internetu', ['label' => $label]), __('Port :port je otevřený všem. Připojení jen přes TLS.', ['port' => $port])),
+                        default => Toast::success(__(':label je dostupná z vybraných adres', ['label' => $label]), implode(', ', $out['allow'] ?? [])),
                     };
                     if (isset($out['warning'])) {
-                        Toast::warning('Ochrana proti hádání hesel', (string) $out['warning']);
+                        Toast::warning(__('Ochrana proti hádání hesel'), (string) $out['warning']);
                     }
                 } catch (AgentException $e) {
-                    Toast::error('Nastavení se nepodařilo uložit', $e->getMessage());
+                    Toast::error(__('Nastavení se nepodařilo uložit'), $e->getMessage());
                 }
                 $this->refreshStatus();
             });

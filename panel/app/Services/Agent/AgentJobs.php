@@ -23,7 +23,7 @@ class AgentJobs
                 return $job['output'] ?? [];
             }
             if ($job['status'] === 'failed') {
-                throw new AgentException('job_failed', $job['error'] ?? 'Úloha selhala.', $job['op'] ?? '');
+                throw new AgentException('job_failed', $job['error'] ?? __('Úloha selhala.'), $job['op'] ?? '');
             }
             usleep(500_000);
         } while (microtime(true) < $deadline);

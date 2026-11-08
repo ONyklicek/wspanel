@@ -25,23 +25,23 @@ class DnsAdvisor
         $v6 = config('panel.public_ipv6');
         $out = [];
         if ($v4) {
-            $out[] = ['name' => $domain, 'type' => 'A', 'ttl' => 3600, 'records' => [$v4], 'note' => 'Web na tomto serveru (IPv4).'];
+            $out[] = ['name' => $domain, 'type' => 'A', 'ttl' => 3600, 'records' => [$v4], 'note' => __('Web na tomto serveru (IPv4).')];
         }
         if ($v6) {
-            $out[] = ['name' => $domain, 'type' => 'AAAA', 'ttl' => 3600, 'records' => [$v6], 'note' => 'Web na tomto serveru (IPv6).'];
+            $out[] = ['name' => $domain, 'type' => 'AAAA', 'ttl' => 3600, 'records' => [$v6], 'note' => __('Web na tomto serveru (IPv6).')];
         }
-        $out[] = ['name' => $domain, 'type' => 'CAA', 'ttl' => 3600, 'records' => ['0 issue "letsencrypt.org"', '0 issue "zerossl.com"'], 'note' => 'Certifikáty smí vydat jen autority, které používá server.'];
+        $out[] = ['name' => $domain, 'type' => 'CAA', 'ttl' => 3600, 'records' => ['0 issue "letsencrypt.org"', '0 issue "zerossl.com"'], 'note' => __('Certifikáty smí vydat jen autority, které používá server.')];
         // Mail hosting: MX to this server, client autodiscovery by SRV (RFC 6186).
         if ($mailDomain = MailDomain::acrossClients()->where('domain', $domain)->first()) {
             $host = ManageMailHosting::mailHost();
             // webmail.<domain>, autoconfig./autodiscover.<domain> are served here.
             foreach ($mailDomain->serviceHosts() as $service) {
                 $out[] = ['name' => $service, 'type' => 'CNAME', 'ttl' => 3600, 'records' => [$host.'.'],
-                    'note' => str_starts_with($service, 'webmail.') ? 'Webmail domény.' : 'Poštovní programy si samy načtou nastavení.'];
+                    'note' => str_starts_with($service, 'webmail.') ? __('Webmail domény.') : __('Poštovní programy si samy načtou nastavení.')];
             }
-            $out[] = ['name' => $domain, 'type' => 'MX', 'ttl' => 3600, 'records' => ['10 '.$host.'.'], 'note' => 'Pošta pro doménu chodí na tento server.'];
+            $out[] = ['name' => $domain, 'type' => 'MX', 'ttl' => 3600, 'records' => ['10 '.$host.'.'], 'note' => __('Pošta pro doménu chodí na tento server.')];
             foreach (['_imaps._tcp' => '993', '_pop3s._tcp' => '995', '_submission._tcp' => '587'] as $srv => $port) {
-                $out[] = ['name' => $srv.'.'.$domain, 'type' => 'SRV', 'ttl' => 3600, 'records' => ['0 1 '.$port.' '.$host.'.'], 'note' => 'Poštovní programy samy najdou server.'];
+                $out[] = ['name' => $srv.'.'.$domain, 'type' => 'SRV', 'ttl' => 3600, 'records' => ['0 1 '.$port.' '.$host.'.'], 'note' => __('Poštovní programy samy najdou server.')];
             }
         }
         foreach (ManageMail::dnsRecords($domain, $dkim, null, $v4) as $r) {
@@ -63,30 +63,30 @@ class DnsAdvisor
         $a = self::lookup($domain, DNS_A, 'ip');
         $v4 = config('panel.public_ipv4');
         $checks[] = [
-            'label' => "A záznam {$domain}",
+            'label' => __('A záznam :domain', ['domain' => $domain]),
             'ok' => $v4 ? in_array($v4, $a, true) : ($a !== [] ? null : false),
-            'detail' => $a === [] ? 'doména se nepřekládá na žádnou IPv4 adresu' : implode(', ', $a).($v4 && ! in_array($v4, $a, true) ? " (server má {$v4})" : ''),
+            'detail' => $a === [] ? __('doména se nepřekládá na žádnou IPv4 adresu') : implode(', ', $a).($v4 && ! in_array($v4, $a, true) ? __(' (server má :v4)', ['v4' => $v4]) : ''),
         ];
         if ($expectedNs !== []) {
             $ns = array_map(fn ($n) => rtrim(strtolower($n), '.'), self::lookup($domain, DNS_NS, 'target'));
             $want = array_map(fn ($n) => rtrim(strtolower($n), '.'), $expectedNs);
             $checks[] = [
-                'label' => 'Nameservery (delegace u registrátora)',
+                'label' => __('Nameservery (delegace u registrátora)'),
                 'ok' => $ns !== [] && array_diff($want, $ns) === [],
-                'detail' => $ns === [] ? 'nenalezeny' : implode(', ', $ns).(array_diff($want, $ns) ? ' (očekáváno '.implode(', ', $want).')' : ''),
+                'detail' => $ns === [] ? 'nenalezeny' : implode(', ', $ns).(array_diff($want, $ns) ? __(' (očekáváno ').implode(', ', $want).')' : ''),
             ];
         }
         $txt = self::lookup($domain, DNS_TXT, 'txt');
         $checks[] = [
             'label' => 'SPF',
             'ok' => collect($txt)->contains(fn ($t) => str_starts_with($t, 'v=spf1')),
-            'detail' => collect($txt)->first(fn ($t) => str_starts_with($t, 'v=spf1')) ?? 'chybí TXT záznam v=spf1',
+            'detail' => collect($txt)->first(fn ($t) => str_starts_with($t, 'v=spf1')) ?? __('chybí TXT záznam v=spf1'),
         ];
         $dmarc = self::lookup('_dmarc.'.$domain, DNS_TXT, 'txt');
         $checks[] = [
             'label' => 'DMARC',
             'ok' => $dmarc !== [],
-            'detail' => $dmarc[0] ?? 'chybí TXT záznam _dmarc',
+            'detail' => $dmarc[0] ?? __('chybí TXT záznam _dmarc'),
         ];
 
         return $checks;

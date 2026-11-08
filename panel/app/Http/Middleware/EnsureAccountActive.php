@@ -26,7 +26,7 @@ class EnsureAccountActive
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return redirect()->route('login')->withErrors(['email' => 'Účet je pozastavený. Kontaktujte správce.']);
+            return redirect()->route('login')->withErrors(['email' => __('Účet je pozastavený. Kontaktujte správce.')]);
         }
 
         return $next($request);

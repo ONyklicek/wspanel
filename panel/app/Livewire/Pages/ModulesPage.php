@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\ManageXhprof;
 use App\Http\Middleware\EnsureTwoFactor;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Client;
 use App\Models\Setting;
 use App\Services\Agent\AgentException;
@@ -21,6 +22,8 @@ use NyonCode\WirePanels\Pages\Page;
  */
 class ModulesPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.modules';
 
     /** Server-wide settings: administrators only. */
@@ -68,76 +71,76 @@ class ModulesPage extends Page
     {
         return [
             Action::make('installMail')
-                ->label('Nainstalovat poštu (schránky)')
+                ->label(__('Nainstalovat poštu (schránky)'))
                 ->icon('outline:inbox-stack')
                 ->visible(fn () => ! app(ManageMailHosting::class)->installed())
                 ->requiresConfirmation()
-                ->modalDescription('Doinstaluje Dovecot (IMAP, POP3, Sieve) a Rspamd (antispam), otevře porty 25, 465, 587, 993, 995 a 4190 a Postfix začne přijímat poštu pro přidané domény. Trvá pár minut.')
+                ->modalDescription(__('Doinstaluje Dovecot (IMAP, POP3, Sieve) a Rspamd (antispam), otevře porty 25, 465, 587, 993, 995 a 4190 a Postfix začne přijímat poštu pro přidané domény. Trvá pár minut.'))
                 ->action(function () {
                     try {
                         app(ManageMailHosting::class)->install()
-                            ? Toast::success('Pošta nainstalována', 'Přidejte domény v Síť a pošta → Schránky.')
-                            : Toast::warning('Instalace ještě běží', 'Stav se ukáže za chvíli.');
+                            ? Toast::success(__('Pošta nainstalována'), __('Přidejte domény v Síť a pošta → Schránky.'))
+                            : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
                     } catch (AgentException $e) {
-                        Toast::error('Instalace selhala', $e->getMessage());
+                        Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
                     $this->redirect(self::url());
                 }),
             Action::make('installXhprof')
-                ->label('Nainstalovat XHProf + XHGui')
+                ->label(__('Nainstalovat XHProf + XHGui'))
                 ->icon('outline:chart-bar')
                 ->visible(fn () => ! app(ManageXhprof::class)->installed())
                 ->requiresConfirmation()
-                ->modalDescription('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Další → Profilování), načte se jen do poolu webů, které ho mají zapnuté.')
+                ->modalDescription(__('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Další → Profilování), načte se jen do poolu webů, které ho mají zapnuté.'))
                 ->action(function () {
                     try {
                         app(ManageXhprof::class)->install()
-                            ? Toast::success('XHProf nainstalován', 'Zapnete ho u webu v menu Další → Profilování.')
-                            : Toast::warning('Instalace ještě běží', 'Stav se ukáže za chvíli.');
+                            ? Toast::success(__('XHProf nainstalován'), __('Zapnete ho u webu v menu Další → Profilování.'))
+                            : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
                     } catch (AgentException $e) {
-                        Toast::error('Instalace selhala', $e->getMessage());
+                        Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
                     $this->redirect(self::url());
                 }),
             Action::make('twoFactor')
-                ->label('Dvoufázové přihlášení')
+                ->label(__('Dvoufázové přihlášení'))
                 ->icon('outline:lock-closed')
                 ->color('gray')
-                ->modalDescription('Kdo musí mít zapnuté dvoufázové přihlášení (aplikace v telefonu). Uživatel bez něj se po přihlášení dostane jen do profilu, kde si ho nastaví.')
+                ->modalDescription(__('Kdo musí mít zapnuté dvoufázové přihlášení (aplikace v telefonu). Uživatel bez něj se po přihlášení dostane jen do profilu, kde si ho nastaví.'))
                 ->fillFormUsing(fn () => ['policy' => (string) (Setting::get(EnsureTwoFactor::SETTING) ?? 'none')])
                 ->form([
-                    Radio::make('policy')->label('Vyžadovat')->options(['none' => 'Nikoho', 'clients' => 'Klienty', 'all' => 'Všechny (i správce)'])
+                    Radio::make('policy')->label(__('Vyžadovat'))->options(['none' => __('Nikoho'), 'clients' => __('Klienty'), 'all' => __('Všechny (i správce)')])
                         ->rules(['in:none,clients,all'])->required(),
                 ])
                 ->action(function (array $data) {
                     Setting::put(EnsureTwoFactor::SETTING, $data['policy']);
-                    Toast::success('Uloženo');
+                    Toast::success(__('Uloženo'));
                 }),
             Action::make('enableClients')
-                ->label('Zapnout klienty a balíčky')
+                ->label(__('Zapnout klienty a balíčky'))
                 ->icon('outline:user-group')
                 ->visible(fn () => ! Features::clients())
                 ->requiresConfirmation()
-                ->modalDescription('V menu Hosting přibudou Klienti a Balíčky; weby, databáze a DNS zóny pak můžete přidělovat klientům, kteří se přihlásí jen ke svým věcem.')
+                ->modalDescription(__('V menu Hosting přibudou Klienti a Balíčky; weby, databáze a DNS zóny pak můžete přidělovat klientům, kteří se přihlásí jen ke svým věcem.'))
                 ->action(function () {
                     Features::setClients(true);
-                    Toast::success('Klienti a balíčky zapnuty');
+                    Toast::success(__('Klienti a balíčky zapnuty'));
                     $this->redirect(self::url());
                 }),
             Action::make('disableClients')
-                ->label('Vypnout klienty a balíčky')
+                ->label(__('Vypnout klienty a balíčky'))
                 ->icon('outline:user-group')
                 ->color('gray')
                 ->visible(fn () => Features::clients())
                 ->requiresConfirmation()
                 ->action(function () {
                     if (Client::query()->exists()) {
-                        Toast::error('Nejde vypnout', 'Nejdřív smažte všechny klienty (Hosting → Klienti).');
+                        Toast::error(__('Nejde vypnout'), __('Nejdřív smažte všechny klienty (Hosting → Klienti).'));
 
                         return;
                     }
                     Features::setClients(false);
-                    Toast::success('Klienti a balíčky vypnuty');
+                    Toast::success(__('Klienti a balíčky vypnuty'));
                     $this->redirect(self::url());
                 }),
         ];

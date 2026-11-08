@@ -61,7 +61,7 @@ class ManagePhpSettings
     {
         $s = $site->php_settings ?? [];
         if ($s === []) {
-            return 'výchozí';
+            return __('výchozí');
         }
 
         return collect($s)->map(fn ($v, $k) => "{$k} {$v}")->join(' · ');

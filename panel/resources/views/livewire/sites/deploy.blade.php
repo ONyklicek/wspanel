@@ -11,15 +11,15 @@
     <div @if ($running || $logStatus === 'running') wire:poll.2s="refreshLog" @endif class="space-y-6">
         @if (! $config)
             {{-- Not set up yet: the only time the walkthrough takes the page. --}}
-            <x-wire::section heading="Deploy zatím není nastavený"
-                description="Deploy nasadí novou verzi z Gitu bez výpadku: připraví ji vedle běžící a přepne, až když je hotová a odpovídá.">
+            <x-wire::section :heading="__('Deploy zatím není nastavený')"
+                :description="__('Deploy nasadí novou verzi z Gitu bez výpadku: připraví ji vedle běžící a přepne, až když je hotová a odpovídá.')">
                 <div class="grid gap-6 lg:grid-cols-2">
                     <ol class="flex flex-col gap-3 text-sm">
                         @foreach ([
-                            ['Nastavení', 'adresa repozitáře a větev (tlačítko Nastavení vpravo nahoře).'],
-                            ['Deploy klíč', 'u privátního repozitáře ho přidejte do Gitu (Další → Deploy klíč).'],
-                            ['.env', 'doplňte hodnoty aplikace (Další → .env). Databázi a poštu vyplní panel sám.'],
-                            ['Deploy', 'první nasazení tlačítkem Deploy. Automatické nasazení zapnete v Automatický deploy.'],
+                            [__('Nastavení'), __('adresa repozitáře a větev (tlačítko Nastavení vpravo nahoře).')],
+                            [__('Deploy klíč'), __('u privátního repozitáře ho přidejte do Gitu (Další → Deploy klíč).')],
+                            ['.env', __('doplňte hodnoty aplikace (Další → .env). Databázi a poštu vyplní panel sám.')],
+                            ['Deploy', __('první nasazení tlačítkem Deploy. Automatické nasazení zapnete v Automatický deploy.')],
                         ] as $i => [$title, $desc])
                             <li class="flex gap-3">
                                 <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-400/10 dark:text-primary-400">{{ $i + 1 }}</span>
@@ -28,8 +28,8 @@
                         @endforeach
                     </ol>
                     @if ($site->framework === \App\Enums\Framework::Php)
-                        <x-wire::callout color="info" heading="Deploy nepotřebujete?">
-                            U čistého PHP stačí nahrát soubory přes SFTP do složky <code>public_html/</code> (Další → SSH / SFTP na přehledu webu).
+                        <x-wire::callout color="info" :heading="__('Deploy nepotřebujete?')">
+                            {{ __('U čistého PHP stačí nahrát soubory přes SFTP do složky') }} <code>public_html/</code> {{ __('(Další → SSH / SFTP na přehledu webu).') }}
                         </x-wire::callout>
                     @endif
                 </div>
@@ -38,16 +38,16 @@
             {{-- What runs now and how it gets there. --}}
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Běží</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('Běží') }}</p>
                     @if ($live)
                         <p class="mt-1 font-mono text-sm font-semibold">{{ $live->versionLabel() }}</p>
                         <p class="mt-1 text-sm text-gray-500" title="{{ $live->release }}">nasazeno {{ $live->startedLabel() }}@if ($live->source === 'artifact') · build z CI @endif</p>
                     @else
-                        <p class="mt-1 text-sm text-gray-500">{{ $current !== '' && $current !== 'initial' ? $current : 'úvodní stránka (zatím bez deploye)' }}</p>
+                        <p class="mt-1 text-sm text-gray-500">{{ $current !== '' && $current !== 'initial' ? $current : __('úvodní stránka (zatím bez deploye)') }}</p>
                     @endif
                 </div>
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Poslední deploy</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('Poslední deploy') }}</p>
                     @if ($last)
                         <p class="mt-1 flex items-center gap-2 text-sm">
                             <x-wire::badge :color="$last->statusColor()">{{ $last->statusLabel() }}</x-wire::badge>
@@ -57,26 +57,26 @@
                             <p class="mt-1 text-sm text-danger-600 dark:text-danger-400">{{ $last->error }}</p>
                         @endif
                     @else
-                        <p class="mt-1 text-sm text-gray-500">zatím žádný</p>
+                        <p class="mt-1 text-sm text-gray-500">{{ __('zatím žádný') }}</p>
                     @endif
                 </div>
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Zdroj</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('Zdroj') }}</p>
                     <p class="mt-1 truncate font-mono text-sm" title="{{ $config['repo'] ?? '' }}">{{ preg_replace('~^(https://|git@|ssh://git@)~', '', $config['repo'] ?? '') }}</p>
-                    <p class="mt-1 text-sm text-gray-500">větev <span class="font-mono">{{ $config['branch'] ?? '' }}</span>
-                        · {{ collect(['migrace' => $config['migrate'] ?? false, 'assety' => $config['assets'] ?? false, 'auto-rollback' => $config['auto_rollback'] ?? false])->filter()->keys()->join(', ') ?: 'jen kód' }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ __('větev') }} <span class="font-mono">{{ $config['branch'] ?? '' }}</span>
+                        · {{ collect(['migrace' => $config['migrate'] ?? false, 'assety' => $config['assets'] ?? false, 'auto-rollback' => $config['auto_rollback'] ?? false])->filter()->keys()->join(', ') ?: __('jen kód') }}</p>
                 </div>
                 <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Automaticky</p>
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('Automaticky') }}</p>
                     @if ($site->webhook_enabled)
-                        <p class="mt-1 text-sm font-medium">{{ $this::TRIGGERS[$site->deploy_trigger ?? 'branch'] ?? $site->deploy_trigger }}</p>
+                        <p class="mt-1 text-sm font-medium">{{ __($this::TRIGGERS[$site->deploy_trigger ?? 'branch'] ?? $site->deploy_trigger) }}</p>
                         @if ($site->deploy_poll_error)
                             <p class="mt-1 text-sm text-danger-600 dark:text-danger-400">{{ $site->deploy_poll_error }}</p>
                         @elseif ($site->deploy_polled_at)
-                            <p class="mt-1 text-sm text-gray-500">zkontrolováno {{ $site->deploy_polled_at->diffForHumans() }}</p>
+                            <p class="mt-1 text-sm text-gray-500">{{ __('zkontrolováno') }} {{ $site->deploy_polled_at->diffForHumans() }}</p>
                         @endif
                     @else
-                        <p class="mt-1 text-sm text-gray-500">vypnuto, nasazuje se ručně</p>
+                        <p class="mt-1 text-sm text-gray-500">{{ __('vypnuto, nasazuje se ručně') }}</p>
                     @endif
                 </div>
             </div>
@@ -84,7 +84,7 @@
 
         <div class="grid gap-6 lg:grid-cols-5">
             <div class="flex flex-col gap-6 lg:col-span-2">
-                <x-wire::section heading="Historie">
+                <x-wire::section :heading="__('Historie')">
                     <ul class="-mx-2 divide-y divide-gray-100 text-sm dark:divide-white/5">
                         @forelse ($deployments as $d)
                             <li wire:key="d-{{ $d->id }}">
@@ -96,7 +96,7 @@
                                         <span class="flex items-center gap-2">
                                             <span class="font-medium">{{ $d->startedLabel() }}</span>
                                             @if ($d->release === $current)
-                                                <x-wire::badge color="primary" size="xs">běží</x-wire::badge>
+                                                <x-wire::badge color="primary" size="xs">{{ __('běží') }}</x-wire::badge>
                                             @endif
                                         </span>
                                         <span class="mt-0.5 block truncate text-xs text-gray-500">
@@ -109,13 +109,13 @@
                                 </button>
                             </li>
                         @empty
-                            <li class="px-2 py-2 text-gray-500">Zatím žádný deploy.</li>
+                            <li class="px-2 py-2 text-gray-500">{{ __('Zatím žádný deploy.') }}</li>
                         @endforelse
                     </ul>
                 </x-wire::section>
 
                 @if ($site->webhook_enabled || $this->deliveries()->isNotEmpty())
-                    <x-wire::section heading="Doručené webhooky">
+                    <x-wire::section :heading="__('Doručené webhooky')">
                         <ul class="divide-y divide-gray-100 text-sm dark:divide-white/5">
                             @forelse ($this->deliveries() as $w)
                                 <li class="flex items-start justify-between gap-2 py-2" wire:key="w-{{ $w->id }}">
@@ -126,7 +126,7 @@
                                     <x-wire::badge :color="$w->resultColor()">{{ $w->result }}</x-wire::badge>
                                 </li>
                             @empty
-                                <li class="py-2 text-gray-500">Zapnuto, zatím nic nepřišlo.</li>
+                                <li class="py-2 text-gray-500">{{ __('Zapnuto, zatím nic nepřišlo.') }}</li>
                             @endforelse
                         </ul>
                     </x-wire::section>
@@ -137,13 +137,13 @@
                 <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 sm:px-6 dark:border-gray-700">
                         <h3 class="text-base font-semibold">
-                            Log
+                            {{ __('Log') }}
                             @if ($selected)
                                 <span class="font-normal text-gray-500">· {{ $selected->startedLabel() }}</span>
                             @endif
                         </h3>
                         @if ($logStatus === 'running')
-                            <x-wire::badge color="warning" icon="outline:arrow-path">běží…</x-wire::badge>
+                            <x-wire::badge color="warning" icon="outline:arrow-path">{{ __('běží…') }}</x-wire::badge>
                         @elseif ($selected)
                             <x-wire::badge :color="$selected->statusColor()">{{ $selected->statusLabel() }}</x-wire::badge>
                         @endif
@@ -152,7 +152,7 @@
                         @if ($selected?->error)
                             <p class="mb-3 text-sm text-danger-600 dark:text-danger-400">{{ $selected->error }}</p>
                         @endif
-                        <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100">{{ $log !== '' ? $log : 'Vyberte deploy v historii.' }}</pre>
+                        <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100">{{ $log !== '' ? $log : __('Vyberte deploy v historii.') }}</pre>
                     </div>
                 </div>
             </div>
@@ -161,7 +161,7 @@
         @if ($config)
             <details class="group rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                 <summary class="cursor-pointer list-none px-4 py-3 text-sm font-medium sm:px-6">
-                    <span class="text-gray-400 transition group-open:rotate-90 inline-block">›</span> Co deploy dělá, krok za krokem
+                    <span class="text-gray-400 transition group-open:rotate-90 inline-block">›</span> {{ __('Co deploy dělá, krok za krokem') }}
                 </summary>
                 <ol class="grid gap-3 border-t border-gray-200 px-4 py-4 text-sm sm:grid-cols-2 sm:px-6 lg:grid-cols-3 dark:border-gray-700">
                     @foreach ($this->pipeline() as $i => [$title, $desc])

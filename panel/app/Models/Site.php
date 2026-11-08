@@ -137,9 +137,9 @@ class Site extends Model
     {
         return match (true) {
             $this->status !== SiteStatus::Active => $this->status->getLabel(),
-            ! $this->enabled => 'Vypnutý',
-            $this->health_checked_at !== null && ! $this->health_ok => 'Neodpovídá',
-            default => 'Běží',
+            ! $this->enabled => __('Vypnutý'),
+            $this->health_checked_at !== null && ! $this->health_ok => __('Neodpovídá'),
+            default => __('Běží'),
         };
     }
 
@@ -148,7 +148,13 @@ class Site extends Model
 
     public function stateColor(): string
     {
-        return self::STATE_COLORS[$this->stateLabel()] ?? 'danger';
+        return self::stateColors()[$this->stateLabel()] ?? 'danger';
+    }
+
+    /** @return array<string, string> state label (translated) => colour */
+    public static function stateColors(): array
+    {
+        return array_combine(array_map(fn ($k) => __($k), array_keys(self::STATE_COLORS)), self::STATE_COLORS);
     }
 
     public function isOperational(): bool

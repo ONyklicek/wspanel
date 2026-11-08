@@ -38,8 +38,8 @@ class EnsureTwoFactor
         }
 
         return $request->expectsJson()
-            ? response()->json(['message' => 'Nejdřív si zapněte dvoufázové přihlášení v profilu.'], 403)
-            : redirect()->route('wire.users.profile')->with('status', 'Správce vyžaduje dvoufázové přihlášení: zapněte ho v části Zabezpečení.');
+            ? response()->json(['message' => __('Nejdřív si zapněte dvoufázové přihlášení v profilu.')], 403)
+            : redirect()->route('wire.users.profile')->with('status', __('Správce vyžaduje dvoufázové přihlášení: zapněte ho v části Zabezpečení.'));
     }
 
     /** Livewire round trips of the profile page itself. */

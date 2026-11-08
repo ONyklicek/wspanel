@@ -177,7 +177,7 @@ class ManageClients
         $owned = $client->sites()->count() + $client->databases()->count() + $client->dnsZones()->count()
             + MailDomain::acrossClients()->where('client_id', $client->id)->count();
         if ($owned > 0) {
-            throw new RuntimeException('Klient ještě vlastní weby, databáze, DNS zóny nebo poštovní domény. Smažte je nebo je převeďte jinému klientovi.');
+            throw new RuntimeException(__('Klient ještě vlastní weby, databáze, DNS zóny nebo poštovní domény. Smažte je nebo je převeďte jinému klientovi.'));
         }
         if ($client->linux_group !== null) {
             $this->agent->call('client.delete', ['group' => $client->linux_group]);
@@ -197,7 +197,7 @@ class ManageClients
         // Files and processes move to the client's group (its disk quota).
         $job = $this->agent->call('site.set_group', ['domain' => $site->domain, 'group' => $client?->linux_group ?? '']);
         if (isset($job['job_id']) && $this->jobs->await($job['job_id'], 300) === null) {
-            throw new AgentException('timeout', 'Přesun souborů webu ještě běží, zkontrolujte ho za chvíli.', 'site.set_group');
+            throw new AgentException('timeout', __('Přesun souborů webu ještě běží, zkontrolujte ho za chvíli.'), 'site.set_group');
         }
         $this->agent->call('site.limits', ['domain' => $site->domain, 'fpm_children' => (int) ($client?->limit('fpm_children') ?? 0)]);
         $previous = $site->client_id;

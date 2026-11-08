@@ -6,6 +6,7 @@ use App\Actions\Server\ManageOffsite;
 use App\Actions\Sites\ManageSiteBackups;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\Lang;
 use App\Support\Toast;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
@@ -69,7 +70,7 @@ class BackupList extends Component
             'file' => $b['file'],
             'created' => $b['created']->getTimestamp(),
             'created_label' => $b['created']->format('j. n. Y H:i'),
-            'kind' => $b['pre_restore'] ? 'Před obnovou' : 'Záloha',
+            'kind' => $b['pre_restore'] ? __('Před obnovou') : __('Záloha'),
             'size_label' => Number::fileSize($b['size'], 1),
             'local' => true,
             'offsite_label' => $b['pre_restore'] ? '—' : (isset($copies[$b['file']]) ? 'ano' : 'ne'),
@@ -89,7 +90,7 @@ class BackupList extends Component
                 'file' => $file,
                 'created' => $created->getTimestamp(),
                 'created_label' => $created->format('j. n. Y H:i'),
-                'kind' => 'Jen mimo server',
+                'kind' => __('Jen mimo server'),
                 'size_label' => Number::fileSize($copy['size'], 1),
                 'local' => false,
                 'offsite_label' => 'ano',
@@ -135,13 +136,13 @@ class BackupList extends Component
     public function scheduleLabel(): string
     {
         if ($this->schedule['frequency'] === 'off') {
-            return 'Automatické zálohy jsou vypnuté.';
+            return __('Automatické zálohy jsou vypnuté.');
         }
 
-        return sprintf('Automaticky %s (kolem 2:30), uchovává se %d posledních%s.',
-            $this->schedule['frequency'] === 'daily' ? 'každý den' : 'každou neděli',
+        return sprintf(__('Automaticky %s (kolem 2:30), uchovává se %d posledních%s.'),
+            $this->schedule['frequency'] === 'daily' ? __('každý den') : __('každou neděli'),
             $this->schedule['keep'],
-            $this->schedule['databases'] ? ', včetně databází' : ', bez databází');
+            $this->schedule['databases'] ? __(', včetně databází') : __(', bez databází'));
     }
 
     public function table(Table $table): Table
@@ -153,122 +154,122 @@ class BackupList extends Component
             ->stackedOnMobile()
             ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
-                TextColumn::make('created_label')->label('Vytvořeno')->weight('medium')
+                TextColumn::make('created_label')->label(__('Vytvořeno'))->weight('medium')
                     ->description(fn ($record) => $record->file),
-                BadgeColumn::make('kind')->label('Druh')->colors(['Záloha' => 'success', 'Před obnovou' => 'warning', 'Jen mimo server' => 'info']),
-                TextColumn::make('size_label')->label('Velikost'),
-                BadgeColumn::make('offsite_label')->label('Mimo server')->colors(['ano' => 'success', 'ne' => 'gray', '—' => 'gray'])
+                BadgeColumn::make('kind')->label(__('Druh'))->colors([__('Záloha') => 'success', __('Před obnovou') => 'warning', __('Jen mimo server') => 'info']),
+                TextColumn::make('size_label')->label(__('Velikost')),
+                BadgeColumn::make('offsite_label')->label(__('Mimo server'))->colors(['ano' => 'success', 'ne' => 'gray', '—' => 'gray'])
                     ->visible($this->offsite),
             ])
             ->actions([
-                Action::make('download')->label('Stáhnout')->icon('outline:arrow-down-tray')->color('gray')->onlyIcon()->tooltip('Stáhnout')
+                Action::make('download')->label(__('Stáhnout'))->icon('outline:arrow-down-tray')->color('gray')->onlyIcon()->tooltip(__('Stáhnout'))
                     ->visible(fn ($record) => (bool) $record->local)
                     ->url(fn ($record) => route('site-backups.download', [$this->site, $record->file]), true),
-                Action::make('fetch')->label('Stáhnout na server')->icon('outline:cloud-arrow-down')->color('info')
+                Action::make('fetch')->label(__('Stáhnout na server'))->icon('outline:cloud-arrow-down')->color('info')
                     ->visible(fn ($record) => ! $record->local)
-                    ->modalHeading(fn ($record) => 'Stáhnout zálohu z '.$record->created_label.' na server?')
-                    ->modalDescription('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout. Přijme se jen kopie s platným podpisem tohoto serveru.')
+                    ->modalHeading(fn ($record) => __('Stáhnout zálohu z ').$record->created_label.' na server?')
+                    ->modalDescription(__('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout. Přijme se jen kopie s platným podpisem tohoto serveru.'))
                     ->form([
-                        Toggle::make('unverified')->label('Přijmout i kopii bez platného podpisu')
-                            ->helperText('Jen pro zálohy jiného serveru, jehož klíč nemáte. Kopii bez podpisu mohl kdokoli s přístupem k úložišti podvrhnout nebo změnit – obnovte ji, jen když jí věříte.'),
+                        Toggle::make('unverified')->label(__('Přijmout i kopii bez platného podpisu'))
+                            ->helperText(__('Jen pro zálohy jiného serveru, jehož klíč nemáte. Kopii bez podpisu mohl kdokoli s přístupem k úložišti podvrhnout nebo změnit – obnovte ji, jen když jí věříte.')),
                     ])
-                    ->modalSubmitActionLabel('Stáhnout')
-                    ->action(fn ($record, array $data) => $this->attempt('Stažení na server selhalo', function () use ($record, $data) {
+                    ->modalSubmitActionLabel(__('Stáhnout'))
+                    ->action(fn ($record, array $data) => $this->attempt(__('Stažení na server selhalo'), function () use ($record, $data) {
                         app(ManageOffsite::class)->fetchSiteBackup($this->getSite(), $record->file, (bool) ($data['unverified'] ?? false))
-                            ? Toast::success('Záloha je zpět na serveru', 'Teď ji můžete obnovit.')
-                            : Toast::warning('Stahování běží na pozadí', 'Záloha se objeví v seznamu, až se stáhne.');
+                            ? Toast::success(__('Záloha je zpět na serveru'), __('Teď ji můžete obnovit.'))
+                            : Toast::warning(__('Stahování běží na pozadí'), __('Záloha se objeví v seznamu, až se stáhne.'));
                     })),
-                Action::make('upload')->label('Nahrát mimo server')->icon('outline:cloud-arrow-up')->color('gray')->onlyIcon()->tooltip('Nahrát mimo server')
+                Action::make('upload')->label(__('Nahrát mimo server'))->icon('outline:cloud-arrow-up')->color('gray')->onlyIcon()->tooltip(__('Nahrát mimo server'))
                     ->visible(fn ($record) => $this->offsite && $this->offsiteError === null && $record->local && $record->offsite_label === 'ne')
-                    ->action(fn ($record) => $this->attempt('Nahrání mimo server selhalo', function () use ($record) {
+                    ->action(fn ($record) => $this->attempt(__('Nahrání mimo server selhalo'), function () use ($record) {
                         app(ManageOffsite::class)->uploadSiteBackup($this->getSite(), $record->file)
-                            ? Toast::success('Záloha nahrána mimo server')
-                            : Toast::warning('Nahrávání běží na pozadí');
+                            ? Toast::success(__('Záloha nahrána mimo server'))
+                            : Toast::warning(__('Nahrávání běží na pozadí'));
                     })),
-                Action::make('restore')->label('Obnovit')->icon('outline:arrow-uturn-left')->color('warning')
+                Action::make('restore')->label(__('Obnovit'))->icon('outline:arrow-uturn-left')->color('warning')
                     ->visible(fn ($record) => (bool) $record->local)
-                    ->modalHeading(fn ($record) => 'Obnovit zálohu z '.$record->created_label.'?')
-                    ->modalDescription('Před obnovou se uloží záloha současného stavu. Soubory se obnoví jako nový release (dosavadní zůstane k návratu přes Deploy), současná složka shared se ponechá vedle jako shared.before-restore-…. Databáze se přepíšou obsahem zálohy.')
+                    ->modalHeading(fn ($record) => __('Obnovit zálohu z ').$record->created_label.'?')
+                    ->modalDescription(__('Před obnovou se uloží záloha současného stavu. Soubory se obnoví jako nový release (dosavadní zůstane k návratu přes Deploy), současná složka shared se ponechá vedle jako shared.before-restore-…. Databáze se přepíšou obsahem zálohy.'))
                     ->form([
-                        Toggle::make('files')->label('Obnovit soubory (release a shared)')->default(true),
-                        Toggle::make('databases')->label('Obnovit databáze')->default($hasDatabases),
-                        TextInput::make('confirm')->label('Pro potvrzení napište doménu webu')->placeholder($site->domain)->required()
+                        Toggle::make('files')->label(__('Obnovit soubory (release a shared)'))->default(true),
+                        Toggle::make('databases')->label(__('Obnovit databáze'))->default($hasDatabases),
+                        TextInput::make('confirm')->label(__('Pro potvrzení napište doménu webu'))->placeholder($site->domain)->required()
                             ->rules([function (string $attribute, mixed $value, \Closure $fail) use ($site) {
                                 if ($value !== $site->domain) {
-                                    $fail('Napište přesně '.$site->domain.'.');
+                                    $fail(__('Napište přesně ').$site->domain.'.');
                                 }
                             }]),
                     ])
-                    ->modalSubmitActionLabel('Obnovit')
-                    ->action(fn ($record, array $data) => $this->attempt('Obnova selhala', function () use ($record, $data) {
+                    ->modalSubmitActionLabel(__('Obnovit'))
+                    ->action(fn ($record, array $data) => $this->attempt(__('Obnova selhala'), function () use ($record, $data) {
                         if (! $data['files'] && ! $data['databases']) {
-                            Toast::warning('Nic k obnovení', 'Zvolte soubory, databáze nebo obojí.');
+                            Toast::warning(__('Nic k obnovení'), __('Zvolte soubory, databáze nebo obojí.'));
 
                             return;
                         }
                         $out = $this->backups()->restore($this->getSite(), $record->file, (bool) $data['files'], (bool) $data['databases']);
                         if ($out === null) {
-                            Toast::warning('Obnova běží na pozadí', 'Je to velká záloha; výsledek uvidíte v historii deployů a v auditu.');
+                            Toast::warning(__('Obnova běží na pozadí'), __('Je to velká záloha; výsledek uvidíte v historii deployů a v auditu.'));
 
                             return;
                         }
                         $notes = [];
                         if (! empty($out['release'])) {
-                            $notes[] = 'Nový release '.$out['release'].(($out['healthy'] ?? false) ? ', web odpovídá.' : ', ale web neodpovídá: '.($out['health_error'] ?? ''));
+                            $notes[] = __('Nový release ').$out['release'].(($out['healthy'] ?? false) ? __(', web odpovídá.') : __(', ale web neodpovídá: ').($out['health_error'] ?? ''));
                         }
                         if (! empty($out['databases'])) {
-                            $notes[] = 'Databáze: '.implode(', ', $out['databases']).'.';
+                            $notes[] = __('Databáze: ').implode(', ', $out['databases']).'.';
                         }
                         if (! empty($out['skipped_databases'])) {
-                            $notes[] = 'Vynechány (na serveru už nejsou): '.implode(', ', $out['skipped_databases']).'.';
+                            $notes[] = __('Vynechány (na serveru už nejsou): ').implode(', ', $out['skipped_databases']).'.';
                         }
-                        $notes[] = 'Stav před obnovou: '.$out['snapshot'].'.';
+                        $notes[] = __('Stav před obnovou: ').$out['snapshot'].'.';
                         ($out['healthy'] ?? true)
-                            ? Toast::success('Záloha obnovena', implode("\n", $notes))
-                            : Toast::error('Záloha obnovena, web ale neodpovídá', implode("\n", $notes));
+                            ? Toast::success(__('Záloha obnovena'), implode("\n", $notes))
+                            : Toast::error(__('Záloha obnovena, web ale neodpovídá'), implode("\n", $notes));
                     })),
-                Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->tooltip('Smazat')
+                Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->onlyIcon()->tooltip(__('Smazat'))
                     ->visible(fn ($record) => (bool) $record->local)
                     ->requiresConfirmation()
-                    ->modalHeading(fn ($record) => 'Smazat zálohu z '.$record->created_label.'?')
-                    ->modalDescription(fn ($record) => $record->offsite_label === 'ano' ? 'Smaže se jen ze serveru; kopie mimo server zůstane.' : 'Nejde to vrátit.')
-                    ->action(fn ($record) => $this->attempt('Smazání selhalo', function () use ($record) {
+                    ->modalHeading(fn ($record) => __('Smazat zálohu z ').$record->created_label.'?')
+                    ->modalDescription(fn ($record) => $record->offsite_label === 'ano' ? __('Smaže se jen ze serveru; kopie mimo server zůstane.') : __('Nejde to vrátit.'))
+                    ->action(fn ($record) => $this->attempt(__('Smazání selhalo'), function () use ($record) {
                         $this->backups()->delete($this->getSite(), $record->file);
-                        Toast::success('Záloha smazána');
+                        Toast::success(__('Záloha smazána'));
                     })),
             ])
             ->headerActions([
-                HeaderAction::make('backupNow')->label('Zálohovat nyní')->icon('outline:archive-box-arrow-down')
-                    ->modalHeading('Zálohovat web')
-                    ->modalDescription('Zabalí aktuální release, složku shared a databáze webu. U velkého webu to může chvíli trvat.')
+                HeaderAction::make('backupNow')->label(__('Zálohovat nyní'))->icon('outline:archive-box-arrow-down')
+                    ->modalHeading(__('Zálohovat web'))
+                    ->modalDescription(__('Zabalí aktuální release, složku shared a databáze webu. U velkého webu to může chvíli trvat.'))
                     ->form([
-                        Toggle::make('databases')->label('Včetně databází webu')->default($hasDatabases)->disabled(! $hasDatabases)
-                            ->helperText($hasDatabases ? implode(', ', $site->databases()->orderBy('name')->pluck('name')->all()) : 'Web nemá žádnou databázi.'),
+                        Toggle::make('databases')->label(__('Včetně databází webu'))->default($hasDatabases)->disabled(! $hasDatabases)
+                            ->helperText($hasDatabases ? implode(', ', $site->databases()->orderBy('name')->pluck('name')->all()) : __('Web nemá žádnou databázi.')),
                     ])
-                    ->modalSubmitActionLabel('Zálohovat')
-                    ->action(fn (array $data) => $this->attempt('Záloha selhala', function () use ($data) {
+                    ->modalSubmitActionLabel(__('Zálohovat'))
+                    ->action(fn (array $data) => $this->attempt(__('Záloha selhala'), function () use ($data) {
                         $this->backups()->backupNow($this->getSite(), (bool) ($data['databases'] ?? false))
-                            ? Toast::success('Záloha vytvořena')
-                            : Toast::warning('Záloha běží na pozadí', 'Objeví se v seznamu, až doběhne.');
+                            ? Toast::success(__('Záloha vytvořena'))
+                            : Toast::warning(__('Záloha běží na pozadí'), __('Objeví se v seznamu, až doběhne.'));
                     })),
-                HeaderAction::make('schedule')->label('Plán záloh')->icon('outline:clock')->color('gray')
+                HeaderAction::make('schedule')->label(__('Plán záloh'))->icon('outline:clock')->color('gray')
                     ->fillFormUsing(fn () => $this->schedule)
                     ->form([
-                        Select::make('frequency')->label('Automaticky')->options(ManageSiteBackups::FREQUENCIES)->required()
+                        Select::make('frequency')->label(__('Automaticky'))->options(Lang::values(ManageSiteBackups::FREQUENCIES))->required()
                             ->rules(['in:'.implode(',', array_keys(ManageSiteBackups::FREQUENCIES))]),
-                        TextInput::make('keep')->label('Uchovat posledních')->numeric()->required()->rules(['integer', 'min:1', 'max:90'])
-                            ->helperText('Starší zálohy se po každé automatické záloze smažou (zálohy před obnovou se počítají také).'),
-                        Toggle::make('databases')->label('Včetně databází webu')->disabled(! $hasDatabases),
+                        TextInput::make('keep')->label(__('Uchovat posledních'))->numeric()->required()->rules(['integer', 'min:1', 'max:90'])
+                            ->helperText(__('Starší zálohy se po každé automatické záloze smažou (zálohy před obnovou se počítají také).')),
+                        Toggle::make('databases')->label(__('Včetně databází webu'))->disabled(! $hasDatabases),
                     ])
-                    ->modalSubmitActionLabel('Uložit')
-                    ->action(fn (array $data) => $this->attempt('Plán se nepodařilo uložit', function () use ($data) {
+                    ->modalSubmitActionLabel(__('Uložit'))
+                    ->action(fn (array $data) => $this->attempt(__('Plán se nepodařilo uložit'), function () use ($data) {
                         $this->backups()->schedule($this->getSite(), $data['frequency'], (int) $data['keep'], (bool) ($data['databases'] ?? false));
-                        Toast::success('Plán záloh uložen');
+                        Toast::success(__('Plán záloh uložen'));
                     })),
             ])
             ->emptyState(
-                $this->error ? 'Zálohy se nepodařilo načíst' : 'Zatím žádná záloha',
-                $this->error ?? 'Vytvořte první zálohu nebo nastavte automatické zálohování.',
+                $this->error ? __('Zálohy se nepodařilo načíst') : __('Zatím žádná záloha'),
+                $this->error ?? __('Vytvořte první zálohu nebo nastavte automatické zálohování.'),
                 'outline:archive-box',
             )
             ->paginated(false);

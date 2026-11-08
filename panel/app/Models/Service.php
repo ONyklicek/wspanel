@@ -36,7 +36,7 @@ class Service extends Model
         return match ($this->type) {
             ServiceType::PhpFpm => "PHP-FPM {$this->instance}",
             ServiceType::Worker => ucfirst((string) $this->worker)." · {$this->instance}",
-            ServiceType::App => ($this->site?->runtimeLabel() ?? 'Aplikace')." · {$this->instance}",
+            ServiceType::App => ($this->site?->runtimeLabel() ?? __('Aplikace'))." · {$this->instance}",
             default => $this->type->getLabel(),
         };
     }

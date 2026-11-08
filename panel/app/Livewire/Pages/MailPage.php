@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Mail\ManageMail;
 use App\Enums\SiteStatus;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -20,6 +21,8 @@ use NyonCode\WirePanels\Pages\Page;
  */
 class MailPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.mail';
 
     /** Server-wide settings: administrators only. */
@@ -91,9 +94,9 @@ class MailPage extends Page
         abort_unless(in_array($mode, ['send', 'capture'], true), 400);
         try {
             app(ManageMail::class)->setSiteMode($site, $mode);
-            Toast::success($mode === 'capture' ? "{$site->domain}: pošta se zachytává v Mailpitu" : "{$site->domain}: pošta se odesílá", 'Proces aplikace a workery načtou změnu po restartu webu.');
+            Toast::success($mode === 'capture' ? __(':domain: pošta se zachytává v Mailpitu', ['domain' => $site->domain]) : __(':domain: pošta se odesílá', ['domain' => $site->domain]), __('Proces aplikace a workery načtou změnu po restartu webu.'));
         } catch (AgentException $e) {
-            Toast::error('Změna selhala', $e->getMessage());
+            Toast::error(__('Změna selhala'), $e->getMessage());
         }
         $this->refreshStatus();
     }
@@ -103,9 +106,9 @@ class MailPage extends Page
         abort_unless(Site::query()->where('domain', $domain)->exists(), 404);
         try {
             app(ManageMail::class)->dkim($domain);
-            Toast::success("DKIM klíč pro {$domain} vytvořen", 'Přidejte TXT záznam z tabulky do DNS domény.');
+            Toast::success(__('DKIM klíč pro :domain vytvořen', ['domain' => $domain]), __('Přidejte TXT záznam z tabulky do DNS domény.'));
         } catch (AgentException $e) {
-            Toast::error('DKIM se nepodařilo vytvořit', $e->getMessage());
+            Toast::error(__('DKIM se nepodařilo vytvořit'), $e->getMessage());
         }
         $this->refreshStatus();
     }
@@ -116,7 +119,7 @@ class MailPage extends Page
             $this->queue = app(ManageMail::class)->queue();
         } catch (AgentException $e) {
             $this->queue = null;
-            Toast::error('Frontu se nepodařilo načíst', $e->getMessage());
+            Toast::error(__('Frontu se nepodařilo načíst'), $e->getMessage());
         }
     }
 
@@ -124,9 +127,9 @@ class MailPage extends Page
     {
         try {
             app(ManageMail::class)->flushQueue();
-            Toast::success('Fronta se odesílá znovu');
+            Toast::success(__('Fronta se odesílá znovu'));
         } catch (AgentException $e) {
-            Toast::error('Odeslání selhalo', $e->getMessage());
+            Toast::error(__('Odeslání selhalo'), $e->getMessage());
         }
         $this->loadQueue();
         $this->refreshStatus();
@@ -136,9 +139,9 @@ class MailPage extends Page
     {
         try {
             app(ManageMail::class)->deleteQueued($id === null ? null : [$id]);
-            Toast::success($id === null ? 'Fronta smazána' : 'Zpráva smazána z fronty');
+            Toast::success($id === null ? __('Fronta smazána') : __('Zpráva smazána z fronty'));
         } catch (AgentException $e) {
-            Toast::error('Smazání selhalo', $e->getMessage());
+            Toast::error(__('Smazání selhalo'), $e->getMessage());
         }
         $this->loadQueue();
         $this->refreshStatus();
@@ -149,7 +152,7 @@ class MailPage extends Page
         try {
             $this->log = app(ManageMail::class)->log();
         } catch (AgentException $e) {
-            $this->log = 'Log se nepodařilo načíst: '.$e->getMessage();
+            $this->log = __('Log se nepodařilo načíst: ').$e->getMessage();
         }
     }
 
@@ -157,14 +160,14 @@ class MailPage extends Page
     {
         return [
             Action::make('mailpit')
-                ->label('Otevřít Mailpit')
+                ->label(__('Otevřít Mailpit'))
                 ->icon('outline:inbox-stack')
                 ->url((string) config('panel.mailpit_path'), true),
             Action::make('relay')
-                ->label('Relay (SMTP poskytovatel)')
+                ->label(__('Relay (SMTP poskytovatel)'))
                 ->icon('outline:server-stack')
                 ->color('gray')
-                ->modalDescription('Bez relaye doručuje Postfix poštu přímo na servery příjemců. To vyžaduje čistou IP adresu s reverzním záznamem (PTR) a otevřený port 25 (mnoho cloudů ho blokuje). Spolehlivější je poslat poštu přes poskytovatele jako Mailgun, Amazon SES, Postmark, Brevo nebo SMTP vašeho hostingu.')
+                ->modalDescription(__('Bez relaye doručuje Postfix poštu přímo na servery příjemců. To vyžaduje čistou IP adresu s reverzním záznamem (PTR) a otevřený port 25 (mnoho cloudů ho blokuje). Spolehlivější je poslat poštu přes poskytovatele jako Mailgun, Amazon SES, Postmark, Brevo nebo SMTP vašeho hostingu.'))
                 ->fillFormUsing(function () {
                     $relay = (string) ($this->status['relay'] ?? '');
                     preg_match('/^\[(.+)\]:(\d+)$/', $relay, $m);
@@ -172,20 +175,20 @@ class MailPage extends Page
                     return ['host' => $m[1] ?? '', 'port' => (int) ($m[2] ?? 587)];
                 })
                 ->form([
-                    TextInput::make('host')->label('SMTP server')->placeholder('smtp.eu.mailgun.org')->helperText('Prázdné = doručovat přímo.'),
-                    Select::make('port')->rules([Options::rule()])->label('Port')->options([587 => '587 (STARTTLS)', 465 => '465 (TLS)', 2525 => '2525', 25 => '25'])->default(587)
+                    TextInput::make('host')->label(__('SMTP server'))->placeholder('smtp.eu.mailgun.org')->helperText(__('Prázdné = doručovat přímo.')),
+                    Select::make('port')->rules([Options::rule()])->label(__('Port'))->options([587 => '587 (STARTTLS)', 465 => '465 (TLS)', 2525 => '2525', 25 => '25'])->default(587)
                         ->hiddenWhen('host', [null, '']),
-                    TextInput::make('username')->label('Uživatel')->hiddenWhen('host', [null, '']),
-                    TextInput::make('password')->label('Heslo / API klíč')->password()->revealable()->hiddenWhen('host', [null, ''])
-                        ->helperText('Uloží se jen na serveru (root, 0600), panel ho neuchovává.'),
-                    Placeholder::make('tls')->hiddenLabel()->content('Spojení s relayem je vždy šifrované (TLS).'),
+                    TextInput::make('username')->label(__('Uživatel'))->hiddenWhen('host', [null, '']),
+                    TextInput::make('password')->label(__('Heslo / API klíč'))->password()->revealable()->hiddenWhen('host', [null, ''])
+                        ->helperText(__('Uloží se jen na serveru (root, 0600), panel ho neuchovává.')),
+                    Placeholder::make('tls')->hiddenLabel()->content(__('Spojení s relayem je vždy šifrované (TLS).')),
                 ])
                 ->action(function (array $data) {
                     try {
                         app(ManageMail::class)->setRelay($data['host'] ?: null, (int) ($data['port'] ?? 587) ?: null, $data['username'] ?? null, $data['password'] ?? null);
-                        Toast::success($data['host'] ? "Pošta jde přes {$data['host']}" : 'Pošta se doručuje přímo');
+                        Toast::success($data['host'] ? __('Pošta jde přes :host', ['host' => $data['host']]) : __('Pošta se doručuje přímo'));
                     } catch (AgentException $e) {
-                        Toast::error('Uložení selhalo', $e->getMessage());
+                        Toast::error(__('Uložení selhalo'), $e->getMessage());
                     }
                     $this->refreshStatus();
                 }),

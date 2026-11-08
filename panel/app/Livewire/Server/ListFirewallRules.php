@@ -5,6 +5,7 @@ namespace App\Livewire\Server;
 use App\Actions\Firewall\ManageFirewall;
 use App\Actions\Firewall\SyncFirewall;
 use App\Actions\ManagePanelAccess;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
@@ -21,6 +22,8 @@ use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListFirewallRules extends ListPage
 {
+    use TranslatesPageText;
+
     protected static ?string $resource = FirewallRuleResource::class;
 
     protected ?string $title = 'Firewall';
@@ -43,8 +46,8 @@ class ListFirewallRules extends ListPage
     {
         $status = Cache::get('firewall.status');
 
-        return $status === null ? 'Stav firewallu zatím nebyl ověřen.'
-            : ($status['active'] ? 'UFW je aktivní.' : 'UFW je VYPNUTÝ: pravidla se neuplatňují.').' Porty '.implode(', ', $status['protected_ports']).' jsou chráněné proti zablokování.';
+        return $status === null ? __('Stav firewallu zatím nebyl ověřen.')
+            : ($status['active'] ? __('UFW je aktivní.') : __('UFW je VYPNUTÝ: pravidla se neuplatňují.')).' Porty '.implode(', ', $status['protected_ports']).__(' jsou chráněné proti zablokování.');
     }
 
     protected function headerActions(): array
@@ -53,67 +56,67 @@ class ListFirewallRules extends ListPage
 
         return [
             Action::make('add')
-                ->label('Přidat pravidlo')
+                ->label(__('Přidat pravidlo'))
                 ->icon('outline:plus')
                 ->form([
                     Grid::make()->columns(3)->schema([
-                        Select::make('action')->rules([Options::rule()])->label('Akce')->options(['allow' => 'Povolit', 'deny' => 'Zakázat'])->default('allow')->required(),
-                        TextInput::make('port')->label('Port')->integer()->minValue(1)->maxValue(65535)->rules(['integer', 'between:1,65535'])->required(),
-                        Select::make('proto')->rules([Options::rule()])->label('Protokol')->options(['tcp' => 'TCP', 'udp' => 'UDP'])->default('tcp')->required(),
+                        Select::make('action')->rules([Options::rule()])->label(__('Akce'))->options(['allow' => __('Povolit'), 'deny' => __('Zakázat')])->default('allow')->required(),
+                        TextInput::make('port')->label(__('Port'))->integer()->minValue(1)->maxValue(65535)->rules(['integer', 'between:1,65535'])->required(),
+                        Select::make('proto')->rules([Options::rule()])->label(__('Protokol'))->options(['tcp' => 'TCP', 'udp' => 'UDP'])->default('tcp')->required(),
                     ]),
-                    TextInput::make('from')->label('Odkud (IP nebo síť)')->placeholder('odkudkoli')
-                        ->helperText('Např. 203.0.113.10 nebo 10.0.0.0/24. Prázdné = odkudkoli.')
+                    TextInput::make('from')->label(__('Odkud (IP nebo síť)'))->placeholder('odkudkoli')
+                        ->helperText(__('Např. 203.0.113.10 nebo 10.0.0.0/24. Prázdné = odkudkoli.'))
                         ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                             if (filled($value) && ! self::isIpOrCidr(trim((string) $value))) {
-                                $fail('Zadejte IP adresu nebo síť v CIDR.');
+                                $fail(__('Zadejte IP adresu nebo síť v CIDR.'));
                             }
                         }]),
-                    TextInput::make('description')->label('Popis')->maxLength(100)->rules(['max:100']),
+                    TextInput::make('description')->label(__('Popis'))->maxLength(100)->rules(['max:100']),
                 ])
                 ->action(function (array $data) {
                     try {
                         app(ManageFirewall::class)->add($data);
-                        Toast::success('Pravidlo přidáno');
+                        Toast::success(__('Pravidlo přidáno'));
                     } catch (AgentException $e) {
-                        Toast::error('Pravidlo se nepodařilo přidat', $e->getMessage());
+                        Toast::error(__('Pravidlo se nepodařilo přidat'), $e->getMessage());
                     }
                 }),
             Action::make('panelAccess')
-                ->label('Přístup k panelu')
+                ->label(__('Přístup k panelu'))
                 ->icon('outline:lock-closed')
                 ->color($access['allow'] === [] ? 'gray' : 'success')
-                ->modalHeading('Kdo smí otevřít panel')
+                ->modalHeading(__('Kdo smí otevřít panel'))
                 ->modalWidth('2xl')
-                ->modalDescription('Omezí panel (i phpMyAdmin, Adminer a Mailpit na jeho doméně) na vybrané adresy, např. VPN nebo kancelář. Weby to neovlivní. Ze serveru samotného (SSH tunel) panel funguje vždy: ssh -L 8443:127.0.0.1:443 root@server.')
+                ->modalDescription(__('Omezí panel (i phpMyAdmin, Adminer a Mailpit na jeho doméně) na vybrané adresy, např. VPN nebo kancelář. Weby to neovlivní. Ze serveru samotného (SSH tunel) panel funguje vždy: ssh -L 8443:127.0.0.1:443 root@server.'))
                 ->fillFormUsing(fn () => ['allow' => implode("\n", $access['allow']), 'public_hooks' => $access['public_hooks']])
                 ->form([
-                    Textarea::make('allow')->label('Povolené adresy a sítě')->rows(4)->placeholder("10.8.0.0/24\n203.0.113.7")
-                        ->helperText('Jedna na řádek. Prázdné = panel je veřejný. Vaše současná adresa: '.request()->ip()),
-                    Toggle::make('public_hooks')->label('Webhooky a CI API dostupné odkudkoli (deploy z GitHubu funguje dál)')->default(true),
+                    Textarea::make('allow')->label(__('Povolené adresy a sítě'))->rows(4)->placeholder("10.8.0.0/24\n203.0.113.7")
+                        ->helperText(__('Jedna na řádek. Prázdné = panel je veřejný. Vaše současná adresa: ').request()->ip()),
+                    Toggle::make('public_hooks')->label(__('Webhooky a CI API dostupné odkudkoli (deploy z GitHubu funguje dál)'))->default(true),
                 ])
                 ->action(function (array $data) {
                     $list = collect(preg_split('/\R/', (string) ($data['allow'] ?? '')) ?: [])->map(fn ($l) => trim($l))->filter()->values()->all();
                     foreach ($list as $entry) {
                         if (! self::isIpOrCidr($entry)) {
-                            Toast::error('Neplatná adresa', $entry);
+                            Toast::error(__('Neplatná adresa'), $entry);
 
                             return;
                         }
                     }
                     try {
                         app(ManagePanelAccess::class)->set($list, (bool) ($data['public_hooks'] ?? true), request()->ip());
-                        Toast::success($list === [] ? 'Panel je veřejný' : 'Přístup k panelu omezen', $list === [] ? null : implode(', ', $list));
+                        Toast::success($list === [] ? __('Panel je veřejný') : __('Přístup k panelu omezen'), $list === [] ? null : implode(', ', $list));
                     } catch (InvalidArgumentException|AgentException $e) {
-                        Toast::error('Neuloženo', $e->getMessage());
+                        Toast::error(__('Neuloženo'), $e->getMessage());
                     }
                 }),
-            Action::make('sync')->label('Ověřit stav')->icon('outline:arrow-path')->color('gray')
+            Action::make('sync')->label(__('Ověřit stav'))->icon('outline:arrow-path')->color('gray')
                 ->action(function () {
                     try {
                         $r = app(SyncFirewall::class)->handle();
-                        Toast::success("Firewall ověřen ({$r['rules']} pravidel)");
+                        Toast::success(__('Firewall ověřen (:rules pravidel)', ['rules' => $r['rules']]));
                     } catch (AgentException $e) {
-                        Toast::error('Agent není dostupný', $e->getMessage());
+                        Toast::error(__('Agent není dostupný'), $e->getMessage());
                     }
                 }),
         ];

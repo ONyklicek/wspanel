@@ -7,6 +7,7 @@ use App\Enums\SiteMode;
 use App\Models\Client;
 use App\Services\Agent\SystemInfo;
 use App\Support\Domains;
+use App\Support\Lang;
 use App\Support\Limits;
 use App\Wire\Forms\Options;
 use Illuminate\Validation\Rule;
@@ -26,29 +27,29 @@ final class SiteFields
     public static function domain(): TextInput
     {
         return TextInput::make('domain')
-            ->label('Doména')
+            ->label(__('Doména'))
             ->placeholder('example.com')
             ->required()
             ->maxLength(253)
             ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
             ->rules(['max:253', function (string $attribute, mixed $value, \Closure $fail) {
                 if (! Domains::isValid($value)) {
-                    $fail('Neplatná doména.');
+                    $fail(__('Neplatná doména.'));
                 }
             }])
             ->liveOnBlur()
             ->afterStateUpdated(fn ($state, $set) => $set('tls', Domains::isInternal(Domains::normalize($state)) ? 'internal' : 'auto'))
-            ->helperText('Veřejná doména musí DNS záznamem mířit na tento server. Pro vnitřní síť použijte např. intranet.firma.lan.');
+            ->helperText(__('Veřejná doména musí DNS záznamem mířit na tento server. Pro vnitřní síť použijte např. intranet.firma.lan.'));
     }
 
     public static function tls(): Radio
     {
         return Radio::make('tls')
-            ->label('HTTPS certifikát')
-            ->options(self::TLS_OPTIONS)
+            ->label(__('HTTPS certifikát'))
+            ->options(Lang::values(self::TLS_OPTIONS))
             ->descriptions([
-                'auto' => 'Zdarma, obnovuje se sám. Doména musí být veřejná a mířit na server.',
-                'internal' => 'Pro domény ve vnitřní síti (.lan, .local, .internal…) a testy. Počítače jednou nainstalují kořenový certifikát (SSL → Kořenový certifikát).',
+                'auto' => __('Zdarma, obnovuje se sám. Doména musí být veřejná a mířit na server.'),
+                'internal' => __('Pro domény ve vnitřní síti (.lan, .local, .internal…) a testy. Počítače jednou nainstalují kořenový certifikát (SSL → Kořenový certifikát).'),
             ])
             ->default('auto')
             ->required()
@@ -64,11 +65,11 @@ final class SiteFields
     public static function client(): Select
     {
         return Select::make('client_id')
-            ->label('Klient')
+            ->label(__('Klient'))
             ->options(fn () => Client::query()->orderBy('name')->pluck('name', 'id')->all())
-            ->placeholder('žádný (web správce)')
+            ->placeholder(__('žádný (web správce)'))
             ->rules([Options::rule()])
-            ->helperText('Klient web uvidí ve svém panelu a počítá se mu do limitů balíčku.');
+            ->helperText(__('Klient web uvidí ve svém panelu a počítá se mu do limitů balíčku.'));
     }
 
     public static function runtime(?string $currentMode = null): array
@@ -84,7 +85,7 @@ final class SiteFields
 
         return [
             Radio::make('mode')
-                ->label('Režim')
+                ->label(__('Režim'))
                 ->options($modes->mapWithKeys(fn (SiteMode $m) => [$m->value => $m->getLabel()])->all())
                 ->descriptions($modes->mapWithKeys(fn (SiteMode $m) => [$m->value => $m->getDescription()])->all())
                 ->cards()
@@ -94,14 +95,14 @@ final class SiteFields
                 ->live()
                 ->afterStateUpdated(fn ($state, $set) => $set('framework', array_key_first(Framework::optionsForMode($state)))),
             Select::make('framework')
-                ->label('Typ aplikace')
+                ->label(__('Typ aplikace'))
                 ->options(fn ($get) => Framework::optionsForMode($get('mode')))
                 ->default(array_key_first(Framework::optionsForMode($modes->first()->value)))
                 ->required()
                 ->rules([fn ($get) => Rule::in(array_keys(Framework::optionsForMode($get('mode'))))])
-                ->helperText('Určuje adresáře, .env, workery a postup deploye.'),
+                ->helperText(__('Určuje adresáře, .env, workery a postup deploye.')),
             Select::make('php_version')
-                ->label('Verze PHP')
+                ->label(__('Verze PHP'))
                 ->options($phpOptions)
                 ->default(fn () => array_key_exists((string) $system->defaultPhpVersion(), $phpOptions()) ? $system->defaultPhpVersion() : array_key_first($phpOptions()))
                 ->visibleWhen('mode', SiteMode::Classic->value)
@@ -109,10 +110,10 @@ final class SiteFields
                 ->rules([fn () => Rule::in(array_keys($phpOptions()))]),
             Placeholder::make('worker_php')
                 ->label('PHP')
-                ->content(fn () => 'Worker režim běží na PHP '.($system->workerPhpVersion() ?? '?').' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+.')
+                ->content(fn () => __('Worker režim běží na PHP ').($system->workerPhpVersion() ?? '?').__(' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+.'))
                 ->visibleWhen('mode', SiteMode::Worker->value),
             Select::make('node_version')
-                ->label('Verze Node')
+                ->label(__('Verze Node'))
                 ->options(fn () => $system->nodeVersionOptions())
                 ->default(fn () => array_key_first($system->nodeVersionOptions()))
                 ->visibleWhen('mode', SiteMode::Node->value)

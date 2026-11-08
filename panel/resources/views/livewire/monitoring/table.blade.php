@@ -2,7 +2,7 @@
 <x-wire::section :heading="$heading ?? null" :description="$description ?? null">
 <div class="overflow-x-auto">
     @if ($rows === [])
-        <p class="py-4 text-sm text-gray-500">{{ $empty ?? 'Nic k zobrazení.' }}</p>
+        <p class="py-4 text-sm text-gray-500">{{ $empty ?? __('Nic k zobrazení.') }}</p>
     @else
         <table class="w-full text-left text-sm">
             <thead>

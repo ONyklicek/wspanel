@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\System\ManageUpdates;
+use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
@@ -11,6 +12,8 @@ use NyonCode\WirePanels\Pages\Page;
 /** System updates, automatic security updates and fail2ban's bans. */
 class UpdatesPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.updates';
 
     protected static ?string $permission = 'admin';
@@ -54,7 +57,7 @@ class UpdatesPage extends Page
     public function refresh(): void
     {
         $this->load(true);
-        Toast::success('Seznam balíčků obnoven');
+        Toast::success(__('Seznam balíčků obnoven'));
     }
 
     public function toggleAuto(): void
@@ -62,9 +65,9 @@ class UpdatesPage extends Page
         try {
             $on = ! ($this->updates['auto_security'] ?? false);
             app(ManageUpdates::class)->setAutoSecurity($on);
-            Toast::success($on ? 'Bezpečnostní aktualizace se instalují samy' : 'Automatické aktualizace vypnuty');
+            Toast::success($on ? __('Bezpečnostní aktualizace se instalují samy') : __('Automatické aktualizace vypnuty'));
         } catch (AgentException $e) {
-            Toast::error('Změna selhala', $e->getMessage());
+            Toast::error(__('Změna selhala'), $e->getMessage());
         }
         $this->load();
     }
@@ -73,9 +76,9 @@ class UpdatesPage extends Page
     {
         try {
             app(ManageUpdates::class)->unban($ip);
-            Toast::success("{$ip} odblokována");
+            Toast::success(__(':ip odblokována', ['ip' => $ip]));
         } catch (AgentException $e) {
-            Toast::error('Odblokování selhalo', $e->getMessage());
+            Toast::error(__('Odblokování selhalo'), $e->getMessage());
         }
         $this->load();
     }
@@ -85,22 +88,22 @@ class UpdatesPage extends Page
         $upgrade = fn (bool $security) => function () use ($security) {
             try {
                 app(ManageUpdates::class)->upgrade($security)
-                    ? Toast::success('Aktualizace nainstalovány')
-                    : Toast::warning('Instalace ještě běží', 'Obnovte stránku za chvíli.');
+                    ? Toast::success(__('Aktualizace nainstalovány'))
+                    : Toast::warning(__('Instalace ještě běží'), __('Obnovte stránku za chvíli.'));
             } catch (AgentException $e) {
-                Toast::error('Aktualizace selhala', $e->getMessage());
+                Toast::error(__('Aktualizace selhala'), $e->getMessage());
             }
             $this->load();
         };
 
         return [
-            Action::make('upgradeSecurity')->label('Nainstalovat bezpečnostní')->icon('outline:shield-check')
+            Action::make('upgradeSecurity')->label(__('Nainstalovat bezpečnostní'))->icon('outline:shield-check')
                 ->visible(fn () => collect($this->updates['packages'] ?? [])->contains('security', true))
-                ->requiresConfirmation()->modalDescription('Nainstaluje jen bezpečnostní aktualizace (unattended-upgrades). Služby se po aktualizaci samy restartují.')
+                ->requiresConfirmation()->modalDescription(__('Nainstaluje jen bezpečnostní aktualizace (unattended-upgrades). Služby se po aktualizaci samy restartují.'))
                 ->action($upgrade(true)),
-            Action::make('upgradeAll')->label('Nainstalovat vše')->icon('outline:arrow-down-tray')->color('gray')
+            Action::make('upgradeAll')->label(__('Nainstalovat vše'))->icon('outline:arrow-down-tray')->color('gray')
                 ->visible(fn () => ! empty($this->updates['packages']))
-                ->requiresConfirmation()->modalDescription('Nainstaluje všechny aktualizace. Konfigurační soubory, které panel upravil, zůstanou (nové výchozí se nepoužijí).')
+                ->requiresConfirmation()->modalDescription(__('Nainstaluje všechny aktualizace. Konfigurační soubory, které panel upravil, zůstanou (nové výchozí se nepoužijí).'))
                 ->action($upgrade(false)),
         ];
     }

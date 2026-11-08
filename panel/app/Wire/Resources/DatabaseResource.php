@@ -52,12 +52,12 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
 
     public static function label(): string
     {
-        return 'Databáze';
+        return __('Databáze');
     }
 
     public static function pluralLabel(): string
     {
-        return 'Databáze';
+        return __('Databáze');
     }
 
     public static function pages(): array
@@ -87,36 +87,36 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             ->stackedOnMobile()
             ->query(Database::query()->with('site')->withCount('backups'))
             ->columns([
-                TextColumn::make('name')->label('Databáze')->searchable()->sortable()->fontFamily('mono')->weight('medium')
+                TextColumn::make('name')->label(__('Databáze'))->searchable()->sortable()->fontFamily('mono')->weight('medium')
                     ->description(fn (Database $record) => $record->engine->getLabel().' · '.($record->site?->domain ?? 'bez webu')),
-                TextColumn::make('size')->label('Velikost')->sortable()->formatStateUsing(fn ($state) => $state === null ? '—' : Number::fileSize((int) $state, 1)),
-                TextColumn::make('backups_count')->label('Zálohy')
-                    ->formatStateUsing(fn ($state) => (int) $state === 0 ? 'žádná' : $state.' '.((int) $state === 1 ? 'záloha' : ((int) $state < 5 ? 'zálohy' : 'záloh')))
-                    ->description(fn (Database $record) => ['daily' => 'automaticky denně', 'weekly' => 'automaticky týdně'][$record->backup_frequency] ?? 'automatické zálohy vypnuté'),
+                TextColumn::make('size')->label(__('Velikost'))->sortable()->formatStateUsing(fn ($state) => $state === null ? '—' : Number::fileSize((int) $state, 1)),
+                TextColumn::make('backups_count')->label(__('Zálohy'))
+                    ->formatStateUsing(fn ($state) => (int) $state === 0 ? __('žádná') : $state.' '.((int) $state === 1 ? __('záloha') : ((int) $state < 5 ? __('zálohy') : __('záloh'))))
+                    ->description(fn (Database $record) => ['daily' => __('automaticky denně'), 'weekly' => __('automaticky týdně')][$record->backup_frequency] ?? __('automatické zálohy vypnuté')),
             ])
             ->recordUrl(fn (Database $record) => self::url('view', $record))
             ->actions([self::openAction(), ActionGroup::make([...self::toolActions(), self::resetPasswordAction(), self::dropAction()])])
-            ->emptyState('Zatím žádná databáze', 'Vytvořte ji tlačítkem Nová databáze, nebo u webu (Další → Nová databáze).', 'outline:circle-stack')
+            ->emptyState(__('Zatím žádná databáze'), __('Vytvořte ji tlačítkem Nová databáze, nebo u webu (Další → Nová databáze).'), 'outline:circle-stack')
             ->defaultSort('name');
     }
 
     public function infolist(Infolist $infolist): Infolist
     {
         return $infolist->schema([
-            Section::make('db')->label('Databáze')->icon('outline:circle-stack')->columns(2)->schema([
-                TextEntry::make('engine')->label('Engine')->state(fn (Database $record) => $record->engine->getLabel())->badge()->color('gray'),
-                TextEntry::make('site')->label('Web')->state(fn (Database $record) => $record->site?->domain ?? 'nepřipojeno'),
-                TextEntry::make('size')->label('Velikost')->state(fn (Database $record) => $record->size === null ? '—' : Number::fileSize($record->size, 1)),
-                TextEntry::make('backup_frequency')->label('Automatické zálohy')->state(fn (Database $record) => match ($record->backup_frequency) {
-                    'daily' => "denně, drží {$record->backup_keep}",
-                    'weekly' => "týdně, drží {$record->backup_keep}",
+            Section::make('db')->label(__('Databáze'))->icon('outline:circle-stack')->columns(2)->schema([
+                TextEntry::make('engine')->label(__('Engine'))->state(fn (Database $record) => $record->engine->getLabel())->badge()->color('gray'),
+                TextEntry::make('site')->label(__('Web'))->state(fn (Database $record) => $record->site?->domain ?? __('nepřipojeno')),
+                TextEntry::make('size')->label(__('Velikost'))->state(fn (Database $record) => $record->size === null ? '—' : Number::fileSize($record->size, 1)),
+                TextEntry::make('backup_frequency')->label(__('Automatické zálohy'))->state(fn (Database $record) => match ($record->backup_frequency) {
+                    'daily' => __('denně, drží :backup_keep', ['backup_keep' => $record->backup_keep]),
+                    'weekly' => __('týdně, drží :backup_keep', ['backup_keep' => $record->backup_keep]),
                     default => 'vypnuto',
                 }),
-                TextEntry::make('connection')->label('Připojení')->copyable()
-                    ->state(fn (Database $record) => '127.0.0.1:'.($record->engine === DatabaseEngine::MariaDb ? 3306 : 5432).' · uživatel '.$record->name),
-                TextEntry::make('credentials')->label('Údaje')->state(fn (Database $record) => $record->site
-                    ? 'zapsané v .env webu '.$record->site->domain
-                    : 'heslo panel nedrží; v případě potřeby vygenerujte nové'),
+                TextEntry::make('connection')->label(__('Připojení'))->copyable()
+                    ->state(fn (Database $record) => '127.0.0.1:'.($record->engine === DatabaseEngine::MariaDb ? 3306 : 5432).__(' · uživatel ').$record->name),
+                TextEntry::make('credentials')->label(__('Údaje'))->state(fn (Database $record) => $record->site
+                    ? __('zapsané v .env webu ').$record->site->domain
+                    : __('heslo panel nedrží; v případě potřeby vygenerujte nové')),
             ]),
         ]);
     }
@@ -132,7 +132,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
         $tools = app(SystemInfo::class)->dbTools();
         $tool = fn (Database $record) => $record->engine === DatabaseEngine::MariaDb && in_array('phpmyadmin', $tools, true) ? 'phpmyadmin' : 'adminer';
 
-        return Action::make('open')->label('Otevřít')->icon('outline:arrow-top-right-on-square')->color('gray')
+        return Action::make('open')->label(__('Otevřít'))->icon('outline:arrow-top-right-on-square')->color('gray')
             ->tooltip(fn (Database $record) => $tool($record) === 'phpmyadmin' ? 'V phpMyAdminu' : 'V Admineru')
             ->visible(fn (Database $record) => in_array($tool($record), $tools, true))
             ->url(fn (Database $record) => route('dbtools.open', [$record, $tool($record)]), true);
@@ -147,7 +147,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             Action::make('phpmyadmin')->label('phpMyAdmin')->icon('outline:table-cells')->color('gray')
                 ->visible(fn (Database $record) => in_array('phpmyadmin', $tools, true) && $record->engine === DatabaseEngine::MariaDb)
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'phpmyadmin']), true),
-            Action::make('adminer')->label('Adminer')->icon('outline:table-cells')->color('gray')
+            Action::make('adminer')->label(__('Adminer'))->icon('outline:table-cells')->color('gray')
                 ->visible(fn () => in_array('adminer', $tools, true))
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'adminer']), true),
         ];
@@ -156,20 +156,20 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
     public static function resetPasswordAction(): Action
     {
         return Action::make('resetPassword')
-            ->label('Nové heslo')
+            ->label(__('Nové heslo'))
             ->icon('outline:key')
             ->requiresConfirmation()
             ->modalDescription(fn (Database $record) => $record->site
-                ? "Vygeneruje se nové heslo a zapíše do .env webu {$record->site->domain}. Proces aplikace a workery ho načtou po restartu webu."
-                : 'Vygeneruje se nové heslo a zobrazí se jen jednou.')
+                ? __('Vygeneruje se nové heslo a zapíše do .env webu :domain. Proces aplikace a workery ho načtou po restartu webu.', ['domain' => $record->site->domain])
+                : __('Vygeneruje se nové heslo a zobrazí se jen jednou.'))
             ->action(function (Database $record) {
                 try {
                     $password = app(ManageDatabases::class)->resetPassword($record);
                     $password
-                        ? Toast::secret('Heslo změněno', "Nové heslo pro {$record->name} (zobrazeno jen teď): {$password}")
-                        : Toast::success('Heslo změněno', "Zapsáno do .env webu {$record->site?->domain}.");
+                        ? Toast::secret(__('Heslo změněno'), __('Nové heslo pro :name (zobrazeno jen teď): :password', ['name' => $record->name, 'password' => $password]))
+                        : Toast::success(__('Heslo změněno'), __('Zapsáno do .env webu :domain.', ['domain' => $record->site?->domain]));
                 } catch (AgentException $e) {
-                    Toast::error('Změna hesla selhala', $e->getMessage());
+                    Toast::error(__('Změna hesla selhala'), $e->getMessage());
                 }
             });
     }
@@ -177,21 +177,21 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
     public static function dropAction(): Action
     {
         return Action::make('drop')
-            ->label('Smazat')
+            ->label(__('Smazat'))
             ->icon('outline:trash')
             ->color('danger')
-            ->modalHeading(fn (Database $record) => "Smazat databázi {$record->name}?")
-            ->modalDescription('Nevratné: databáze i její uživatel zmizí. Existující zálohy zůstanou na serveru.')
+            ->modalHeading(fn (Database $record) => __('Smazat databázi :name?', ['name' => $record->name]))
+            ->modalDescription(__('Nevratné: databáze i její uživatel zmizí. Existující zálohy zůstanou na serveru.'))
             ->form(fn (Database $record) => [
-                TextInput::make('confirm')->label('Pro potvrzení napište název')->placeholder($record->name)->required()
-                    ->rules(['in:'.$record->name])->validationMessages(['in' => 'Název nesouhlasí.']),
+                TextInput::make('confirm')->label(__('Pro potvrzení napište název'))->placeholder($record->name)->required()
+                    ->rules(['in:'.$record->name])->validationMessages(['in' => __('Název nesouhlasí.')]),
             ])
             ->action(function (Database $record) {
                 try {
                     app(ManageDatabases::class)->drop($record);
-                    Toast::success("Databáze {$record->name} smazána");
+                    Toast::success(__('Databáze :name smazána', ['name' => $record->name]));
                 } catch (AgentException $e) {
-                    Toast::error('Smazání selhalo', $e->getMessage());
+                    Toast::error(__('Smazání selhalo'), $e->getMessage());
                 }
             })
             ->successRedirect(fn () => self::url('index'));
@@ -203,17 +203,17 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
         $engines = collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()]);
 
         return Action::make('createDatabase')
-            ->label('Nová databáze')
+            ->label(__('Nová databáze'))
             ->icon('outline:plus')
             ->visible($engines->isNotEmpty())
-            ->modalDescription('Vytvoří databázi a jejího vlastníka se stejným názvem a náhodným heslem. S připojeným webem se údaje zapíší rovnou do jeho .env a panel heslo neuvidí.')
+            ->modalDescription(__('Vytvoří databázi a jejího vlastníka se stejným názvem a náhodným heslem. S připojeným webem se údaje zapíší rovnou do jeho .env a panel heslo neuvidí.'))
             ->fillFormUsing(fn () => ['engine' => $engines->keys()->first(), 'site_id' => null, 'name' => null])
             ->form([
-                Select::make('engine')->rules([Options::rule()])->label('Engine')->options($engines->all())->required(),
+                Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->options($engines->all())->required(),
                 Select::make('site_id')->rules([Options::rule()])
-                    ->label('Web')
+                    ->label(__('Web'))
                     ->options(fn () => Site::query()->where('status', 'active')->orderBy('domain')->pluck('domain', 'id')->all())
-                    ->placeholder('nepřipojovat')
+                    ->placeholder(__('nepřipojovat'))
                     ->live()
                     ->afterStateUpdated(function ($state, $get, $set) {
                         if ($state && blank($get('name'))) {
@@ -221,11 +221,11 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                         }
                     }),
                 TextInput::make('name')
-                    ->label('Název (i uživatel)')
+                    ->label(__('Název (i uživatel)'))
                     ->required()
                     ->rules(['regex:/^[a-z][a-z0-9_]{1,47}$/', 'not_in:'.implode(',', self::RESERVED)])
-                    ->validationMessages(['regex' => 'Malá písmena, číslice a podtržítko; začíná písmenem.', 'not_in' => 'Tento název je rezervovaný.'])
-                    ->helperText('Malá písmena, číslice a podtržítko; začíná písmenem.'),
+                    ->validationMessages(['regex' => __('Malá písmena, číslice a podtržítko; začíná písmenem.'), 'not_in' => __('Tento název je rezervovaný.')])
+                    ->helperText(__('Malá písmena, číslice a podtržítko; začíná písmenem.')),
             ])
             ->action(function (array $data) {
                 try {
@@ -233,10 +233,10 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                     $result = app(ManageDatabases::class)->create($data['engine'], $data['name'], $site);
                     $name = $result['database']->name;
                     $result['password']
-                        ? Toast::secret("Databáze {$name} vytvořena", "Uživatel {$name}, heslo (zobrazeno jen teď): {$result['password']}")
-                        : Toast::success("Databáze {$name} vytvořena", "Údaje zapsány do .env webu {$site?->domain}.");
+                        ? Toast::secret(__('Databáze :name vytvořena', ['name' => $name]), __('Uživatel :name, heslo (zobrazeno jen teď): :password', ['name' => $name, 'password' => $result['password']]))
+                        : Toast::success(__('Databáze :name vytvořena', ['name' => $name]), __('Údaje zapsány do .env webu :domain.', ['domain' => $site?->domain]));
                 } catch (AgentException $e) {
-                    Toast::error('Databázi se nepodařilo vytvořit', $e->getMessage());
+                    Toast::error(__('Databázi se nepodařilo vytvořit'), $e->getMessage());
                 }
             });
     }

@@ -103,12 +103,12 @@ class ManageMail
         $spf = 'v=spf1 '.($serverIp ? (str_contains($serverIp, ':') ? "ip6:{$serverIp}" : "ip4:{$serverIp}").' ' : 'a mx ')
             .($relay ? 'include:<SPF poskytovatele relaye> ' : '').'~all';
         $records = [
-            ['type' => 'TXT', 'name' => $domain, 'value' => $spf, 'note' => 'SPF: kdo smí posílat poštu za doménu.'],
+            ['type' => 'TXT', 'name' => $domain, 'value' => $spf, 'note' => __('SPF: kdo smí posílat poštu za doménu.')],
         ];
         if ($dkim !== null) {
-            $records[] = ['type' => 'TXT', 'name' => $dkim['name'], 'value' => $dkim['value'], 'note' => 'DKIM: veřejný klíč podpisu.'];
+            $records[] = ['type' => 'TXT', 'name' => $dkim['name'], 'value' => $dkim['value'], 'note' => __('DKIM: veřejný klíč podpisu.')];
         }
-        $records[] = ['type' => 'TXT', 'name' => '_dmarc.'.$domain, 'value' => "v=DMARC1; p=quarantine; rua=mailto:postmaster@{$domain}", 'note' => 'DMARC: co dělat s nepodepsanou poštou.'];
+        $records[] = ['type' => 'TXT', 'name' => '_dmarc.'.$domain, 'value' => "v=DMARC1; p=quarantine; rua=mailto:postmaster@{$domain}", 'note' => __('DMARC: co dělat s nepodepsanou poštou.')];
 
         return $records;
     }

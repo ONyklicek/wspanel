@@ -11,6 +11,7 @@ use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use App\Http\Controllers\OpenWebmailController;
 use App\Http\Controllers\XhguiAuthController;
+use App\Http\Middleware\SetLocale;
 use App\Models\Site;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +33,13 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
         ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
+    // The signed-in user's language (user menu).
+    Route::post('/locale/{locale}', function (string $locale) {
+        abort_unless(isset(SetLocale::LOCALES[$locale]), 404);
+        auth()->user()->update(['locale' => $locale]);
+
+        return back();
+    })->name('locale.set');
     Route::get('/sites/{site}/xhgui', fn (Site $site) => $site->xhprof === null ? abort(404) : redirect()->away(XhguiAuthController::link($site)))
         ->middleware('throttle:30,1')->name('sites.xhgui');
     Route::get('/mailboxes/{mailbox}/webmail', OpenWebmailController::class)->middleware('throttle:30,1')->name('mailboxes.webmail');

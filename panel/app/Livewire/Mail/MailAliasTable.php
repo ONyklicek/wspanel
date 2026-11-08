@@ -35,7 +35,7 @@ class MailAliasTable extends Component
             app(ManageMailHosting::class)->setAliases($domain, $aliases);
             Toast::success($ok);
         } catch (AgentException $e) {
-            Toast::error('Aliasy se nepodařilo uložit', $e->getMessage());
+            Toast::error(__('Aliasy se nepodařilo uložit'), $e->getMessage());
         }
     }
 
@@ -49,13 +49,13 @@ class MailAliasTable extends Component
     {
         $domain = $this->mailDomain();
         $form = [
-            TextInput::make('local_part')->label('Adresa (před @'.$domain->domain.'; prázdné = vše ostatní, catch-all)')
+            TextInput::make('local_part')->label(__('Adresa (před @').$domain->domain.__('; prázdné = vše ostatní, catch-all)'))
                 ->rules(['nullable', 'regex:/^[a-z0-9]([a-z0-9._+-]{0,62}[a-z0-9])?$/']),
-            Textarea::make('destinations')->label('Doručit na (jedna adresa na řádek)')->rows(3)->required()
+            Textarea::make('destinations')->label(__('Doručit na (jedna adresa na řádek)'))->rows(3)->required()
                 ->rules([fn () => function (string $attr, mixed $value, \Closure $fail) {
                     foreach (preg_split('/[\s,]+/', (string) $value, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $a) {
                         if (! filter_var($a, FILTER_VALIDATE_EMAIL)) {
-                            $fail("{$a} není e-mailová adresa.");
+                            $fail(__(':a není e-mailová adresa.', ['a' => $a]));
                         }
                     }
                 }]),
@@ -66,28 +66,28 @@ class MailAliasTable extends Component
             ->stackedOnMobile()
             ->query(MailAlias::query()->where('mail_domain_id', $domain->id))
             ->columns([
-                TextColumn::make('local_part')->label('Alias')->fontFamily('mono')->weight('medium')
+                TextColumn::make('local_part')->label(__('Alias'))->fontFamily('mono')->weight('medium')
                     ->formatStateUsing(fn ($state) => ($state === '' || $state === null ? '*' : $state).'@'.$domain->domain),
-                TextColumn::make('destinations')->label('Doručuje na')->state(fn (MailAlias $r) => implode(', ', $r->destinations)),
+                TextColumn::make('destinations')->label(__('Doručuje na'))->state(fn (MailAlias $r) => implode(', ', $r->destinations)),
             ])
             ->headerActions([
-                Action::make('createAlias')->label('Nový alias / přeposílání')->icon('outline:plus')
+                Action::make('createAlias')->label(__('Nový alias / přeposílání'))->icon('outline:plus')
                     ->form($form)
                     ->action(function (array $data) use ($domain, $lines) {
                         $aliases = $this->current($domain);
                         $aliases[strtolower(trim((string) ($data['local_part'] ?? '')))] = $lines((string) $data['destinations']);
-                        $this->save($domain, $aliases, 'Alias uložen');
+                        $this->save($domain, $aliases, __('Alias uložen'));
                     }),
             ])
             ->actions([
-                Action::make('delete')->label('Smazat')->icon('outline:trash')->color('danger')->onlyIcon()->requiresConfirmation()
+                Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->onlyIcon()->requiresConfirmation()
                     ->action(function (MailAlias $record) use ($domain) {
                         $aliases = $this->current($domain);
                         unset($aliases[$record->local_part]);
-                        $this->save($domain, $aliases, 'Alias smazán');
+                        $this->save($domain, $aliases, __('Alias smazán'));
                     }),
             ])
-            ->emptyState('Žádné aliasy', 'Alias doručí poštu na jinou adresu (i mimo server), catch-all zachytí vše, co nemá schránku.', 'outline:arrows-right-left')
+            ->emptyState(__('Žádné aliasy'), __('Alias doručí poštu na jinou adresu (i mimo server), catch-all zachytí vše, co nemá schránku.'), 'outline:arrows-right-left')
             ->searchable(false)
             ->paginated(false);
     }

@@ -9,12 +9,12 @@
 @endphp
 <div class="space-y-4 text-sm">
     @unless ($enabled)
-        <p class="rounded-lg bg-warning-50 p-3 text-warning-700 dark:bg-warning-400/10 dark:text-warning-400">CI zatím nemá přístup: zaškrtněte <strong>Vytvořit CI token</strong> níže a uložte (je oddělený od secretu webhooku a zobrazí se jen jednou).</p>
+        <p class="rounded-lg bg-warning-50 p-3 text-warning-700 dark:bg-warning-400/10 dark:text-warning-400">{{ __('CI zatím nemá přístup: zaškrtněte') }} <strong>{{ __('Vytvořit CI token') }}</strong> {{ __('níže a uložte (je oddělený od secretu webhooku a zobrazí se jen jednou).') }}</p>
     @endunless
-    <p>Do repozitáře přidejte secret <code>WSPANEL_TOKEN</code> (hodnota = CI token) a jeden z workflow do <code>.github/workflows/deploy.yml</code>. Workflow počká na výsledek: když deploy selže nebo se vrátí zpět, selže i Action.</p>
+    <p>{{ __('Do repozitáře přidejte secret') }} <code>WSPANEL_TOKEN</code> (hodnota = CI token) a jeden z workflow do <code>.github/workflows/deploy.yml</code>{{ __('. Workflow počká na výsledek: když deploy selže nebo se vrátí zpět, selže i Action.') }}</p>
 
     <div>
-        <h3 class="font-medium">A) Release → server nasadí tag (build běží na serveru)</h3>
+        <h3 class="font-medium">{{ __('A) Release → server nasadí tag (build běží na serveru)') }}</h3>
         <pre class="mt-2 max-h-80 overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs text-gray-100 select-all">name: Deploy
 on:
   release:
@@ -39,8 +39,8 @@ jobs:
     </div>
 
     <div>
-        <h3 class="font-medium">B) Build v GitHub Actions → na server jde hotový balík</h3>
-        <p class="text-gray-500">Server nic nebuildí: composer a npm proběhnou v CI, panel balík jen rozbalí, propojí sdílené soubory@if ($framework === \App\Enums\Framework::Laravel), spustí migrace a optimize@elseif ($framework === \App\Enums\Framework::Symfony), spustí migrace a cache:warmup@endif a přepne web. Max. 512 MB.</p>
+        <h3 class="font-medium">{{ __('B) Build v GitHub Actions → na server jde hotový balík') }}</h3>
+        <p class="text-gray-500">{{ __('Server nic nebuildí: composer a npm proběhnou v CI, panel balík jen rozbalí, propojí sdílené soubory') }}@if ($framework === \App\Enums\Framework::Laravel){{ __(', spustí migrace a optimize') }}@elseif ($framework === \App\Enums\Framework::Symfony){{ __(', spustí migrace a cache:warmup') }}@endif {{ __('a přepne web. Max. 512 MB.') }}</p>
         <pre class="mt-2 max-h-96 overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs text-gray-100 select-all">name: Build and deploy
 on:
   release:
@@ -77,5 +77,5 @@ jobs:
             [ "$s" = running ] || exit 1; sleep 5
           done; exit 1</pre>
     </div>
-    <p class="text-gray-500">Bez releasů? Místo <code>on: release</code> použijte <code>on: push: branches: [main]</code> a pošlete <code>{"ref":"{{ '${{ github.sha }}' }}"}</code>. Bez workflow stačí v okně Webhook zvolit „Nový release nebo tag“ a nastavit webhook v GitHubu.</p>
+    <p class="text-gray-500">{{ __('Bez releasů? Místo') }} <code>on: release</code> {{ __('použijte') }} <code>on: push: branches: [main]</code> {{ __('a pošlete') }} <code>{"ref":"{{ '${{ github.sha }}' }}"}</code>{{ __('. Bez workflow stačí v okně Webhook zvolit „Nový release nebo tag“ a nastavit webhook v GitHubu.') }}</p>
 </div>

@@ -13,10 +13,10 @@
 
     @if (session()->has(\App\Actions\Clients\Impersonation::SESSION_KEY))
         <div data-wire="impersonation-banner" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
-            <span>Prohlížíte panel jako klient <strong>{{ auth()->user()?->client?->name }}</strong> ({{ auth()->user()?->email }}). Vidíte a smíte jen to, co on.</span>
+            <span>{{ __('Prohlížíte panel jako klient') }} <strong>{{ auth()->user()?->client?->name }}</strong> ({{ auth()->user()?->email }}{{ __('). Vidíte a smíte jen to, co on.') }}</span>
             <form method="POST" action="{{ route('impersonation.leave') }}">
                 @csrf
-                <button type="submit" class="rounded-md bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700">Vrátit se ke správě</button>
+                <button type="submit" class="rounded-md bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700">{{ __('Vrátit se ke správě') }}</button>
             </form>
         </div>
     @endif

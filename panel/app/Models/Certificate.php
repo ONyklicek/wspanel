@@ -27,7 +27,7 @@ class Certificate extends Model
             $this->issuer === null => '—',
             str_contains($this->issuer, 'letsencrypt') => "Let's Encrypt",
             str_contains($this->issuer, 'zerossl') => 'ZeroSSL',
-            $this->issuer === 'local' => 'interní CA (vývoj)',
+            $this->issuer === 'local' => __('interní CA (vývoj)'),
             default => $this->issuer,
         };
     }

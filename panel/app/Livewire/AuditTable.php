@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\Lang;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Livewire\Component;
@@ -55,14 +56,14 @@ class AuditTable extends Component
             ->stackedOnMobile()
             ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
-                TextColumn::make('time')->label('Čas')->description(fn ($r) => $r->ago),
-                TextColumn::make('op')->label('Operace')->fontFamily('mono')->weight('medium')->searchable(),
-                TextColumn::make('params')->label('Parametry')->fontFamily('mono')->searchable(),
-                BadgeColumn::make('result')->label('Výsledek')->colors(['OK' => 'success', 'chyba' => 'danger'])->tooltip(fn ($r) => $r->error),
-                TextColumn::make('duration')->label('Trvání'),
-                TextColumn::make('peer')->label('Kdo')->textColor('gray'),
+                TextColumn::make('time')->label(__('Čas'))->description(fn ($r) => $r->ago),
+                TextColumn::make('op')->label(__('Operace'))->fontFamily('mono')->weight('medium')->searchable(),
+                TextColumn::make('params')->label(__('Parametry'))->fontFamily('mono')->searchable(),
+                BadgeColumn::make('result')->label(__('Výsledek'))->colors(['OK' => 'success', 'chyba' => 'danger'])->tooltip(fn ($r) => $r->error),
+                TextColumn::make('duration')->label(__('Trvání')),
+                TextColumn::make('peer')->label(__('Kdo'))->textColor('gray'),
             ])
-            ->filters([SelectFilter::make('area')->label('Oblast')->options(self::AREAS)])
+            ->filters([SelectFilter::make('area')->label(__('Oblast'))->options(Lang::values(self::AREAS))])
             ->perPage(50)
             ->poll('30s');
     }

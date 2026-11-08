@@ -30,7 +30,7 @@ class ManagePanelAccess
     {
         $allow = array_values(array_unique(array_filter(array_map('trim', $allow))));
         if ($allow !== [] && $clientIp !== null && ! self::covers($allow, $clientIp)) {
-            throw new InvalidArgumentException("Seznam nezahrnuje vaši adresu {$clientIp}, po uložení byste se do panelu nedostali.");
+            throw new InvalidArgumentException(__('Seznam nezahrnuje vaši adresu :client_ip, po uložení byste se do panelu nedostali.', ['client_ip' => $clientIp]));
         }
         $this->agent->call('panel.access', ['allow' => $allow, 'public_hooks' => $publicHooks]);
         Setting::put('panel_access', ['allow' => $allow, 'public_hooks' => $publicHooks]);

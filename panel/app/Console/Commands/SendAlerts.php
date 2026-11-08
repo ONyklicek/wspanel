@@ -31,7 +31,7 @@ class SendAlerts extends Command
         foreach (AlertState::query()->get() as $state) {
             if (! $current->has($state->key)) {
                 if ($state->notified_at !== null) {
-                    $notifier->broadcast('resolved', $state->client_id, 'Vyřešeno: '.$state->title);
+                    $notifier->broadcast('resolved', $state->client_id, __('Vyřešeno: ').$state->title);
                 }
                 $state->delete();
             }
@@ -41,7 +41,7 @@ class SendAlerts extends Command
             $state->fill(['client_id' => $a['client_id'], 'level' => $a['level'], 'title' => $a['title'], 'detail' => $a['detail']]);
             $state->seen = $state->exists ? $state->seen + 1 : 1;
             if ($state->notified_at === null && $state->seen >= self::CONFIRMATIONS) {
-                $notifier->broadcast('problems', $a['client_id'], ($a['level'] === 'danger' ? 'Problém: ' : 'Upozornění: ').$a['title'], $a['detail']);
+                $notifier->broadcast('problems', $a['client_id'], ($a['level'] === 'danger' ? __('Problém: ') : __('Upozornění: ')).$a['title'], $a['detail']);
                 $state->notified_at = now();
             }
             $state->save();

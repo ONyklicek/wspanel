@@ -37,7 +37,7 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
 
     public static function label(): string
     {
-        return 'Pravidlo';
+        return __('Pravidlo');
     }
 
     public static function pluralLabel(): string
@@ -61,32 +61,32 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
             ->stackedOnMobile()
             ->query(FirewallRule::query())
             ->columns([
-                TextColumn::make('to')->label('Port')->fontFamily('mono')->weight('medium')
+                TextColumn::make('to')->label(__('Port'))->fontFamily('mono')->weight('medium')
                     ->description(fn (FirewallRule $record) => $record->description ?? $record->comment),
-                BadgeColumn::make('action')->label('Akce')
-                    ->formatStateUsing(fn ($state) => ['allow' => 'povolit', 'deny' => 'zakázat', 'reject' => 'odmítnout', 'limit' => 'omezit'][$state] ?? $state)
-                    ->colors(['povolit' => 'success', 'omezit' => 'warning', 'zakázat' => 'danger', 'odmítnout' => 'danger']),
-                TextColumn::make('from')->label('Odkud')->formatStateUsing(fn ($state) => $state === 'Anywhere' ? 'odkudkoli' : $state),
-                BadgeColumn::make('managed')->label('Původ')
-                    ->formatStateUsing(fn ($state) => $state ? 'panel' : 'systém')
-                    ->colors(['panel' => 'primary', 'systém' => 'gray']),
+                BadgeColumn::make('action')->label(__('Akce'))
+                    ->formatStateUsing(fn ($state) => ['allow' => 'povolit', 'deny' => __('zakázat'), 'reject' => __('odmítnout'), 'limit' => 'omezit'][$state] ?? $state)
+                    ->colors(['povolit' => 'success', 'omezit' => 'warning', __('zakázat') => 'danger', __('odmítnout') => 'danger']),
+                TextColumn::make('from')->label(__('Odkud'))->formatStateUsing(fn ($state) => $state === 'Anywhere' ? 'odkudkoli' : $state),
+                BadgeColumn::make('managed')->label(__('Původ'))
+                    ->formatStateUsing(fn ($state) => $state ? 'panel' : __('systém'))
+                    ->colors(['panel' => 'primary', __('systém') => 'gray']),
             ])
             ->actions([
                 Action::make('delete')
-                    ->label('Smazat')
+                    ->label(__('Smazat'))
                     ->icon('outline:trash')
                     ->color('danger')
                     ->onlyIcon()
-                    ->tooltip('Smazat pravidlo')
+                    ->tooltip(__('Smazat pravidlo'))
                     ->visible(fn (FirewallRule $record) => $record->isDeletable() && ! self::isProtected($record))
                     ->requiresConfirmation()
                     ->modalHeading(fn (FirewallRule $record) => "Smazat pravidlo {$record->to} ({$record->action})?")
                     ->action(function (FirewallRule $record) {
                         try {
                             app(ManageFirewall::class)->delete($record);
-                            Toast::success('Pravidlo smazáno');
+                            Toast::success(__('Pravidlo smazáno'));
                         } catch (AgentException $e) {
-                            Toast::error('Smazání selhalo', $e->getMessage());
+                            Toast::error(__('Smazání selhalo'), $e->getMessage());
                         }
                     }),
             ])

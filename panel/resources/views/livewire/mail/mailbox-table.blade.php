@@ -1,5 +1,5 @@
 <div>
-    <x-wire::section heading="Schránky">
+    <x-wire::section :heading="__('Schránky')">
         {{ $this->table }}
     </x-wire::section>
 </div>

@@ -2,11 +2,14 @@
 
 namespace App\Livewire\Pages;
 
+use App\Livewire\Concerns\TranslatesPageText;
 use NyonCode\WirePanels\Pages\Page;
 
 /** The signed-in user's API tokens (REST API, the wspanel CLI). */
 class ApiTokensPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.api-tokens';
 
     protected ?string $title = 'API tokeny';

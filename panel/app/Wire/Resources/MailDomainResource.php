@@ -33,12 +33,12 @@ final class MailDomainResource implements DescribesResource, ProvidesNavigation,
 
     public static function label(): string
     {
-        return 'Poštovní doména';
+        return __('Poštovní doména');
     }
 
     public static function pluralLabel(): string
     {
-        return 'Schránky';
+        return __('Schránky');
     }
 
     public static function pages(): array
@@ -48,7 +48,7 @@ final class MailDomainResource implements DescribesResource, ProvidesNavigation,
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Schránky')->icon('outline:inbox-stack')->group('network')->sort(25)
+        return NavigationItem::make(__('Schránky'))->icon('outline:inbox-stack')->group('network')->sort(25)
             ->visible(fn (): bool => app(ManageMailHosting::class)->installed());
     }
 
@@ -58,13 +58,13 @@ final class MailDomainResource implements DescribesResource, ProvidesNavigation,
             ->stackedOnMobile()
             ->query(MailDomain::query()->withCount(['mailboxes', 'aliases'])->with('client'))
             ->columns([
-                TextColumn::make('domain')->label('Doména')->weight('medium')->searchable()->sortable(),
-                TextColumn::make('mailboxes_count')->label('Schránky')->sortable(),
-                TextColumn::make('aliases_count')->label('Aliasy'),
-                TextColumn::make('client.name')->label('Klient')->placeholder('správce')->visible(fn () => Gate::allows('clients')),
+                TextColumn::make('domain')->label(__('Doména'))->weight('medium')->searchable()->sortable(),
+                TextColumn::make('mailboxes_count')->label(__('Schránky'))->sortable(),
+                TextColumn::make('aliases_count')->label(__('Aliasy')),
+                TextColumn::make('client.name')->label(__('Klient'))->placeholder(__('správce'))->visible(fn () => Gate::allows('clients')),
             ])
             ->recordUrl(fn (MailDomain $record) => self::url('view', $record))
-            ->emptyState('Zatím žádná poštovní doména', 'Přidejte doménu, pro kterou má server přijímat poštu, a založte v ní schránky.', 'outline:inbox-stack')
+            ->emptyState(__('Zatím žádná poštovní doména'), __('Přidejte doménu, pro kterou má server přijímat poštu, a založte v ní schránky.'), 'outline:inbox-stack')
             ->defaultSort('domain');
     }
 }

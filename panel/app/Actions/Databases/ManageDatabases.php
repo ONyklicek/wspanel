@@ -59,7 +59,7 @@ class ManageDatabases
         $prefix = 'c'.$owner->id.'_';
         $name = str_starts_with($name, $prefix) ? $name : $prefix.$name;
         if (strlen($name) > 48) {
-            throw new AgentException('invalid_params', 'Název databáze je i s předponou '.$prefix.' delší než 48 znaků.', 'panel');
+            throw new AgentException('invalid_params', __('Název databáze je i s předponou ').$prefix.__(' delší než 48 znaků.'), 'panel');
         }
 
         return $name;

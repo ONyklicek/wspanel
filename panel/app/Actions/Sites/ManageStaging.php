@@ -40,10 +40,10 @@ class ManageStaging
     public function create(Site $production): Site
     {
         if ($production->staging_of !== null) {
-            throw new AgentException('conflict', 'Kopie stagingu se nekopíruje.', 'panel');
+            throw new AgentException('conflict', __('Kopie stagingu se nekopíruje.'), 'panel');
         }
         if (Site::query()->where('staging_of', $production->id)->exists()) {
-            throw new AgentException('conflict', 'Web už staging má.', 'panel');
+            throw new AgentException('conflict', __('Web už staging má.'), 'panel');
         }
         $staging = $this->createSite->handle(array_filter([
             'domain' => self::stagingDomain($production), 'framework' => $production->framework->value, 'mode' => $production->mode->value,
@@ -51,7 +51,7 @@ class ManageStaging
             'tls' => $production->tls_mode === 'internal' ? 'internal' : null,
         ], fn ($v) => $v !== null));
         if ($staging->status === SiteStatus::Failed) {
-            throw new AgentException('op_failed', 'Staging se nepodařilo založit: '.$staging->last_error, 'panel');
+            throw new AgentException('op_failed', __('Staging se nepodařilo založit: ').$staging->last_error, 'panel');
         }
         $staging->update(['staging_of' => $production->id]);
 
@@ -79,7 +79,7 @@ class ManageStaging
     {
         $production = Site::query()->findOrFail($staging->staging_of);
         if (! app(ManageSiteBackups::class)->backupNow($production)) {
-            throw new AgentException('timeout', 'Záloha produkce ještě běží, zkuste to za chvíli.', 'panel');
+            throw new AgentException('timeout', __('Záloha produkce ještě běží, zkuste to za chvíli.'), 'panel');
         }
         if ($databases) {
             $this->copyDatabases($staging, $production, create: false);
@@ -94,14 +94,14 @@ class ManageStaging
     {
         $artifact = $this->await($this->agent->call('site.pack', ['domain' => $from->domain]))['artifact'] ?? null;
         if (! is_string($artifact)) {
-            throw new AgentException('op_failed', 'Release se nepodařilo zabalit.', 'panel');
+            throw new AgentException('op_failed', __('Release se nepodařilo zabalit.'), 'panel');
         }
         $release = $this->deploys->start($to, ['artifact' => $artifact]);
         for ($i = 0; $i < 120; $i++) {
             $d = collect($this->deploys->history($to)['deploys'] ?? [])->firstWhere('id', $release);
             if ($d !== null && $d['status'] !== 'running') {
                 if ($d['status'] !== 'success') {
-                    throw new AgentException('op_failed', 'Nasazení na '.$to->domain.' skončilo: '.$d['status'].($d['error'] ? ' ('.$d['error'].')' : ''), 'panel');
+                    throw new AgentException('op_failed', __('Nasazení na ').$to->domain.__(' skončilo: ').$d['status'].($d['error'] ? ' ('.$d['error'].')' : ''), 'panel');
                 }
 
                 return;
@@ -154,6 +154,6 @@ class ManageStaging
             return $job;
         }
 
-        return $this->jobs->await($job['job_id'], 900) ?? throw new AgentException('timeout', 'Kopírování ještě běží, zkontrolujte web za chvíli.', 'panel');
+        return $this->jobs->await($job['job_id'], 900) ?? throw new AgentException('timeout', __('Kopírování ještě běží, zkontrolujte web za chvíli.'), 'panel');
     }
 }

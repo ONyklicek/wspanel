@@ -45,7 +45,7 @@ class ImportSite
         $job = $this->agent->call('site.import', ['domain' => $site->domain, 'file' => $file, 'databases' => (object) $map]);
 
         return isset($job['job_id'])
-            ? ($this->jobs->await($job['job_id'], 1800) ?? throw new AgentException('timeout', 'Import ještě běží, výsledek uvidíte za chvíli.', 'panel'))
+            ? ($this->jobs->await($job['job_id'], 1800) ?? throw new AgentException('timeout', __('Import ještě běží, výsledek uvidíte za chvíli.'), 'panel'))
             : $job;
     }
 }

@@ -43,12 +43,12 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function label(): string
     {
-        return 'Služba';
+        return __('Služba');
     }
 
     public static function pluralLabel(): string
     {
-        return 'Služby';
+        return __('Služby');
     }
 
     public static function pages(): array
@@ -67,46 +67,46 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
             ->stackedOnMobile()
             ->query(Service::query()->with('site'))
             ->columns([
-                TextColumn::make('name')->label('Služba')->weight('medium')
+                TextColumn::make('name')->label(__('Služba'))->weight('medium')
                     ->state(fn (Service $record) => $record->label())
                     ->description(fn (Service $record) => $record->unit),
-                BadgeColumn::make('state')->label('Stav')
-                    ->state(fn (Service $record) => self::STATES[$record->active_state] ?? $record->active_state)
-                    ->colors(['běží' => 'success', 'chyba' => 'danger', 'zastaveno' => 'gray', 'startuje' => 'warning', 'zastavuje se' => 'warning', 'načítá' => 'warning'])
+                BadgeColumn::make('state')->label(__('Stav'))
+                    ->state(fn (Service $record) => __(self::STATES[$record->active_state] ?? $record->active_state))
+                    ->colors([__('běží') => 'success', 'chyba' => 'danger', 'zastaveno' => 'gray', 'startuje' => 'warning', 'zastavuje se' => 'warning', __('načítá') => 'warning'])
                     ->tooltip(fn (Service $record) => $record->sub_state),
-                TextColumn::make('boot')->label('Po startu serveru')->textColor('gray')
-                    ->state(fn (Service $record) => $record->enabled_state === 'enabled' ? 'spustí se' : ($record->enabled_state ?? '—')),
+                TextColumn::make('boot')->label(__('Po startu serveru'))->textColor('gray')
+                    ->state(fn (Service $record) => $record->enabled_state === 'enabled' ? __('spustí se') : ($record->enabled_state ?? '—')),
             ])
             ->filters([
-                SelectFilter::make('type')->label('Typ')->options(collect(ServiceType::cases())->mapWithKeys(fn (ServiceType $t) => [$t->value => $t->getLabel()])->all()),
+                SelectFilter::make('type')->label(__('Typ'))->options(collect(ServiceType::cases())->mapWithKeys(fn (ServiceType $t) => [$t->value => $t->getLabel()])->all()),
             ])
             ->actions([
                 ActionGroup::make([
-                    self::control('start', 'Spustit', 'outline:play', 'success')->visible(fn (Service $record) => ! $record->isRunning()),
-                    self::control('restart', 'Restartovat', 'outline:arrow-path', 'warning')
+                    self::control('start', __('Spustit'), 'outline:play', 'success')->visible(fn (Service $record) => ! $record->isRunning()),
+                    self::control('restart', __('Restartovat'), 'outline:arrow-path', 'warning')
                         ->requiresConfirmation()
                         ->modalDescription(fn (Service $record) => self::isPanelUnit($record)
-                            ? 'Na této službě běží i panel. Během restartu bude panel na pár sekund nedostupný.'
-                            : 'Služba se zastaví a znovu spustí. Probíhající požadavky se přeruší.'),
-                    self::control('reload', 'Načíst konfiguraci', 'outline:arrow-path-rounded-square', 'info')
+                            ? __('Na této službě běží i panel. Během restartu bude panel na pár sekund nedostupný.')
+                            : __('Služba se zastaví a znovu spustí. Probíhající požadavky se přeruší.')),
+                    self::control('reload', __('Načíst konfiguraci'), 'outline:arrow-path-rounded-square', 'info')
                         ->visible(fn (Service $record) => $record->isRunning() && $record->type->supportsReload()),
-                    self::control('reset', 'Reset po chybě', 'outline:wrench', 'warning')
+                    self::control('reset', __('Reset po chybě'), 'outline:wrench', 'warning')
                         ->visible(fn (Service $record) => $record->isFailed())
                         ->requiresConfirmation()
-                        ->modalDescription('Vymaže chybový stav (i limit pokusů o start) a službu znovu spustí.'),
-                    self::control('stop', 'Zastavit', 'outline:stop', 'danger')
+                        ->modalDescription(__('Vymaže chybový stav (i limit pokusů o start) a službu znovu spustí.')),
+                    self::control('stop', __('Zastavit'), 'outline:stop', 'danger')
                         ->visible(fn (Service $record) => $record->isRunning() && ! self::isPanelUnit($record))
                         ->requiresConfirmation(),
-                    Action::make('removeWorker')->label('Odebrat worker')->icon('outline:trash')->color('danger')
+                    Action::make('removeWorker')->label(__('Odebrat worker'))->icon('outline:trash')->color('danger')
                         ->visible(fn (Service $record) => $record->type === ServiceType::Worker && $record->site !== null)
                         ->requiresConfirmation()
-                        ->modalDescription('Worker se zastaví a jeho systemd unita se odstraní.')
+                        ->modalDescription(__('Worker se zastaví a jeho systemd unita se odstraní.'))
                         ->action(function (Service $record) {
                             try {
                                 app(ManageWorkers::class)->delete($record->site, (string) $record->worker);
-                                Toast::success('Worker odebrán');
+                                Toast::success(__('Worker odebrán'));
                             } catch (AgentException $e) {
-                                Toast::error('Odebrání selhalo', $e->getMessage());
+                                Toast::error(__('Odebrání selhalo'), $e->getMessage());
                             }
                         }),
                 ]),

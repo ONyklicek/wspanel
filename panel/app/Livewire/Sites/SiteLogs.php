@@ -37,13 +37,13 @@ class SiteLogs extends Component
         $site = $this->getSite();
         $sources = [];
         if (! $site->framework->isNode()) {
-            $sources['php'] = 'PHP chyby';
+            $sources['php'] = __('PHP chyby');
         }
         if (in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)) {
-            $sources['framework'] = $site->framework === Framework::Laravel ? 'Laravel (laravel.log)' : 'Symfony (prod.log)';
+            $sources['framework'] = $site->framework === Framework::Laravel ? __('Laravel (laravel.log)') : __('Symfony (prod.log)');
         }
         if ($site->services()->where('type', 'app')->exists()) {
-            $sources['app'] = 'Proces aplikace';
+            $sources['app'] = __('Proces aplikace');
         }
 
         return $sources;

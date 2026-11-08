@@ -48,7 +48,7 @@ class ManageEdge
         $payload['domain'] = $site->domain;
         foreach (array_diff(array_merge($payload['aliases'] ?? [], $payload['redirect_hosts'] ?? []), self::domains($site)) as $host) {
             if (DomainOwnership::takenByAnother($host, $site->client_id)) {
-                throw new AgentException('forbidden', "{$host}: doména (nebo její část) patří jinému vlastníkovi.", 'panel');
+                throw new AgentException('forbidden', __(':host: doména (nebo její část) patří jinému vlastníkovi.', ['host' => $host]), 'panel');
             }
         }
         $added = count($payload['aliases'] ?? []) + count($payload['redirect_hosts'] ?? []) - $site->extraHostCount();

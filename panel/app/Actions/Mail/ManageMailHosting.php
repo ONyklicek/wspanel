@@ -60,7 +60,7 @@ class ManageMailHosting
     {
         $domain = strtolower(trim($domain));
         if (MailDomain::acrossClients()->where('domain', $domain)->exists()) {
-            throw new AgentException('conflict', 'Doména už poštu na tomto serveru má.', 'panel');
+            throw new AgentException('conflict', __('Doména už poštu na tomto serveru má.'), 'panel');
         }
         $owner ??= Client::find(CurrentClient::id());
         $this->assertMayReceive($domain, $owner);
@@ -87,7 +87,7 @@ class ManageMailHosting
         $wanted = (clone $domain)->fill(['webmail' => $webmail, 'autoconfig' => $autoconfig]);
         foreach (['webmail' => $webmail, 'autoconfig' => $autoconfig] as $feature => $on) {
             if ($on && ! $domain->{$feature} && $this->hostsTaken($wanted, $feature)) {
-                throw new AgentException('conflict', 'Adresa '.MailDomain::SERVICE_PREFIXES[$feature][0].'.'.$domain->domain.' už patří webu.', 'panel');
+                throw new AgentException('conflict', 'Adresa '.MailDomain::SERVICE_PREFIXES[$feature][0].'.'.$domain->domain.__(' už patří webu.'), 'panel');
             }
         }
         $this->agent->call('mail.domain.set', ['domain' => $domain->domain, 'enabled' => true, 'webmail' => $webmail, 'autoconfig' => $autoconfig]);
@@ -197,10 +197,10 @@ class ManageMailHosting
     {
         $ownerId = $owner?->id;
         if (DomainOwnership::takenByAnother($domain, $ownerId)) {
-            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
+            throw new AgentException('forbidden', __('Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.'), 'panel');
         }
         if ($ownerId !== null && ! DomainOwnership::owns($domain, $ownerId)) {
-            throw new AgentException('forbidden', 'Poštu lze zřídit jen pro doménu vašeho webu nebo DNS zóny.', 'panel');
+            throw new AgentException('forbidden', __('Poštu lze zřídit jen pro doménu vašeho webu nebo DNS zóny.'), 'panel');
         }
     }
 
@@ -208,7 +208,7 @@ class ManageMailHosting
     public function removeDomain(MailDomain $domain): void
     {
         if ($domain->mailboxes()->exists()) {
-            throw new AgentException('conflict', 'Doména má schránky, nejdřív je smažte.', 'panel');
+            throw new AgentException('conflict', __('Doména má schránky, nejdřív je smažte.'), 'panel');
         }
         if ($domain->aliases()->exists()) {
             $this->agent->call('mail.alias.set', ['domain' => $domain->domain, 'aliases' => (object) []]);
@@ -300,7 +300,7 @@ class ManageMailHosting
         $salt = substr(strtr(base64_encode(random_bytes(12)), '+', '.'), 0, 16);
         $hash = crypt($password, '$6$rounds=100000$'.$salt.'$');
         if (! str_starts_with($hash, '$6$')) {
-            throw new AgentException('op_failed', 'Heslo se nepodařilo zahashovat.', 'panel');
+            throw new AgentException('op_failed', __('Heslo se nepodařilo zahashovat.'), 'panel');
         }
 
         return $hash;
@@ -323,6 +323,6 @@ class ManageMailHosting
         $webmail = $domain?->webmailUrl() ? ['Webmail' => $domain->webmailUrl()] : [];
 
         return $webmail + ['IMAP' => "{$host}:993 (SSL/TLS)", 'POP3' => "{$host}:995 (SSL/TLS)", 'SMTP' => "{$host}:465 (SSL/TLS) nebo :587 (STARTTLS)",
-            'Přihlášení' => 'celá e-mailová adresa a heslo schránky (ve webmailu stačí jméno před @)'];
+            __('Přihlášení') => __('celá e-mailová adresa a heslo schránky (ve webmailu stačí jméno před @)')];
     }
 }

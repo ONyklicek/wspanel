@@ -36,7 +36,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
     public static function label(): string
     {
-        return 'Přehled';
+        return __('Přehled');
     }
 
     public function widgets(): array
@@ -46,7 +46,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
         return [
             ListWidget::make()
                 ->key('attention')
-                ->heading('Vyžaduje pozornost')
+                ->heading(__('Vyžaduje pozornost'))
                 ->columnSpan(2)
                 ->pollingInterval('30s')
                 ->items(fn () => array_map(fn (array $i) => ListItem::make($i['title'])
@@ -54,12 +54,12 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                     ->icon(['danger' => 'outline:exclamation-circle', 'warning' => 'outline:exclamation-triangle', 'info' => 'outline:information-circle'][$i['level']])
                     ->color($i['level'])
                     ->url($i['url']), Attention::items()))
-                ->emptyState('Vše v pořádku: služby běží, weby odpovídají, certifikáty platí.'),
+                ->emptyState(__('Vše v pořádku: služby běží, weby odpovídají, certifikáty platí.')),
 
             ...($client === null ? [
                 StatsOverviewWidget::make()
                     ->key('server')
-                    ->heading('Server')
+                    ->heading(__('Server'))
                     ->columnSpan(2)
                     ->columns(4)
                     ->pollingInterval('15s')
@@ -67,14 +67,14 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
                 StatsOverviewWidget::make()
                     ->key('hosting')
-                    ->heading('Hosting')
+                    ->heading(__('Hosting'))
                     ->columnSpan(2)
                     ->columns(4)
                     ->stats($this->hostingStats()),
             ] : [
                 StatsOverviewWidget::make()
                     ->key('account')
-                    ->heading('Můj účet'.($client->package ? ' · balíček '.$client->package->name : ''))
+                    ->heading(__('Můj účet').($client->package ? __(' · balíček ').$client->package->name : ''))
                     ->columnSpan(2)
                     ->columns(3)
                     ->stats($this->accountStats($client)),
@@ -82,7 +82,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
             ListWidget::make()
                 ->key('deploys')
-                ->heading('Poslední deploye')
+                ->heading(__('Poslední deploye'))
                 ->items(fn () => Deployment::query()->with('site')->latest('started_at')->limit(6)->get()
                     ->map(fn (Deployment $d) => ListItem::make($d->site?->domain ?? '?')
                         ->description(trim(($d->ref ? $d->ref.' · ' : '').($d->commit ? substr($d->commit, 0, 10) : '').($d->source === 'artifact' ? ' · build z CI' : '')))
@@ -91,11 +91,11 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                         ->color($d->statusColor())
                         ->url($d->site ? SiteResource::url('deploy', $d->site) : null))
                     ->all())
-                ->emptyState('Zatím žádný deploy.'),
+                ->emptyState(__('Zatím žádný deploy.')),
 
             ListWidget::make()
                 ->key('sites')
-                ->heading('Weby')
+                ->heading(__('Weby'))
                 ->items(fn () => Site::query()->orderBy('domain')->limit(8)->get()
                     ->map(fn (Site $s) => ListItem::make($s->domain)
                         ->description($s->framework->getLabel().' · '.$s->runtimeLabel())
@@ -104,7 +104,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                         ->color($s->stateColor())
                         ->url(SiteResource::url('view', $s)))
                     ->all())
-                ->emptyState('Zatím žádný web. Založte ho v sekci Weby.'),
+                ->emptyState(__('Zatím žádný web. Založte ho v sekci Weby.')),
         ];
     }
 
@@ -114,7 +114,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
         try {
             $m = app(ServerMetrics::class)->now();
         } catch (AgentException $e) {
-            return [Stat::make('Server', 'agent nedostupný')->description($e->getMessage())->color('danger')];
+            return [Stat::make('Server', __('agent nedostupný'))->description($e->getMessage())->color('danger')];
         }
         $history = ServerMetric::query()->where('recorded_at', '>=', now()->subHour())->orderBy('recorded_at')->get();
         $cpus = max(1, (int) ($m['cpus'] ?? 1));
@@ -126,17 +126,17 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
         return [
             Stat::make('CPU', Number::format($m['cpu']['percent'] ?? 0, 1).' %')
-                ->description("{$cpus} jader · zátěž ".Number::format($m['load'][0] ?? 0, 2))
+                ->description(__(':cpus jader · zátěž ', ['cpus' => $cpus]).Number::format($m['load'][0] ?? 0, 2))
                 ->icon('outline:cpu-chip')->color($level((float) ($m['cpu']['percent'] ?? 0), 70, 90))
                 ->chart($history->pluck('cpu')->map(fn ($v) => (float) $v)->all()),
-            Stat::make('Paměť', Number::format($memPct, 0).' %')
+            Stat::make(__('Paměť'), Number::format($memPct, 0).' %')
                 ->description(Number::fileSize($mem['used'] ?? 0, 1).' z '.Number::fileSize($mem['total'] ?? 0, 1))
                 ->icon('outline:circle-stack')->color($level($memPct, 80, 92))
                 ->chart($history->map(fn ($r) => $r->mem_total > 0 ? round(100 * $r->mem_used / $r->mem_total, 1) : 0)->all()),
             Stat::make('Disk', Number::format($disk, 0).' %')
                 ->description($fullest ? $fullest['mount'].' · volno '.Number::fileSize($fullest['free'], 1) : '—')
                 ->icon('outline:server')->color($level($disk, 80, 90)),
-            Stat::make('Síť', '↓ '.Number::fileSize((int) ($m['net']['rx_bps'] ?? 0), 1).'/s')
+            Stat::make(__('Síť'), '↓ '.Number::fileSize((int) ($m['net']['rx_bps'] ?? 0), 1).'/s')
                 ->description('↑ '.Number::fileSize((int) ($m['net']['tx_bps'] ?? 0), 1).'/s')
                 ->icon('outline:arrows-up-down')->color('gray')
                 ->chart($history->pluck('net_rx')->map(fn ($v) => (int) $v)->all()),
@@ -172,17 +172,17 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
         $badCerts = $certs->whereIn('status', ['expired', 'missing', 'expiring'])->count();
 
         return [
-            Stat::make('Weby', (string) $sites->count())
-                ->description($failing ? "{$failing} neodpovídá" : 'všechny odpovídají')
+            Stat::make(__('Weby'), (string) $sites->count())
+                ->description($failing ? __(':failing neodpovídá', ['failing' => $failing]) : __('všechny odpovídají'))
                 ->icon('outline:globe-alt')->color($failing ? 'danger' : 'success'),
-            Stat::make('Služby', $services->where('active_state', 'active')->count().' / '.$services->count())
-                ->description($services->where('active_state', 'failed')->count() ? $services->where('active_state', 'failed')->count().' v chybě' : 'běží')
+            Stat::make(__('Služby'), $services->where('active_state', 'active')->count().' / '.$services->count())
+                ->description($services->where('active_state', 'failed')->count() ? $services->where('active_state', 'failed')->count().__(' v chybě') : __('běží'))
                 ->icon('outline:server-stack')->color($services->where('active_state', 'failed')->count() ? 'danger' : 'success'),
-            Stat::make('Certifikáty', (string) $certs->count())
-                ->description($badCerts ? "{$badCerts} vyžaduje pozornost" : 'všechny platí')
+            Stat::make(__('Certifikáty'), (string) $certs->count())
+                ->description($badCerts ? __(':bad_certs vyžaduje pozornost', ['bad_certs' => $badCerts]) : __('všechny platí'))
                 ->icon('outline:lock-closed')->color($badCerts ? 'warning' : 'success'),
-            Stat::make('Deploye dnes', (string) Deployment::query()->where('started_at', '>=', now()->startOfDay())->count())
-                ->description(Deployment::query()->where('started_at', '>=', now()->startOfDay())->whereIn('status', ['failed', 'rolled_back'])->count().' neúspěšných')
+            Stat::make(__('Deploye dnes'), (string) Deployment::query()->where('started_at', '>=', now()->startOfDay())->count())
+                ->description(Deployment::query()->where('started_at', '>=', now()->startOfDay())->whereIn('status', ['failed', 'rolled_back'])->count().__(' neúspěšných'))
                 ->icon('outline:rocket-launch')->color('gray'),
         ];
     }
@@ -214,6 +214,6 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make('Přehled')->icon('outline:home')->sort(1);
+        return NavigationItem::make(__('Přehled'))->icon('outline:home')->sort(1);
     }
 }

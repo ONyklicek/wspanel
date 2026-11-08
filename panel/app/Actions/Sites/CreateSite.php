@@ -38,7 +38,7 @@ class CreateSite
         $owner = Client::find(CurrentClient::id() ?? ($data['client_id'] ?? null));
         // A client's site never lands in (or above) another owner's domain.
         if ($owner !== null && DomainOwnership::takenByAnother($data['domain'], $owner->id)) {
-            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
+            throw new AgentException('forbidden', __('Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.'), 'panel');
         }
         $this->limits->assertCanAdd($owner, 'sites');
         $this->limits->assertMode($owner, $data['mode'], $data['mode'] === 'classic' ? ($data['php_version'] ?? null) : null);

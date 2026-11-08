@@ -68,14 +68,14 @@ class ZoneRecords extends Component
             ->stackedOnMobile()
             ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
-                TextColumn::make('short')->label('Název')->fontFamily('mono')->searchable()->sortable(),
-                BadgeColumn::make('type')->label('Typ')->color('gray')->sortable(),
-                TextColumn::make('values')->label('Hodnota')->fontFamily('mono')->wrap(),
+                TextColumn::make('short')->label(__('Název'))->fontFamily('mono')->searchable()->sortable(),
+                BadgeColumn::make('type')->label(__('Typ'))->color('gray')->sortable(),
+                TextColumn::make('values')->label(__('Hodnota'))->fontFamily('mono')->wrap(),
                 TextColumn::make('ttl')->label('TTL'),
             ])
             ->actions([
                 Action::make('edit')
-                    ->label('Upravit')
+                    ->label(__('Upravit'))
                     ->icon('outline:pencil-square')
                     ->visible(fn ($record) => $record->type !== 'SOA')
                     ->modalHeading(fn ($record) => "Upravit {$record->short} {$record->type}")
@@ -86,18 +86,18 @@ class ZoneRecords extends Component
                     ->form(RecordForm::fields($domain, editing: true))
                     ->action(fn ($record, array $data) => $this->save($record->name, $record->type, (int) $data['ttl'], RecordForm::values($data['records']))),
                 Action::make('delete')
-                    ->label('Smazat')
+                    ->label(__('Smazat'))
                     ->icon('outline:trash')
                     ->color('danger')
                     ->visible(fn ($record) => $record->type !== 'SOA')
                     ->requiresConfirmation()
                     ->modalHeading(fn ($record) => "Smazat {$record->short} {$record->type}?")
-                    ->modalDescription('Smaže všechny hodnoty tohoto názvu a typu.')
+                    ->modalDescription(__('Smaže všechny hodnoty tohoto názvu a typu.'))
                     ->action(fn ($record) => $this->save($record->name, $record->type, (int) $record->ttl, [])),
             ])
             ->emptyState(
-                $this->providerError ? 'Záznamy se nepodařilo načíst' : 'Zóna je prázdná',
-                $this->providerError ?? 'Přidejte záznam, nebo doplňte doporučené.',
+                $this->providerError ? __('Záznamy se nepodařilo načíst') : __('Zóna je prázdná'),
+                $this->providerError ?? __('Přidejte záznam, nebo doplňte doporučené.'),
                 'outline:server',
             )
             ->paginated(false)
@@ -110,9 +110,9 @@ class ZoneRecords extends Component
         $zone = $this->getZone();
         try {
             $zone->api()->set($zone->domain, $name, $type, $ttl, $values);
-            Toast::success($values === [] ? "Smazáno: {$name} {$type}" : "Uloženo: {$name} {$type}");
+            Toast::success($values === [] ? __('Smazáno: :name :type', ['name' => $name, 'type' => $type]) : __('Uloženo: :name :type', ['name' => $name, 'type' => $type]));
         } catch (DnsException $e) {
-            Toast::error('Uložení selhalo', $e->getMessage());
+            Toast::error(__('Uložení selhalo'), $e->getMessage());
         }
     }
 

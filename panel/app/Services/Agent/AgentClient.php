@@ -26,7 +26,7 @@ class AgentClient
         $errstr = '';
         $conn = @stream_socket_client('unix://'.$this->socket, $errno, $errstr, 5);
         if ($conn === false) {
-            throw new AgentException('unreachable', "Agent není dostupný ({$this->socket}): {$errstr}", $op);
+            throw new AgentException('unreachable', __('Agent není dostupný (:socket): :errstr', ['socket' => $this->socket, 'errstr' => $errstr]), $op);
         }
 
         try {
@@ -42,7 +42,7 @@ class AgentClient
                 $meta = stream_get_meta_data($conn);
                 throw new AgentException(
                     $meta['timed_out'] ? 'timeout' : 'no_response',
-                    $meta['timed_out'] ? 'Agent neodpověděl včas.' : 'Agent ukončil spojení bez odpovědi.',
+                    $meta['timed_out'] ? __('Agent neodpověděl včas.') : __('Agent ukončil spojení bez odpovědi.'),
                     $op,
                 );
             }
@@ -54,7 +54,7 @@ class AgentClient
         if (! ($response['ok'] ?? false)) {
             throw new AgentException(
                 $response['error']['code'] ?? 'unknown',
-                $response['error']['message'] ?? 'Neznámá chyba agenta.',
+                $response['error']['message'] ?? __('Neznámá chyba agenta.'),
                 $op,
             );
         }

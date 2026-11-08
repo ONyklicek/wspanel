@@ -60,3 +60,5 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Dokumentace** | tato dokumentace |
 
 Vyhledávání (⌘K / Ctrl+K) najde web nebo databázi podle názvu.
+
+**Jazyk panelu:** čeština nebo angličtina, volí si ho každý uživatel sám v menu účtu (vpravo nahoře → *English* / *Čeština*). Nový uživatel dostane výchozí jazyk serveru (`APP_LOCALE`, výchozí `cs`). Tato dokumentace a některá hlášení vygenerovaná serverem (komentáře v pravidlech webserveru) zůstávají česky.

@@ -2,11 +2,14 @@
 
 namespace App\Livewire\Pages;
 
+use App\Livewire\Concerns\TranslatesPageText;
 use NyonCode\WirePanels\Pages\Page;
 
 /** Everything the privileged agent did (its own log; the panel cannot write it). */
 class AuditPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.audit';
 
     /** Server-wide settings: administrators only. */

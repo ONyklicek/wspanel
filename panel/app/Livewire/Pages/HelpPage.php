@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Pages;
 
+use App\Livewire\Concerns\TranslatesPageText;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -14,6 +15,8 @@ use NyonCode\WirePanels\Pages\Page;
  */
 class HelpPage extends Page
 {
+    use TranslatesPageText;
+
     protected static string $view = 'livewire.pages.help';
 
     protected static ?string $slug = 'help';
@@ -50,7 +53,7 @@ class HelpPage extends Page
 
     public function getTitle(): ?string
     {
-        return self::PAGES[$this->doc] ?? 'Nápověda';
+        return __(self::PAGES[$this->doc] ?? 'Nápověda');
     }
 
     public static function docsPath(): string
@@ -64,7 +67,7 @@ class HelpPage extends Page
         $slug = array_key_exists($this->doc, self::PAGES) ? $this->doc : 'README';
         $file = self::docsPath()."/{$slug}.md";
         if (! is_file($file)) {
-            return new HtmlString('<p>Dokumentace není nainstalovaná.</p>');
+            return new HtmlString(__('<p>Dokumentace není nainstalovaná.</p>'));
         }
 
         $html = Str::markdown((string) file_get_contents($file), [

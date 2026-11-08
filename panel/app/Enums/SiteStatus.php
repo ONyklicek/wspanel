@@ -5,7 +5,8 @@ namespace App\Enums;
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasColor;
 use NyonCode\WireCore\Foundation\Contracts\Enum\HasLabel;
 
-enum SiteStatus: string implements HasColor, HasLabel {
+enum SiteStatus: string implements HasColor, HasLabel
+{
     case Pending = 'pending';
     case Active = 'active';
     case Failed = 'failed';
@@ -13,9 +14,9 @@ enum SiteStatus: string implements HasColor, HasLabel {
     public function getLabel(): string
     {
         return match ($this) {
-            self::Pending => 'Zakládá se',
-            self::Active => 'Běží',
-            self::Failed => 'Chyba',
+            self::Pending => __('Zakládá se'),
+            self::Active => __('Běží'),
+            self::Failed => __('Chyba'),
         };
     }
 

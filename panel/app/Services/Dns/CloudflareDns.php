@@ -20,7 +20,7 @@ class CloudflareDns implements DnsZoneProvider
         self::check($res);
         $id = $res->json('result.0.id');
         if (! is_string($id)) {
-            throw new DnsException("Zóna {$domain} na Cloudflare neexistuje, nebo k ní token nemá přístup.");
+            throw new DnsException(__('Zóna :domain na Cloudflare neexistuje, nebo k ní token nemá přístup.', ['domain' => $domain]));
         }
 
         return $id;

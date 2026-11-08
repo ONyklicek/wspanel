@@ -53,15 +53,15 @@ class SiteProcesses extends Component
         return collect($procs)->map(fn (array $p) => $p + [
             'id' => $p['unit'],
             'label' => match ($p['kind']) {
-                'app' => 'Aplikace ('.$site->runtimeLabel().')',
-                'task' => 'Úloha #'.$p['name'],
-                'valkey' => 'Valkey (Redis)',
-                default => SiteActions::WORKER_LABELS[$p['name']] ?? $p['name'],
+                'app' => __('Aplikace (').$site->runtimeLabel().')',
+                'task' => __('Úloha #').$p['name'],
+                'valkey' => __('Valkey (Redis)'),
+                default => __(SiteActions::WORKER_LABELS[$p['name']] ?? $p['name']),
             },
             'state_label' => self::stateLabel($p),
             'since_label' => self::since($p['since'] ?? null),
             'memory_label' => ($p['memory'] ?? 0) > 0 ? Number::fileSize($p['memory'], 1) : '—',
-            'boot_label' => ($p['enabled'] ?? '') === 'enabled' ? 'spustí se' : 'nespustí se',
+            'boot_label' => ($p['enabled'] ?? '') === 'enabled' ? __('spustí se') : __('nespustí se'),
         ])->values()->all();
     }
 
@@ -71,36 +71,36 @@ class SiteProcesses extends Component
             ->stackedOnMobile()
             ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
-                TextColumn::make('label')->label('Proces')->weight('medium')->description(fn ($record) => $record->unit),
-                BadgeColumn::make('kind')->label('Druh')->color('gray')
-                    ->formatStateUsing(fn ($state) => ['app' => 'aplikace', 'worker' => 'worker', 'task' => 'úloha', 'valkey' => 'Valkey'][$state] ?? $state),
-                BadgeColumn::make('state_label')->label('Stav')->colors([
-                    'běží' => 'success', 'naplánováno' => 'success', 'chyba' => 'danger', 'padá a restartuje se' => 'danger',
-                    'čeká na deploy / zastaveno' => 'warning', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
+                TextColumn::make('label')->label(__('Proces'))->weight('medium')->description(fn ($record) => $record->unit),
+                BadgeColumn::make('kind')->label(__('Druh'))->color('gray')
+                    ->formatStateUsing(fn ($state) => ['app' => 'aplikace', 'worker' => 'worker', 'task' => __('úloha'), 'valkey' => 'Valkey'][$state] ?? $state),
+                BadgeColumn::make('state_label')->label(__('Stav'))->colors([
+                    __('běží') => 'success', __('naplánováno') => 'success', 'chyba' => 'danger', __('padá a restartuje se') => 'danger',
+                    __('čeká na deploy / zastaveno') => 'warning', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
                 ]),
-                TextColumn::make('since_label')->label('Od'),
-                TextColumn::make('memory_label')->label('Paměť'),
-                TextColumn::make('restarts')->label('Restartů'),
-                TextColumn::make('boot_label')->label('Po startu serveru')->textColor('gray'),
+                TextColumn::make('since_label')->label(__('Od')),
+                TextColumn::make('memory_label')->label(__('Paměť')),
+                TextColumn::make('restarts')->label(__('Restartů')),
+                TextColumn::make('boot_label')->label(__('Po startu serveru'))->textColor('gray'),
             ])
             ->actions([
-                $this->control('start', fn ($r) => $r->kind === 'task' ? 'Obnovit plánování' : 'Spustit', 'outline:play', 'success')
+                $this->control('start', fn ($r) => $r->kind === 'task' ? __('Obnovit plánování') : __('Spustit'), 'outline:play', 'success')
                     ->visible(fn ($record) => ! in_array($record->active, ['active', 'activating', 'reloading'], true)),
-                $this->control('restart', 'Restartovat', 'outline:arrow-path', 'warning')
+                $this->control('restart', __('Restartovat'), 'outline:arrow-path', 'warning')
                     ->visible(fn ($record) => $record->kind !== 'task' && $record->active === 'active'),
-                $this->control('reset', 'Reset po chybách a spustit', 'outline:wrench-screwdriver', 'warning')
+                $this->control('reset', __('Reset po chybách a spustit'), 'outline:wrench-screwdriver', 'warning')
                     ->visible(fn ($record) => $record->kind !== 'task' && ($record->active === 'failed' || $record->active === 'activating' || (int) $record->restarts > 0)),
-                $this->control('stop', fn ($r) => $r->kind === 'task' ? 'Pozastavit plánování' : 'Zastavit', 'outline:stop', 'danger')
+                $this->control('stop', fn ($r) => $r->kind === 'task' ? __('Pozastavit plánování') : __('Zastavit'), 'outline:stop', 'danger')
                     ->visible(fn ($record) => in_array($record->active, ['active', 'activating', 'reloading'], true))
                     ->requiresConfirmation()
                     ->modalDescription(fn ($record) => $record->kind === 'task'
-                        ? 'Úloha se nebude spouštět, dokud plánování neobnovíte (nebo do restartu serveru).'
-                        : 'Proces se zastaví do příštího restartu webu nebo serveru. Natrvalo ho vypnete odebráním workeru nebo vypnutím webu.'),
+                        ? __('Úloha se nebude spouštět, dokud plánování neobnovíte (nebo do restartu serveru).')
+                        : __('Proces se zastaví do příštího restartu webu nebo serveru. Natrvalo ho vypnete odebráním workeru nebo vypnutím webu.')),
                 $this->logAction(),
             ])
             ->emptyState(
-                $this->agentError ? 'Stav se nepodařilo načíst' : 'Žádné samostatné procesy',
-                $this->agentError ?? 'Workery (fronty, Horizon, plánovač, Reverb…) přidáte v menu Další → Přidat worker.',
+                $this->agentError ? __('Stav se nepodařilo načíst') : __('Žádné samostatné procesy'),
+                $this->agentError ?? __('Workery (fronty, Horizon, plánovač, Reverb…) přidáte v menu Další → Přidat worker.'),
                 'outline:cpu-chip',
             )
             ->searchable(false)
@@ -130,18 +130,18 @@ class SiteProcesses extends Component
     private function logAction(): Action
     {
         return Action::make('log')
-            ->label('Log')
+            ->label(__('Log'))
             ->icon('outline:document-text')
             ->color('gray')
             ->modalHeading(fn ($record) => 'Log: '.$record->label)
             ->modalWidth('5xl')
-            ->modalSubmitActionLabel('Zavřít')
+            ->modalSubmitActionLabel(__('Zavřít'))
             ->form(function ($record) {
                 try {
                     $out = app(ControlSite::class)->logs($this->getSite(), $record->kind, $record->kind === 'app' ? null : $record->name);
                     $text = (string) ($out['text'] ?? '');
                 } catch (AgentException $e) {
-                    $text = 'Log se nepodařilo načíst: '.$e->getMessage();
+                    $text = __('Log se nepodařilo načíst: ').$e->getMessage();
                 }
 
                 return [
@@ -155,11 +155,11 @@ class SiteProcesses extends Component
     private static function stateLabel(array $p): string
     {
         return match (true) {
-            ($p['sub'] ?? '') === 'auto-restart' => 'padá a restartuje se',
+            ($p['sub'] ?? '') === 'auto-restart' => __('padá a restartuje se'),
             $p['active'] === 'failed' => 'chyba',
-            $p['kind'] === 'task' && $p['active'] === 'active' => 'naplánováno',
-            $p['active'] === 'active' => 'běží',
-            $p['active'] === 'inactive' && ($p['enabled'] ?? '') === 'enabled' && $p['kind'] !== 'task' => 'čeká na deploy / zastaveno',
+            $p['kind'] === 'task' && $p['active'] === 'active' => __('naplánováno'),
+            $p['active'] === 'active' => __('běží'),
+            $p['active'] === 'inactive' && ($p['enabled'] ?? '') === 'enabled' && $p['kind'] !== 'task' => __('čeká na deploy / zastaveno'),
             default => 'zastaveno',
         };
     }

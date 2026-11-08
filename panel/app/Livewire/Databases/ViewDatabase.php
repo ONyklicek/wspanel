@@ -32,7 +32,7 @@ class ViewDatabase extends ViewPage
     {
         $db = $this->nativeRecord();
 
-        return $db instanceof Database ? $db->name : 'Databáze';
+        return $db instanceof Database ? $db->name : __('Databáze');
     }
 
     protected function headerActions(): array
@@ -40,34 +40,34 @@ class ViewDatabase extends ViewPage
         return [
             ...DatabaseResource::toolActions(),
             Action::make('backupNow')
-                ->label('Zálohovat teď')
+                ->label(__('Zálohovat teď'))
                 ->icon('outline:archive-box-arrow-down')
                 ->action(function (Database $record) {
                     try {
                         $done = app(ManageDatabases::class)->backupNow($record);
-                        Toast::success($done ? 'Záloha hotová' : 'Záloha běží na pozadí');
+                        Toast::success($done ? __('Záloha hotová') : __('Záloha běží na pozadí'));
                     } catch (AgentException $e) {
-                        Toast::error('Záloha selhala', $e->getMessage());
+                        Toast::error(__('Záloha selhala'), $e->getMessage());
                     }
                 }),
             Action::make('schedule')
-                ->label('Plán záloh')
+                ->label(__('Plán záloh'))
                 ->icon('outline:calendar-days')
                 ->color('gray')
                 ->fillFormUsing(fn (Database $record) => ['frequency' => $record->backup_frequency, 'keep' => $record->backup_keep])
                 ->form([
-                    Select::make('frequency')->rules([Options::rule()])->label('Frekvence')->options(['off' => 'Vypnuto', 'daily' => 'Denně (kolem 3:00)', 'weekly' => 'Týdně (v neděli kolem 3:00)'])->required(),
-                    TextInput::make('keep')->label('Držet záloh')->integer()->minValue(1)->maxValue(90)->rules(['integer', 'between:1,90'])->required(),
+                    Select::make('frequency')->rules([Options::rule()])->label(__('Frekvence'))->options(['off' => __('Vypnuto'), 'daily' => __('Denně (kolem 3:00)'), 'weekly' => __('Týdně (v neděli kolem 3:00)')])->required(),
+                    TextInput::make('keep')->label(__('Držet záloh'))->integer()->minValue(1)->maxValue(90)->rules(['integer', 'between:1,90'])->required(),
                 ])
                 ->action(function (Database $record, array $data) {
                     try {
                         app(ManageDatabases::class)->schedule($record, $data['frequency'], (int) $data['keep']);
-                        Toast::success('Plán záloh uložen');
+                        Toast::success(__('Plán záloh uložen'));
                     } catch (AgentException $e) {
-                        Toast::error('Plán se nepodařilo uložit', $e->getMessage());
+                        Toast::error(__('Plán se nepodařilo uložit'), $e->getMessage());
                     }
                 }),
-            ActionGroup::make([DatabaseResource::resetPasswordAction(), DatabaseResource::dropAction()])->label('Další')->icon('outline:ellipsis-vertical'),
+            ActionGroup::make([DatabaseResource::resetPasswordAction(), DatabaseResource::dropAction()])->label(__('Další'))->icon('outline:ellipsis-vertical'),
         ];
     }
 }

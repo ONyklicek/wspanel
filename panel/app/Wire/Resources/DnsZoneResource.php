@@ -48,7 +48,7 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
 
     public static function label(): string
     {
-        return 'DNS zóna';
+        return __('DNS zóna');
     }
 
     public static function pluralLabel(): string
@@ -72,15 +72,15 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
             ->stackedOnMobile()
             ->query(DnsZone::query()->with('site'))
             ->columns([
-                TextColumn::make('domain')->label('Doména')->searchable()->sortable()->weight('medium'),
-                BadgeColumn::make('provider')->label('Kde je zóna')
+                TextColumn::make('domain')->label(__('Doména'))->searchable()->sortable()->weight('medium'),
+                BadgeColumn::make('provider')->label(__('Kde je zóna'))
                     ->formatStateUsing(fn ($state) => $state instanceof DnsProvider ? $state->getLabel() : $state)
                     ->colors(['local' => 'info', 'cloudflare' => 'warning']),
-                TextColumn::make('site_domain')->label('Web')->state(fn (DnsZone $record) => $record->site?->domain ?? '—'),
-                TextColumn::make('created_at')->label('Přidáno')->date('j. n. Y'),
+                TextColumn::make('site_domain')->label(__('Web'))->state(fn (DnsZone $record) => $record->site?->domain ?? '—'),
+                TextColumn::make('created_at')->label(__('Přidáno'))->date('j. n. Y'),
             ])
             ->recordUrl(fn (DnsZone $record) => self::url('view', $record))
-            ->emptyState('Zatím žádná zóna', 'Spravujte DNS na tomto serveru (PowerDNS), nebo připojte zónu z Cloudflare.', 'outline:server')
+            ->emptyState(__('Zatím žádná zóna'), __('Spravujte DNS na tomto serveru (PowerDNS), nebo připojte zónu z Cloudflare.'), 'outline:server')
             ->defaultSort('domain');
     }
 
@@ -90,39 +90,39 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
 
         return $form
             ->schema([
-                Section::make('zone')->label('Zóna')->schema([
-                    TextInput::make('domain')->label('Doména')->placeholder('example.com')->required()
+                Section::make('zone')->label(__('Zóna'))->schema([
+                    TextInput::make('domain')->label(__('Doména'))->placeholder('example.com')->required()
                         ->datalist(Site::query()->pluck('domain')->all())
                         ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
                         ->rules([function (string $attribute, mixed $value, \Closure $fail) {
                             if (! Domains::isValid($value)) {
-                                $fail('Neplatná doména.');
+                                $fail(__('Neplatná doména.'));
                             } elseif (DnsZone::acrossClients()->where('domain', Domains::normalize($value))->exists()) {
-                                $fail('Tato zóna už v panelu je.');
+                                $fail(__('Tato zóna už v panelu je.'));
                             }
                         }]),
-                    Radio::make('provider')->rules([Options::rule()])->label('Kde je zóna')
+                    Radio::make('provider')->rules([Options::rule()])->label(__('Kde je zóna'))
                         ->options(collect(DnsProvider::cases())->mapWithKeys(fn (DnsProvider $p) => [$p->value => $p->getLabel()])->all())
                         ->descriptions(collect(DnsProvider::cases())->mapWithKeys(fn (DnsProvider $p) => [$p->value => $p->getDescription()
-                            .($p === DnsProvider::Local && ! $local ? ' (Není nainstalováno: install.sh --dns=powerdns.)' : '')])->all())
+                            .($p === DnsProvider::Local && ! $local ? __(' (Není nainstalováno: install.sh --dns=powerdns.)') : '')])->all())
                         ->cards()
                         ->default($local ? DnsProvider::Local->value : DnsProvider::Cloudflare->value)
                         ->required()
                         ->live(),
-                    Tags::make('nameservers')->label('Nameservery')
+                    Tags::make('nameservers')->label(__('Nameservery'))
                         ->default(DnsAdvisor::defaultNameservers())
-                        ->helperText('Tyto názvy zadáte u registrátora. Musí mířit na IP tohoto serveru (u registrátora jako „glue“ záznamy, je-li NS ve stejné doméně).')
+                        ->helperText(__('Tyto názvy zadáte u registrátora. Musí mířit na IP tohoto serveru (u registrátora jako „glue“ záznamy, je-li NS ve stejné doméně).'))
                         ->visibleWhen('provider', DnsProvider::Local->value),
-                    TextInput::make('cloudflare_token')->label('Cloudflare API token')->password()->revealable()
-                        ->helperText('My Profile → API Tokens → Create Token → šablona „Edit zone DNS“, omezit na tuto zónu. Uloží se šifrovaně.')
+                    TextInput::make('cloudflare_token')->label(__('Cloudflare API token'))->password()->revealable()
+                        ->helperText(__('My Profile → API Tokens → Create Token → šablona „Edit zone DNS“, omezit na tuto zónu. Uloží se šifrovaně.'))
                         ->visibleWhen('provider', DnsProvider::Cloudflare->value)
                         ->requiredIf('provider', DnsProvider::Cloudflare->value),
-                    Toggle::make('recommended')->label('Rovnou přidat doporučené záznamy (A/AAAA na tento server, CAA, SPF, DMARC)')->default(true),
+                    Toggle::make('recommended')->label(__('Rovnou přidat doporučené záznamy (A/AAAA na tento server, CAA, SPF, DMARC)'))->default(true),
                 ]),
             ])
             ->using(function (array $data): DnsZone {
                 if ($data['provider'] === DnsProvider::Local->value && ! (app(SystemInfo::class)->versions()['dns_local'] ?? false)) {
-                    throw ValidationException::withMessages(['data.provider' => 'Lokální DNS server není nainstalovaný.']);
+                    throw ValidationException::withMessages(['data.provider' => __('Lokální DNS server není nainstalovaný.')]);
                 }
                 try {
                     return app(ManageDnsZones::class)->create($data);
@@ -130,6 +130,6 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                     throw ValidationException::withMessages(['data.domain' => $e->getMessage()]);
                 }
             })
-            ->successMessage('Zóna přidána');
+            ->successMessage(__('Zóna přidána'));
     }
 }

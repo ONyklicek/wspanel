@@ -26,33 +26,33 @@ class ApiTokenTable extends Component
             ->stackedOnMobile()
             ->query(ApiToken::query())
             ->columns([
-                TextColumn::make('name')->label('Název')->weight('medium'),
-                BadgeColumn::make('can_write')->label('Smí')->state(fn (ApiToken $t) => $t->can_write ? 'číst i měnit' : 'jen číst')
-                    ->colorUsing(fn ($state) => $state === 'jen číst' ? 'gray' : 'warning'),
-                TextColumn::make('last_used_at')->label('Naposledy')->formatStateUsing(fn ($state) => $state?->diffForHumans() ?? 'nepoužit'),
-                TextColumn::make('expires_at')->label('Platí do')->formatStateUsing(fn ($state) => $state?->format('j. n. Y') ?? 'bez omezení'),
+                TextColumn::make('name')->label(__('Název'))->weight('medium'),
+                BadgeColumn::make('can_write')->label(__('Smí'))->state(fn (ApiToken $t) => $t->can_write ? __('číst i měnit') : __('jen číst'))
+                    ->colorUsing(fn ($state) => $state === __('jen číst') ? 'gray' : 'warning'),
+                TextColumn::make('last_used_at')->label(__('Naposledy'))->formatStateUsing(fn ($state) => $state?->diffForHumans() ?? __('nepoužit')),
+                TextColumn::make('expires_at')->label(__('Platí do'))->formatStateUsing(fn ($state) => $state?->format('j. n. Y') ?? __('bez omezení')),
             ])
             ->headerActions([
-                Action::make('create')->label('Nový token')->icon('outline:plus')
+                Action::make('create')->label(__('Nový token'))->icon('outline:plus')
                     ->form([
-                        TextInput::make('name')->label('Název')->placeholder('notebook, GitHub Actions…')->required()->rules(['string', 'max:100']),
-                        Toggle::make('can_write')->label('Smí i měnit (deploy, restart)')->default(false),
-                        Select::make('days')->label('Platnost')->options(['30' => '30 dní', '90' => '90 dní', '365' => 'rok', '0' => 'bez omezení'])
+                        TextInput::make('name')->label(__('Název'))->placeholder('notebook, GitHub Actions…')->required()->rules(['string', 'max:100']),
+                        Toggle::make('can_write')->label(__('Smí i měnit (deploy, restart)'))->default(false),
+                        Select::make('days')->label(__('Platnost'))->options(['30' => __('30 dní'), '90' => __('90 dní'), '365' => __('rok'), '0' => __('bez omezení')])
                             ->default('90')->rules(['in:30,90,365,0'])->required(),
                     ])
                     ->action(function (array $data) {
                         [, $plain] = ApiToken::issue(auth()->user(), $data['name'], (bool) $data['can_write'], (int) $data['days'] ?: null);
-                        Toast::secret('Token '.$data['name'].' (zobrazený jen teď)', $plain);
+                        Toast::secret(__('Token ').$data['name'].__(' (zobrazený jen teď)'), $plain);
                     }),
             ])
             ->actions([
-                Action::make('revoke')->label('Zrušit')->icon('outline:trash')->color('danger')->requiresConfirmation()
+                Action::make('revoke')->label(__('Zrušit'))->icon('outline:trash')->color('danger')->requiresConfirmation()
                     ->action(function (ApiToken $record) {
                         $record->delete();
-                        Toast::success('Token zrušen');
+                        Toast::success(__('Token zrušen'));
                     }),
             ])
-            ->emptyState('Zatím žádný token', 'Vytvořte token pro skripty nebo příkaz wspanel.', 'outline:key')
+            ->emptyState(__('Zatím žádný token'), __('Vytvořte token pro skripty nebo příkaz wspanel.'), 'outline:key')
             ->searchable(false)
             ->paginated(false);
     }

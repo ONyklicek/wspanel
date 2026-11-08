@@ -22,7 +22,7 @@ class SiteBackups extends ViewPage
     {
         $site = $this->nativeRecord();
 
-        return 'Zálohy · '.($site instanceof Site ? $site->domain : 'web');
+        return __('Zálohy · ').($site instanceof Site ? $site->domain : 'web');
     }
 
     public function infolist(): Infolist

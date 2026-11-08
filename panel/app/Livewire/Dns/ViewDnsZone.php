@@ -42,12 +42,12 @@ class ViewDnsZone extends ViewPage
         $zone = $this->zone();
 
         return Infolist::make()->record($zone)->livewireComponent($this)->schema([
-            Section::make('zone')->label('Zóna')->columns(3)->schema([
-                TextEntry::make('provider')->label('Kde je zóna')->state(fn () => $zone->provider->getLabel())->badge()->color('gray'),
-                TextEntry::make('site')->label('Web')->state(fn () => $zone->site?->domain ?? '—'),
-                TextEntry::make('delegation')->label('U registrátora nastavte')->state(fn () => $zone->provider === DnsProvider::Local
+            Section::make('zone')->label(__('Zóna'))->columns(3)->schema([
+                TextEntry::make('provider')->label(__('Kde je zóna'))->state(fn () => $zone->provider->getLabel())->badge()->color('gray'),
+                TextEntry::make('site')->label(__('Web'))->state(fn () => $zone->site?->domain ?? '—'),
+                TextEntry::make('delegation')->label(__('U registrátora nastavte'))->state(fn () => $zone->provider === DnsProvider::Local
                     ? 'nameservery '.implode(', ', DnsAdvisor::defaultNameservers()).' (IP '.config('panel.public_ipv4').')'
-                    : 'nameservery, které ukazuje Cloudflare u zóny'),
+                    : __('nameservery, které ukazuje Cloudflare u zóny')),
             ]),
         ]);
     }
@@ -58,7 +58,7 @@ class ViewDnsZone extends ViewPage
 
         return [
             Action::make('add')
-                ->label('Přidat záznam')
+                ->label(__('Přidat záznam'))
                 ->icon('outline:plus')
                 ->form(RecordForm::fields($zone->domain))
                 ->action(function (array $data) {
@@ -66,59 +66,59 @@ class ViewDnsZone extends ViewPage
                     try {
                         $name = RecordForm::fqdn($data['name'] ?? '', $zone->domain);
                         $zone->api()->set($zone->domain, $name, $data['type'], (int) $data['ttl'], RecordForm::values($data['records']));
-                        Toast::success("Uloženo: {$name} {$data['type']}");
+                        Toast::success(__('Uloženo: :name :type', ['name' => $name, 'type' => $data['type']]));
                         $this->dispatch('dns-changed');
                     } catch (DnsException $e) {
-                        Toast::error('Uložení selhalo', $e->getMessage());
+                        Toast::error(__('Uložení selhalo'), $e->getMessage());
                     }
                 }),
             Action::make('recommended')
-                ->label('Doplnit doporučené')
+                ->label(__('Doplnit doporučené'))
                 ->icon('outline:sparkles')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalDescription('Přidá záznamy, které zóna ještě nemá: A/AAAA na tento server, CAA, SPF, DKIM (je-li klíč) a DMARC. Existující záznamy se nemění.')
+                ->modalDescription(__('Přidá záznamy, které zóna ještě nemá: A/AAAA na tento server, CAA, SPF, DKIM (je-li klíč) a DMARC. Existující záznamy se nemění.'))
                 ->action(function () {
                     $zone = $this->zone();
                     try {
                         $dkim = rescue(fn () => app(ManageMail::class)->dkim($zone->domain, 'get'), null, report: false);
                         $added = app(ManageDnsZones::class)->addRecommended($zone, isset($dkim['name']) ? $dkim : null);
-                        Toast::success($added === [] ? 'Nic nechybělo' : 'Přidáno: '.implode(', ', $added));
+                        Toast::success($added === [] ? __('Nic nechybělo') : __('Přidáno: ').implode(', ', $added));
                         $this->dispatch('dns-changed');
                     } catch (DnsException|AgentException $e) {
-                        Toast::error('Nepodařilo se', $e->getMessage());
+                        Toast::error(__('Nepodařilo se'), $e->getMessage());
                     }
                 }),
             Action::make('check')
-                ->label('Kontrola DNS')
+                ->label(__('Kontrola DNS'))
                 ->icon('outline:shield-check')
                 ->color('gray')
-                ->modalHeading(fn () => 'Veřejné DNS pro '.$this->zone()->domain)
-                ->modalSubmitActionLabel('Zavřít')
+                ->modalHeading(fn () => __('Veřejné DNS pro ').$this->zone()->domain)
+                ->modalSubmitActionLabel(__('Zavřít'))
                 ->form(fn () => [Placeholder::make('result')->hiddenLabel()->html(view('livewire.dns.check', [
                     'checks' => DnsAdvisor::check($this->zone()->domain, $this->zone()->provider === DnsProvider::Local ? DnsAdvisor::defaultNameservers() : []),
                 ])->render())])
                 ->action(fn () => null),
             ActionGroup::make([
                 Action::make('delete')
-                    ->label('Odebrat zónu')
+                    ->label(__('Odebrat zónu'))
                     ->icon('outline:trash')
                     ->color('danger')
-                    ->modalHeading('Odebrat zónu z panelu?')
-                    ->modalDescription($zone->provider === DnsProvider::Cloudflare ? 'Zóna se jen odpojí od panelu, na Cloudflare zůstane beze změny.' : null)
+                    ->modalHeading(__('Odebrat zónu z panelu?'))
+                    ->modalDescription($zone->provider === DnsProvider::Cloudflare ? __('Zóna se jen odpojí od panelu, na Cloudflare zůstane beze změny.') : null)
                     ->form($zone->provider === DnsProvider::Local
-                        ? [Toggle::make('remove')->label('Smazat zónu i z DNS serveru (doména přestane fungovat, pokud na server míří)')]
+                        ? [Toggle::make('remove')->label(__('Smazat zónu i z DNS serveru (doména přestane fungovat, pokud na server míří)'))]
                         : [])
                     ->action(function (array $data) {
                         try {
                             app(ManageDnsZones::class)->delete($this->zone(), (bool) ($data['remove'] ?? false));
-                            Toast::success('Zóna odebrána');
+                            Toast::success(__('Zóna odebrána'));
                         } catch (DnsException $e) {
-                            Toast::error('Nepodařilo se', $e->getMessage());
+                            Toast::error(__('Nepodařilo se'), $e->getMessage());
                         }
                     })
                     ->successRedirect(fn () => DnsZoneResource::url('index')),
-            ])->label('Další')->icon('outline:ellipsis-vertical'),
+            ])->label(__('Další'))->icon('outline:ellipsis-vertical'),
         ];
     }
 
