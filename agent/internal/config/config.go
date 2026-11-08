@@ -120,6 +120,9 @@ type Config struct {
 	VMailboxes     string `json:"vmailboxes"`
 	VAliases       string `json:"valiases"`
 	MailboxSenders string `json:"mailbox_senders"`
+	// SRSExclude: Postfix canonical map of the domains that send from here
+	// (sites, mail domains); their senders are never SRS-rewritten.
+	SRSExclude string `json:"srs_exclude"`
 	DovecotUsers   string `json:"dovecot_users"`
 	VmailRoot      string `json:"vmail_root"`
 	DovecotBlocked string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
@@ -220,6 +223,7 @@ func Defaults() Config {
 		VMailboxes:        "/etc/postfix/wspanel_vmailboxes",
 		VAliases:          "/etc/postfix/wspanel_valiases",
 		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
+		SRSExclude:        "/etc/postfix/wspanel_srs_exclude",
 		DovecotUsers:      "/etc/dovecot/wspanel/users",
 		VmailRoot:         "/var/mail/vmail",
 		DovecotBlocked:    "/etc/dovecot/wspanel/blocked",

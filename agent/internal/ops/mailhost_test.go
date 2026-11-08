@@ -210,3 +210,78 @@ func TestDomainSenderListsApplyPerRecipientInSieve(t *testing.T) {
 		t.Error("a removed domain's script goes")
 	}
 }
+
+func TestMailboxForwardingKeepsACopyOnlyWhenAsked(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	if _, err := call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, lp := range []string{"alice", "bob"} {
+		if _, err := call(t, env, mailMailboxSet, map[string]any{"address": lp + "@firma.cz", "password_hash": testHash, "quota_mb": 500, "enabled": true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := call(t, env, mailForwardSet, map[string]any{"address": "alice@firma.cz", "to": []string{"Bob@firma.cz"}, "keep_copy": false}); err != nil {
+		t.Fatal(err)
+	}
+	if al := read2(t, env.Cfg.VAliases); !strings.Contains(al, "\nalice@firma.cz bob@firma.cz\n") {
+		t.Errorf("without a copy the mail goes on only:\n%s", al)
+	}
+	if _, err := call(t, env, mailForwardSet, map[string]any{"address": "alice@firma.cz", "to": []string{"bob@firma.cz", "boss@gmail.com"}, "keep_copy": true}); err != nil {
+		t.Fatal(err)
+	}
+	if al := read2(t, env.Cfg.VAliases); !strings.Contains(al, "\nalice@firma.cz alice@firma.cz,bob@firma.cz,boss@gmail.com\n") {
+		t.Errorf("with a copy the mailbox stays in its own expansion:\n%s", al)
+	}
+	// A password change keeps the forwarding; a catch-all does not add a second line.
+	if _, err := call(t, env, mailMailboxSet, map[string]any{"address": "alice@firma.cz", "password_hash": testHash, "quota_mb": 600, "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, mailAliasSet, map[string]any{"domain": "firma.cz", "aliases": map[string][]string{"": {"bob@firma.cz"}}}); err != nil {
+		t.Fatal(err)
+	}
+	al := read2(t, env.Cfg.VAliases)
+	if strings.Count(al, "\nalice@firma.cz ") != 1 || !strings.Contains(al, "alice@firma.cz alice@firma.cz,bob@firma.cz") || !strings.Contains(al, "\nbob@firma.cz bob@firma.cz\n") {
+		t.Errorf("forward kept, one line per mailbox:\n%s", al)
+	}
+	if _, err := call(t, env, mailForwardSet, map[string]any{"address": "alice@firma.cz", "to": []string{"alice@firma.cz"}}); err == nil {
+		t.Error("a mailbox must not forward to itself")
+	}
+	if _, err := call(t, env, mailForwardSet, map[string]any{"address": "nobody@firma.cz", "to": []string{"bob@firma.cz"}}); err == nil {
+		t.Error("only an existing mailbox forwards")
+	}
+	if _, err := call(t, env, mailForwardSet, map[string]any{"address": "alice@firma.cz", "to": []string{}, "keep_copy": true}); err != nil {
+		t.Fatal(err)
+	}
+	if al := read2(t, env.Cfg.VAliases); !strings.Contains(al, "\nalice@firma.cz alice@firma.cz\n") {
+		t.Errorf("forwarding off (catch-all on): the mailbox maps to itself again:\n%s", al)
+	}
+}
+
+func TestOwnDomainsAreNeverSRSRewritten(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	env.Cfg.SRSExclude = filepath.Join(t.TempDir(), "srs_exclude")
+	env.Cfg.PanelDomain = "panel.example.net"
+	if err := saveSiteState(env, siteState{Domain: "shop.cz", Mode: "classic"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	got := read2(t, env.Cfg.SRSExclude)
+	for _, line := range []string{`/^(.+@firma\.cz)$/ ${1}`, `/^(.+@shop\.cz)$/ ${1}`, `/^(.+@panel\.example\.net)$/ ${1}`} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("missing %q in:\n%s", line, got)
+		}
+	}
+}
+
+func TestSenderListsAlsoMatchTheSRSFormOfAForeignSender(t *testing.T) {
+	got := senderTest([]string{"boss@gmail.com", "@spam.net"}, "mail.example.net")
+	for _, want := range []string{`envelope :all :is "from" ["boss@gmail.com"]`, `envelope :domain :is "from" ["spam.net"]`,
+		`envelope :all :matches "from" ["SRS0=*=*=gmail.com=boss@mail.example.net", "SRS0=*=*=spam.net=*@mail.example.net"]`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in %s", want, got)
+		}
+	}
+}

@@ -117,7 +117,50 @@ func writeSenderMaps(ctx context.Context, env *Env) error {
 			return err
 		}
 	}
-	return nil
+	return writeSRSExclude(ctx, env)
+}
+
+// writeSRSExclude lists the domains that send from this server: the sites
+// (each may send only as its own domain), the mail domains, the panel's and
+// the mail host's. Postfix asks this regexp map before PostSRSd
+// (sender_canonical_maps, first match wins; each line maps the address to
+// itself — a hash "@domain @domain" does not stop the search), so only a
+// foreign sender is rewritten: mail forwarded to another server then passes
+// SPF there as the mail host's, and bounces come back through it.
+func writeSRSExclude(ctx context.Context, env *Env) error {
+	if env.Cfg.SRSExclude == "" {
+		return nil
+	}
+	domains := []string{}
+	add := func(d string) {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if d != "" && validate.Domain(d) == nil && !slices.Contains(domains, d) {
+			domains = append(domains, d)
+		}
+	}
+	for _, st := range allSiteStates(env.Cfg) {
+		add(st.Domain)
+	}
+	if st, err := loadMail(env); err == nil {
+		for d := range st.Domains {
+			add(d)
+		}
+	}
+	add(env.Cfg.PanelDomain)
+	add(mailHostName(env))
+	slices.Sort(domains)
+	var b strings.Builder
+	b.WriteString("# Managed by WSPanel agent: senders never SRS-rewritten.\n")
+	for _, d := range domains {
+		// Validated domains: only the dots need escaping.
+		fmt.Fprintf(&b, "/^(.+@%s)$/ ${1}\n", strings.ReplaceAll(d, ".", `\.`))
+	}
+	// A regexp table is read when a Postfix process starts: reload.
+	if err := env.FS.WriteFile(env.Cfg.SRSExclude, []byte(b.String()), 0o644, fsx.Root); err != nil {
+		return err
+	}
+	_, err := env.Exec.Run(ctx, "postfix", "reload")
+	return err
 }
 
 type siteMailParams struct {

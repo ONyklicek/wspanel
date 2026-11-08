@@ -6,6 +6,7 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Models\MailAlias;
 use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
+use App\Services\Mail\Deliverability;
 use App\Support\Toast;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -28,12 +29,16 @@ class MailAliasTable extends Component
         return MailDomain::findOrFail($this->domain);
     }
 
-    /** @param array<string, list<string>> $aliases */
-    private function save(MailDomain $domain, array $aliases, string $ok): void
+    /**
+     * @param  array<string, list<string>>  $aliases
+     * @param  list<string>  $destinations  the newly set ones, checked for mail leaving the server
+     */
+    private function save(MailDomain $domain, array $aliases, string $ok, array $destinations = []): void
     {
         try {
             app(ManageMailHosting::class)->setAliases($domain, $aliases);
-            Toast::success($ok);
+            $warning = $destinations === [] ? null : app(Deliverability::class)->forwardingWarning($destinations);
+            $warning === null ? Toast::success($ok) : Toast::warning($ok, $warning);
         } catch (AgentException $e) {
             Toast::error(__('Aliasy se nepodařilo uložit'), $e->getMessage());
         }
@@ -75,8 +80,9 @@ class MailAliasTable extends Component
                     ->form($form)
                     ->action(function (array $data) use ($domain, $lines) {
                         $aliases = $this->current($domain);
-                        $aliases[strtolower(trim((string) ($data['local_part'] ?? '')))] = $lines((string) $data['destinations']);
-                        $this->save($domain, $aliases, __('Alias uložen'));
+                        $destinations = $lines((string) $data['destinations']);
+                        $aliases[strtolower(trim((string) ($data['local_part'] ?? '')))] = $destinations;
+                        $this->save($domain, $aliases, __('Alias uložen'), $destinations);
                     }),
             ])
             ->actions([

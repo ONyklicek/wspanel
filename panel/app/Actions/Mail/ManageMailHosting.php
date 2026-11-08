@@ -283,6 +283,21 @@ class ManageMailHosting
         $mailbox->update(['autoreply' => $data['enabled'] ? ['subject' => $data['subject'] ?? '', 'body' => $data['body'] ?? '', 'days' => (int) ($data['days'] ?? 1)] : null]);
     }
 
+    /**
+     * Forwards the mailbox's incoming mail to other addresses, keeping a copy
+     * in the mailbox or not. No addresses = forwarding off.
+     *
+     * @param  list<string>  $to
+     *
+     * @throws AgentException
+     */
+    public function forward(Mailbox $mailbox, array $to, bool $keepCopy): void
+    {
+        $to = array_values(array_unique(array_filter(array_map(fn ($a) => strtolower(trim((string) $a)), $to))));
+        $this->agent->call('mail.forward.set', ['address' => $mailbox->address(), 'to' => $to, 'keep_copy' => $keepCopy]);
+        $mailbox->update(['forward' => $to === [] ? null : ['to' => $to, 'keep_copy' => $keepCopy]]);
+    }
+
     /** Refreshes the used storage of the domain's mailboxes. */
     public function refreshUsage(MailDomain $domain): void
     {

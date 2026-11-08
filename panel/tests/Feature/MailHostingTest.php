@@ -8,7 +8,9 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageEdge;
 use App\Exceptions\LimitReachedException;
+use App\Livewire\Mail\MailboxTable;
 use App\Livewire\Mail\ViewMailDomain;
+use App\Livewire\Sites\SiteMail;
 use App\Models\Client;
 use App\Models\DnsZone;
 use App\Models\Mailbox;
@@ -327,5 +329,89 @@ class MailHostingTest extends TestCase
             ->call('mountAction', 'deliverability');
 
         $page->assertSee('MX (příchozí pošta)')->assertSee('DMARC');
+    }
+
+    public function test_a_mailbox_forwards_with_or_without_a_copy(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 500, 'enabled' => true]);
+        $this->agent->shouldReceive('call')->once()->with('mail.forward.set', ['address' => 'alice@firma.cz', 'to' => ['bob@firma.cz'], 'keep_copy' => false])->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('mail.forward.set', ['address' => 'alice@firma.cz', 'to' => [], 'keep_copy' => true])->andReturn([]);
+        $table = Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
+
+        $this->tableAction($table, $alice, 'forward', ['to' => ['Bob@firma.cz'], 'keep_copy' => '0'])->assertNotified();
+        $this->assertSame(['to' => ['bob@firma.cz'], 'keep_copy' => false], $alice->fresh()->forward);
+        $table->assertSee('→ bob@firma.cz (bez kopie)');
+
+        $this->tableAction($table, $alice, 'forward', ['to' => [], 'keep_copy' => '1']);
+        $this->assertNull($alice->fresh()->forward);
+    }
+
+    public function test_forwarding_off_the_server_warns_when_the_mail_hosts_spf_is_missing(): void
+    {
+        $this->actingAs(User::factory()->create());
+        config(['panel.mail_host' => 'mail.hosting.cz', 'panel.public_ipv4' => '203.0.113.7']);
+        $spf = [];
+        $this->app->instance(Resolver::class, new class($spf) extends Resolver
+        {
+            public function __construct(public array &$spf) {}
+
+            public function records(string $name, int $type, string $field): array
+            {
+                return $name === 'mail.hosting.cz' && $type === DNS_TXT ? $this->spf : [];
+            }
+        });
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 500, 'enabled' => true]);
+        $this->agent->shouldReceive('call')->with('mail.forward.set', Mockery::any())->andReturn([]);
+        $table = Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
+        $warning = 'Pošta přeposlaná mimo server neprojde u příjemce SPF: mail.hosting.cz nemá SPF záznam, který by povoloval tento server. Do DNS přidejte mail.hosting.cz TXT "v=spf1 a -all".';
+
+        $this->tableAction($table, $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1'])->assertNotified($warning, 'warning');
+
+        $spf[] = 'v=spf1 a -all';
+        $this->tableAction($table, $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1'])->assertNotified('Pošta se přeposílá na petr@seznam.cz', 'success');
+    }
+
+    public function test_dns_recommends_an_spf_for_the_mail_host_in_its_zone(): void
+    {
+        config(['app.url' => 'https://panel.example.com']);
+        MailDomain::create(['domain' => 'firma.cz']);
+
+        $spf = collect(DnsAdvisor::recommended('example.com'))->firstWhere('name', 'panel.example.com');
+
+        $this->assertSame(['TXT', ['v=spf1 a -all']], [$spf['type'], $spf['records']]);
+        $this->assertNull(collect(DnsAdvisor::recommended('firma.cz'))->firstWhere('name', 'panel.example.com'), 'only the zone the mail host lies in');
+    }
+
+    public function test_a_mailbox_cannot_forward_to_itself_or_to_a_non_address(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 500, 'enabled' => true]);
+        $this->agent->shouldNotReceive('call')->with('mail.forward.set', Mockery::any());
+        $table = Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
+
+        $this->tableAction($table, $alice, 'forward', ['to' => ['alice@firma.cz'], 'keep_copy' => '0']);
+        $this->tableAction($table, $alice, 'forward', ['to' => ['not an address'], 'keep_copy' => '0']);
+
+        $this->assertNull($alice->fresh()->forward);
+    }
+
+    public function test_the_sites_mail_tab_manages_the_domains_mailboxes(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $site = Site::create(['domain' => 'www.firma.cz', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $this->agent->shouldReceive('call')->with('mail.hosting')->andReturn(['installed' => true]);
+
+        $page = Livewire::test(SiteMail::class, ['record' => $site->id])->assertSee('Zřídit poštu pro firma.cz');
+        $this->agent->shouldReceive('call')->once()->with('mail.domain.set', Mockery::on(fn ($p) => $p['domain'] === 'firma.cz' && $p['enabled']))->andReturn([]);
+        $page->call('setUp')->assertNotified();
+
+        $domain = MailDomain::sole();
+        $this->assertSame('firma.cz', $domain->domain);
+        Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'info', 'quota_mb' => 500, 'enabled' => true]);
+        $this->get("/sites/{$site->id}/mail")->assertOk()->assertSee('info@firma.cz')->assertDontSee('Zřídit poštu');
     }
 }

@@ -24,7 +24,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "roundcube-core roundcube/dbconfig-install boolean false" | debconf-set-selections
 echo "roundcube-core roundcube/reconfigure-webserver multiselect" | debconf-set-selections
 apt-get install -y -q --no-install-recommends \
-  dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd dovecot-sieve dovecot-managesieved rspamd \
+  dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd dovecot-sieve dovecot-managesieved rspamd postsrsd \
   roundcube-core roundcube-sqlite3 roundcube-plugins "php$PHP-fpm" "php$PHP-sqlite3" "php$PHP-intl" "php$PHP-mbstring" "php$PHP-xml" "php$PHP-curl" "php$PHP-zip" "php$PHP-gd" sqlite3 >/dev/null
 
 # ---------------------------------------------------------------- mailbox store
@@ -364,6 +364,27 @@ postconf -e \
   "smtpd_milters=inet:127.0.0.1:11332, inet:127.0.0.1:8891" \
   "non_smtpd_milters=inet:127.0.0.1:8891" \
   "milter_default_action=accept"
+
+# SRS (PostSRSd): mail forwarded to another server (a mailbox's forwarding,
+# an alias) leaves with the sender rewritten to SRS0=…@$MAIL_HOST, so it
+# passes SPF there; bounces to that address are turned back to the original
+# sender. Senders of this server's own domains are never rewritten: the agent
+# keeps them in wspanel_srs_exclude (a regexp map of addresses to themselves),
+# which Postfix asks first.
+# The secret is the package's (/etc/postsrsd.secret, made on install).
+sed -i -E \
+  -e "s/^#?SRS_DOMAIN=.*/SRS_DOMAIN=$MAIL_HOST/" \
+  -e "s/^#?SRS_LISTEN_ADDR=.*/SRS_LISTEN_ADDR=127.0.0.1/" \
+  /etc/default/postsrsd
+grep -q '^SRS_DOMAIN=' /etc/default/postsrsd || echo "SRS_DOMAIN=$MAIL_HOST" >> /etc/default/postsrsd
+[[ -f /etc/postfix/wspanel_srs_exclude ]] || install -m 0644 /dev/null /etc/postfix/wspanel_srs_exclude
+systemctl enable postsrsd >/dev/null 2>&1
+systemctl restart postsrsd
+postconf -e \
+  "sender_canonical_maps=regexp:/etc/postfix/wspanel_srs_exclude, tcp:127.0.0.1:10001" \
+  "sender_canonical_classes=envelope_sender" \
+  "recipient_canonical_maps=tcp:127.0.0.1:10002" \
+  "recipient_canonical_classes=envelope_recipient, header_recipient"
 
 # Port 25 is public now, but the sites' SMTP logins (sasldb) stay a loopback
 # thing: AUTH is not offered outside, and even a login that succeeds from

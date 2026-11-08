@@ -44,6 +44,12 @@ class DnsAdvisor
                 $out[] = ['name' => $srv.'.'.$domain, 'type' => 'SRV', 'ttl' => 3600, 'records' => ['0 1 '.$port.' '.$host.'.'], 'note' => __('Poštovní programy samy najdou server.')];
             }
         }
+        // Forwarded mail leaves with an SRS sender at the mail host, so the
+        // mail host needs an SPF of its own when it lies in this zone.
+        $host = ManageMailHosting::mailHost();
+        if (str_ends_with($host, '.'.$domain) && MailDomain::acrossClients()->exists()) {
+            $out[] = ['name' => $host, 'type' => 'TXT', 'ttl' => 3600, 'records' => ['v=spf1 a -all'], 'note' => __('SPF serveru pošty: přeposlaná pošta odchází z adresy na něm.')];
+        }
         foreach (ManageMail::dnsRecords($domain, $dkim, null, $v4) as $r) {
             $out[] = ['name' => $r['name'], 'type' => 'TXT', 'ttl' => 3600, 'records' => [$r['value']], 'note' => $r['note']];
         }

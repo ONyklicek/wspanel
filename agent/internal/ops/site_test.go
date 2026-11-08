@@ -36,6 +36,7 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.ToolsDir = filepath.Join(root, "etc/panel-sites/bin")
 	cfg.SenderLogins = filepath.Join(root, "etc/postfix/wspanel_sender_logins")
 	cfg.LoginSenders = filepath.Join(root, "etc/postfix/wspanel_login_senders")
+	cfg.SRSExclude = filepath.Join(root, "etc/postfix/wspanel_srs_exclude")
 	cfg.DKIMDir = filepath.Join(root, "etc/opendkim")
 	cfg.ProxyCertDir = filepath.Join(root, "etc/panel-proxy/certs")
 	cfg.ProxyStorage = filepath.Join(root, "var/lib/panel-proxy/caddy")

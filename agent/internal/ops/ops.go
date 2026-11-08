@@ -149,6 +149,7 @@ func Registry() map[string]Op {
 		{"mail.alias.set", true, mailAliasSet},
 		{"mail.usage", false, mailUsage},
 		{"mail.autoreply", true, mailAutoreply},
+		{"mail.forward.set", true, mailForwardSet},
 		{"mail.certs", true, mailCerts},
 		{"mail.webmail.login", false, mailWebmailLogin},
 		{"mail.queue", true, mailQueue},

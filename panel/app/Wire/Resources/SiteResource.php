@@ -12,6 +12,7 @@ use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteBackups;
 use App\Livewire\Sites\SiteDeploy;
 use App\Livewire\Sites\SiteFiles;
+use App\Livewire\Sites\SiteMail;
 use App\Livewire\Sites\SiteTrafficPage;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Client;
@@ -71,6 +72,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             'deploy' => RoutePage::make(SiteDeploy::class)->uri('{record}/deploy')->label(__('Deploy'))->icon('outline:rocket-launch')->sort(20),
             'files' => RoutePage::make(SiteFiles::class)->uri('{record}/files')->label(__('Soubory'))->icon('outline:folder')->sort(30),
             'backups' => RoutePage::make(SiteBackups::class)->uri('{record}/backups')->label(__('Zálohy'))->icon('outline:archive-box')->sort(40),
+            'mail' => RoutePage::make(SiteMail::class)->uri('{record}/mail')->label(__('Pošta'))->icon('outline:envelope')->sort(45),
             'traffic' => RoutePage::make(SiteTrafficPage::class)->uri('{record}/traffic')->label(__('Návštěvnost'))->icon('outline:chart-bar-square')->sort(50),
         ];
     }

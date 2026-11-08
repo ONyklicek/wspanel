@@ -6,12 +6,15 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
+use App\Services\Mail\Deliverability;
 use App\Support\Toast;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Number;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
+use NyonCode\WireForms\Components\Radio;
+use NyonCode\WireForms\Components\Tags;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -53,6 +56,8 @@ class MailboxTable extends Component
                     ->formatStateUsing(fn ($state) => $state.'@'.$domain->domain)->searchable(),
                 TextColumn::make('used')->label(__('Obsazeno'))
                     ->state(fn (Mailbox $r) => ($r->used_kb !== null ? Number::fileSize($r->used_kb * 1024, 1) : '—').' z '.Number::fileSize($r->quota_mb * 1048576, 0)),
+                TextColumn::make('forward')->label(__('Přesměrování'))
+                    ->state(fn (Mailbox $r) => $r->forward ? '→ '.implode(', ', $r->forward['to']).($r->forward['keep_copy'] ? __(' (kopie zůstává)') : __(' (bez kopie)')) : '—'),
                 BadgeColumn::make('state')->label(__('Stav'))
                     ->state(fn (Mailbox $r) => $r->enabled ? ($r->autoreply ? __('aktivní · autoodpověď') : __('aktivní')) : __('zablokovaná'))
                     ->colorUsing(fn ($state) => str_starts_with((string) $state, __('aktivní')) ? 'success' : 'gray'),
@@ -100,6 +105,35 @@ class MailboxTable extends Component
                         ->action(fn (Mailbox $record, array $data) => $this->attempt(__('Nastavení se nepodařilo uložit'), function () use ($record, $data, $domain) {
                             app(ManageMailHosting::class)->saveMailbox($domain, $record->local_part, null, (int) $data['quota_mb'], (bool) $data['enabled'], $record);
                             Toast::success(__('Uloženo'));
+                        })),
+                    Action::make('forward')->label(__('Přesměrování'))->icon('outline:arrow-uturn-right')
+                        ->modalDescription(__('Příchozí pošta schránky se přepošle na zadané adresy: jinou schránku nebo kamkoli jinam.'))
+                        ->fillFormUsing(fn (Mailbox $record) => ['to' => $record->forward['to'] ?? [], 'keep_copy' => ($record->forward['keep_copy'] ?? true) ? '1' : '0'])
+                        ->form([
+                            Tags::make('to')->label(__('Přeposílat na'))
+                                ->suggestions(fn () => Mailbox::query()->with('mailDomain')->get()->map->address()->sort()->values()->all())
+                                ->helperText(__('Prázdné = přesměrování vypnuto.'))
+                                ->rules(['array', 'max:50']),
+                            Radio::make('keep_copy')->label(__('Ponechat kopii ve schránce'))
+                                ->options(['1' => __('Ano'), '0' => __('Ne')])
+                                ->descriptions(['1' => __('Zprávy zůstanou i v této schránce.'), '0' => __('Zprávy se jen přepošlou, schránka zůstane prázdná (neběží ani její automatická odpověď).')])
+                                ->rules(['in:0,1'])->default('1'),
+                        ])
+                        ->action(fn (Mailbox $record, array $data) => $this->attempt(__('Přesměrování se nepodařilo nastavit'), function () use ($record, $data) {
+                            $to = array_values(array_unique(array_map(fn ($a) => strtolower(trim((string) $a)), (array) ($data['to'] ?? []))));
+                            foreach ($to as $address) {
+                                if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+                                    throw new AgentException('invalid', __(':address není e-mailová adresa.', ['address' => $address]), 'panel');
+                                }
+                            }
+                            if (in_array($record->address(), $to, true)) {
+                                throw new AgentException('invalid', __('Schránka nemůže přeposílat sama sobě.'), 'panel');
+                            }
+                            app(ManageMailHosting::class)->forward($record, $to, (string) ($data['keep_copy'] ?? '1') === '1');
+                            $warning = $to === [] ? null : app(Deliverability::class)->forwardingWarning($to);
+                            $warning === null
+                                ? Toast::success($to === [] ? __('Přesměrování vypnuto') : __('Pošta se přeposílá na ').implode(', ', $to))
+                                : Toast::warning(__('Pošta se přeposílá na ').implode(', ', $to), $warning);
                         })),
                     Action::make('autoreply')->label(__('Automatická odpověď'))->icon('outline:paper-airplane')
                         ->fillFormUsing(fn (Mailbox $record) => ['enabled' => $record->autoreply !== null] + ($record->autoreply ?? ['subject' => __('Nejsem k zastižení'), 'body' => '', 'days' => 1]))

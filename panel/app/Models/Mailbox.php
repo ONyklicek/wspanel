@@ -13,11 +13,11 @@ class Mailbox extends Model
 
     protected static string $ownerRelation = 'mailDomain';
 
-    protected $fillable = ['mail_domain_id', 'local_part', 'quota_mb', 'enabled', 'autoreply', 'used_kb'];
+    protected $fillable = ['mail_domain_id', 'local_part', 'quota_mb', 'enabled', 'autoreply', 'forward', 'used_kb'];
 
     protected function casts(): array
     {
-        return ['enabled' => 'boolean', 'autoreply' => 'array', 'quota_mb' => 'integer', 'used_kb' => 'integer'];
+        return ['enabled' => 'boolean', 'autoreply' => 'array', 'forward' => 'array', 'quota_mb' => 'integer', 'used_kb' => 'integer'];
     }
 
     public function mailDomain(): BelongsTo

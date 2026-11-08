@@ -87,7 +87,9 @@ zkouší znovu až 5 dní a pak je vrátí odesílateli.
 
 ## Schránky (příjem pošty)
 
-**Síť a pošta → Schránky → Přidat doménu**, pak v detailu domény. Doména
+**Síť a pošta → Schránky → Přidat doménu**, pak v detailu domény. Schránky
+a aliasy webu jsou i přímo u webu na záložce **Pošta**; tam jde poštu pro
+doménu webu i zřídit (u `www.firma.cz` pro `firma.cz`). Doména
 musí patřit vašemu webu (jeho doména, alias nebo nadřazená doména) nebo vaší
 DNS zóně. Doménu, kterou používá web či zóna jiného vlastníka, nezřídí nikdo
 (ani správce: četl by jeho poštu). Při přesunu webu ke klientovi jde jeho
@@ -104,6 +106,9 @@ pošta s ním.
   (jednorázový odkaz z panelu, bez hesla).
 - **Profil pro iPhone a Mac:** soubor `.mobileconfig`, který nastaví účet
   v Mailu (heslo si zařízení vyžádá).
+- **Přesměrování:** příchozí pošta schránky se přepošle na jinou schránku
+  nebo jakoukoli adresu; **Ponechat kopii ve schránce** Ano/Ne. Při „Ne“
+  zůstane schránka prázdná a neběží ani její automatická odpověď.
 - **Aliasy a přeposílání:** adresa → jedna či víc adres (i mimo server);
   prázdná adresa = **catch-all** (vše, co nemá vlastní schránku). Schránka
   smí odesílat i jako alias, který na ni doručuje.
@@ -154,9 +159,35 @@ jako u odchozí pošty.
 **Kontrola doručitelnosti** v detailu domény ukáže najednou, co kontrolují
 ostatní servery: MX, adresu serveru pošty, reverzní záznam (PTR, nastavuje ho
 poskytovatel serveru), SPF, DKIM (porovná klíč v DNS s tím, kterým server
-podepisuje), DMARC, tři DNS blacklisty a záznamy webmailu. Pošta odeslaná
+podepisuje), DMARC, SPF serveru pošty (kvůli přeposílání, viz níže), tři DNS
+blacklisty a záznamy webmailu. Pošta odeslaná
 ze schránek (programy i webmail) je podepsaná DKIM klíčem domény, který
 vznikne s poštovní doménou.
+
+### Přeposílání mimo server (SRS)
+
+Přesměrování i aliasy si nastavuje vlastník schránky. „Cizí“ je jen
+odesílatel zprávy, která přišla zvenku. Příklad: `info@firma.cz` se přeposílá
+na `petr@seznam.cz` a přijde mu zpráva od `jan@gmail.com`. Server ji pošle dál
+na Seznam, pořád s odesílatelem `jan@gmail.com`. Seznam se podívá do SPF
+Gmailu, náš server tam nenajde a zprávu odmítne nebo ji označí jako spam.
+
+Server proto obálkového odesílatele takové zprávy přepíše (SRS, PostSRSd) na
+`SRS0=…@<server pošty>`. Nedoručenky na tuto adresu převede zpět původnímu
+odesílateli. Hlavička `From` se nemění, příjemce dál vidí `jan@gmail.com`.
+Odesílatelé z domén tohoto serveru (weby, poštovní domény) se nepřepisují
+nikdy. Přesměrování na schránku na tomto serveru se SRS netýká, doručí se
+přímo.
+
+Aby přeposlaná pošta prošla SPF, potřebuje server pošty vlastní SPF záznam,
+např. `mail.example.net TXT "v=spf1 a -all"`. Je-li zóna serveru pošty
+v panelu, doplní ho **DNS → zóna → Doplnit doporučené**. U externího DNS na
+jeho chybění upozorní kontrola doručitelnosti a také panel při uložení
+přesměrování nebo aliasu, který vede mimo server. S relayem (SMTP poskytovatel) rozhoduje poskytovatel: mnozí
+přeposílání cizí pošty nedovolí.
+
+V doručených zprávách je proto i u běžné příchozí pošty `Return-Path`
+v podobě `SRS0=…`; seznamy antispamu s tím počítají.
 
 ### Antispam
 

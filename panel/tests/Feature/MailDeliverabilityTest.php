@@ -48,6 +48,7 @@ class MailDeliverabilityTest extends TestCase
             'firma.cz|'.DNS_MX => ['mail.hosting.cz'],
             'mail.hosting.cz|'.DNS_A => ['203.0.113.7'],
             'firma.cz|'.DNS_TXT => ['v=spf1 mx -all'],
+            'mail.hosting.cz|'.DNS_TXT => ['v=spf1 a -all'],
             'wspanel._domainkey.firma.cz|'.DNS_TXT => [self::KEY],
             '_dmarc.firma.cz|'.DNS_TXT => ['v=DMARC1; p=quarantine'],
             'webmail.firma.cz|'.DNS_A => ['203.0.113.7'],
@@ -73,6 +74,8 @@ class MailDeliverabilityTest extends TestCase
         $this->assertStringContainsString('má být mail.hosting.cz', $c['MX (příchozí pošta)']['detail']);
         $this->assertFalse($c['Reverzní záznam (PTR) 203.0.113.7']['ok']);
         $this->assertFalse($c['SPF']['ok']);
+        $this->assertNull($c['SPF serveru pošty mail.hosting.cz (přeposílání)']['ok'], 'forwarding without it is a warning, not a failure');
+        $this->assertStringContainsString('v=spf1 a -all', $c['SPF serveru pošty mail.hosting.cz (přeposílání)']['detail']);
         $this->assertSame('nesouhlasí', $c['DKIM']['bad']);
         $this->assertFalse($c['Blacklist bl.spamcop.net']['ok'], 'listed');
         $this->assertNull($c['Blacklist zen.spamhaus.org']['ok'], 'Spamhaus refusing a public resolver is not a listing');

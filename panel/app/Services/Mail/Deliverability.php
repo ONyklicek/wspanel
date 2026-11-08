@@ -42,9 +42,17 @@ class Deliverability
         }
 
         $spf = collect($this->dns->records($d, DNS_TXT, 'txt'))->first(fn ($t) => str_starts_with($t, 'v=spf1'));
-        $spfOk = $spf !== null && ($v4 !== '' && str_contains($spf, 'ip4:'.$v4) || preg_match('/\s(\+?mx|\+?a)(\s|$)/', $spf) || str_contains($spf, 'include:'));
+        $spfOk = $spf !== null && self::spfAllowsServer($spf, $v4);
         $checks[] = ['label' => 'SPF', 'ok' => $spf === null ? false : ($spfOk ? true : null),
             'detail' => $spf ?? __('chybí TXT záznam v=spf1 (DNS → Doplnit doporučené)')];
+
+        // Forwarded mail leaves with an SRS sender at the mail host (PostSRSd),
+        // so the receiving server checks the mail host's own SPF.
+        if ($host !== $d) {
+            $hostSpf = $this->hostSpf();
+            $checks[] = ['label' => __('SPF serveru pošty :host (přeposílání)', ['host' => $host]), 'ok' => $hostSpf['ok'] ? true : null,
+                'detail' => $hostSpf['record'] ?? __('chybí TXT záznam, doporučený: v=spf1 a -all (přeposlaná pošta odchází z adresy na :host)', ['host' => $host])];
+        }
 
         $key = rescue(fn () => app(ManageMail::class)->dkim($d, 'get'), null, report: false);
         $published = $this->dns->records((string) ($key['name'] ?? 'wspanel._domainkey.'.$d), DNS_TXT, 'txt');
@@ -74,5 +82,42 @@ class Deliverability
         }
 
         return $checks;
+    }
+
+    /**
+     * The mail host's SPF record (the domain of SRS senders) and whether it
+     * lets this server send.
+     *
+     * @return array{record: string|null, ok: bool}
+     */
+    public function hostSpf(): array
+    {
+        $v4 = (string) config('panel.public_ipv4');
+        $spf = collect($this->dns->records(ManageMailHosting::mailHost(), DNS_TXT, 'txt'))->first(fn ($t) => str_starts_with($t, 'v=spf1'));
+
+        return ['record' => $spf, 'ok' => $spf !== null && self::spfAllowsServer($spf, $v4)];
+    }
+
+    /**
+     * What to tell someone forwarding mail to the given addresses when part of
+     * it leaves the server and the mail host's SPF (usually in an external DNS
+     * the panel cannot fill) would not let it through; null when all is well.
+     *
+     * @param  list<string>  $destinations
+     */
+    public function forwardingWarning(array $destinations): ?string
+    {
+        $local = MailDomain::acrossClients()->pluck('domain')->map(fn ($d) => strtolower($d))->all();
+        $leaves = collect($destinations)->contains(fn ($a) => ! in_array(strtolower((string) substr((string) strrchr($a, '@'), 1)), $local, true));
+        if (! $leaves || $this->hostSpf()['ok']) {
+            return null;
+        }
+
+        return __('Pošta přeposlaná mimo server neprojde u příjemce SPF: :host nemá SPF záznam, který by povoloval tento server. Do DNS přidejte :host TXT "v=spf1 a -all".', ['host' => ManageMailHosting::mailHost()]);
+    }
+
+    private static function spfAllowsServer(string $spf, string $v4): bool
+    {
+        return $v4 !== '' && str_contains($spf, 'ip4:'.$v4) || preg_match('/\s(\+?mx|\+?a)(\s|$)/', $spf) || str_contains($spf, 'include:');
     }
 }

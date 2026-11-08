@@ -30,6 +30,9 @@ type mailbox struct {
 	Hash    string `json:"hash"`
 	QuotaMB int    `json:"quota_mb"`
 	Enabled bool   `json:"enabled"`
+	// Forward: where the mailbox's incoming mail also (KeepCopy) or only goes.
+	Forward  []string `json:"forward,omitempty"`
+	KeepCopy bool     `json:"keep_copy,omitempty"`
 }
 
 type mailDomain struct {
@@ -165,11 +168,21 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 			}
 			fmt.Fprintf(&users, "%s:%s::::::%s\n", addr, password, extra)
 		}
-		// A catch-all in virtual_alias_maps would also match the mailboxes
-		// (and what aliases resolve to): every mailbox maps to itself first.
-		if _, catchAll := md.Aliases[""]; catchAll {
-			for _, lp := range locals {
-				fmt.Fprintf(&aliases, "%s@%s %s@%s\n", lp, d, lp, d)
+		// A forwarding mailbox resolves to its destinations (and to itself
+		// when it keeps a copy: Postfix does not expand an address found in
+		// its own expansion). A catch-all in virtual_alias_maps would also
+		// match the mailboxes (and what aliases resolve to): with one, every
+		// other mailbox maps to itself first.
+		_, catchAll := md.Aliases[""]
+		for _, lp := range locals {
+			mb, addr := md.Mailboxes[lp], lp+"@"+d
+			switch {
+			case len(mb.Forward) > 0 && mb.KeepCopy:
+				fmt.Fprintf(&aliases, "%s %s,%s\n", addr, addr, strings.Join(mb.Forward, ","))
+			case len(mb.Forward) > 0:
+				fmt.Fprintf(&aliases, "%s %s\n", addr, strings.Join(mb.Forward, ","))
+			case catchAll:
+				fmt.Fprintf(&aliases, "%s %s\n", addr, addr)
 			}
 		}
 		for _, lp := range sortedKeys(md.Aliases) {
@@ -213,7 +226,7 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if err := env.FS.WriteFile(env.Cfg.DovecotBlocked, blocked.Bytes(), 0o640, dovecot); err != nil {
 		return err
 	}
-	if _, err := env.Exec.Run(ctx, "postfix", "reload"); err != nil {
+	if err := writeSRSExclude(ctx, env); err != nil { // reloads Postfix
 		return err
 	}
 	if err := writeDomainSieve(env, st, names); err != nil {
@@ -241,11 +254,12 @@ func writeDomainSieve(env *Env, st *mailState, names []string) error {
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "# Managed by WSPanel agent (mail.json): %s\nrequire [\"fileinto\", \"envelope\"];\n", d)
-		if c := senderTest(block); c != "" {
+		srsHost := mailHostName(env)
+		if c := senderTest(block, srsHost); c != "" {
 			fmt.Fprintf(&b, "if %s {\n  discard;\n  stop;\n}\n", c)
 		}
 		spam := "if header :is \"X-Spam\" \"Yes\" {\n  fileinto \"Junk\";\n  stop;\n}\n"
-		if c := senderTest(allow); c != "" {
+		if c := senderTest(allow, srsHost); c != "" {
 			fmt.Fprintf(&b, "if not allof (%s, header :contains \"Authentication-Results\" \"spf=pass\") {\n%s}\n", c, indent(spam))
 		} else {
 			b.WriteString(spam)
@@ -268,14 +282,23 @@ func writeDomainSieve(env *Env, st *mailState, names []string) error {
 }
 
 // senderTest: a Sieve test matching the envelope sender against addresses
-// and @domains ("" for an empty list). The values are validated already.
-func senderTest(list []string) string {
-	var addrs, domains []string
+// and @domains ("" for an empty list). The values are validated already (no
+// Sieve wildcards in them). PostSRSd rewrites a foreign sender for every
+// message, those delivered here too (SRS0=hash=time=domain=local@srsHost),
+// so each entry also matches its SRS form at this server's SRS domain (only
+// there: a sender may put any SRS0 address at a domain of its own).
+func senderTest(list []string, srsHost string) string {
+	var addrs, domains, srs []string
 	for _, s := range list {
-		if strings.HasPrefix(s, "@") {
-			domains = append(domains, strconv.Quote(s[1:]))
+		local, domain, _ := strings.Cut(s, "@")
+		if local == "" {
+			domains = append(domains, strconv.Quote(domain))
+			local = "*"
 		} else {
 			addrs = append(addrs, strconv.Quote(s))
+		}
+		if srsHost != "" {
+			srs = append(srs, strconv.Quote("SRS0=*=*="+domain+"="+local+"@"+srsHost))
 		}
 	}
 	var tests []string
@@ -284,6 +307,9 @@ func senderTest(list []string) string {
 	}
 	if len(domains) > 0 {
 		tests = append(tests, "envelope :domain :is \"from\" ["+strings.Join(domains, ", ")+"]")
+	}
+	if len(srs) > 0 {
+		tests = append(tests, "envelope :all :matches \"from\" ["+strings.Join(srs, ", ")+"]")
 	}
 	switch len(tests) {
 	case 0:
@@ -592,7 +618,7 @@ func mailMailboxDelete(ctx context.Context, env *Env, raw json.RawMessage) (any,
 		return nil, err
 	}
 	md := st.Domains[d]
-	if md == nil || md.Mailboxes[lp] == (mailbox{}) {
+	if !hasMailbox(st, lp, d) {
 		return nil, protocol.NotFound("mailbox " + lp + "@" + d + " does not exist")
 	}
 	delete(md.Mailboxes, lp)
@@ -664,6 +690,63 @@ func mailAliasSet(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	return map[string]any{"domain": p.Domain, "aliases": len(clean)}, nil
 }
 
+func hasMailbox(st *mailState, lp, d string) bool {
+	md := st.Domains[d]
+	if md == nil {
+		return false
+	}
+	_, ok := md.Mailboxes[lp]
+	return ok
+}
+
+// mailForwardSet sets where a mailbox's incoming mail is forwarded (an
+// empty list = nowhere), keeping a copy in the mailbox or not.
+func mailForwardSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Address  string   `json:"address"`
+		To       []string `json:"to"`
+		KeepCopy bool     `json:"keep_copy"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	lp, d, err := splitAddress("address", p.Address)
+	if err != nil {
+		return nil, err
+	}
+	if len(p.To) > 50 {
+		return nil, protocol.Invalid("to: at most 50 destinations")
+	}
+	self := lp + "@" + d
+	var dests []string
+	for _, t := range p.To {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if !emailRe.MatchString(t) {
+			return nil, protocol.Invalid("to: " + t + " is not an address")
+		}
+		if t == self {
+			return nil, protocol.Invalid("to: the mailbox cannot forward to itself")
+		}
+		if !slices.Contains(dests, t) {
+			dests = append(dests, t)
+		}
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	if !hasMailbox(st, lp, d) {
+		return nil, protocol.NotFound("mailbox " + self + " does not exist")
+	}
+	mb := st.Domains[d].Mailboxes[lp]
+	mb.Forward, mb.KeepCopy = dests, len(dests) > 0 && p.KeepCopy
+	st.Domains[d].Mailboxes[lp] = mb
+	if err := saveMail(ctx, env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"address": self, "forward": dests, "keep_copy": mb.KeepCopy}, nil
+}
+
 // mailUsage: the storage each mailbox of a domain uses (KB).
 func mailUsage(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
@@ -717,7 +800,7 @@ func mailAutoreply(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err != nil {
 		return nil, err
 	}
-	if md := st.Domains[d]; md == nil || md.Mailboxes[lp] == (mailbox{}) {
+	if !hasMailbox(st, lp, d) {
 		return nil, protocol.NotFound("mailbox " + lp + "@" + d + " does not exist")
 	}
 	p.Subject = strings.NewReplacer("\r", " ", "\n", " ").Replace(p.Subject) // one header line
