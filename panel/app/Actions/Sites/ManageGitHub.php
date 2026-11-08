@@ -6,6 +6,7 @@ use App\Models\GithubConnection;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentException;
+use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubClient;
 use App\Services\GitHub\GitHubException;
 use Illuminate\Support\Facades\Cache;
@@ -39,11 +40,37 @@ class ManageGitHub
         );
     }
 
-    /** Unlinks the account's sites (removing what the panel created on GitHub) and forgets the token. */
+    /**
+     * Connects installations of the panel's GitHub App that GitHub confirmed
+     * belong to the signed-in GitHub user (one connection per installation).
+     *
+     * @param  array<int, array{login: string, type: string}>  $installations
+     * @return list<GithubConnection>
+     */
+    public function connectInstallations(User $user, array $installations): array
+    {
+        $out = [];
+        foreach ($installations as $id => $i) {
+            $out[] = GithubConnection::query()->withoutGlobalScope('owner')->updateOrCreate(
+                ['user_id' => $user->id, 'installation_id' => $id],
+                ['login' => $i['login'], 'token' => null, 'last_used_at' => now()],
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * Unlinks the account's sites (removing what the panel created on GitHub),
+     * uninstalls the app from the account (an app connection) and forgets it.
+     */
     public function disconnect(GithubConnection $connection): void
     {
         foreach ($connection->sites()->get() as $site) {
             $this->unlink($site);
+        }
+        if ($connection->isApp() && ($app = GitHubApp::configured()) !== null) {
+            rescue(fn () => $app->deleteInstallation((int) $connection->installation_id), report: false);
         }
         $connection->delete();
     }

@@ -17,43 +17,99 @@ přímo v GitHubu.
 Ruční cesty (vlastní Git server, GitLab, Bitbucket, webhook zadaný ručně) dál
 fungují, viz [Deploy](deploy.md).
 
-## 1. Token
+## 1. Připojit GitHub tlačítkem
 
-GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token.
+Stejně jako v Zerops: kliknete, na GitHubu vyberete účet nebo organizaci
+a repozitáře a vrátíte se do panelu. Nic se nekopíruje.
 
-- **Resource owner:** vy nebo organizace, které repozitáře patří.
-- **Repository access:** *Only select repositories* a vyberte repozitáře,
-  které chcete nasazovat.
-- **Repository permissions:**
+### Jednou pro celý panel: GitHub aplikace (správce)
+
+Menu účtu (vpravo nahoře) → **API a CLI** → sekce **GitHub** → **Nastavit
+připojení tlačítkem** → **Pokračovat na GitHub**.
+
+- Panel pošle GitHubu šablonu (manifest) aplikace s oprávněními níže. Na GitHubu
+  jen potvrdíte **Create GitHub App** (název jde změnit, musí být na GitHubu
+  jedinečný).
+- GitHub vrátí prohlížeč do panelu a panel si od něj převezme klíče aplikace
+  (ID, client secret, privátní klíč). Uloží je **šifrovaně**, ručně se nic
+  nevyplňuje.
+- **Organizace (nepovinné):** vyplňte, když má aplikace patřit organizaci
+  místo vašeho účtu.
+- Aplikace je **veřejná**, aby ji klienti mohli nainstalovat na své účty. Nic
+  jiného, než co je v tabulce oprávnění, neumí, a vlastní webhook nemá.
+- Funguje i pro panel ve vnitřní síti (`panel.firma.lan`, `localhost`):
+  návraty z GitHubu jdou přes prohlížeč, GitHub panel volat nemusí.
+
+### Každý uživatel: Připojit GitHub
+
+**API a CLI → GitHub → Připojit GitHub**:
+
+1. GitHub otevře instalaci aplikace: vyberete **účet nebo organizaci** a
+   **repozitáře** (všechny, nebo jen vybrané).
+2. GitHub se zeptá na potvrzení přihlášení (aby panel věděl, že instalace
+   patří vám) a vrátí vás do panelu.
+3. V tabulce přibude účet s typem *aplikací (tlačítkem)*.
+
+Pro každou organizaci připojte zvlášť (Připojit GitHub → zvolit jinou
+organizaci). U organizace, kde nejste vlastník, instalaci schvaluje vlastník.
+Panel pak napíše „Nic k připojení“; po schválení klikněte znovu.
+
+**Repozitáře** u účtu otevře nastavení instalace na GitHubu: přidání nebo
+odebrání repozitáře, ke kterému má panel přístup.
+
+Bezpečnost tohoto toku:
+
+- Každý návrat z GitHubu musí nést náhodný `state`, který panel poslal ve stejné
+  relaci. Jinak ho odmítne (403).
+- Instalaci panel připojí, jen když GitHub potvrdí, že k ní má přístup právě
+  přihlášený uživatel GitHubu (`GET /user/installations` s jeho tokenem).
+  Podstrčené `installation_id` nic nepřipojí.
+- Panel neukládá žádný trvalý token: pro každé volání si s privátním klíčem
+  aplikace (JWT) vyžádá token instalace platný hodinu, drží ho šifrovaně v cache
+  a nechá ho vypršet.
+- **Odpojit** u účtu aplikaci z účtu na GitHubu i odinstaluje.
+
+### Oprávnění
+
+Aplikace (i token, pokud ho použijete místo ní) potřebuje tato oprávnění
+k repozitářům:
 
 | Oprávnění | Úroveň | Proč |
 |---|---|---|
 | Administration | Read and write | přidání a odebrání deploy klíče |
 | Webhooks | Read and write | založení a odebrání webhooku |
 | Deployments | Read and write | hlášení stavu deployů |
+| Secrets | Read and write | uložení `WSPANEL_TOKEN` (volitelné) |
 | Contents | Read-only | seznam větví |
 | Metadata | Read-only | povinné, seznam repozitářů |
-| Secrets | Read and write | jen když má panel ukládat `WSPANEL_TOKEN` |
 
+## 2. Nebo připojit tokenem
+
+Když GitHub aplikaci nechcete (GitHub Enterprise, zákaz aplikací v organizaci):
+**API a CLI → GitHub → Vložit token** (bez nastavené aplikace se tlačítko
+jmenuje Připojit GitHub).
+
+GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token:
+
+- **Resource owner:** vy nebo organizace, které repozitáře patří,
+- **Repository access:** *Only select repositories* a vyberte repozitáře,
+- **Repository permissions:** podle tabulky výše,
 - **Expiration:** podle vašich pravidel. Po vypršení panel hlásí „GitHub odmítl
-  token“ a stačí připojit nový (napojené weby zůstanou).
+  token“ a stačí vložit nový (napojené weby zůstanou).
 
-Funguje i classic token (`ghp_…`) se scope `repo` a `admin:repo_hook`, ale dává
-přístup ke všem repozitářům účtu. Fine-grained je bezpečnější.
+Panel token ověří (`GET /user`) a uloží šifrovaně. Už se nikde nezobrazí. Funguje
+i classic token (`ghp_…`) se scope `repo` a `admin:repo_hook`, ale dává přístup
+ke všem repozitářům účtu.
 
-## 2. Připojit účet
-
-Menu účtu (vpravo nahoře) → **API a CLI** → sekce **GitHub** → **Připojit GitHub**
-→ vložte token. Panel ho ověří u GitHubu (`GET /user`) a uloží **šifrovaně**.
-Token se už nikde nezobrazí. Účet vidí a používá jen uživatel, který ho připojil.
-Klient tak má svůj vlastní GitHub a správce svůj.
+Účet (připojený tlačítkem i tokenem) vidí a používá jen uživatel, který ho
+připojil: klient má svůj GitHub, správce svůj.
 
 ## 3. Napojit web
 
 Detail webu → **Deploy** → tlačítko **GitHub**:
 
 1. **Účet GitHub**: když jich máte víc.
-2. **Repozitář**: seznam repozitářů, které token smí spravovat (🔒 = privátní).
+2. **Repozitář**: repozitáře vybrané při instalaci aplikace, nebo které smí spravovat token (🔒 = privátní).
 3. **Větev**: načte se z repozitáře.
 4. **Co nasadit**: každý push do větve, nebo nový release / tag (nasadí přesně
    ten tag).
@@ -118,8 +174,9 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 
 ## Bezpečnost
 
-- Token je v databázi panelu šifrovaný (`APP_KEY`), ven se nepošle a v UI se
-  nezobrazí. Používá se jen pro volání uvedená výše.
+- Klíče GitHub aplikace i vložené tokeny jsou v databázi panelu šifrované
+  (`APP_KEY`), ven se nepošlou a v UI se nezobrazí. U aplikace panel pracuje jen
+  s hodinovými tokeny instalací.
 - Deploy klíč je **jen pro čtení** a patří jen tomuto webu (každý web má svůj).
 - Webhook je podepsaný secretem webu a panel přijme každé doručení jen jednou.
 - Účet GitHub patří uživateli: klient nepoužije účet správce ani jiného klienta.
@@ -129,9 +186,12 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 
 | Hláška | Co s tím |
 |---|---|
-| GitHub odmítl token | token vypršel nebo byl zrušen; připojte nový (API a CLI → GitHub) |
+| GitHub odmítl token | token vypršel nebo byl zrušen; vložte nový (API a CLI → GitHub) |
+| „Neplatný nebo prošlý návrat z GitHubu“ | návrat z GitHubu z jiné relace nebo podruhé; klikněte na Připojit GitHub znovu |
+| „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, nebo aplikace u účtu není nainstalovaná |
+| GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |
-| Repozitář chybí v seznamu | token ho nemá v *Repository access*, nebo k němu nemáte práva správce. Seznam se obnovuje po 5 minutách |
+| Repozitář chybí v seznamu | u aplikace: Repozitáře → přidat ho do instalace; u tokenu: *Repository access* nebo chybí práva správce. Seznam se obnovuje po 5 minutách |
 | Webhook v GitHubu hlásí chyby doručení | panel není z internetu dostupný; přepněte na kontrolu každou minutu (GitHub → Napojit znovu) |
 | Deploy se v GitHubu neukazuje | build z CI s commitem, který v repozitáři není, se přeskočí; jinak počkejte minutu (hlásí se při `panel:sync`) |

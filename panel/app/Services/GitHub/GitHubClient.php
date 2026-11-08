@@ -20,7 +20,8 @@ class GitHubClient
     /** Repository names: owner/name, as GitHub allows them. */
     public const REPO_PATTERN = '~^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$~';
 
-    public function __construct(private readonly string $token) {}
+    /** @param bool $installation an installation token of the panel's app (repositories come from the installation) */
+    public function __construct(private readonly string $token, private readonly bool $installation = false) {}
 
     /** @return array{login: string, name: ?string} */
     public function user(): array
@@ -37,6 +38,9 @@ class GitHubClient
      */
     public function repositories(int $pages = 3): array
     {
+        if ($this->installation) {
+            return $this->installationRepositories($pages);
+        }
         $out = [];
         for ($page = 1; $page <= $pages; $page++) {
             $batch = $this->send('get', '/user/repos', ['per_page' => 100, 'page' => $page, 'sort' => 'pushed', 'affiliation' => 'owner,collaborator,organization_member']);
@@ -44,6 +48,27 @@ class GitHubClient
                 if (($r['permissions']['admin'] ?? false) === true) {
                     $out[$r['full_name']] = $r['full_name'].($r['private'] ? ' 🔒' : '');
                 }
+            }
+            if (count($batch) < 100) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Repositories the user picked when installing the app (all of them are the app's to manage).
+     *
+     * @return array<string, string>
+     */
+    private function installationRepositories(int $pages): array
+    {
+        $out = [];
+        for ($page = 1; $page <= $pages; $page++) {
+            $batch = $this->send('get', '/installation/repositories', ['per_page' => 100, 'page' => $page])['repositories'] ?? [];
+            foreach ($batch as $r) {
+                $out[$r['full_name']] = $r['full_name'].($r['private'] ? ' 🔒' : '');
             }
             if (count($batch) < 100) {
                 break;

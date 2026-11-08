@@ -7,6 +7,7 @@ use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\DownloadSiteBackupController;
 use App\Http\Controllers\DownloadSiteFileController;
 use App\Http\Controllers\ForwardAuthController;
+use App\Http\Controllers\GitHubAppController;
 use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use App\Http\Controllers\OpenWebmailController;
@@ -34,6 +35,10 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
     // The signed-in user's language (user menu).
+    Route::get('/github/app/create', [GitHubAppController::class, 'create'])->name('github.app.create');
+    Route::get('/github/app/created', [GitHubAppController::class, 'created'])->name('github.app.created');
+    Route::get('/github/connect', [GitHubAppController::class, 'connect'])->middleware('throttle:20,1')->name('github.connect');
+    Route::get('/github/callback', [GitHubAppController::class, 'callback'])->middleware('throttle:20,1')->name('github.callback');
     Route::post('/locale/{locale}', function (string $locale) {
         abort_unless(isset(SetLocale::LOCALES[$locale]), 404);
         auth()->user()->update(['locale' => $locale]);

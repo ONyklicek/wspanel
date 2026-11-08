@@ -204,7 +204,9 @@ for engine in "${DB_ENGINES[@]}"; do
 done
 
 # ---------------------------------------------------------------- FrankenPHP
-if ! /usr/local/bin/frankenphp version 2>/dev/null | grep -q "${FRANKENPHP_VERSION#v}"; then
+# Output captured first: with pipefail, `cmd | grep -q` fails when grep exits early
+# (SIGPIPE to cmd), which re-downloaded installed tools on every run.
+if [[ "$(/usr/local/bin/frankenphp version 2>/dev/null || true)" != *"${FRANKENPHP_VERSION#v}"* ]]; then
   log "FrankenPHP $FRANKENPHP_VERSION"
   tmp="$(mktemp)"
   curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp" "https://github.com/php/frankenphp/releases/download/${FRANKENPHP_VERSION}/frankenphp-linux-${ARCH}"
@@ -220,7 +222,7 @@ fi
 # major is still installed for that.
 [[ ${#NODE_LIST[@]} -gt 0 ]] || NODE_LIST=(24)
 if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
-  if ! /usr/local/bin/fnm --version 2>/dev/null | grep -q "${FNM_VERSION#v}"; then
+  if [[ "$(/usr/local/bin/fnm --version 2>/dev/null || true)" != *"${FNM_VERSION#v}"* ]]; then
     log "fnm $FNM_VERSION"
     tmp="$(mktemp -d)"
     curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/fnm.zip" "https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/${FNM_ASSET[$ARCH]}"
@@ -336,7 +338,8 @@ CONF
 systemctl enable opendkim postfix >/dev/null
 systemctl restart opendkim postfix
 
-if ! /usr/local/bin/mailpit version 2>/dev/null | grep -q "${MAILPIT_VERSION}"; then
+# `mailpit version` also checks GitHub for updates and its exit code follows that.
+if [[ "$(/usr/local/bin/mailpit version 2>/dev/null || true)" != *"${MAILPIT_VERSION}"* ]]; then
   tmp="$(mktemp -d)"
   curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/mailpit.tgz" "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/${MAILPIT_ASSET[$ARCH]}"
   echo "${MAILPIT_SHA256[$ARCH]}  $tmp/mailpit.tgz" | sha256sum -c - >/dev/null || die "mailpit checksum mismatch"
@@ -577,7 +580,7 @@ if [[ "$(cat "$TOOLS/pma/RELEASE-DATE-$PMA_VERSION" 2>/dev/null)" == "" ]]; then
   rm -rf "$tmp"
 fi
 install -m 0644 "$HERE/files/dbtools/pma-signon.php" "$TOOLS/pma/wspanel-signon.php"
-if ! sha256sum "$TOOLS/adminer/adminer.php" 2>/dev/null | grep -q "$ADMINER_SHA256"; then
+if [[ "$(sha256sum "$TOOLS/adminer/adminer.php" 2>/dev/null || true)" != "$ADMINER_SHA256 "* ]]; then
   install -d -m 0755 "$TOOLS/adminer"
   curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$TOOLS/adminer/adminer.php.new" "https://github.com/vrana/adminer/releases/download/v$ADMINER_VERSION/adminer-$ADMINER_VERSION.php"
   echo "$ADMINER_SHA256  $TOOLS/adminer/adminer.php.new" | sha256sum -c - || die "Adminer checksum mismatch"

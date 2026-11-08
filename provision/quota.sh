@@ -11,7 +11,7 @@
 enable_group_quota() {
   local target=$1 mnt fstype opts
   read -r mnt fstype opts < <(findmnt --noheadings --output TARGET,FSTYPE,OPTIONS --target "$target") || { echo "off cannot read the mount of $target"; return 0; }
-  if quotaon --print-state --group "$mnt" 2>/dev/null | grep -q 'is on'; then
+  if [[ "$(quotaon --print-state --group "$mnt" 2>/dev/null || true)" == *'is on'* ]]; then
     echo "on $mnt"; return 0
   fi
   case $fstype in
