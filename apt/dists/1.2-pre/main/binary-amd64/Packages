@@ -16,3 +16,41 @@ Description: WSPanel agent and command line tool
  command line client (wspanel). Installed and configured by the WSPanel
  installer; updates of this package bring fixes of the agent.
 
+Package: wspanel-agent
+Architecture: amd64
+Version: 1.2.0~rc3
+Priority: optional
+Section: admin
+Maintainer: WSPanel <noreply@github.com>
+Installed-Size: 16328
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc3_amd64.deb
+Size: 4740584
+MD5sum: 663c95e92d0ecd13978b40bf81e2601a
+SHA1: c843d02545b6b6f99212d56a50c3089975d7a213
+SHA256: dd4a1d2223eb42d821a99008f803579076983acb0c12f32f1d14c1e84b47f247
+SHA512: f4f0dae83a3a07959f15d213c3c8213877813ae6a99b925ec8a8a8c03d1b33bb5bd5e1ef0ccfacb3ee5970dc99c0c1b79086a760bcd96b5d95c3fa79944be657
+Description: WSPanel agent and command line tool
+ The privileged agent of the WSPanel hosting panel (panel-agent) and its
+ command line client (wspanel). Installed and configured by the WSPanel
+ installer; updates of this package bring fixes of the agent.
+
+Package: wspanel
+Architecture: all
+Version: 1.2.0~rc3
+Priority: optional
+Section: admin
+Maintainer: WSPanel <noreply@github.com>
+Installed-Size: 7828
+Depends: wspanel-agent (= 1.2.0~rc3), ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.2.0~rc3_all.deb
+Size: 1185852
+MD5sum: b4fbcf9d3ee7aa307bc899d10713bb93
+SHA1: aaebd963f3fe13d56c8c80ef29888bcd15308c81
+SHA256: 29d9c982535a6ae3d62ccc37ba80a090683c15566a4f88d31e2068a7ae608586
+SHA512: 55c6dd3b9f3f16eaf79a295ced7f0b62de30bb983bec13a5c17875420cac4c90ff9e251dd1566ad0f6dcadbf6e704602340f34e6f28f8dbcab25952c55441573
+Description: WSPanel hosting panel (installer)
+ Hosting panel for one Debian 13 server: sites (PHP, Laravel, Symfony,
+ Node), databases, mail, DNS, backups. This package brings the installer
+ and the panel; run "wspanel-install" to set the server up (or upgrade
+ it), and "wspanel-update" later for a newer version.
+
