@@ -9,6 +9,12 @@ return [
 
     // Public addresses of the server, used for suggested DNS records (A/AAAA, SPF).
     'public_ipv4' => env('PANEL_PUBLIC_IPV4'),
+    // The release this server was installed from (written by the installer)
+    // and where newer ones are published (owner/name on GitHub). A private
+    // repository needs a token that may read it to see them.
+    'version' => env('PANEL_VERSION'),
+    'release_repo' => env('PANEL_RELEASE_REPO'),
+    'release_token' => env('PANEL_RELEASE_TOKEN'),
     'public_ipv6' => env('PANEL_PUBLIC_IPV6'),
 
     // Hosting clients with packages and limits (optional, install.sh --clients=yes;

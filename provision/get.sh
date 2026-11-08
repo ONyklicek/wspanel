@@ -19,7 +19,10 @@
 # token that may read the repository:
 #
 #   gh release download --repo @REPO@ --pattern get.sh
-#   sudo env WSPANEL_TOKEN="$(gh auth token)" bash get.sh
+#   sudo env WSPANEL_TOKEN=github_pat_… bash get.sh
+#
+# Best a fine-grained token for that one repository with read-only
+# "Contents" access: the server keeps nothing of it, but it passes through.
 set -euo pipefail
 
 # Everything in a function called on the last line: piped into bash, the
@@ -43,8 +46,17 @@ main() {
   command -v curl >/dev/null || die "curl is needed"
   command -v sha256sum >/dev/null || die "sha256sum is needed (coreutils)"
 
+  local tmp
+  tmp="$(mktemp -d)" # 0700: only root reads what is in it
+  trap 'rm -rf "$tmp"' EXIT
+  # The token reaches curl in a config file, never on its command line
+  # (any user on the server sees command lines in ps).
   local auth=()
-  [[ -n "$token" ]] && auth=(-H "Authorization: Bearer $token")
+  if [[ -n "$token" ]]; then
+    [[ "$token" =~ ^[A-Za-z0-9_]+$ ]] || die "WSPANEL_TOKEN does not look like a GitHub token"
+    (umask 077 && printf 'header = "Authorization: Bearer %s"\n' "$token" > "$tmp/auth.curlrc")
+    auth=(-K "$tmp/auth.curlrc")
+  fi
 
   # The newest release: GitHub's /releases/latest redirects to its tag.
   if [[ -z "$version" ]]; then
@@ -60,9 +72,6 @@ main() {
 
   local file="wspanel-$version-linux-$arch.tar.gz"
   local dir="/var/lib/wspanel-installer/$version"
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
 
   say "WSPanel $version ($arch) from $repo"
   fetch "$file" "$tmp/$file"

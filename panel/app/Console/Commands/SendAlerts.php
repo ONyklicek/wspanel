@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Services\Notify\Alerts;
 use App\Services\Notify\Notifier;
 use App\Support\CurrentClient;
+use App\Support\PanelRelease;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -48,8 +49,21 @@ class SendAlerts extends Command
         }
 
         $this->deploys($notifier);
+        $this->release($notifier);
 
         return self::SUCCESS;
+    }
+
+    /** A newer WSPanel, announced to the administrators once per version. */
+    private function release(Notifier $notifier): void
+    {
+        $release = PanelRelease::available();
+        if ($release === null || Setting::get('alerts.release_announced') === $release['version']) {
+            return;
+        }
+        $notifier->broadcast('problems', null, __('Nová verze WSPanel :version', ['version' => $release['version']]),
+            __("Tento server má :current. Co je nového: :url\nAktualizace na serveru: :command", ['current' => PanelRelease::current(), 'url' => $release['url'], 'command' => PanelRelease::upgradeCommand()]));
+        Setting::put('alerts.release_announced', $release['version']);
     }
 
     private function deploys(Notifier $notifier): void

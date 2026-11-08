@@ -24,10 +24,12 @@ aktualizuje: průvodce nabídne ponechat stávající nastavení.
 
 - Konkrétní verze: `… | sudo env WSPANEL_VERSION=1.2.0 bash`
 - Bez otázek: `… | sudo bash -s -- --yes --panel-domain=panel.example.com --acme-email=admin@example.com --db=mariadb --admin-email=admin@example.com`
-- Vydání v soukromém repozitáři (s tokenem, který ho smí číst):
+- Vydání v soukromém repozitáři: token typu *fine-grained* jen pro tento
+  repozitář s právem *Contents: Read-only* (GitHub → Settings → Developer
+  settings → Personal access tokens). Server si ho nikam neukládá.
   ```
   gh release download --repo <vlastník>/<repozitář> --pattern get.sh
-  sudo env WSPANEL_TOKEN="$(gh auth token)" bash get.sh
+  sudo env WSPANEL_TOKEN=github_pat_… bash get.sh
   ```
 
 Kdo nechce spouštět skript přímo z internetu, stáhne `get.sh`, prohlédne ho
@@ -80,6 +82,13 @@ serveru průvodce nabídne aktualizaci se stávajícím nastavením (instalátor
 volby pamatuje v `/etc/wspanel/install.flags`), nebo projití otázek znovu.
 Bez otázek stačí `./install --yes`: bez dalších voleb použije ty uložené.
 Účty, weby, data ani nastavení se nemažou a správce se znovu nezakládá.
+
+O nové verzi panel řekne sám: jednou denně se podívá do vydání na GitHubu
+(repozitář, ze kterého byl nainstalován) a novější verzi ukáže na Přehledu
+a v **Zabezpečení → Aktualizace** i s příkazem k aktualizaci; správcům pošle
+jednu notifikaci (kanály s událostí „Nový problém“). Panel sám nic
+neinstaluje. Vydání v soukromém repozitáři vidí jen s tokenem
+`PANEL_RELEASE_TOKEN` v `/srv/panel/shared/.env`.
 
 ## Postup ze zdrojáků
 

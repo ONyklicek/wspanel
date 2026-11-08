@@ -51,6 +51,8 @@ jobs:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
       - name: Build
+        env:
+          WSPANEL_REPO: ${{ github.repository }} # the panel looks here for newer releases
         run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:

@@ -55,6 +55,10 @@ final class Attention
         foreach (Deployment::query()->with('site')->whereIn('status', ['failed', 'rolled_back'])->where('started_at', '>=', now()->subDay())->latest('started_at')->limit(5)->get() as $d) {
             $add('warning', 'Deploy selhal: '.($d->site?->domain ?? '?'), $d->statusLabel().' · '.$d->started_at?->diffForHumans().($d->error ? ' · '.$d->error : ''));
         }
+        if ($admin && ($release = PanelRelease::available()) !== null) {
+            $add('info', __('K dispozici je WSPanel :version (tento server má :current)', ['version' => $release['version'], 'current' => PanelRelease::current()]),
+                __('Aktualizace: Zabezpečení → Aktualizace, nebo na serveru :command', ['command' => PanelRelease::upgradeCommand()]), url('/updates'));
+        }
         if ($admin) {
             try {
                 $m = app(ServerMetrics::class)->now();

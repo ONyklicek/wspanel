@@ -534,6 +534,12 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
   [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
   [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+  # The release this is and where newer ones come from (a bundle from the
+  # release workflow carries both; a run from source leaves them as they are).
+  bundle_version="$(cat "$HERE/../VERSION" 2>/dev/null || true)"
+  [[ "$bundle_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] && set_panel_env PANEL_VERSION "$bundle_version"
+  bundle_repo="$(cat "$HERE/../REPO" 2>/dev/null || true)"
+  [[ "$bundle_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && set_panel_env PANEL_RELEASE_REPO "$bundle_repo"
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs

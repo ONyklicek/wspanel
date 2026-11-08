@@ -36,6 +36,12 @@ rsync -a --delete \
   --exclude='/public/build' --exclude='/public/hot' --exclude=/.phpunit.cache --exclude=.idea --exclude=.DS_Store \
   "$ROOT/panel/" "$B/panel/"
 echo "$VERSION" > "$B/VERSION"
+# Where releases are published (owner/name): the panel looks there for newer
+# ones. Set by the release workflow; a local bundle has none.
+if [[ -n "${WSPANEL_REPO:-}" ]]; then
+  [[ "$WSPANEL_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "WSPANEL_REPO must be owner/name" >&2; exit 1; }
+  echo "$WSPANEL_REPO" > "$B/REPO"
+fi
 
 # Built on a Mac: no extended attributes or AppleDouble files, or GNU tar on
 # the server warns about each file ("unknown extended header keyword").

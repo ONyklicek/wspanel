@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\System\ManageUpdates;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
+use App\Support\PanelRelease;
 use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WirePanels\Pages\Page;
@@ -54,6 +55,17 @@ class UpdatesPage extends Page
     {
         $this->load(true);
         Toast::success(__('Seznam balíčků obnoven'));
+    }
+
+    /** Asks GitHub for the newest WSPanel now (otherwise daily). */
+    public function checkRelease(): void
+    {
+        $out = PanelRelease::check();
+        $out['error'] !== null
+            ? Toast::error(__('Novou verzi se nepodařilo zjistit'), $out['error'])
+            : (PanelRelease::available() !== null
+                ? Toast::success(__('K dispozici je WSPanel :version', ['version' => $out['version']]))
+                : Toast::success(__('WSPanel je aktuální')));
     }
 
     public function toggleAuto(): void
