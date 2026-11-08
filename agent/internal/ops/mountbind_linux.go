@@ -112,18 +112,31 @@ func UnbindSiteMount(cfg config.Config, domain, name string) error {
 			if err != nil || strings.HasPrefix(rel, "..") {
 				continue
 			}
-			fd, err := openBeneath(cfg.SitesRoot, append([]string{domain}, strings.Split(rel, "/")...))
+			parts := append([]string{domain}, strings.Split(rel, "/")...)
+			fd, err := openBeneath(cfg.SitesRoot, parts)
 			if err != nil {
 				continue // a symlink or gone: not followed
 			}
-			var here syscall.Stat_t
-			if syscall.Fstat(fd, &here) == nil && here.Dev == stage.Dev {
-				if err := syscall.Unmount("/proc/self/fd/"+strconv.Itoa(fd), syscall.MNT_DETACH); err != nil {
-					failed = append(failed, p+": "+err.Error())
-				} else {
+			pfd, err := openBeneath(cfg.SitesRoot, parts[:len(parts)-1])
+			if err != nil {
+				syscall.Close(fd)
+				continue
+			}
+			// This disk, and the root of a mount of it: a folder on the disk
+			// swapped in at that path in between has its parent on the disk too.
+			var here, up syscall.Stat_t
+			if syscall.Fstat(fd, &here) == nil && syscall.Fstat(pfd, &up) == nil && here.Dev == stage.Dev && up.Dev != here.Dev {
+				err := syscall.Unmount("/proc/self/fd/"+strconv.Itoa(fd), syscall.MNT_DETACH)
+				switch {
+				case err == nil:
 					detached++
+				case err == syscall.EINVAL || err == syscall.ENOENT:
+					// not a mount (any more): nothing to detach
+				default:
+					failed = append(failed, p+": "+err.Error())
 				}
 			}
+			syscall.Close(pfd)
 			syscall.Close(fd)
 		}
 		if detached == 0 {

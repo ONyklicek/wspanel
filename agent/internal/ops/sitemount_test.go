@@ -26,6 +26,7 @@ func TestASiteMountsAnSMBShareWithItsOwnerAndASecretFile(t *testing.T) {
 		`-mount-unbind "nas.example.com/nas"`,
 		"file_mode=0660,dir_mode=0770,vers=3.0,nosuid,nodev,noexec,iocharset=utf8,seal",
 		"WantedBy=multi-user.target",
+		"Restart=on-failure", "StartLimitIntervalSec=0", // a NAS not up yet at boot is retried
 	} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("missing %q in\n%s", want, unit)

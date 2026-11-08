@@ -379,7 +379,7 @@ install -m 0644 "$HERE"/files/xhgui/collector/composer.* /usr/lib/wspanel/files/
 rm -rf /etc/panel-web/xhgui # viewers moved onto the sites' own domains
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
-  /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
+  PANEL_DOMAIN="$PANEL_DOMAIN" PANEL_PORT="$PANEL_PORT" /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
 fi
 if [[ $XHPROF == yes || -f /usr/share/wspanel-xhgui/prepend.php ]]; then
   log "XHProf + XHGui"
@@ -655,7 +655,21 @@ if [[ -f /etc/systemd/system/panel-scheduler.service ]]; then
   systemctl enable panel-scheduler
   systemctl restart panel-scheduler
 fi
+# The webmail calls the panel over the edge; with its own CA (local certs,
+# an IP address) it trusts that root. The CA exists once the proxy ran,
+# which on a first install is after mail-hosting.sh.
+if [[ -d /etc/roundcube ]]; then
+  for _ in $(seq 1 20); do
+    [[ -s /var/lib/panel-proxy/caddy/pki/authorities/local/root.crt ]] && break
+    sleep 0.5
+  done
+  if [[ -s /var/lib/panel-proxy/caddy/pki/authorities/local/root.crt ]]; then
+    install -m 0644 /var/lib/panel-proxy/caddy/pki/authorities/local/root.crt /etc/roundcube/wspanel-edge-root-ca.crt
+  fi
+fi
 
 log "Done. Panel: $PANEL_URL"
-[[ -n "$PANEL_SOURCE" ]] && log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan wire:user"
+if [[ -n "$PANEL_SOURCE" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then
+  log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan wire:user"
+fi
 exit 0

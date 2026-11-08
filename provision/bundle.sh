@@ -37,7 +37,13 @@ rsync -a --delete \
   "$ROOT/panel/" "$B/panel/"
 echo "$VERSION" > "$B/VERSION"
 
-tar -C "$STAGE" -czf "$OUT/wspanel-$VERSION-linux-$ARCH.tar.gz" wspanel
+# Built on a Mac: no extended attributes or AppleDouble files, or GNU tar on
+# the server warns about each file ("unknown extended header keyword").
+if tar --version 2>/dev/null | grep -q bsdtar; then
+  COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$STAGE" -czf "$OUT/wspanel-$VERSION-linux-$ARCH.tar.gz" wspanel
+else
+  tar -C "$STAGE" -czf "$OUT/wspanel-$VERSION-linux-$ARCH.tar.gz" wspanel
+fi
 (cd "$OUT" && sha256sum "wspanel-$VERSION-linux-$ARCH.tar.gz" > "wspanel-$VERSION-linux-$ARCH.tar.gz.sha256" 2>/dev/null \
   || shasum -a 256 "wspanel-$VERSION-linux-$ARCH.tar.gz" > "wspanel-$VERSION-linux-$ARCH.tar.gz.sha256")
 echo "$OUT/wspanel-$VERSION-linux-$ARCH.tar.gz"

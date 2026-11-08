@@ -178,7 +178,9 @@ func mountUnitContent(env *Env, l siteLayout, m siteMount, uid, gid int) string 
 	ref := l.Domain + "/" + m.Name
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Managed by WSPanel agent (site %s).\n[Unit]\nDescription=WSPanel: %s disk %s of %s\n", l.Domain, strings.ToUpper(m.Type), m.Name, l.Domain)
-	b.WriteString("Wants=network-online.target\nAfter=network-online.target\n\n[Service]\n")
+	// Retried for as long as it takes: a NAS still booting (or briefly away)
+	// when the server starts must not leave the disk off until someone acts.
+	b.WriteString("Wants=network-online.target\nAfter=network-online.target\nStartLimitIntervalSec=0\n\n[Service]\n")
 	switch m.Type {
 	case "smb":
 		src := "//" + m.Host + "/" + m.Share
@@ -196,7 +198,7 @@ func mountUnitContent(env *Env, l siteLayout, m siteMount, uid, gid int) string 
 		if m.ReadOnly {
 			opts = append(opts, "ro")
 		}
-		b.WriteString("Type=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=60\n")
+		b.WriteString("Type=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=60\nRestart=on-failure\nRestartSec=20\n")
 		fmt.Fprintf(&b, "ExecStart=/usr/bin/mount -t cifs %s %s -o %s\n", unitWord(src), unitWord(stage), strings.Join(opts, ","))
 		fmt.Fprintf(&b, "ExecStartPost=%s\n", agentCommand(env, "-mount-bind", ref))
 		fmt.Fprintf(&b, "ExecStop=-%s\n", agentCommand(env, "-mount-unbind", ref))
@@ -365,6 +367,16 @@ func siteMountChange(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 			return nil, protocol.NotFound("disk " + p.Mount.Name + " does not exist")
 		}
 		unit := mountUnit(l.User, p.Mount.Name)
+		// The unit as this agent writes it (a fix in a newer agent reaches
+		// disks added before).
+		owner, err := mountOwner(env, st, l)
+		if err != nil {
+			return nil, err
+		}
+		if err := env.FS.WriteFile(filepath.Join(env.Cfg.SystemdDir, unit), []byte(mountUnitContent(env, l, st.Mounts[idx], owner.UID, owner.GID)), 0o644, fsx.Root); err != nil {
+			return nil, err
+		}
+		_, _ = env.Exec.Run(ctx, "systemctl", "daemon-reload")
 		_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", unit)
 		if _, err := env.Exec.Run(ctx, "systemctl", "restart", unit); err != nil {
 			return nil, fmt.Errorf("the disk did not connect: %s", mountFailure(ctx, env, unit))

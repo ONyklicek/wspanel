@@ -464,8 +464,17 @@ install -o root -g panel -m 0640 $API_KEY_FILE /srv/panel/shared/webmail-api.key
 # certificate: the webmail's driver verifies the panel against it.
 EDGE_ROOT=/var/lib/panel-proxy/caddy/pki/authorities/local/root.crt
 [[ -s $EDGE_ROOT ]] && install -m 0644 $EDGE_ROOT /etc/roundcube/wspanel-edge-root-ca.crt
-PANEL_DOMAIN=$(sed -nE 's/.*"panel_domain": *"([a-z0-9.-]+)".*/\1/p' /etc/panel-agent/agent.json 2>/dev/null)
-PANEL_PORT=$(sed -nE 's/.*"panel_port": *([0-9]+).*/\1/p' /etc/panel-agent/agent.json 2>/dev/null)
+# Where the webmail reaches the panel. install.sh passes it (on a first
+# install the agent's config does not exist yet); later runs (the agent
+# installing mail from Moduly) read it from that config.
+if [[ -z "${PANEL_DOMAIN:-}" && -f /etc/panel-agent/agent.json ]]; then
+  PANEL_DOMAIN=$(sed -nE 's/.*"panel_domain": *"([a-z0-9.-]+)".*/\1/p' /etc/panel-agent/agent.json || true)
+fi
+if [[ -z "${PANEL_PORT:-}" && -f /etc/panel-agent/agent.json ]]; then
+  PANEL_PORT=$(sed -nE 's/.*"panel_port": *([0-9]+).*/\1/p' /etc/panel-agent/agent.json || true)
+fi
+[[ -z "${PANEL_DOMAIN:-}" || "$PANEL_DOMAIN" =~ ^[a-z0-9.-]+$ ]] || PANEL_DOMAIN=""
+[[ -z "${PANEL_PORT:-}" || "$PANEL_PORT" =~ ^[0-9]+$ ]] || PANEL_PORT=""
 DES_KEY_FILE=/etc/wspanel/mail/webmail-des.key
 [[ -s $DES_KEY_FILE ]] || ( umask 077; head -c 18 /dev/urandom | base64 | tr -d '\n' > $DES_KEY_FILE )
 [[ -f /etc/roundcube/config.inc.php.debian ]] || cp -a /etc/roundcube/config.inc.php /etc/roundcube/config.inc.php.debian
