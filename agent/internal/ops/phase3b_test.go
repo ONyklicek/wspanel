@@ -49,7 +49,7 @@ func TestReverbAndPulse(t *testing.T) {
 	}
 	port := out.(map[string]any)["port"].(int)
 	user := "web_rt_example_com"
-	unit := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb.service"))
+	unit := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb@.service"))
 	if !strings.Contains(unit, "artisan reverb:start --host=127.0.0.1 --port="+itoa(port)) || !strings.Contains(unit, "SocketBindAllow=tcp:"+itoa(port)) {
 		t.Errorf("reverb unit:\n%s", unit)
 	}
@@ -60,14 +60,14 @@ func TestReverbAndPulse(t *testing.T) {
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "rt.example.com", "worker": "pulse"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-pulse.service")); !strings.Contains(u, "artisan pulse:check") {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-pulse@.service")); !strings.Contains(u, "artisan pulse:check") {
 		t.Errorf("pulse unit:\n%s", u)
 	}
 	// Reverb survives a switch to worker mode (port and route kept, now on FrankenPHP's PHP).
 	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "rt.example.com", "mode": "worker", "framework": "laravel"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb.service")); !strings.Contains(u, "frankenphp php-cli artisan reverb:start --host=127.0.0.1 --port="+itoa(port)) {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb@.service")); !strings.Contains(u, "frankenphp php-cli artisan reverb:start --host=127.0.0.1 --port="+itoa(port)) {
 		t.Errorf("reverb after switch:\n%s", u)
 	}
 	if e := read(t, filepath.Join(env.Cfg.ProxySitesDir, "rt.example.com.caddy")); !strings.Contains(e, "reverse_proxy 127.0.0.1:"+itoa(port)) {
@@ -212,9 +212,15 @@ func TestManagedCgroupsAreExactSystemPaths(t *testing.T) {
 	if c := managedCgroups(env.Cfg, "/docker/abc", "web_a_com"); !c["/docker/abc/system.slice/php8.3-fpm.service"] || c["/system.slice/php8.3-fpm.service"] {
 		t.Error("container root prefix not applied")
 	}
-	for _, ok := range []string{"/system.slice/php8.3-fpm.service", "/system.slice/wspanel-web_a_com-app.service", "/system.slice/wspanel-web_a_com-horizon.service"} {
-		if !m[ok] {
+	prefixes := managedCgroupPrefixes("", "web_a_com")
+	for _, ok := range []string{"/system.slice/php8.3-fpm.service", "/system.slice/wspanel-web_a_com-app.service", `/system.slice/system-wspanel\x2dweb_a_com\x2dhorizon.slice/wspanel-web_a_com-horizon@20261108T100000Z.service`} {
+		if !isManagedCgroup(m, prefixes, ok) {
 			t.Errorf("%s should be managed", ok)
+		}
+	}
+	for _, bad := range []string{`/system.slice/system-wspanel\x2dweb_a_com\x2dhorizon.slice/wspanel-web_a_com-x_com-horizon@r.service`, `/system.slice/system-wspanel\x2dweb_a_com\x2dhorizon.slice/wspanel-web_a_com-horizon@r.service/sub`} {
+		if isManagedCgroup(m, prefixes, bad) {
+			t.Errorf("%s must not be managed", bad)
 		}
 	}
 	for _, bad := range []string{

@@ -48,14 +48,15 @@ func TestWorkerLifecycle(t *testing.T) {
 	if out.(map[string]any)["started"] != false {
 		t.Error("must not start before the first deploy (no artisan)")
 	}
-	unitPath := filepath.Join(env.Cfg.SystemdDir, "wspanel-web_app_example_com-horizon.service")
+	unitPath := filepath.Join(env.Cfg.SystemdDir, "wspanel-web_app_example_com-horizon@.service")
 	unit, err := os.ReadFile(unitPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
 		"User=web_app_example_com", "ExecStart=/usr/bin/php8.3 artisan horizon",
-		"WorkingDirectory=" + env.Cfg.SitesRoot + "/app.example.com/current",
+		"WorkingDirectory=" + env.Cfg.SitesRoot + "/app.example.com/releases/%i", // its release, never current
+		"TimeoutStopSec=3600", // an old Horizon may finish its jobs beside the new one
 		"ProtectSystem=strict", "NoNewPrivileges=yes", "ReadWritePaths=" + env.Cfg.SitesRoot + "/app.example.com\n",
 	} {
 		if !strings.Contains(string(unit), want) {
@@ -68,7 +69,7 @@ func TestWorkerLifecycle(t *testing.T) {
 			seq = append(seq, c.String()) // from the worker's own unit on
 		}
 	}
-	if !strings.HasPrefix(seq[0], "systemd-analyze verify ") || seq[1] != "systemctl daemon-reload" || seq[2] != "systemctl enable wspanel-web_app_example_com-horizon.service" {
+	if !strings.HasPrefix(seq[0], "systemd-analyze verify ") || seq[1] != "systemctl daemon-reload" || hasCall(dr, "systemctl enable --now wspanel-web_app_example_com-horizon") {
 		t.Errorf("calls: %v", seq)
 	}
 
@@ -79,6 +80,9 @@ func TestWorkerLifecycle(t *testing.T) {
 	out, err = call(t, env, workerCreate, map[string]string{"domain": "app.example.com", "worker": "queue"})
 	if err != nil || out.(map[string]any)["started"] != true {
 		t.Fatalf("queue: %v %v", out, err)
+	}
+	if !hasCall(dr, "systemctl enable --now wspanel-web_app_example_com-queue@initial.service") {
+		t.Error("the queue must run as the current release's instance")
 	}
 
 	// Controlled through service.*.
@@ -110,7 +114,7 @@ func TestSymfonyWorkerAndInferredState(t *testing.T) {
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "sf.example.com", "worker": "messenger"}); err != nil {
 		t.Fatal(err)
 	}
-	unit, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_sf_example_com-messenger.service"))
+	unit, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_sf_example_com-messenger@.service"))
 	if !strings.Contains(string(unit), "ExecStart=/usr/bin/php8.4 bin/console messenger:consume async") {
 		t.Errorf("unit:\n%s", unit)
 	}

@@ -127,7 +127,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 	}
 	if !p.Enabled {
 		for _, w := range valkeyWorkers {
-			if fsx.Exists(filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, w))) {
+			if hasWorker(env, l.User, w) {
 				return nil, protocol.Conflict("worker " + w + " keeps its data in Valkey; remove it first")
 			}
 		}

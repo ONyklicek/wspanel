@@ -215,3 +215,27 @@ nepoužije. Shell ani jiné programy spustit nejdou.
 
 U balíku z CI panel před prvním `artisan` smaže `bootstrap/cache/*.php`:
 cache sestavené na CI runneru znají jeho cesty a balíčky.
+
+## Bez výpadku (zero-downtime)
+
+- **Build vedle běžícího webu:** nový release vzniká v `releases/<čas>`,
+  composer, npm, migrace, `optimize` a vlastní příkazy proběhnou dřív, než se
+  cokoli přepne. `current` se pak přepne jednou atomickou operací.
+- **Klasický režim (PHP-FPM):** FPM se plynule znovu načte; rozdělané
+  požadavky dokončí (až 10 s), nové čekají ve frontě, žádný se nezahodí.
+- **Worker režim (FrankenPHP / Octane):** server běží dál a vymění jen své PHP
+  workery; nové načtou nový release. Žádný požadavek neselže.
+- **Workery (fronty, Horizon, Messenger, Pulse):** každý release má vlastní
+  instanci workeru, která běží ze svého adresáře `releases/<release>`, nikdy
+  přes `current`. Po deployi:
+  - nová instance (nový kód) se spustí hned a bere nové úlohy,
+  - stará dostane pokyn skončit: rozdělanou úlohu dokončí **se starým kódem**
+    a žádnou novou už nevezme (až hodinu, fronta mezitím nestojí),
+  - release, ze kterého ještě stará instance běží, se při úklidu nesmaže.
+  - Plánovač a Reverb se nesmí spustit dvakrát (dvojí úlohy, jeden port):
+    nejdřív skončí starý, pak naběhne nový.
+- **Kontrola a rollback:** když nový release neodpoví, `current` se stejně
+  atomicky vrátí a workery se vrátí s ním.
+- **Migrace** běží před přepnutím, chvíli tedy starý kód běží nad novým
+  schématem: pište je zpětně kompatibilně (nejdřív přidat sloupec, odebrat
+  až v dalším releasu).

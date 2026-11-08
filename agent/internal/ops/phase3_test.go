@@ -89,7 +89,7 @@ func TestWorkerModeSite(t *testing.T) {
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "w.example.com", "worker": "horizon"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-horizon.service")); !strings.Contains(u, "ExecStart=/usr/local/bin/frankenphp php-cli artisan horizon") {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-horizon@.service")); !strings.Contains(u, "ExecStart=/usr/local/bin/frankenphp php-cli artisan horizon") {
 		t.Errorf("worker unit:\n%s", u)
 	}
 	// Version is fixed in worker mode.
@@ -171,7 +171,7 @@ func TestSwitchModes(t *testing.T) {
 	pool84 := filepath.Join(config.ForVersion(env.Cfg.FPMPoolDir, "8.4"), user+".conf")
 	webFile := filepath.Join(env.Cfg.WebSitesDir, "s.example.com.caddy")
 	appUnit := filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-app.service")
-	queue := filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-queue.service")
+	queue := filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-queue@.service")
 
 	// classic 8.3 -> 8.4
 	if _, err := call(t, env, siteSetVersion, map[string]string{"domain": "s.example.com", "version": "8.4"}); err != nil {
@@ -245,7 +245,7 @@ func TestSiteUnitsUseExactNames(t *testing.T) {
 	if _, err := call(t, env, siteDelete, map[string]string{"domain": "a.com", "confirm": "a.com"}); err != nil {
 		t.Fatal(err)
 	}
-	if !fsx.Exists(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_a_com-x_com-queue.service")) {
+	if !fsx.Exists(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_a_com-x_com-queue@.service")) {
 		t.Fatal("deleting a.com removed a worker of a.com-x.com")
 	}
 }

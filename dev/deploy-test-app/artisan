@@ -10,6 +10,10 @@ switch ($cmd) {
     case 'install:permissions':
         echo "artisan {$cmd}: ok\n";
         exit(0);
+    case 'queue:work': // a worker that waits for jobs until told to stop
+        while (true) {
+            sleep(1);
+        }
     case 'storage:link':
         @unlink(__DIR__.'/public/storage');
         symlink(__DIR__.'/storage/app/public', __DIR__.'/public/storage');

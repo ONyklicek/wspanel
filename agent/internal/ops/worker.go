@@ -43,10 +43,6 @@ var workerSpecs = map[string]map[string]workerSpec{
 // WorkerTypes lists all known worker types (for validation messages / UI).
 var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "messenger"}
 
-func workerUnit(user, typ string) string {
-	return "wspanel-" + user + "-" + typ + ".service"
-}
-
 type workerParams struct {
 	Domain string `json:"domain"`
 	Worker string `json:"worker"`
@@ -95,7 +91,7 @@ func resolveWorker(env *Env, p workerParams) (siteLayout, workerSpec, string, er
 		slices.Sort(allowed)
 		return l, spec, "", protocol.Invalid(fmt.Sprintf("worker: %q is not available for framework %s (allowed: %v)", p.Worker, st.Framework, allowed))
 	}
-	return l, spec, filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, p.Worker)), nil
+	return l, spec, filepath.Join(env.Cfg.SystemdDir, workerTemplate(l.User, p.Worker)), nil
 }
 
 func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
@@ -103,11 +99,11 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	l, spec, unitPath, err := resolveWorker(env, p)
+	l, spec, _, err := resolveWorker(env, p)
 	if err != nil {
 		return nil, err
 	}
-	if fsx.Exists(unitPath) {
+	if hasWorker(env, l.User, p.Worker) {
 		return nil, protocol.Conflict("worker " + p.Worker + " already exists for " + p.Domain)
 	}
 	if p.PublicPort == 0 {
@@ -161,11 +157,15 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 	if err = workerAppEnv(ctx, env, l, st1, p.Worker, p.PublicPort); err != nil {
 		return nil, err
 	}
-	started, err := installUnit(ctx, env, unitPath, workerUnitData(env, l, p.Worker, spec), spec.Entry, &rollback)
+	if err = writeWorkerTemplate(ctx, env, l, p.Worker, spec, &rollback); err != nil {
+		return nil, err
+	}
+	rollback.add(func() { _ = removeWorker(context.WithoutCancel(ctx), env, l, p.Worker) })
+	started, err := startWorkerRelease(ctx, env, l, p.Worker, spec, func(string, ...any) {})
 	if err != nil {
 		return nil, err
 	}
-	out["unit"], out["started"] = filepath.Base(unitPath), started
+	out["unit"], out["started"] = currentWorkerUnit(env, l, p.Worker), started
 	return out, nil
 }
 
@@ -180,11 +180,15 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if err := validate.OneOf("worker", p.Worker, WorkerTypes); err != nil {
 		return nil, err
 	}
-	unitPath := filepath.Join(env.Cfg.SystemdDir, workerUnit(validate.SiteUser(p.Domain), p.Worker))
-	if !fsx.Exists(unitPath) {
+	_, wl, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if !hasWorker(env, wl.User, p.Worker) {
 		return nil, protocol.NotFound("worker " + p.Worker + " does not exist for " + p.Domain)
 	}
-	if err := removeUnit(ctx, env, unitPath); err != nil {
+	unitName := currentWorkerUnit(env, wl, p.Worker)
+	if err := removeWorker(ctx, env, wl, p.Worker); err != nil {
 		return nil, err
 	}
 	if p.Worker == "reverb" { // drop the edge route and release the port
@@ -206,7 +210,7 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 			return nil, err
 		}
 	}
-	return map[string]string{"unit": filepath.Base(unitPath), "removed": "true"}, nil
+	return map[string]string{"unit": unitName, "removed": "true"}, nil
 }
 
 // refreshWorkers re-renders a site's worker units after a mode or version
@@ -214,20 +218,23 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 // support are removed.
 func refreshWorkers(ctx context.Context, env *Env, l siteLayout) error {
 	for _, typ := range WorkerTypes {
-		path := filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, typ))
-		if !fsx.Exists(path) {
+		if !hasWorker(env, l.User, typ) {
 			continue
 		}
 		spec, ok := workerSpecs[l.Framework][typ]
 		if !ok {
-			if err := removeUnit(ctx, env, path); err != nil {
+			if err := removeWorker(ctx, env, l, typ); err != nil {
 				return err
 			}
 			continue
 		}
 		var rb undo
-		if _, err := installUnit(ctx, env, path, workerUnitData(env, l, typ, spec), spec.Entry, &rb); err != nil {
+		if err := writeWorkerTemplate(ctx, env, l, typ, spec, &rb); err != nil {
 			rb.run()
+			return err
+		}
+		unit := currentWorkerUnit(env, l, typ)
+		if _, err := env.Exec.Run(ctx, "systemctl", "try-restart", unit); err != nil {
 			return err
 		}
 	}
@@ -255,9 +262,10 @@ func removeUnit(ctx context.Context, env *Env, unitPath string) error {
 func siteWorkerUnits(cfg config.Config, user string) []string {
 	var out []string
 	for _, typ := range WorkerTypes {
-		path := filepath.Join(cfg.SystemdDir, workerUnit(user, typ))
-		if fsx.Exists(path) {
-			out = append(out, path)
+		for _, name := range []string{workerTemplate(user, typ), legacyWorkerUnit(user, typ)} {
+			if path := filepath.Join(cfg.SystemdDir, name); fsx.Exists(path) {
+				out = append(out, path)
+			}
 		}
 	}
 	return out
@@ -266,9 +274,29 @@ func siteWorkerUnits(cfg config.Config, user string) []string {
 // allWorkerUnits lists every unit managed by WSPanel (workers and app units).
 func allWorkerUnits(cfg config.Config) []string {
 	matches, _ := filepath.Glob(filepath.Join(cfg.SystemdDir, "wspanel-*.service"))
+	homes := map[string]string{}
+	for _, st := range allSiteStates(cfg) {
+		homes[validate.SiteUser(st.Domain)] = filepath.Join(cfg.SitesRoot, st.Domain)
+	}
 	out := make([]string, 0, len(matches))
 	for _, m := range matches {
-		out = append(out, filepath.Base(m))
+		name := filepath.Base(m)
+		base, ok := strings.CutSuffix(name, "@.service")
+		if !ok {
+			out = append(out, name)
+			continue
+		}
+		// A worker template: the instance of the site's current release.
+		rest := strings.TrimPrefix(base, "wspanel-")
+		i := strings.LastIndex(rest, "-")
+		if i <= 0 || homes[rest[:i]] == "" {
+			continue
+		}
+		rel, err := currentRelease(siteLayout{Home: homes[rest[:i]]})
+		if err != nil {
+			rel = "initial"
+		}
+		out = append(out, workerInstance(rest[:i], rest[i+1:], rel))
 	}
 	slices.Sort(out)
 	return out

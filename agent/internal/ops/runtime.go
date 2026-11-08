@@ -248,6 +248,7 @@ type unitData struct {
 	Description string
 	User        string
 	Home        string
+	WorkDir     string // default: {{Home}}/current; workers: their release (%i)
 	RunDir      string
 	ExecStart   string
 	Environment []string

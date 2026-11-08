@@ -721,9 +721,6 @@ func (d *deployment) restartServices(ctx context.Context) {
 	default:
 		units = append(units, l.AppUnit)
 	}
-	for _, u := range siteWorkerUnits(d.env.Cfg, l.User) {
-		units = append(units, filepath.Base(u))
-	}
 	for _, u := range units {
 		if _, err := d.env.Exec.Run(ctx, "systemctl", "restart", u); err != nil {
 			d.logf("restart %s: %v\n", u, err)
@@ -731,6 +728,8 @@ func (d *deployment) restartServices(ctx context.Context) {
 			d.logf("restarted %s\n", u)
 		}
 	}
+	// Workers: the new release's instances start, old ones finish their jobs.
+	rotateWorkers(ctx, d.env, l, d.logf)
 }
 
 func (d *deployment) healthy(ctx context.Context) (bool, string) {
@@ -758,6 +757,10 @@ func (d *deployment) prune(ctx context.Context) {
 	rels := listReleases(l)
 	for i := 0; i < len(rels)-d.cfg.Keep; i++ {
 		if rels[i] == current {
+			continue
+		}
+		if releaseInUse(ctx, d.env, l, rels[i]) {
+			d.logf("keeping release %s: a worker still finishes its job from it\n", rels[i])
 			continue
 		}
 		if err := asUser(ctx, d.env, l.User, "/usr/bin/rm", "-rf", "--", filepath.Join(l.Home, "releases", rels[i])); err == nil {

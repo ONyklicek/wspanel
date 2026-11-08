@@ -31,12 +31,35 @@ func managedCgroups(cfg config.Config, root, username string) map[string]bool {
 	}
 	m[root+"/system.slice/"+appUnitName(username)] = true
 	for _, t := range WorkerTypes {
-		m[root+"/system.slice/"+workerUnit(username, t)] = true
+		m[root+"/system.slice/"+legacyWorkerUnit(username, t)] = true
 	}
 	for _, id := range siteCronIDs(cfg, username) {
 		m[root+"/system.slice/"+cronUnitBase(username, id)+".service"] = true
 	}
 	return m
+}
+
+// managedCgroupPrefixes: worker instances live in a slice per worker
+// (system-wspanel\x2d<user>\x2d<type>.slice/<instance>), one per release.
+func managedCgroupPrefixes(root, username string) []string {
+	var out []string
+	for _, t := range WorkerTypes {
+		out = append(out, root+"/system.slice/system-"+strings.ReplaceAll("wspanel-"+username+"-"+t, "-", `\x2d`)+".slice/"+"wspanel-"+username+"-"+t+"@")
+	}
+	return out
+}
+
+// isManagedCgroup: the process runs in one of the site's own units.
+func isManagedCgroup(managed map[string]bool, prefixes []string, path string) bool {
+	if managed[path] {
+		return true
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(path, p) && strings.HasSuffix(path, ".service") && !strings.Contains(path[len(p):], "/") {
+			return true
+		}
+	}
+	return false
 }
 
 // systemdRoot derives the cgroup root from the agent's own cgroup, which is
@@ -140,9 +163,10 @@ func killSessionProcesses(ctx context.Context, env *Env, username string) error 
 		return err
 	}
 	managed := managedCgroups(env.Cfg, root, username)
+	prefixes := managedCgroupPrefixes(root, username)
 	return killUntilGone(uid, func(pid string) bool {
 		path, ok := cgroupPath(pid)
-		return ok && managed[path]
+		return ok && isManagedCgroup(managed, prefixes, path)
 	})
 }
 

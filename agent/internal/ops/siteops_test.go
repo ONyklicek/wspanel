@@ -28,7 +28,7 @@ func TestSiteDisableEnable(t *testing.T) {
 	}
 	stopped := false
 	for _, c := range dr.Calls() {
-		if c.Name == "systemctl" && strings.Join(c.Args, " ") == "disable --now wspanel-web_shop_example_com-queue.service" {
+		if c.Name == "systemctl" && strings.Join(c.Args, " ") == "disable --now wspanel-web_shop_example_com-queue@initial.service" {
 			stopped = true
 		}
 	}

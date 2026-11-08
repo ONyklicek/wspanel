@@ -132,6 +132,7 @@ func run(cfgPath string, log *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go ops.MigrateLegacyWorkers(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	return srv.Serve(ctx, ln)
 }
 

@@ -59,11 +59,19 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 		if err := validate.OneOf("worker", p.Worker, WorkerTypes); err != nil {
 			return "", err
 		}
-		name := workerUnit(validate.SiteUser(p.Domain), p.Worker)
-		if !fsx.Exists(filepath.Join(cfg.SystemdDir, name)) {
+		user := validate.SiteUser(p.Domain)
+		if fileIn(cfg.SystemdDir, legacyWorkerUnit(user, p.Worker)) {
+			return legacyWorkerUnit(user, p.Worker), nil
+		}
+		if !fileIn(cfg.SystemdDir, workerTemplate(user, p.Worker)) {
 			return "", protocol.NotFound("worker " + p.Worker + " does not exist for " + p.Domain)
 		}
-		return name, nil
+		// The instance of the current release (an old one finishing its job is left alone).
+		rel, err := currentRelease(siteLayout{Home: filepath.Join(cfg.SitesRoot, p.Domain)})
+		if err != nil {
+			return "", err
+		}
+		return workerInstance(user, p.Worker, rel), nil
 	case "task": // a scheduled task's timer: stop = paused, start = scheduled again
 		if err := validate.Domain(p.Domain); err != nil {
 			return "", err

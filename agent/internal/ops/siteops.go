@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,9 +28,7 @@ func siteUnits(env *Env, l siteLayout) []string {
 	if fsx.Exists(l.AppUnitFile) {
 		units = append(units, l.AppUnit)
 	}
-	for _, path := range siteWorkerUnits(env.Cfg, l.User) {
-		units = append(units, filepath.Base(path))
-	}
+	units = append(units, siteWorkerInstances(env, l)...)
 	return units
 }
 
@@ -48,7 +47,7 @@ func unitEntry(env *Env, l siteLayout, unit string) string {
 		return entry
 	}
 	for typ, spec := range workerSpecs[l.Framework] {
-		if unit == workerUnit(l.User, typ) {
+		if unit == currentWorkerUnit(env, l, typ) {
 			return spec.Entry
 		}
 	}
@@ -106,6 +105,16 @@ func setSiteEnabled(ctx context.Context, env *Env, raw json.RawMessage, enable b
 
 	units := append(siteUnits(env, l), siteTimers(env, l)...)
 	started := []string{}
+	if !enable {
+		// Also an old worker instance still finishing its job.
+		for _, typ := range siteWorkerTypes(env, l.User) {
+			for _, u := range loadedInstances(ctx, env, l.User, typ) {
+				if !slices.Contains(units, u) {
+					units = append(units, u)
+				}
+			}
+		}
+	}
 	for _, u := range units {
 		if !enable {
 			if _, err = env.Exec.Run(ctx, "systemctl", "disable", "--now", u); err != nil {
@@ -220,7 +229,9 @@ func siteProcesses(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 			procs[i].Name = strings.TrimSuffix(strings.TrimPrefix(u, "wspanel-"+l.User+"-cron-"), ".timer")
 		default:
 			procs[i].Kind = "worker"
-			procs[i].Name = strings.TrimSuffix(strings.TrimPrefix(u, "wspanel-"+l.User+"-"), ".service")
+			name := strings.TrimSuffix(strings.TrimPrefix(u, "wspanel-"+l.User+"-"), ".service")
+			name, _, _ = strings.Cut(name, "@") // the instance is the release it runs from
+			procs[i].Name = name
 		}
 	}
 	return map[string]any{"domain": p.Domain, "mode": l.Mode, "enabled": !st.Disabled, "processes": procs}, nil
@@ -322,7 +333,8 @@ func siteLogs(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		if err := validate.OneOf("name", p.Name, WorkerTypes); err != nil {
 			return nil, err
 		}
-		return journal(workerUnit(l.User, p.Name))
+		// Every instance: an old one finishing its job writes there too.
+		return journal("wspanel-" + l.User + "-" + p.Name + "@*.service")
 	case "task":
 		id, err := strconv.Atoi(p.Name)
 		if err != nil || id <= 0 || id > 999999 {

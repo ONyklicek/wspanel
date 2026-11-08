@@ -593,8 +593,8 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := removeSiteBackupSchedule(ctx, env, l.User); err != nil {
 		return nil, err
 	}
-	for _, unit := range siteWorkerUnits(env.Cfg, l.User) {
-		if err := removeUnit(ctx, env, unit); err != nil {
+	for _, typ := range siteWorkerTypes(env, l.User) {
+		if err := removeWorker(ctx, env, l, typ); err != nil {
 			return nil, err
 		}
 	}

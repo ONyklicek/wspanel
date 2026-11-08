@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 )
 
@@ -173,7 +172,7 @@ func panelManagedKeys(env *Env, l siteLayout, st siteState, current map[string]s
 			}
 		}
 	}
-	has := func(w string) bool { return fsx.Exists(filepath.Join(env.Cfg.SystemdDir, workerUnit(l.User, w))) }
+	has := func(w string) bool { return hasWorker(env, l.User, w) }
 	if has("reverb") {
 		out["BROADCAST_CONNECTION"] = true
 	}

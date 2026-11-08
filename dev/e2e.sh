@@ -132,12 +132,14 @@ systemctl start wspanel-web_node_localhost-app
 
 # ----------------------------------------------------------------------------
 section "Workers (Laravel)"
-php "$(site shop.localhost) foreach (['horizon', 'scheduler', 'pulse', 'reverb'] as \$w) if (! file_exists('/etc/systemd/system/wspanel-web_shop_localhost-'.\$w.'.service')) app(App\\Actions\\Sites\\ManageWorkers::class)->create(\$s, \$w);" >/dev/null
+php "$(site shop.localhost) foreach (['horizon', 'scheduler', 'pulse', 'reverb'] as \$w) if (! file_exists('/etc/systemd/system/wspanel-web_shop_localhost-'.\$w.'@.service')) app(App\\Actions\\Sites\\ManageWorkers::class)->create(\$s, \$w);" >/dev/null
 for w in horizon scheduler pulse; do
-	check "worker unit $w installed" test -f /etc/systemd/system/wspanel-web_shop_localhost-$w.service
+	check "worker $w installed (one instance per release)" test -f /etc/systemd/system/wspanel-web_shop_localhost-$w@.service
 done
-check "worker units are sandboxed (ProtectSystem=strict)" grep -q ProtectSystem=strict /etc/systemd/system/wspanel-web_shop_localhost-horizon.service
-contains "reverb gets a privileged port" "$(grep -o -- '--port=[0-9]*' /etc/systemd/system/wspanel-web_shop_localhost-reverb.service)" "--port="
+check "no single-unit workers left (migrated at agent start)" bash -c '! ls /etc/systemd/system/wspanel-*-{horizon,queue,scheduler,reverb,pulse}.service 2>/dev/null | grep -q .'
+check "worker units are sandboxed (ProtectSystem=strict)" grep -q ProtectSystem=strict /etc/systemd/system/wspanel-web_shop_localhost-horizon@.service
+check "workers run from their release, not current" grep -q 'WorkingDirectory=/srv/sites/shop.localhost/releases/%i' /etc/systemd/system/wspanel-web_shop_localhost-horizon@.service
+contains "reverb gets a privileged port" "$(grep -o -- '--port=[0-9]*' /etc/systemd/system/wspanel-web_shop_localhost-reverb@.service)" "--port="
 contains "edge routes /app to reverb" "$(cat /etc/panel-proxy/sites/shop.localhost.caddy)" "@reverb path /app"
 
 # ----------------------------------------------------------------------------
@@ -211,6 +213,10 @@ php "$(site app.localhost) \$m = app(App\\Actions\\Sites\\ManageDeploys::class);
 rel=$(php "$(site app.localhost) echo app(App\\Actions\\Sites\\ManageDeploys::class)->start(\$s);" | tr -d '[:space:]')
 expect "deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
 contains "deployed app answers" "$(https app.localhost /)" "deploy-test-app v1"
+# Workers are rotated by a deploy: the new release's instance takes over.
+php "$(site app.localhost) try { app(App\\Actions\\Sites\\ManageWorkers::class)->create(\$s, 'queue'); } catch (Throwable) {}" >/dev/null
+rel_q=$(basename "$(readlink /srv/sites/app.localhost/current)")
+check "queue runs as the current release's instance" systemctl is-active --quiet "wspanel-web_app_localhost-queue@$rel_q.service"
 contains "build ran as the site user" "$(cat /srv/sites/app.localhost/shared/storage/logs/artisan.log)" "as web_app_localhost"
 contains "the app's own command ran after optimize" "$(cat /srv/sites/app.localhost/shared/storage/logs/artisan.log)" "install:permissions --force as web_app_localhost"
 contains "assets built and served by the web tier" "$(https app.localhost /build/manifest.json)" '"node":"v'
@@ -231,6 +237,10 @@ php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->histo
 rel=$(php "$(site app.localhost) echo App\\Models\\Deployment::where('site_id', \$s->id)->latest('started_at')->value('release');" | tr -d '[:space:]')
 expect "webhook deploy succeeds" "$(wait_deploy app.localhost "$rel")" "success"
 contains "v2 is live" "$(https app.localhost /)" "deploy-test-app v2"
+rel_q2=$(basename "$(readlink /srv/sites/app.localhost/current)")
+check "the deploy started the queue of the new release" systemctl is-active --quiet "wspanel-web_app_localhost-queue@$rel_q2.service"
+for _ in $(seq 1 20); do systemctl is-active --quiet "wspanel-web_app_localhost-queue@$rel_q.service" || break; sleep 0.5; done
+check "the old release's queue stopped (it took no new job)" bash -c "! systemctl is-active --quiet wspanel-web_app_localhost-queue@$rel_q.service"
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->rollback(\$s);" >/dev/null
 contains "rollback brings v1 back" "$(https app.localhost /)" "deploy-test-app v1"
 
@@ -792,7 +802,7 @@ section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null
 check "system user removed" bash -c '! id web_tmp_localhost'
-check "worker unit removed" test ! -f /etc/systemd/system/wspanel-web_tmp_localhost-queue.service
+check "worker unit removed" test ! -f /etc/systemd/system/wspanel-web_tmp_localhost-queue@.service
 check "edge block removed" test ! -f /etc/panel-proxy/sites/tmp.localhost.caddy
 check "home moved to the root-only trash" bash -c 'ls /srv/sites/.trash | grep -q tmp.localhost'
 

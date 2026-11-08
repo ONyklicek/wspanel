@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -227,9 +226,7 @@ func restartSiteProcesses(ctx context.Context, env *Env, l siteLayout) error {
 	default:
 		units = append(units, l.AppUnit)
 	}
-	for _, u := range siteWorkerUnits(env.Cfg, l.User) {
-		units = append(units, filepath.Base(u))
-	}
+	units = append(units, siteWorkerInstances(env, l)...)
 	if len(units) == 0 {
 		return nil
 	}
