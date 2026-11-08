@@ -11,6 +11,7 @@ use App\Support\AgentMessages;
 use App\Support\CurrentClient;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
@@ -27,6 +28,11 @@ class Site extends Model
         return $this->hasMany(WebhookDelivery::class)->latest('id');
     }
 
+    public function githubConnection(): BelongsTo
+    {
+        return $this->belongsTo(GithubConnection::class)->withoutGlobalScope('owner');
+    }
+
     public function databases(): HasMany
     {
         return $this->hasMany(Database::class);
@@ -37,6 +43,7 @@ class Site extends Model
         'system_user', 'home', 'doc_root', 'status', 'enabled', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
         'webhook_id', 'webhook_secret', 'webhook_enabled', 'deploy_trigger', 'deploy_requested_at', 'deploy_requested_ref', 'deploy_polled_ref', 'deploy_polled_at', 'deploy_poll_error', 'php_settings', 'edge_settings', 'ci_id', 'ci_token_hash', 'valkey', 'web_rules', 'xhprof', 'staging_of',
+        'github_connection_id', 'github_repo', 'github_hook_id', 'github_key_id', 'github_environment', 'github_linked_at',
     ];
 
     protected $hidden = ['webhook_secret', 'ci_token_hash'];
@@ -103,6 +110,7 @@ class Site extends Model
             'webhook_enabled' => 'boolean',
             'deploy_requested_at' => 'datetime',
             'deploy_polled_at' => 'datetime',
+            'github_linked_at' => 'datetime',
             'php_settings' => 'array',
             'edge_settings' => 'array',
             'valkey' => 'array',

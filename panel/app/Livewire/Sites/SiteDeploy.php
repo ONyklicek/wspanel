@@ -4,14 +4,17 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManageCiToken;
 use App\Actions\Sites\ManageDeploys;
+use App\Actions\Sites\ManageGitHub;
 use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Forms\Components\CodeIde;
 use App\Models\Deployment;
+use App\Models\GithubConnection;
 use App\Models\Site;
 use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
+use App\Services\GitHub\GitHubException;
 use App\Support\Lang;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
@@ -207,6 +210,7 @@ class SiteDeploy extends ViewPage
                         Toast::error(__('Deploy nelze spustit'), $e->getMessage());
                     }
                 }),
+            $this->githubAction(),
             $this->settingsAction(),
             $this->automationAction(),
             ActionGroup::make([
@@ -216,6 +220,132 @@ class SiteDeploy extends ViewPage
                 $this->rollbackAction(),
             ])->label(__('Další'))->icon('outline:ellipsis-vertical'),
         ];
+    }
+
+    /**
+     * Links the site to a GitHub repository through a connected account:
+     * deploy key, deploy settings, webhook (or watching) and optionally the
+     * CI token as an Actions secret, all over the GitHub API.
+     */
+    private function githubAction(): Action
+    {
+        return Action::make('github')
+            ->label(fn () => $this->site()->github_repo ?? 'GitHub')
+            ->icon('outline:link')
+            ->color(fn () => $this->site()->github_repo ? 'success' : 'gray')
+            ->modalHeading(fn () => $this->site()->github_repo ? __('Napojeno na GitHub') : __('Napojit na GitHub'))
+            ->modalWidth('3xl')
+            ->modalSubmitActionLabel(__('Napojit'))
+            ->fillFormUsing(fn () => [
+                'connection' => $this->site()->github_connection_id ?? GithubConnection::query()->value('id'),
+                'repo' => $this->site()->github_repo,
+                'branch' => $this->config['branch'] ?? null,
+                'trigger' => in_array($this->site()->deploy_trigger, ['tags', 'poll_tags'], true) ? 'tags' : 'branch',
+                'notify' => self::panelIsPublic() ? 'webhook' : 'poll',
+                'ci_secret' => false,
+            ])
+            ->form(fn () => [
+                Placeholder::make('linked')->hiddenLabel()
+                    ->content(fn () => __('Repozitář :repo (účet @:login). Deploy klíč a :hook vytvořil panel; deploye se v GitHubu ukazují v prostředí :env.', [
+                        'repo' => $this->site()->github_repo,
+                        'login' => $this->site()->githubConnection?->login ?? '?',
+                        'hook' => $this->site()->github_hook_id ? __('webhook') : __('sledování repozitáře'),
+                        'env' => $this->site()->github_environment ?? ManageGitHub::ENVIRONMENT,
+                    ]))
+                    ->visible($this->site()->github_repo !== null),
+                Placeholder::make('none')->hiddenLabel()
+                    ->content(__('Nejdřív připojte účet GitHub v menu účtu → API a CLI → GitHub.'))
+                    ->visible(! GithubConnection::query()->exists()),
+                Select::make('connection')->label(__('Účet GitHub'))
+                    ->options(fn () => GithubConnection::query()->pluck('login', 'id')->map(fn ($l) => '@'.$l)->all())
+                    ->required()->live()
+                    ->rules([fn () => 'in:'.GithubConnection::query()->pluck('id')->join(',')]),
+                Select::make('repo')->label(__('Repozitář'))
+                    ->options(fn ($get) => $this->githubOptions(fn (ManageGitHub $gh, GithubConnection $c) => $gh->repositories($c), $get('connection')))
+                    ->searchable()->required()->live()
+                    ->helperText(__('Repozitáře, které token smí spravovat.'))
+                    ->afterStateUpdated(fn ($set) => $set('branch', null)),
+                Select::make('branch')->label(__('Větev'))
+                    ->options(fn ($get) => $get('repo') ? $this->githubOptions(fn (ManageGitHub $gh, GithubConnection $c) => $gh->branches($c, (string) $get('repo')), $get('connection')) : [])
+                    ->searchable()->required()
+                    ->rules(['regex:~^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$~']),
+                Radio::make('trigger')->label(__('Co nasadit'))->rules([Options::rule()])
+                    ->options(['branch' => __('Každý push do větve'), 'tags' => __('Nový release nebo tag')])
+                    ->required(),
+                Radio::make('notify')->label(__('Jak se panel o změně dozví'))->rules([Options::rule()])
+                    ->options(['webhook' => __('Webhook (GitHub zavolá panel)'), 'poll' => __('Panel se každou minutu podívá do repozitáře')])
+                    ->descriptions([
+                        'webhook' => __('Okamžité. Panel musí být z internetu dostupný na :url.', ['url' => rtrim((string) config('app.url'), '/')]),
+                        'poll' => __('Pro panel ve vnitřní síti nebo za NATem: nic nemusí volat dovnitř.'),
+                    ])
+                    ->required(),
+                Toggle::make('ci_secret')->label(__('Uložit CI token do secretů repozitáře (WSPANEL_TOKEN)'))
+                    ->helperText(__('Pro deploy hotového buildu z GitHub Actions. Vytvoří nový CI token; starý přestane platit.')),
+            ])
+            ->modalFooterActions($this->site()->github_repo === null ? [] : [
+                ModalFooterAction::make('unlinkGithub')
+                    ->label(__('Odpojit'))
+                    ->icon('outline:link-slash')
+                    ->color('danger')
+                    ->position('before')
+                    ->confirm(__('Panel z repozitáře odebere svůj webhook a deploy klíč. Nastavení deploye zůstane, automatický deploy přes webhook se vypne.'))
+                    ->closesModal()
+                    ->action(function () {
+                        $problems = app(ManageGitHub::class)->unlink($this->site());
+                        $problems === []
+                            ? Toast::success(__('GitHub odpojen'))
+                            : Toast::warning(__('GitHub odpojen, v repozitáři ale něco zůstalo'), implode("\n", $problems));
+                        $this->refreshHistory();
+                    }),
+            ])
+            ->action(function (array $data) {
+                $connection = GithubConnection::query()->findOrFail($data['connection']);
+                try {
+                    $out = app(ManageGitHub::class)->link($this->site(), $connection, $data);
+                    Toast::success(__('Napojeno na :repo', ['repo' => $data['repo']]), $out['ci_secret']
+                        ? __('Deploy klíč, webhook a secret WSPANEL_TOKEN jsou v repozitáři.')
+                        : __('Deploy klíč je v repozitáři; deploy spustí :what.', ['what' => __(self::TRIGGERS[$out['trigger']] ?? $out['trigger'])]));
+                    $this->refreshHistory();
+                } catch (GitHubException|AgentException $e) {
+                    Toast::error(__('Napojení na GitHub selhalo'), $e->getMessage());
+                }
+            });
+    }
+
+    /**
+     * Options read from GitHub for the chosen account; an error shows as the
+     * only option instead of breaking the modal.
+     *
+     * @param  callable(ManageGitHub, GithubConnection): array<string, string>  $read
+     * @return array<string, string>
+     */
+    private function githubOptions(callable $read, mixed $connectionId): array
+    {
+        $connection = $connectionId ? GithubConnection::query()->find($connectionId) : null;
+        if ($connection === null) {
+            return [];
+        }
+        try {
+            return $read(app(ManageGitHub::class), $connection);
+        } catch (GitHubException $e) {
+            Toast::error(__('GitHub'), $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /** A panel on a local or private address cannot receive GitHub's webhooks. */
+    public static function panelIsPublic(): bool
+    {
+        $host = (string) parse_url((string) config('app.url'), PHP_URL_HOST);
+        if ($host === '' || preg_match('/(^|\.)(localhost|local|lan|internal|home\.arpa)$/i', $host)) {
+            return false;
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return (bool) filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+        }
+
+        return true;
     }
 
     private function settingsAction(): Action
@@ -318,8 +448,8 @@ class SiteDeploy extends ViewPage
                         }
 
                         return $site->deploy_poll_error !== null
-                            ? $site->deploy_polled_at->diffForHumans().': chyba – '.$site->deploy_poll_error
-                            : $site->deploy_polled_at->diffForHumans().': '.($site->deploy_trigger === 'poll_tags' ? __('nejnovější tag ') : 'commit ').Str::limit((string) $site->deploy_polled_ref, 12, '');
+                            ? $site->deploy_polled_at->diffForHumans().__(': chyba – ').$site->deploy_poll_error
+                            : $site->deploy_polled_at->diffForHumans().': '.($site->deploy_trigger === 'poll_tags' ? __('nejnovější tag ') : __('commit ')).Str::limit((string) $site->deploy_polled_ref, 12, '');
                     })
                     ->visibleWhen('trigger', ['poll_branch', 'poll_tags']),
                 Placeholder::make('help')->hiddenLabel()

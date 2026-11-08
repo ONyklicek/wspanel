@@ -36,6 +36,8 @@ class HelpPage extends Page
         'klienti' => 'Klienti a balíčky',
         'weby' => 'Weby',
         'deploy' => 'Deploy',
+        'github' => 'GitHub',
+        'nasazeni-projektu' => 'Nasazení existujícího projektu',
         'databaze' => 'Databáze',
         'ssh-sftp' => 'SSH a SFTP',
         'posta' => 'Pošta',

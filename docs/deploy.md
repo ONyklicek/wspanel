@@ -10,6 +10,11 @@ Git / CI ──► releases/20261107T140000Z ──► build ──► přepnut�
                                                   staré verzi            návrat na předchozí
 ```
 
+> Repozitář na GitHubu jde napojit i jedním kliknutím: panel přes GitHub API
+> sám přidá deploy klíč a webhook a deploye hlásí zpět do GitHubu. Viz
+> [GitHub](github.md). Převod existující aplikace krok za krokem je
+> v [Nasazení existujícího projektu](nasazeni-projektu.md).
+
 ## Tři způsoby, jak dostat kód na server
 
 | Způsob | Kdy | Build běží |
@@ -193,6 +198,8 @@ Deploy → **.env** upraví sdílený soubor (`shared/.env`, u Symfony
 - **„Permission denied (publickey)“ při stažení:** deploy klíč není u
   repozitáře.
 - **Deploy nelze spustit, web je vypnutý:** nejdřív ho zapněte.
+- Další (CI build, `.env`, `public/storage`, FrankenPHP workery):
+  [Nasazení existujícího projektu → Problémy](nasazeni-projektu.md#problémy-na-které-jsme-narazili).
 
 
 ## .env z CI (GitHub Secrets)

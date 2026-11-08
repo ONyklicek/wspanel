@@ -14,6 +14,8 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |
 | nasazovat aplikaci z Gitu | [Deploy](deploy.md) |
 | nasazovat přes GitHub Releases / Actions | [Deploy → Release a CI](deploy.md#nasazení-releasů-a-z-ci-github-actions) |
+| napojit repozitář z GitHubu jedním kliknutím (jako Zerops) | [GitHub](github.md) |
+| převést existující aplikaci (CI build, Horizon, Reverb, FrankenPHP) | [Nasazení existujícího projektu](nasazeni-projektu.md) |
 | databázi a phpMyAdmin / Adminer | [Databáze](databaze.md) |
 | přístup k souborům | [SSH a SFTP](ssh-sftp.md) |
 | odesílat e-maily z webu, testovat je v Mailpitu | [Pošta](posta.md) |

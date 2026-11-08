@@ -14,7 +14,7 @@ class Deployment extends Model
 
     protected static string $ownerRelation = 'site';
 
-    protected $fillable = ['site_id', 'release', 'status', 'commit', 'ref', 'source', 'error', 'started_at', 'finished_at'];
+    protected $fillable = ['site_id', 'release', 'status', 'commit', 'ref', 'source', 'error', 'started_at', 'finished_at', 'github_deployment_id', 'github_status'];
 
     /** The agent's English text, shown in Czech (stored as it came). */
     protected function error(): Attribute
@@ -34,7 +34,7 @@ class Deployment extends Model
 
     public function statusLabel(): string
     {
-        return ['running' => __('běží'), 'success' => 'nasazeno', 'failed' => 'selhal', 'rolled_back' => __('vráceno zpět')][$this->status] ?? $this->status;
+        return ['running' => __('běží'), 'success' => __('nasazeno'), 'failed' => __('selhal'), 'rolled_back' => __('vráceno zpět')][$this->status] ?? $this->status;
     }
 
     public function statusColor(): string

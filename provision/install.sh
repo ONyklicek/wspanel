@@ -169,7 +169,7 @@ apt-get install -y -q --no-install-recommends \
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
 if [[ ! -f /etc/apt/sources.list.d/php.list ]]; then
-  curl -fsSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
+  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
   dpkg -i /tmp/debsuryorg-archive-keyring.deb
   echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" \
     > /etc/apt/sources.list.d/php.list
@@ -207,7 +207,7 @@ done
 if ! /usr/local/bin/frankenphp version 2>/dev/null | grep -q "${FRANKENPHP_VERSION#v}"; then
   log "FrankenPHP $FRANKENPHP_VERSION"
   tmp="$(mktemp)"
-  curl -fsSLo "$tmp" "https://github.com/php/frankenphp/releases/download/${FRANKENPHP_VERSION}/frankenphp-linux-${ARCH}"
+  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp" "https://github.com/php/frankenphp/releases/download/${FRANKENPHP_VERSION}/frankenphp-linux-${ARCH}"
   echo "${FRANKENPHP_SHA256[$ARCH]}  $tmp" | sha256sum -c - || die "FrankenPHP checksum mismatch"
   install -m 0755 "$tmp" /usr/local/bin/frankenphp
   rm -f "$tmp"
@@ -223,7 +223,7 @@ if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
   if ! /usr/local/bin/fnm --version 2>/dev/null | grep -q "${FNM_VERSION#v}"; then
     log "fnm $FNM_VERSION"
     tmp="$(mktemp -d)"
-    curl -fsSLo "$tmp/fnm.zip" "https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/${FNM_ASSET[$ARCH]}"
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/fnm.zip" "https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/${FNM_ASSET[$ARCH]}"
     echo "${FNM_SHA256[$ARCH]}  $tmp/fnm.zip" | sha256sum -c - || die "fnm checksum mismatch"
     unzip -q -o "$tmp/fnm.zip" -d "$tmp"
     install -m 0755 "$tmp/fnm" /usr/local/bin/fnm
@@ -338,7 +338,7 @@ systemctl restart opendkim postfix
 
 if ! /usr/local/bin/mailpit version 2>/dev/null | grep -q "${MAILPIT_VERSION}"; then
   tmp="$(mktemp -d)"
-  curl -fsSLo "$tmp/mailpit.tgz" "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/${MAILPIT_ASSET[$ARCH]}"
+  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/mailpit.tgz" "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/${MAILPIT_ASSET[$ARCH]}"
   echo "${MAILPIT_SHA256[$ARCH]}  $tmp/mailpit.tgz" | sha256sum -c - >/dev/null || die "mailpit checksum mismatch"
   tar -xzf "$tmp/mailpit.tgz" -C "$tmp" mailpit
   install -m 0755 "$tmp/mailpit" /usr/local/bin/mailpit
@@ -567,7 +567,7 @@ echo "d /run/wspanel-dbtools 0700 dbtools dbtools -" > /etc/tmpfiles.d/wspanel-d
 systemd-tmpfiles --create /etc/tmpfiles.d/wspanel-dbtools.conf
 if [[ "$(cat "$TOOLS/pma/RELEASE-DATE-$PMA_VERSION" 2>/dev/null)" == "" ]]; then
   tmp="$(mktemp -d)"
-  curl -fsSLo "$tmp/pma.tar.xz" "https://files.phpmyadmin.net/phpMyAdmin/$PMA_VERSION/phpMyAdmin-$PMA_VERSION-all-languages.tar.xz"
+  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/pma.tar.xz" "https://files.phpmyadmin.net/phpMyAdmin/$PMA_VERSION/phpMyAdmin-$PMA_VERSION-all-languages.tar.xz"
   echo "$PMA_SHA256  $tmp/pma.tar.xz" | sha256sum -c - || die "phpMyAdmin checksum mismatch"
   tar -xJf "$tmp/pma.tar.xz" -C "$tmp"
   rm -rf "$TOOLS/pma" && mv "$tmp/phpMyAdmin-$PMA_VERSION-all-languages" "$TOOLS/pma"
@@ -579,7 +579,7 @@ fi
 install -m 0644 "$HERE/files/dbtools/pma-signon.php" "$TOOLS/pma/wspanel-signon.php"
 if ! sha256sum "$TOOLS/adminer/adminer.php" 2>/dev/null | grep -q "$ADMINER_SHA256"; then
   install -d -m 0755 "$TOOLS/adminer"
-  curl -fsSLo "$TOOLS/adminer/adminer.php.new" "https://github.com/vrana/adminer/releases/download/v$ADMINER_VERSION/adminer-$ADMINER_VERSION.php"
+  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$TOOLS/adminer/adminer.php.new" "https://github.com/vrana/adminer/releases/download/v$ADMINER_VERSION/adminer-$ADMINER_VERSION.php"
   echo "$ADMINER_SHA256  $TOOLS/adminer/adminer.php.new" | sha256sum -c - || die "Adminer checksum mismatch"
   mv "$TOOLS/adminer/adminer.php.new" "$TOOLS/adminer/adminer.php"
 fi

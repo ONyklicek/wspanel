@@ -36,10 +36,34 @@
 - Aplikace ještě není nasazená (chybí `artisan` / `bin/console`). Po prvním
   deployi se spustí sám.
 
+**Horizon píše „Worker STOPPED Interrupted“**
+- Při `balance => auto` Horizon workery sám přidává a ubírá. Chyba to není,
+  pokud služba neběží v restartech (Server → Služby).
+
+**Po deployi zůstávají služby workerů *failed* (`status=11/SEGV`), web ve FrankenPHP**
+- Starší panel spouštěl workery FrankenPHP webu přes `frankenphp php-cli`, který
+  padá, když PHP obslouží signál. Po aktualizaci panelu první deploy přepíše
+  jednotky na systémové PHP. Staré záznamy uklidí `systemctl reset-failed`.
+
+**Reverb / Valkey poslouchá na portu pod 1024**
+- Záměr: porty webů jsou privilegované, port může obsadit jen služba daného webu.
+
 ## Deploy
 
 Viz [Deploy → Typické problémy](deploy.md#typické-problémy). Celý log každého
-deploye je na stránce Deploy (klik na řádek v Historii).
+deploye je na stránce Deploy (klik na řádek v Historii). Dále:
+
+- **„Web nemá nastavený repozitář, nasazuje se jen z CI“:** v Deploy →
+  Nastavení je repozitář prázdný. Deploy z Gitu i automatický deploy ho
+  potřebují, balík z CI ne.
+- **`storage:link`: „link already exists“, nahrané soubory nejsou vidět:**
+  repozitář verzuje `public/storage/.gitignore`. Panel složku nahradí odkazem;
+  soubor z repozitáře odeberte.
+- **V releasu jsou soubory `._*`:** balík zabalený tarem na macOS. Použijte
+  `COPYFILE_DISABLE=1 tar …`.
+- **Chyby napojení na GitHub:** [GitHub → Problémy](github.md#problémy).
+- Převod existující aplikace a vše, na co jsme přitom narazili:
+  [Nasazení existujícího projektu](nasazeni-projektu.md#problémy-na-které-jsme-narazili).
 
 ## Pošta
 

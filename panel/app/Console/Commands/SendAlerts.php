@@ -61,7 +61,7 @@ class SendAlerts extends Command
             foreach ($finished as $d) {
                 $site = $d->site;
                 $ok = $d->status === 'success';
-                $notifier->broadcast('deploys', $site?->client_id, ($ok ? 'Nasazeno: ' : 'Deploy selhal: ').($site?->domain ?? '?'),
+                $notifier->broadcast('deploys', $site?->client_id, ($ok ? __('Nasazeno: ') : __('Deploy selhal: ')).($site?->domain ?? '?'),
                     trim(($d->ref ? $d->ref.' ' : '').($d->commit ? substr($d->commit, 0, 8) : '').($ok ? '' : "\n".$d->statusLabel().($d->error ? ': '.$d->error : ''))));
             }
         }

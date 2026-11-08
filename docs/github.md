@@ -1,0 +1,137 @@
+# GitHub: napojení repozitáře jedním kliknutím
+
+Podobně jako v Zerops: připojíte účet GitHub, u webu vyberete repozitář a větev
+ze seznamu a panel přes GitHub API nastaví všechno ostatní sám. Nic se nekopíruje
+ručně (deploy klíč, adresa webhooku, secret) a výsledek každého deploye vidíte
+přímo v GitHubu.
+
+| Co panel udělá | Kde to v GitHubu uvidíte |
+|---|---|
+| přidá **deploy klíč** webu, jen pro čtení | Settings → Deploy keys → „WSPanel *doména*“ |
+| nastaví deploy webu na repozitář (`git@github.com:…`) a větev | – |
+| založí **webhook** na push (podepsaný secretem) | Settings → Webhooks |
+| nebo místo webhooku každou minutu kontroluje repozitář | – |
+| na přání uloží **CI token** jako secret `WSPANEL_TOKEN` | Settings → Secrets and variables → Actions |
+| každý deploy nahlásí jako **Deployment** se stavem a odkazy | stránka repozitáře → Deployments / Environments |
+
+Ruční cesty (vlastní Git server, GitLab, Bitbucket, webhook zadaný ručně) dál
+fungují, viz [Deploy](deploy.md).
+
+## 1. Token
+
+GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token.
+
+- **Resource owner:** vy nebo organizace, které repozitáře patří.
+- **Repository access:** *Only select repositories* a vyberte repozitáře,
+  které chcete nasazovat.
+- **Repository permissions:**
+
+| Oprávnění | Úroveň | Proč |
+|---|---|---|
+| Administration | Read and write | přidání a odebrání deploy klíče |
+| Webhooks | Read and write | založení a odebrání webhooku |
+| Deployments | Read and write | hlášení stavu deployů |
+| Contents | Read-only | seznam větví |
+| Metadata | Read-only | povinné, seznam repozitářů |
+| Secrets | Read and write | jen když má panel ukládat `WSPANEL_TOKEN` |
+
+- **Expiration:** podle vašich pravidel. Po vypršení panel hlásí „GitHub odmítl
+  token“ a stačí připojit nový (napojené weby zůstanou).
+
+Funguje i classic token (`ghp_…`) se scope `repo` a `admin:repo_hook`, ale dává
+přístup ke všem repozitářům účtu. Fine-grained je bezpečnější.
+
+## 2. Připojit účet
+
+Menu účtu (vpravo nahoře) → **API a CLI** → sekce **GitHub** → **Připojit GitHub**
+→ vložte token. Panel ho ověří u GitHubu (`GET /user`) a uloží **šifrovaně**.
+Token se už nikde nezobrazí. Účet vidí a používá jen uživatel, který ho připojil.
+Klient tak má svůj vlastní GitHub a správce svůj.
+
+## 3. Napojit web
+
+Detail webu → **Deploy** → tlačítko **GitHub**:
+
+1. **Účet GitHub**: když jich máte víc.
+2. **Repozitář**: seznam repozitářů, které token smí spravovat (🔒 = privátní).
+3. **Větev**: načte se z repozitáře.
+4. **Co nasadit**: každý push do větve, nebo nový release / tag (nasadí přesně
+   ten tag).
+5. **Jak se panel o změně dozví:**
+   - **Webhook**: okamžité. Panel musí být z internetu dostupný na své adrese
+     (`APP_URL`). Výchozí volba, když panel běží na veřejné doméně.
+   - **Kontrola každou minutu**: pro panel ve vnitřní síti, za NATem nebo na
+     `*.local`/`*.lan`. Nic nemusí volat dovnitř. Výchozí volba pro neveřejný panel.
+6. **Uložit CI token do secretů** (volitelné): pro deploy hotového buildu
+   z GitHub Actions. Vytvoří nový CI token (starý přestane platit) a uloží ho
+   do repozitáře jako `WSPANEL_TOKEN`, zašifrovaný veřejným klíčem repozitáře.
+
+Ostatní nastavení deploye (migrace, vlastní příkazy, údržbová stránka, počet
+releasů) zůstává, jak bylo. Když se kterýkoli krok nepovede (chybí oprávnění,
+GitHub nedostupný), panel smaže, co už v repozitáři stihl založit, a web zůstane
+nenapojený.
+
+Tlačítko pak ukazuje název repozitáře. Pod ním je **Odpojit**: panel z repozitáře
+odebere svůj webhook a deploy klíč, automatický deploy přes webhook vypne
+a nastavení deploye nechá.
+
+## Deploye v GitHubu
+
+Každý deploy webu (z tlačítka, webhooku, kontroly repozitáře, z CI i staging →
+produkce) se do minuty objeví v GitHubu jako **Deployment** commitu v prostředí
+`production`:
+
+- *in progress* → *success*, nebo *failure* (selhal nebo se vrátil zpět),
+- **View deployment** vede na web, **log** na stránku Deploy v panelu,
+- starší deploye v prostředí GitHub označí jako neaktivní.
+
+Hlásí se jen deploye od napojení. Build nahraný z CI s commitem, který
+v repozitáři není (lokální build), se přeskočí. GitHub ho nezná.
+
+## GitHub Actions s hotovým buildem
+
+S uloženým `WSPANEL_TOKEN` stačí ve workflow nahrát balík (vzor najdete
+v Deploy → Další → GitHub Actions / CI, včetně doplněné adresy):
+
+```yaml
+on:
+  release:
+    types: [published]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: composer install --no-dev --optimize-autoloader
+      - run: npm ci && npm run build
+      - run: tar --exclude=.git --exclude=node_modules -czf /tmp/build.tar.gz .
+      - run: |
+          curl -fsS -H "Authorization: Bearer ${{ secrets.WSPANEL_TOKEN }}" \
+            -F artifact=@/tmp/build.tar.gz -F ref=${{ github.ref_name }} -F commit=${{ github.sha }} \
+            https://panel.example.com/api/deploy/<id>/artifact
+```
+
+V tom případě v okně GitHub nechte „Jak se panel dozví“ na kontrole repozitáře
+a v Automatickém deployi ho vypněte. Jinak by se release nasadil dvakrát (jednou
+z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíčky,
+`.env` z GitHub vars) je v [Nasazení existujícího projektu](nasazeni-projektu.md).
+
+## Bezpečnost
+
+- Token je v databázi panelu šifrovaný (`APP_KEY`), ven se nepošle a v UI se
+  nezobrazí. Používá se jen pro volání uvedená výše.
+- Deploy klíč je **jen pro čtení** a patří jen tomuto webu (každý web má svůj).
+- Webhook je podepsaný secretem webu a panel přijme každé doručení jen jednou.
+- Účet GitHub patří uživateli: klient nepoužije účet správce ani jiného klienta.
+- Odpojení účtu odebere webhooky a klíče ze všech jeho napojených repozitářů.
+
+## Problémy
+
+| Hláška | Co s tím |
+|---|---|
+| GitHub odmítl token | token vypršel nebo byl zrušen; připojte nový (API a CLI → GitHub) |
+| Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
+| `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |
+| Repozitář chybí v seznamu | token ho nemá v *Repository access*, nebo k němu nemáte práva správce. Seznam se obnovuje po 5 minutách |
+| Webhook v GitHubu hlásí chyby doručení | panel není z internetu dostupný; přepněte na kontrolu každou minutu (GitHub → Napojit znovu) |
+| Deploy se v GitHubu neukazuje | build z CI s commitem, který v repozitáři není, se přeskočí; jinak počkejte minutu (hlásí se při `panel:sync`) |

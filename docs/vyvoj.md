@@ -58,6 +58,24 @@ docs/       tato dokumentace (v panelu v menu Dokumentace)
 
 Texty panelu se píšou česky a obalují do `__('…')`; český text je zároveň klíčem. Anglický překlad je v `panel/lang/en.json` (klíč = česká věta). Při nové větě ji přidejte i tam, jinak se v angličtině zobrazí česky. Hodnoty se proměnnými pište s placeholdery (`__('Web :domain smazán', ['domain' => $d])`), ne skládáním řetězců. Popisky v konstantách (`const`, výchozí hodnoty vlastností) se překládají až při použití: `__($label)` nebo `App\Support\Lang::values($pole)`. Chybové hlášky agenta (anglicky) převádí do češtiny `AgentMessages`; v angličtině se ukazují v originále.
 
+## Simulace deploye skutečného projektu
+
+`dev/simulate-project-deploy.sh <cesta k projektu> [volby]` postaví na Macu
+balík z libovolného Laravel projektu stejně jako GitHub Action, v dev panelu
+připraví web a nasadí ho přes CI API. S `--franken` pak i v režimu FrankenPHP.
+Postup, volby a co kontroluje: [Nasazení existujícího projektu → Simulace](nasazeni-projektu.md#simulace-na-vlastním-projektu).
+
+Dev kontejner má `ip_unprivileged_port_start=0` (Docker), takže tam projde
+i to, co by na skutečném Debianu neprošlo (nízké porty pro uživatele webu).
+Instalace ho nastavuje na 1024.
+
+**Zapomenuté heslo do dev panelu:**
+
+```bash
+docker compose -f dev/compose.yaml exec devserver bash -c 'cd /srv/panel/current && runuser -u panel -- php artisan tinker \
+  --execute "App\\Models\\User::where(\"email\", \"admin@dev.local\")->sole()->forceFill([\"password\" => Hash::make(\"nove-heslo\")])->save();"'
+```
+
 ## Simulace release flow (GitHub Release → Actions → panel)
 
 ```
