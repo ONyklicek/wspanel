@@ -161,6 +161,7 @@ class ManageGitHub
             'deploy_polled_at' => null,
             'deploy_poll_error' => null,
         ]);
+        ManageWebhook::syncEdge($site);
         $connection->update(['last_used_at' => now()]);
 
         return ['trigger' => $trigger, 'ci_secret' => $ciSecret];

@@ -467,3 +467,47 @@ func siteDirectives(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	}
 	return map[string]any{"domain": p.Domain, "directives": src}, nil
 }
+
+var hookIDRe = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
+// siteHook sets (or removes, with an empty id) the route that brings this
+// site's deploy webhook in through its own domain. The panel decides when:
+// only for a site with webhook deploys, when webhooks from the internet are
+// allowed and the internet does not reach the panel itself.
+func siteHook(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
+	var p struct {
+		Domain string `json:"domain"`
+		HookID string `json:"hook_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.HookID != "" && !hookIDRe.MatchString(p.HookID) {
+		return nil, protocol.Invalid("hook_id: 32 hex characters")
+	}
+	st, _, err := loadSite(env, p.Domain)
+	if err != nil {
+		return nil, err
+	}
+	if st.HookID == p.HookID {
+		return map[string]any{"domain": p.Domain, "hook": p.HookID != "", "changed": false}, nil
+	}
+	st.HookID = p.HookID
+	l, err := layout(env.Cfg, st)
+	if err != nil {
+		return nil, err
+	}
+	var rollback undo
+	defer func() {
+		if err != nil {
+			rollback.run()
+		}
+	}()
+	if err = writeEdge(ctx, env, l, &rollback); err != nil {
+		return nil, err
+	}
+	if err = saveSiteState(env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"domain": p.Domain, "hook": p.HookID != "", "changed": true}, nil
+}

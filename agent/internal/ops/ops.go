@@ -93,6 +93,7 @@ func Registry() map[string]Op {
 		{"db.server_status", false, dbServerStatus},
 		{"site.php", true, sitePHP},
 		{"site.edge", true, siteEdge},
+		{"site.hook", true, siteHook},
 		{"site.files", true, siteFiles},
 		{"site.backup", false, siteBackup}, // async; holds the site, not the global lock
 		{"site.backups", false, siteBackups},

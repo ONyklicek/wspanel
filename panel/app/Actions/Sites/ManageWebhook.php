@@ -4,6 +4,7 @@ namespace App\Actions\Sites;
 
 use App\Actions\ManagePanelAccess;
 use App\Models\Site;
+use App\Services\Agent\AgentClient;
 use App\Support\PublicAddress;
 
 class ManageWebhook
@@ -16,6 +17,7 @@ class ManageWebhook
             'webhook_secret' => $site->webhook_secret ?? bin2hex(random_bytes(32)),
             'webhook_enabled' => true,
         ]);
+        self::syncEdge($site);
 
         return $site;
     }
@@ -23,6 +25,7 @@ class ManageWebhook
     public function disable(Site $site): Site
     {
         $site->update(['webhook_enabled' => false, 'deploy_requested_at' => null]);
+        self::syncEdge($site);
 
         return $site;
     }
@@ -31,6 +34,7 @@ class ManageWebhook
     public function rotate(Site $site): Site
     {
         $site->update(['webhook_id' => bin2hex(random_bytes(16)), 'webhook_secret' => bin2hex(random_bytes(32)), 'deploy_requested_at' => null]);
+        self::syncEdge($site, force: (bool) $site->webhook_via_site); // the route names the old id
 
         return $site;
     }
@@ -59,17 +63,53 @@ class ManageWebhook
         if (self::panelReachable()) {
             return self::url($site);
         }
-        if (PublicAddress::host($site->domain)) {
+        if (self::hooksFromInternet() && PublicAddress::host($site->domain)) {
             return $site->url('/.well-known/wspanel-deploy/'.$site->webhook_id);
         }
 
         return null;
     }
 
-    /** Whether a webhook can reach this site at all (through the panel or the site's domain). */
+    /** Whether a webhook from the internet can reach this site at all (through the panel or the site's domain). */
     public static function reachable(Site $site): bool
     {
-        return self::panelReachable() || PublicAddress::host($site->domain);
+        return self::panelReachable() || (self::hooksFromInternet() && PublicAddress::host($site->domain));
+    }
+
+    /** The administrator's choice in the panel access: webhooks from the internet allowed (default yes). */
+    public static function hooksFromInternet(): bool
+    {
+        return (bool) (app(ManagePanelAccess::class)->current()['public_hooks'] ?? true);
+    }
+
+    /**
+     * Whether the site's edge should pass its webhook to the panel: webhook
+     * deploys on, webhooks from the internet allowed, the panel itself out of
+     * the internet's reach, and the site on a public domain.
+     */
+    public static function viaSite(Site $site): bool
+    {
+        return $site->webhook_enabled && $site->webhook_id !== null
+            && in_array($site->deploy_trigger, ['branch', 'tags'], true)
+            && self::hooksFromInternet() && ! self::panelReachable() && PublicAddress::host($site->domain);
+    }
+
+    /**
+     * Tells the agent whether this site's edge carries its webhook route (its
+     * own hook id only), when that changes. A rotated hook id re-sends it.
+     * Best effort: a failure leaves the route as it was and is reported;
+     * webhook deploys through the panel itself are unaffected.
+     */
+    public static function syncEdge(Site $site, bool $force = false): void
+    {
+        $want = self::viaSite($site);
+        if (! $force && $want === (bool) $site->webhook_via_site) {
+            return;
+        }
+        rescue(function () use ($site, $want) {
+            app(AgentClient::class)->call('site.hook', ['domain' => $site->domain, 'hook_id' => $want ? (string) $site->webhook_id : '']);
+            $site->forceFill(['webhook_via_site' => $want])->saveQuietly();
+        }, report: true);
     }
 
     /** The panel on a public address, and its access list (if any) lets webhooks through. */

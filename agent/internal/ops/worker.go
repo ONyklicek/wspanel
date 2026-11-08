@@ -297,7 +297,6 @@ func allWorkerUnits(cfg config.Config) []string {
 	return out
 }
 
-
 // workerPHP is the PHP that runs a site's long-running workers: the CLI of
 // the site's version. In worker mode too it is a system CLI and not
 // FrankenPHP's php-cli, which crashes (SIGSEGV) as soon as a PHP signal
@@ -342,4 +341,3 @@ func newerVersion(a, b string) bool {
 	}
 	return false
 }
-

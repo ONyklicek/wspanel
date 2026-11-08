@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\ManagePanelAccess;
 use App\Actions\Sites\ManageGitHub;
 use App\Actions\Sites\ManageWebhook;
 use App\Actions\Sites\ReportGitHubDeployments;
@@ -290,16 +291,19 @@ class GitHubDeployTest extends TestCase
             && $r['config']['url'] === 'https://app.example.com/.well-known/wspanel-deploy/'.$site->webhook_id);
     }
 
-    public function test_a_public_panel_limited_to_some_addresses_also_goes_through_the_site(): void
+    public function test_a_panel_limited_to_some_addresses_follows_the_administrators_webhook_choice(): void
     {
-        Setting::put('panel_access', ['allow' => ['10.0.0.0/8'], 'public_hooks' => false]);
         app(ManageWebhook::class)->enable($this->site);
 
-        $this->assertSame('https://app.example.com/.well-known/wspanel-deploy/'.$this->site->fresh()->webhook_id, ManageWebhook::publicUrl($this->site->fresh()));
-        $this->assertStringStartsWith('https://panel.example.com/hooks/deploy/', (string) ManageWebhook::url($this->site->fresh()), 'a git server in the same network still uses the panel');
-
+        // Webhooks allowed through the access list: GitHub calls the panel itself.
         Setting::put('panel_access', ['allow' => ['10.0.0.0/8'], 'public_hooks' => true]);
         $this->assertStringStartsWith('https://panel.example.com/hooks/deploy/', (string) ManageWebhook::publicUrl($this->site->fresh()));
+        $this->assertFalse(ManageWebhook::viaSite($this->site->fresh()), 'the panel answers; no route through the site');
+
+        // Webhooks from the internet forbidden: none at all, not through the site either.
+        Setting::put('panel_access', ['allow' => ['10.0.0.0/8'], 'public_hooks' => false]);
+        $this->assertNull(ManageWebhook::publicUrl($this->site->fresh()));
+        $this->assertStringStartsWith('https://panel.example.com/hooks/deploy/', (string) ManageWebhook::url($this->site->fresh()), 'a git server in the same network still uses the panel');
     }
 
     public function test_when_neither_the_panel_nor_the_site_is_public_only_watching_is_offered(): void
@@ -311,6 +315,37 @@ class GitHubDeployTest extends TestCase
 
         $this->assertNull(ManageWebhook::publicUrl(tap($this->site->fresh(), fn ($s) => app(ManageWebhook::class)->enable($s))));
         $this->assertFalse(ManageWebhook::reachable($this->site->fresh()));
+    }
+
+    public function test_the_site_carries_only_its_own_hook_route_and_only_when_needed(): void
+    {
+        config(['app.url' => 'https://panel.firma.lan']);
+        $sent = [];
+        $this->agent->shouldReceive('call')->with('site.hook', Mockery::on(function (array $p) use (&$sent) {
+            $sent[] = $p;
+
+            return true;
+        }))->andReturn([]);
+        $this->fakeGitHub();
+
+        app(ManageGitHub::class)->link($this->site, $this->connection(), ['repo' => 'acme/app', 'branch' => 'main', 'trigger' => 'branch', 'notify' => 'webhook']);
+
+        $id = $this->site->fresh()->webhook_id;
+        $this->assertSame(['domain' => 'app.example.com', 'hook_id' => $id], end($sent), 'the route for this site\'s own hook');
+
+        // The administrator forbids webhooks from the internet: the route goes away everywhere.
+        $this->agent->shouldReceive('call')->with('panel.access', Mockery::any())->andReturn([]);
+        app(ManagePanelAccess::class)->set(['10.0.0.0/8'], false, null);
+        $this->assertSame(['domain' => 'app.example.com', 'hook_id' => ''], end($sent));
+        $this->assertNull(ManageWebhook::publicUrl($this->site->fresh()));
+        $this->assertFalse(ManageWebhook::reachable($this->site->fresh()));
+
+        // Watching instead of a webhook: no route either.
+        app(ManagePanelAccess::class)->set(['10.0.0.0/8'], true, null);
+        $this->assertSame($id, end($sent)['hook_id']);
+        $this->site->fresh()->update(['deploy_trigger' => 'poll_branch']);
+        ManageWebhook::syncEdge($this->site->fresh());
+        $this->assertSame('', end($sent)['hook_id']);
     }
 
     public function test_a_local_panel_is_not_public(): void

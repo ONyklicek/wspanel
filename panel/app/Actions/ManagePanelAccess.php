@@ -2,9 +2,12 @@
 
 namespace App\Actions;
 
+use App\Actions\Sites\ManageWebhook;
 use App\Models\Setting;
+use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\CurrentClient;
 use InvalidArgumentException;
 
 /**
@@ -34,6 +37,8 @@ class ManagePanelAccess
         }
         $this->agent->call('panel.access', ['allow' => $allow, 'public_hooks' => $publicHooks]);
         Setting::put('panel_access', ['allow' => $allow, 'public_hooks' => $publicHooks]);
+        // Who reaches the panel decides which sites carry their webhook route.
+        CurrentClient::unrestricted(fn () => Site::query()->whereNotNull('webhook_id')->get()->each(fn (Site $s) => ManageWebhook::syncEdge($s)));
     }
 
     /** @param  list<string>  $allow */

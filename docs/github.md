@@ -253,10 +253,16 @@ z internetu jen weby. Panel to pozná a webhooky podle toho nasměruje:
 | jen lokální síť / omezený na adresy | veřejná doména | **přes doménu webu**: `https://<web>/.well-known/wspanel-deploy/<id>` |
 | jen lokální síť | interní (`.local`, `.lan`, privátní IP) | nikam: panel repozitář **kontroluje každou minutu** |
 
-Přes doménu webu edge pustí k panelu **jen tuto jednu cestu** s neuhádnutelným
-ID webu, a to i když má web omezení na IP adresy nebo heslo (GitHub ani jedno
-nemá). Panel každé doručení ověří podpisem HMAC a přijme ho jen jednou. Zbytek
-panelu z internetu dostupný není.
+Přes doménu webu edge pustí k panelu **jen tuto jednu cestu**, a to **jen
+s ID tohoto webu**, i když má web omezení na IP adresy nebo heslo (GitHub ani
+jedno nemá). Cestu dostane jen web, který má automatický deploy webhookem; při
+kontrole repozitáře nebo vypnutém deployi ji panel zase odebere. Panel každé
+doručení ověří podpisem HMAC a přijme ho jen jednou. Zbytek panelu z internetu
+dostupný není.
+
+Kdo webhooky z internetu nechce vůbec: Server → Firewall → Přístup k panelu →
+vypnout *webhooky a CI API mohou zůstat veřejné*. Panel pak cestu odebere ze
+všech webů a nabízí jen kontrolu repozitáře každou minutu.
 
 Ostatní na přístupnosti panelu nezávisí:
 

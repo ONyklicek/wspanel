@@ -53,6 +53,9 @@ type siteState struct {
 	// Maintenance: while set (a bypass secret), the edge shows a maintenance
 	// page (a deploy's migrations); the secret's cookie lets the operator in.
 	Maintenance string `json:"maintenance,omitempty"`
+	// HookID: the site's deploy webhook id when the panel asks for it to come
+	// in through the site's own domain (a panel the internet does not reach).
+	HookID string `json:"hook_id,omitempty"`
 	// Directives: custom Caddyfile rules in the site's edge route (checked by checkDirectives).
 	Directives string `json:"directives,omitempty"`
 	// ValkeyPort: the site's Valkey port, kept after Valkey is switched off

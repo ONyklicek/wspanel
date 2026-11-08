@@ -72,15 +72,9 @@ func TestEdgeSettingsRender(t *testing.T) {
 	if strings.Index(string(edge), "basic_auth") > strings.LastIndex(string(edge), "reverse_proxy") {
 		t.Fatal("basic_auth after reverse_proxy")
 	}
-	// The deploy webhook (a panel on the local network) comes in through the
-	// site's domain: exactly that path, to the panel, ahead of the site's IP
-	// list and password (GitHub is neither); the panel checks the signature.
-	hook := strings.Index(string(edge), "@wsp_deploy_hook path_regexp wsp_hook ^/\\.well-known/wspanel-deploy/([a-f0-9]{32})$")
-	if hook < 0 || !strings.Contains(string(edge), "rewrite * /hooks/deploy/{re.wsp_hook.1}") || !strings.Contains(string(edge), "header_up Host wspanel-panel.internal") {
-		t.Fatalf("deploy webhook route missing:\n%s", edge)
-	}
-	if hook > strings.Index(string(edge), "@wsp_not_allowed") || hook > strings.Index(string(edge), "basic_auth") {
-		t.Fatal("the webhook route must come before the site's own access rules")
+	// No deploy webhook route unless the panel sets one for this site.
+	if strings.Contains(string(edge), "wspanel-deploy") {
+		t.Fatalf("a hook route nobody asked for:\n%s", edge)
 	}
 	for _, c := range dr.Calls() {
 		if strings.Contains(strings.Join(c.Args, " "), "s3cret") {
@@ -193,7 +187,7 @@ func TestRenderEdgesRefreshesStaleBlocks(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("refreshed %d, %v", n, err)
 	}
-	if edge, _ := os.ReadFile(l.EdgeFile); !strings.Contains(string(edge), "wsp_deploy_hook") {
+	if edge, _ := os.ReadFile(l.EdgeFile); !strings.Contains(string(edge), "shop.example.com") {
 		t.Fatalf("not re-rendered:\n%s", edge)
 	}
 	before := len(dr.Calls())
@@ -202,5 +196,43 @@ func TestRenderEdgesRefreshesStaleBlocks(t *testing.T) {
 	}
 	if len(dr.Calls()) != before {
 		t.Error("nothing changed, yet the proxy was validated or reloaded")
+	}
+}
+
+// The panel sets the site's own webhook route (a panel the internet does not
+// reach): exactly that site's hook id, ahead of its IP and password rules;
+// removing it leaves nothing behind.
+func TestSiteHookRoute(t *testing.T) {
+	env, _ := edgeEnv(t)
+	if _, err := call(t, env, siteEdge, map[string]any{"domain": "shop.example.com", "allow_ips": []string{"203.0.113.7"}, "allow_path": "/"}); err != nil {
+		t.Fatal(err)
+	}
+	id := "0123456789abcdef0123456789abcdef"
+	if _, err := call(t, env, siteHook, map[string]string{"domain": "shop.example.com", "hook_id": id}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := layoutFor(t, env, "shop.example.com")
+	edge, _ := os.ReadFile(l.EdgeFile)
+	for _, want := range []string{"@wsp_deploy_hook path /.well-known/wspanel-deploy/" + id, "rewrite * /hooks/deploy/" + id, "header_up Host wspanel-panel.internal"} {
+		if !strings.Contains(string(edge), want) {
+			t.Errorf("missing %q:\n%s", want, edge)
+		}
+	}
+	if strings.Index(string(edge), "@wsp_deploy_hook") > strings.Index(string(edge), "@wsp_not_allowed") {
+		t.Error("the hook route must come before the site's IP list (GitHub is not on it)")
+	}
+	if other, _ := os.ReadFile(func() string { l, _ := layoutFor(t, env, "blog.example.com"); return l.EdgeFile }()); strings.Contains(string(other), "wspanel-deploy") {
+		t.Error("another site got the route")
+	}
+	for _, bad := range []string{"x", "../../etc", strings.ToUpper(id)} {
+		if _, err := call(t, env, siteHook, map[string]string{"domain": "shop.example.com", "hook_id": bad}); code(err) != protocol.CodeInvalidParams {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+	if _, err := call(t, env, siteHook, map[string]string{"domain": "shop.example.com", "hook_id": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if edge, _ := os.ReadFile(l.EdgeFile); strings.Contains(string(edge), "wspanel-deploy") {
+		t.Error("route left after removal")
 	}
 }
