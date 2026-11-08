@@ -5,14 +5,15 @@ namespace Tests\Feature;
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
-use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteLogs;
 use App\Livewire\Sites\SiteProcesses;
+use App\Livewire\Sites\SiteSettings;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Dns\Resolver;
+use App\Wire\Resources\SiteResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -70,12 +71,12 @@ class SiteControlTest extends TestCase
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()->with('site.disable', ['domain' => 'app.example.com'])->andReturn(['enabled' => false]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'disable')->assertHasNoErrors();
+        $this->siteSetting($site, 'disable')->assertHasNoErrors();
         $this->assertFalse($site->refresh()->enabled);
         $this->assertSame('Vypnutý', $site->stateLabel());
 
         $this->agent->shouldReceive('call')->once()->with('site.enable', ['domain' => 'app.example.com'])->andReturn(['enabled' => true]);
-        $this->pageAction(Livewire::test(ViewSite::class, ['record' => $site->id]), 'enable')->assertHasNoErrors();
+        $this->siteSetting($site, 'enable')->assertHasNoErrors();
         $this->assertTrue($site->refresh()->enabled);
     }
 
@@ -158,7 +159,7 @@ class SiteControlTest extends TestCase
             ->with('site.tls', Mockery::on(fn ($p) => $p['mode'] === 'custom' && str_starts_with($p['cert'], '-----BEGIN CERTIFICATE') && str_starts_with($p['key'], '-----BEGIN PRIVATE KEY')))
             ->andReturn(['mode' => 'custom', 'certificate' => ['issuer' => 'Firma CA', 'not_after' => '2027-01-01T00:00:00Z']]);
 
-        $list = $this->tableAction(Livewire::test(ListSites::class), $site, 'tls', ['mode' => 'custom', 'cert' => "-----BEGIN CERTIFICATE-----\nA\n", 'key' => "-----BEGIN PRIVATE KEY-----\nB\n"]);
+        $list = $this->siteSetting($site, 'tls', ['mode' => 'custom', 'cert' => "-----BEGIN CERTIFICATE-----\nA\n", 'key' => "-----BEGIN PRIVATE KEY-----\nB\n"]);
         $list->assertHasNoErrors()->assertNotified(type: 'success');
         $this->assertSame('custom', $site->refresh()->tls_mode);
     }
@@ -188,7 +189,7 @@ class SiteControlTest extends TestCase
                 && (array) $p['settings'] === ['memory_limit' => '512M', 'date.timezone' => 'Europe/Prague', 'display_errors' => 'on']))
             ->andReturn(['settings' => ['memory_limit' => '512M', 'date.timezone' => 'Europe/Prague', 'display_errors' => 'on']]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'phpSettings', [
+        $this->siteSetting($site, 'phpSettings', [
             'memory_limit' => '512M', 'date__timezone' => 'Europe/Prague', 'display_errors' => 'on', 'max_input_vars' => '',
         ])->assertHasNoErrors()->assertNotified('PHP nastavení uloženo');
 
@@ -202,7 +203,7 @@ class SiteControlTest extends TestCase
         $this->agent->shouldNotReceive('call')->with('site.php', Mockery::any());
 
         foreach ([['memory_limit' => 'lots'], ['max_execution_time' => '99999'], ['date__timezone' => 'Mars/Base'], ['display_errors' => 'maybe']] as $bad) {
-            $this->tableAction(Livewire::test(ListSites::class), $site, 'phpSettings', $bad)->assertHasErrors();
+            $this->siteSetting($site, 'phpSettings', $bad)->assertHasErrors();
         }
     }
 
@@ -227,7 +228,7 @@ class SiteControlTest extends TestCase
                 && $p['allow_ips'] === ['203.0.113.7'] && $p['hsts'] === true))
             ->andReturn(['edge' => ['aliases' => ['app.example.net'], 'redirect_hosts' => ['www.app.example.com'], 'auth_path' => '/admin', 'auth_user' => 'boss', 'hsts' => true]]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', [
+        $this->siteSetting($site, 'edge', [
             'aliases' => ['app.example.net'], 'redirect_hosts' => ['www.app.example.com'],
             'redirects' => [['from' => '/old', 'to' => '/new', 'code' => 301]],
             'auth_mode' => 'path', 'auth_path' => '/admin', 'auth_user' => 'boss', 'auth_password' => 'secret-pass',
@@ -253,7 +254,7 @@ class SiteControlTest extends TestCase
             ['allow_ips' => 'office'],
             ['headers' => [['name' => 'X-A', 'value' => 'a" b']]],
         ] as $bad) {
-            $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', $bad)->assertHasErrors();
+            $this->siteSetting($site, 'edge', $bad)->assertHasErrors();
         }
     }
 
@@ -270,8 +271,22 @@ class SiteControlTest extends TestCase
         });
         $this->agent->shouldReceive('call')->twice()->with('site.edge', Mockery::any())->andReturn(['edge' => []]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['elsewhere.example.com']])->assertHasErrors();
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['elsewhere.example.com'], 'dns_anyway' => true])->assertHasNoErrors();
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['shop.example.com']])->assertHasNoErrors();
+        $this->siteSetting($site, 'edge', ['aliases' => ['elsewhere.example.com']])->assertHasErrors();
+        $this->siteSetting($site, 'edge', ['aliases' => ['elsewhere.example.com'], 'dns_anyway' => true])->assertHasNoErrors();
+        $this->siteSetting($site, 'edge', ['aliases' => ['shop.example.com']])->assertHasNoErrors();
+    }
+
+    public function test_the_settings_tab_shows_each_area_and_opens_its_dialog(): void
+    {
+        $site = $this->site();
+        $site->update(['edge_settings' => ['aliases' => ['app.example.net'], 'auth_path' => '/admin', 'auth_user' => 'boss']]);
+
+        $page = Livewire::test(SiteSettings::class, ['record' => $site->id])
+            ->assertSee(['Domény a HTTPS', 'app.example.net', 'na /admin (uživatel boss)', 'Běh a PHP', 'Nebezpečná zóna']);
+
+        $page->call('callInfolistAction', 'open_tls');
+        $this->assertSame('tls', $page->get('mountedActions')[0]['name']);
+
+        $this->get(SiteResource::url('settings', $site).'?action=edge')->assertOk();
     }
 }

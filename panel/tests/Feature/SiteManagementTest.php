@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\SiteStatus;
 use App\Livewire\Sites\CreateSitePage as CreateSite;
-use App\Livewire\Sites\ListSites;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -102,7 +101,7 @@ class SiteManagementTest extends TestCase
     {
         $site = Site::create(['domain' => 'old.example.com', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'delete', ['confirm' => 'wrong.example.com'])
+        $this->siteSetting($site, 'delete', ['confirm' => 'wrong.example.com'])
             ->assertHasErrors();
         $this->assertModelExists($site);
 
@@ -110,7 +109,7 @@ class SiteManagementTest extends TestCase
             ->with('site.delete', ['domain' => 'old.example.com', 'confirm' => 'old.example.com'])
             ->andReturn(['trashed_to' => '/srv/sites/.trash/old.example.com-x']);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'delete', ['confirm' => 'old.example.com'])
+        $this->siteSetting($site, 'delete', ['confirm' => 'old.example.com'])
             ->assertHasNoErrors();
         $this->assertModelMissing($site);
     }

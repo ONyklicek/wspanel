@@ -2,8 +2,11 @@
 
 namespace Tests\Concerns;
 
+use App\Livewire\Sites\SiteSettings;
+use App\Models\Site;
 use Illuminate\Database\Eloquent\Model;
 use Livewire\Features\SupportTesting\Testable;
+use Livewire\Livewire;
 
 /**
  * Drives WireStack actions the way the browser does: open the modal, fill its
@@ -75,6 +78,16 @@ trait RunsWireActions
         foreach ($data as $key => $value) {
             $component->set("{$frames}.{$depth}.data.{$key}", $value);
         }
+    }
+
+    /**
+     * A dialog of the site's Nastavení tab (opened as its section button does).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function siteSetting(Site $site, string $action, array $data = []): Testable
+    {
+        return $this->pageAction(Livewire::test(SiteSettings::class, ['record' => $site->getKey()]), $action, $data);
     }
 
     /** Whether a row action of a table page is offered for the record. */

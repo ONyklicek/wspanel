@@ -34,8 +34,8 @@ Co se při založení stane:
 
 ## HTTPS a certifikáty
 
-Každý web běží jen přes HTTPS. Certifikát se mění na detailu webu: **Další →
-HTTPS / certifikát**.
+Každý web běží jen přes HTTPS. Certifikát se mění na detailu webu: **Nastavení →
+Domény a HTTPS → HTTPS**.
 
 | Volba | Pro koho | Co je potřeba |
 |---|---|---|
@@ -172,7 +172,7 @@ zálohy, ideálně se šifrováním a verzováním na straně úložiště.
 
 ## Domény a přístup
 
-Detail webu → **Další → Domény a přístup**. Vše zpracuje proxy ještě před
+Detail webu → **Nastavení → Domény a přístup**. Vše zpracuje proxy ještě před
 aplikací, takže to funguje pro každý typ webu.
 
 - **Další domény webu:** web odpovídá i na nich (stejný obsah), každá dostane
@@ -194,7 +194,7 @@ předchozí stav.
 
 ## PHP nastavení webu
 
-Detail webu → **Další → PHP nastavení**. Prázdné pole = výchozí hodnota PHP.
+Detail webu → **Nastavení → Běh a PHP → PHP nastavení**. Prázdné pole = výchozí hodnota PHP.
 
 | Nastavení | Příklad | Poznámka |
 |---|---|---|
@@ -226,7 +226,7 @@ a jejich rozšíření.
   packages.sury.org (imagick, swoole, mongodb, xdebug…). Po změně se PHP-FPM
   plynule znovu načte. Odebrané rozšíření přestane fungovat všem webům na té verzi.
 - **Doinstalovat verzi PHP** (8.1–8.5) se stejnou sadou rozšíření jako při
-  instalaci serveru. Web na ni přepnete v Další → Změnit verzi.
+  instalaci serveru. Web na ni přepnete v Nastavení → Běh a PHP → Verze.
 - **FrankenPHP** (worker režim) je jedna binárka s pevnou sadou rozšíření;
   stránka je vypíše. Novou verzi FrankenPHP nainstalujete v Server → Služby.
 
@@ -234,7 +234,7 @@ a jejich rozšíření.
 
 Pro weby bez frameworku zvolte typ **Čisté PHP**. Deploy z Gitu nepotřebujete:
 
-1. Na detailu webu: **Další → SSH / SFTP**, přístup **Jen SFTP**. Vložte veřejný
+1. Na detailu webu: **Nastavení → Přístup → SSH / SFTP**, přístup **Jen SFTP**. Vložte veřejný
    klíč, nebo zvolte **Vygenerovat heslo**.
 2. Připojte se SFTP klientem (FileZilla, Cyberduck, WinSCP, `sftp`):
    - server: doména panelu nebo IP serveru, port 22,
@@ -292,11 +292,16 @@ Klik na web v seznamu otevře detail:
   procesu aplikace.
 
 Akce v hlavičce:
-- **Otevřít web**,
-- **Deploy**,
-- **Restartovat**,
-- **Další:** vypnout web, změnit režim nebo verzi, ověřit odezvu, databáze,
-  SSH/SFTP, přidat worker, smazat.
+- **Otevřít web**, **Přístupové údaje**, **Deploy**,
+- **Další:** restartovat, ověřit odezvu, nová databáze, přidat worker
+  a odkaz na Nastavení.
+
+Záložka **Nastavení** ukazuje vše, co je u webu nastavené, po oblastech:
+Domény a HTTPS, Přístup (SSH/SFTP, heslo, IP), Běh a PHP (verze, režim, PHP
+nastavení), Pravidla webserveru, Výkon a ladění (Valkey, XHProf), Staging
+a přesun, Vlastník a Nebezpečná zóna (vypnout, smazat). U každé oblasti je
+tlačítko, které otevře její úpravu. Každá úprava má i vlastní adresu
+(`…/settings?action=tls`), takže na ni jde poslat odkaz.
 
 ## Zapnutí, vypnutí, restart
 
@@ -366,7 +371,7 @@ shodovaly s aplikací. Nic z toho není třeba psát ručně:
 
 ## Pravidla webserveru
 
-**Další → Pravidla webserveru**: vlastní pravidla webu v syntaxi Caddy (obdoba
+**Nastavení → Pravidla webserveru**: vlastní pravidla webu v syntaxi Caddy (obdoba
 „dalších direktiv nginx“ jinde). Platí v pořadí, jak jsou napsaná, za
 přístupovými pravidly panelu (heslo, IP) a před aplikací.
 
@@ -402,7 +407,7 @@ request_body {
 ## Valkey (Redis)
 
 Každý web si může zapnout **vlastní Valkey server** (plně kompatibilní
-s Redisem): **Další → Valkey (Redis)**.
+s Redisem): **Nastavení → Výkon a ladění → Valkey**.
 
 - Běží pod uživatelem webu na `127.0.0.1` a vlastním portu (každý web má
   jiný) a chrání ho heslo. Port je dostupný jen ze serveru, ne z internetu;
@@ -441,7 +446,7 @@ U čistého PHP webu (třeba WordPress z cPanelu):
    (`cpmove-<účet>.tar.gz`, cPanel → Backup → Full Backup) nebo archiv
    souborů webu (`.tar.gz`, se složkou `public_html/` nebo `public/`, nebo
    rovnou obsah webu).
-2. **Další → Importovat web** a zadejte název souboru.
+2. **Nastavení → Staging a přesun → Importovat web** a zadejte název souboru.
 
 Soubory se rozbalí do webu pod jeho uživatelem. Každý dump databáze ze zálohy
 (`mysql/*.sql`) dostane novou databázi webu (MariaDB) a nahraje se do ní.
@@ -451,7 +456,7 @@ Schránky a zprávy přeneste poštovním programem nebo `imapsync`.
 
 ## Staging
 
-**Další → Vytvořit staging** udělá kopii webu na `staging.<doména>`:
+**Nastavení → Staging a přesun → Vytvořit staging** udělá kopii webu na `staging.<doména>`:
 
 - aktuální verzi aplikace (nasazenou jako běžný deploy) a sdílené soubory
   (nahrané soubory, storage) bez `.env`, protože staging má vlastní nastavení,
@@ -486,7 +491,7 @@ Návštěvnost se drží 90 dní, kontroly dostupnosti 30 dní.
 ## Profilování (XHProf + XHGui)
 
 Volitelný modul (`install.sh --xhprof=yes` nebo **Server → Moduly**). U webu
-v režimu PHP-FPM ho zapnete v **Další → Profilování** a zvolíte, kolik procent
+v režimu PHP-FPM ho zapnete v **Nastavení → Výkon a ladění → XHProf** a zvolíte, kolik procent
 požadavků měřit (na produkci jen část, měření požadavek zpomalí).
 
 - Rozšíření XHProf se načte jen do poolu webů, které profilování mají zapnuté,
@@ -512,7 +517,7 @@ požadavků měřit (na produkci jen část, měření požadavek zpomalí).
 
 ## Smazání webu
 
-Detail → Další → **Smazat**, pro potvrzení napište doménu. Odstraní se:
+Detail → Nastavení → Nebezpečná zóna → **Smazat web**, pro potvrzení napište doménu. Odstraní se:
 - konfigurace a procesy,
 - workery a úlohy,
 - systémový uživatel a SMTP přihlášení.

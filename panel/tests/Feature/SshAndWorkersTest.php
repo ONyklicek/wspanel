@@ -55,7 +55,7 @@ class SshAndWorkersTest extends TestCase
             ->with('ssh.set', ['domain' => 'app.example.com', 'access' => 'sftp', 'keys' => [self::KEY]])
             ->andReturn(['access' => 'sftp', 'keys' => 1, 'password' => false]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'keys' => self::KEY."\n"])
+        $this->siteSetting($site, 'ssh', ['access' => 'sftp', 'keys' => self::KEY."\n"])
             ->assertHasNoErrors();
 
         $site->refresh();
@@ -68,7 +68,7 @@ class SshAndWorkersTest extends TestCase
         $site = $this->site();
         $this->agent->shouldNotReceive('call')->with('ssh.set', Mockery::any());
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'shell', 'keys' => ''])
+        $this->siteSetting($site, 'ssh', ['access' => 'shell', 'keys' => ''])
             ->assertHasErrors();
     }
 
@@ -84,7 +84,7 @@ class SshAndWorkersTest extends TestCase
             }))
             ->andReturn(['access' => 'sftp', 'keys' => 0, 'password' => true]);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'password_mode' => 'generate', 'keys' => ''])
+        $this->siteSetting($site, 'ssh', ['access' => 'sftp', 'password_mode' => 'generate', 'keys' => ''])
             ->assertHasNoErrors()
             ->assertNotified();
 
@@ -123,7 +123,7 @@ class SshAndWorkersTest extends TestCase
         $site = $this->site();
         $this->agent->shouldNotReceive('call')->with('ssh.set', Mockery::any());
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'ssh', ['access' => 'sftp', 'password_mode' => 'set', 'password' => 'short', 'keys' => ''])
+        $this->siteSetting($site, 'ssh', ['access' => 'sftp', 'password_mode' => 'set', 'password' => 'short', 'keys' => ''])
             ->assertHasErrors();
     }
 }

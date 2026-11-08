@@ -81,7 +81,7 @@ deploye je na stránce Deploy (klik na řádek v Historii). Dále:
 ## SSH / SFTP
 
 **„Permission denied“**
-- Detail webu → Další → SSH / SFTP: je přístup zapnutý? Je vložený správný
+- Detail webu → Nastavení → Přístup → SSH / SFTP: je přístup zapnutý? Je vložený správný
   klíč, nebo nastavené heslo?
 - Uživatel je `web_<doména>` s podtržítky (`web_example_com`).
 - Po 5 chybných pokusech je IP na hodinu zablokovaná (fail2ban). Na serveru:

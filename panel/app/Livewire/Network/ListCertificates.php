@@ -22,7 +22,7 @@ class ListCertificates extends ListPage
 
     public function getSubheading(): ?string
     {
-        return __("Veřejné domény: Let's Encrypt, vydává a obnovuje se samo. Domény ve vnitřní síti: interní certifikační autorita serveru. Nebo vlastní certifikát (web → Další → HTTPS / certifikát).");
+        return __("Veřejné domény: Let's Encrypt, vydává a obnovuje se samo. Domény ve vnitřní síti: interní certifikační autorita serveru. Nebo vlastní certifikát (web → Nastavení → HTTPS).");
     }
 
     protected function headerActions(): array

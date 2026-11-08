@@ -11,6 +11,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Wire\Sites\SiteActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -90,7 +91,7 @@ class RuntimeModesTest extends TestCase
             ->with('site.switch_mode', ['domain' => 'm.example.com', 'mode' => 'worker', 'framework' => 'laravel'])
             ->andReturn(['mode' => 'worker', 'framework' => 'laravel', 'php_version' => '8.5', 'system_user' => 'web_m_example_com']);
 
-        $this->tableAction(Livewire::test(ListSites::class), $site, 'switchMode', ['mode' => 'worker', 'framework' => 'laravel'])
+        $this->siteSetting($site, 'switchMode', ['mode' => 'worker', 'framework' => 'laravel'])
             ->assertHasNoErrors();
 
         $this->assertSame(SiteMode::Worker, $site->refresh()->mode);
@@ -104,10 +105,10 @@ class RuntimeModesTest extends TestCase
         $this->agent->shouldReceive('call')->with('site.set_version', ['domain' => 'c.example.com', 'version' => '8.4'])
             ->andThrow(new AgentException('op_failed', 'php-fpm 8.4 config invalid', 'site.set_version'));
 
-        $list = Livewire::test(ListSites::class);
-        $this->assertFalse($this->tableActionVisible($list, 'setVersion', $worker));
-        $this->assertTrue($this->tableActionVisible($list, 'setVersion', $classic));
-        $this->tableAction($list, $classic, 'setVersion', ['version' => '8.4'])
+        $setVersion = collect(SiteActions::settings())->first(fn ($a) => $a->getName() === 'setVersion');
+        $this->assertTrue($setVersion->isHidden($worker));
+        $this->assertFalse($setVersion->isHidden($classic));
+        $this->siteSetting($classic, 'setVersion', ['version' => '8.4'])
             ->assertNotified('config invalid', 'error');
 
         $this->assertSame('8.3', $classic->refresh()->php_version);

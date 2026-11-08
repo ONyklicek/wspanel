@@ -47,7 +47,7 @@ pochází: z balíčku, nebo z výjimky.
 
 - Klient zakládá weby sám, panel hlídá limity balíčku. Správce může web
   založit pro klienta (pole **Vlastník**) nebo existující web přiřadit
-  (**Další → Přiřadit klientovi**). S webem přejdou jeho databáze a DNS zóna.
+  (**Nastavení → Vlastník**). S webem přejdou jeho databáze a DNS zóna.
 - Správce limity klienta překročit smí (vědomě); klient ne.
 - Databáze klienta dostane předponu `c<číslo klienta>_` (např. `c12_shop`),
   takže se názvy klientů nikdy nepotkají.

@@ -390,11 +390,6 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->successRedirect(fn () => SiteResource::url('index'));
     }
 
-    /**
-     * The "more" menu: everything but the primary buttons.
-     *
-     * @return list<Action>
-     */
     public static function phpSettings(): Action
     {
         $f = ManagePhpSettings::FIELDS;
@@ -562,7 +557,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                         $entry('sftp_host', 'Server', (string) (config('panel.ssh_host') ?: request()->getHost())),
                         $entry('sftp_port', 'Port', (string) config('panel.ssh_port', 22)),
                         $entry('sftp_user', __('Uživatel'), $record->system_user),
-                        $entry('sftp_auth', __('Přihlášení'), $record->ssh_access === SshAccess::Off ? __('vypnuto (Další → SSH / SFTP)') : ($record->ssh_password ? __('klíč nebo heslo') : __('jen klíč'))),
+                        $entry('sftp_auth', __('Přihlášení'), $record->ssh_access === SshAccess::Off ? __('vypnuto (Nastavení → Přístup)') : ($record->ssh_password ? __('klíč nebo heslo') : __('jen klíč'))),
                     ]),
                 ];
                 $sections[] = Section::make('db')->label(__('Databáze'))->columns(2)->schema($db === null
@@ -767,13 +762,37 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             });
     }
 
-    public static function more(): array
+    /**
+     * The quick menu (site detail, list rows): what is done often and changes
+     * no setting, plus the way to the settings.
+     *
+     * @return list<Action>
+     */
+    public static function quick(): array
+    {
+        return [self::restart(), self::checkHealth(), self::createDatabase(), self::addWorker(), self::settingsLink()];
+    }
+
+    /**
+     * The dialogs on the site's Nastavení tab (each opened from its section).
+     *
+     * @return list<Action>
+     */
+    public static function settings(): array
     {
         return [
-            self::credentials(), self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::xhprof(), self::staging(), self::import(), self::webRules(), self::addWorker(),
-            self::switchMode(), self::setVersion(), self::checkHealth(),
-            self::assignClient(), self::delete(),
+            self::edge(), self::tls(), self::ssh(), self::credentials(),
+            self::setVersion(), self::switchMode(), self::phpSettings(), self::webRules(),
+            self::valkey(), self::xhprof(), self::staging(), self::import(),
+            self::assignClient(), self::disable(), self::enable(), self::delete(),
         ];
+    }
+
+    public static function settingsLink(): Action
+    {
+        return Action::make('settings')
+            ->label(__('Nastavení'))
+            ->icon('outline:cog-6-tooth')
+            ->url(fn (Site $record) => SiteResource::url('settings', $record));
     }
 }

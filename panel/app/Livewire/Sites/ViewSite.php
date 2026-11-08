@@ -56,7 +56,7 @@ class ViewSite extends ViewPage
             SiteActions::open(),
             SiteActions::credentials(),
             SiteActions::deploy(),
-            ActionGroup::make(SiteActions::more())->label(__('Další'))->icon('outline:ellipsis-vertical'),
+            ActionGroup::make(SiteActions::quick())->label(__('Další'))->icon('outline:ellipsis-vertical'),
         ];
     }
 
@@ -93,7 +93,7 @@ class ViewSite extends ViewPage
                     default => "Let's Encrypt",
                 }),
                 TextEntry::make('edge_domains')->label(__('Další domény'))
-                    ->state(fn () => implode(', ', array_merge($site->edge_settings['aliases'] ?? [], array_map(fn ($d) => $d.' → '.$site->domain, $site->edge_settings['redirect_hosts'] ?? []))) ?: __('žádné (Další → Domény a přístup)')),
+                    ->state(fn () => implode(', ', array_merge($site->edge_settings['aliases'] ?? [], array_map(fn ($d) => $d.' → '.$site->domain, $site->edge_settings['redirect_hosts'] ?? []))) ?: __('žádné (Nastavení → Domény a HTTPS)')),
                 TextEntry::make('edge_protection')->label(__('Ochrana'))
                     ->state(fn () => collect([
                         ($site->edge_settings['auth_path'] ?? '') !== '' ? 'heslo na '.$site->edge_settings['auth_path'] : null,
@@ -107,7 +107,7 @@ class ViewSite extends ViewPage
             Section::make('access')->label(__('Přístup a služby'))->icon('outline:key')->columns(2)->schema([
                 TextEntry::make('ssh_access')->label('SSH / SFTP')->state(fn () => $site->ssh_access->getLabel())->badge()->color($site->ssh_access->getColor()),
                 TextEntry::make('sftp')->label(__('Připojení'))
-                    ->state(fn () => $site->ssh_access === SshAccess::Off ? __('zapnete v menu Další → SSH / SFTP') : "sftp -P {$port} {$site->sshTarget()}")
+                    ->state(fn () => $site->ssh_access === SshAccess::Off ? __('zapnete v Nastavení → Přístup') : "sftp -P {$port} {$site->sshTarget()}")
                     ->copyable($site->ssh_access !== SshAccess::Off),
                 TextEntry::make('databases')->label(__('Databáze'))
                     ->state(fn () => $site->databases->map(fn (Database $d) => $d->name.' ('.$d->engine->getLabel().')')->join(', ') ?: __('žádná'))
@@ -145,7 +145,7 @@ class ViewSite extends ViewPage
     private function valkeyState(Site $site): string
     {
         if ($site->valkey === null) {
-            return __('vypnutý (zapnete v menu Další → Valkey)');
+            return __('vypnutý (zapnete v Nastavení → Výkon a ladění)');
         }
         $s = rescue(fn () => app(ManageValkey::class)->status($site), [], report: false);
         if (($s['active'] ?? '') !== 'active') {

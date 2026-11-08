@@ -5,7 +5,7 @@ Přes SSH/SFTP se přihlašuje jako on a vidí jen svůj web.
 
 ## Zapnutí
 
-Detail webu → Další → **SSH / SFTP**:
+Detail webu → **Nastavení → Přístup → SSH / SFTP**:
 
 - **Přístup:**
   - **Vypnuto:** žádné přihlášení (výchozí).

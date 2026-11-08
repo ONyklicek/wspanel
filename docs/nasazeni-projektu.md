@@ -32,7 +32,7 @@ Node. Pokud chcete build na serveru (git clone + composer + npm), použijte
    PHP podle `composer.json`. Do FrankenPHP se přechází až po prvním funkčním
    deployi (krok 6), chyby se tak hledají po jedné.
 2. **Další → Nová databáze**: panel zapíše `DB_*` do sdíleného `.env` webu.
-3. **Další → Valkey**: zapnout a v „Použití“ zaškrtnout cache, session a fronty.
+3. **Nastavení → Výkon a ladění → Valkey**: zapnout a v „Použití“ zaškrtnout cache, session a fronty.
    Panel zapíše `REDIS_*`, `CACHE_STORE`, `SESSION_DRIVER`, `QUEUE_CONNECTION`.
    Pro Horizon nastavte *nic nemaže* (`noeviction`) a ukládání na disk.
 4. **Deploy → Nastavení**:
@@ -191,7 +191,7 @@ odpovídá místo desítek ms za ~16 ms.
 2. Ověřte, že je kód **worker-safe**: žádný stav ve statických proměnných ani
    singletonech mezi požadavky. Viz dokumentace Octane.
 3. Nasaďte release s Octane ještě v PHP-FPM (nic se nezmění).
-4. Detail webu → **Další → Změnit režim → Worker (FrankenPHP)**. Přepnutí
+4. Detail webu → **Nastavení → Běh a PHP → Režim → Worker (FrankenPHP)**. Přepnutí
    proběhne bez výpadku: nový backend se připraví vedle starého.
 5. Další release nasaďte jako obvykle. Po deployi panel restartuje PHP workery
    FrankenPHP přes jeho admin API (bez výpadku).
