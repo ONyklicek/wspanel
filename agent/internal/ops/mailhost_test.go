@@ -279,7 +279,7 @@ func TestOwnDomainsAreNeverSRSRewritten(t *testing.T) {
 func TestSenderListsAlsoMatchTheSRSFormOfAForeignSender(t *testing.T) {
 	got := senderTest([]string{"boss@gmail.com", "@spam.net"}, "mail.example.net")
 	for _, want := range []string{`envelope :all :is "from" ["boss@gmail.com"]`, `envelope :domain :is "from" ["spam.net"]`,
-		`envelope :all :matches "from" ["SRS0=*=*=gmail.com=boss@mail.example.net", "SRS0=*=*=spam.net=*@mail.example.net"]`} {
+		`envelope :all :regex "from" ["^SRS0=[^=]+=[^=]+=gmail\\.com=boss@mail\\.example\\.net$", "^SRS0=[^=]+=[^=]+=spam\\.net=[^@]+@mail\\.example\\.net$"]`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in %s", want, got)
 		}

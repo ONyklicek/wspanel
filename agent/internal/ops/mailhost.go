@@ -253,7 +253,7 @@ func writeDomainSieve(env *Env, st *mailState, names []string) error {
 			allow, block = sp.Allow, sp.Block
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "# Managed by WSPanel agent (mail.json): %s\nrequire [\"fileinto\", \"envelope\"];\n", d)
+		fmt.Fprintf(&b, "# Managed by WSPanel agent (mail.json): %s\nrequire [\"fileinto\", \"envelope\", \"regex\"];\n", d)
 		srsHost := mailHostName(env)
 		if c := senderTest(block, srsHost); c != "" {
 			fmt.Fprintf(&b, "if %s {\n  discard;\n  stop;\n}\n", c)
@@ -286,19 +286,24 @@ func writeDomainSieve(env *Env, st *mailState, names []string) error {
 // Sieve wildcards in them). PostSRSd rewrites a foreign sender for every
 // message, those delivered here too (SRS0=hash=time=domain=local@srsHost),
 // so each entry also matches its SRS form at this server's SRS domain (only
-// there: a sender may put any SRS0 address at a domain of its own).
+// there: a sender may put any SRS0 address at a domain of its own). The SRS
+// form is an anchored regex with the hash and time fields free of "=", so
+// the domain field is the original sender's domain: a wildcard would let
+// x=allowed.cz=boss@evil.com (SRS0=h=t=evil.com=x=allowed.cz=boss@…) pass
+// as boss@allowed.cz.
 func senderTest(list []string, srsHost string) string {
 	var addrs, domains, srs []string
 	for _, s := range list {
 		local, domain, _ := strings.Cut(s, "@")
 		if local == "" {
 			domains = append(domains, strconv.Quote(domain))
-			local = "*"
+			local = "[^@]+"
 		} else {
+			local = regexp.QuoteMeta(local)
 			addrs = append(addrs, strconv.Quote(s))
 		}
 		if srsHost != "" {
-			srs = append(srs, strconv.Quote("SRS0=*=*="+domain+"="+local+"@"+srsHost))
+			srs = append(srs, strconv.Quote("^SRS0=[^=]+=[^=]+="+regexp.QuoteMeta(domain)+"="+local+"@"+regexp.QuoteMeta(srsHost)+"$"))
 		}
 	}
 	var tests []string
@@ -309,7 +314,7 @@ func senderTest(list []string, srsHost string) string {
 		tests = append(tests, "envelope :domain :is \"from\" ["+strings.Join(domains, ", ")+"]")
 	}
 	if len(srs) > 0 {
-		tests = append(tests, "envelope :all :matches \"from\" ["+strings.Join(srs, ", ")+"]")
+		tests = append(tests, "envelope :all :regex \"from\" ["+strings.Join(srs, ", ")+"]")
 	}
 	switch len(tests) {
 	case 0:
