@@ -12,13 +12,15 @@
 set -euo pipefail
 REPO=${1:?repository dir} PUBKEY=${2:?public key}
 shift 2
+PUBKEY="$(cd "$(dirname "$PUBKEY")" && pwd)/$(basename "$PUBKEY")" # used after cd "$REPO"
 KEEP=${APT_KEEP:-5}
 POOL="pool/main/w/wspanel-agent"
 
 mkdir -p "$REPO/$POOL"
 for deb in "$@"; do
   [[ "$(dpkg-deb -f "$deb" Package)" == wspanel-agent ]] || { echo "not wspanel-agent: $deb" >&2; exit 1; }
-  cp "$deb" "$REPO/$POOL/"
+  # Named from its control file: GitHub renames ~ in release asset names.
+  cp "$deb" "$REPO/$POOL/wspanel-agent_$(dpkg-deb -f "$deb" Version)_$(dpkg-deb -f "$deb" Architecture).deb"
 done
 cd "$REPO"
 

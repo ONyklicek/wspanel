@@ -1,0 +1,73 @@
+# The apt repository of the agent (GitHub Pages, branch gh-pages, apt/): the
+# wspanel-agent packages of a published release added to their channel.
+# Called by the release workflow; run by hand to (re)publish a release's
+# packages (Actions → Apt repository → Run workflow, with its tag).
+name: Apt repository
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+    secrets:
+      APT_SIGNING_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.2.0"
+        required: true
+
+permissions:
+  contents: write # the gh-pages branch
+
+concurrency:
+  group: apt-repository
+  cancel-in-progress: false
+
+jobs:
+  apt:
+    name: Apt repository
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ inputs.tag }} # never spliced into a script
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a release tag: $TAG"; exit 1; }
+          gh release download "$TAG" --pattern 'wspanel-agent_*.deb' --dir dist
+          ls -l dist
+      - name: Signing key
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          [[ -n "$APT_SIGNING_KEY" ]] || { echo "the APT_SIGNING_KEY secret is missing"; exit 1; }
+          gpg --batch --import <<<"$APT_SIGNING_KEY"
+          # Sign only with the key the servers trust (the one in the repository).
+          want=$(gpg --batch --with-colons --import-options show-only --import provision/files/wspanel-archive-keyring.asc | awk -F: '/^fpr/{print $10; exit}')
+          gpg --batch --list-secret-keys "$want" >/dev/null || { echo "APT_SIGNING_KEY is not the key in provision/files/wspanel-archive-keyring.asc"; exit 1; }
+          echo "APT_SIGNING_KEY_ID=$want" >> "$GITHUB_ENV"
+      - name: The gh-pages branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth 1 origin gh-pages
+            git worktree add site origin/gh-pages
+            git -C site switch -c gh-pages
+          else
+            git worktree add --detach site
+            git -C site switch --orphan gh-pages
+          fi
+      - name: Update the repository
+        run: provision/apt-repo.sh site/apt provision/files/wspanel-archive-keyring.asc dist/wspanel-agent_*.deb
+      - name: Publish
+        run: |
+          touch site/.nojekyll
+          git -C site add -A
+          git -C site commit -q -m "apt: ${TAG}"
+          git -C site push origin gh-pages
