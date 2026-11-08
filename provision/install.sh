@@ -18,8 +18,8 @@ set -euo pipefail
 
 FRANKENPHP_VERSION="v1.13.5"
 declare -A FRANKENPHP_SHA256=(
-  [x86_64]="78e9b0ed1999ba658545c68bd74baece5697192f75f56e02aa778119f1164812"
-  [aarch64]="4d0311de6986d4fe9dc9bc3467d9549d26b89ab7ac6804cbe68fbb5352f8b153"
+  [x86_64]="512e61cf72699f7680beb9a1c51da994bed0ee9a0e451b74a74c85eb286b20d9"
+  [aarch64]="dec255cf2c69f127fc47f8f312be0bb600f58738e0e34574f77d58f91c408de0"
 )
 FNM_VERSION="v1.39.0"
 declare -A FNM_ASSET=([x86_64]="fnm-linux.zip" [aarch64]="fnm-arm64.zip")
