@@ -34,4 +34,17 @@ class SiteSettingsDialogsTest extends TestCase
             }
         }
     }
+
+    public function test_the_profiles_open_from_settings_while_profiling_is_on(): void
+    {
+        $agent = Mockery::mock(AgentClient::class);
+        $agent->shouldReceive('call')->andReturn([])->byDefault();
+        $this->app->instance(AgentClient::class, $agent);
+        $this->actingAs(User::factory()->create());
+        $site = Site::create(['domain' => 'p.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active', 'xhprof' => ['ratio' => 20]]);
+
+        Livewire::test(SiteSettings::class, ['record' => $site->id])
+            ->assertSee('Otevřít XHGui')
+            ->assertSee(route('sites.xhgui', $site), escape: false);
+    }
 }

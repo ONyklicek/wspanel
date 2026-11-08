@@ -4,6 +4,7 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSiteMounts;
+use App\Actions\Sites\ManageXhprof;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Livewire\Sites\Concerns\IsSiteTab;
@@ -137,11 +138,22 @@ class SiteSettings extends ViewPage
                         : __(':n řádků vlastních pravidel (Caddy)', ['n' => count(array_filter(explode("\n", trim((string) $site->web_rules))))])),
                 ]),
             Section::make('tools')->label(__('Výkon a ladění'))->icon('outline:bolt')->columns(2)
-                ->headerActions(self::present([$this->open('valkey', 'Valkey', $site, 'outline:server-stack'), $this->open('xhprof', 'XHProf', $site, 'outline:chart-bar')]))
+                ->headerActions(self::present([
+                    $this->open('valkey', 'Valkey', $site, 'outline:server-stack'),
+                    $this->open('xhprof', 'XHProf', $site, 'outline:adjustments-horizontal'),
+                    $site->xhprof !== null && $site->mode === SiteMode::Classic
+                        ? Action::make('xhgui')->label(__('Otevřít XHGui'))->icon('outline:chart-bar')->color('gray')->size('sm')->url(ManageXhprof::viewerUrl($site), openInNewTab: true)
+                        : null,
+                ]))
                 ->schema([
                     TextEntry::make('valkey')->label(__('Valkey (Redis)'))->state(fn () => $site->valkey === null ? __('vypnutý')
                         : __(':mb MB, :policy', ['mb' => $site->valkey['maxmemory_mb'] ?? '?', 'policy' => $site->valkey['policy'] ?? '']).(($site->valkey['persist'] ?? false) ? __(' · ukládá na disk') : '')),
-                    TextEntry::make('xhprof')->label(__('Profilování (XHProf)'))->state(fn () => $site->xhprof === null ? __('vypnuté') : __('měří ').($site->xhprof['ratio'] ?? 100).__(' % požadavků')),
+                    TextEntry::make('xhprof')->label(__('Profilování (XHProf)'))->state(fn () => match (true) {
+                        $site->mode !== SiteMode::Classic => __('jen v režimu Classic (PHP-FPM)'),
+                        ! app(ManageXhprof::class)->installed() => __('modul není nainstalovaný (Server → Moduly)'),
+                        $site->xhprof === null => __('vypnuté'),
+                        default => __('měří ').($site->xhprof['ratio'] ?? 100).__(' % požadavků, výsledky v XHGui'),
+                    }),
                 ]),
             Section::make('mounts')->label(__('Síťové disky'))->icon('outline:server-stack')
                 ->visible(fn () => $this->open('mountAdd', '', $site) !== null)

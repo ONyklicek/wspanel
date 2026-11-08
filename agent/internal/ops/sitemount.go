@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"wspanel/agent/internal/config"
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 )
@@ -39,6 +42,7 @@ type siteMount struct {
 	Domain   string `json:"domain,omitempty"`  // smb: workgroup / AD domain
 	Version  string `json:"version,omitempty"` // smb protocol: 3.1.1 | 3.0 | 2.1 | 2.0 | 1.0
 	TLS      string `json:"tls,omitempty"`     // ftp: "" | explicit | implicit
+	Encrypt  bool   `json:"encrypt,omitempty"` // smb: encrypted transport (SMB 3 "seal")
 	ReadOnly bool   `json:"read_only,omitempty"`
 }
 
@@ -61,6 +65,30 @@ func mountPoint(l siteLayout, name string) string {
 func mountSecretFile(env *Env, user, name string) string {
 	return filepath.Join(env.Cfg.StateDir, "mounts", user+"-"+name+".secret")
 }
+
+// mountStage: where the disk is really mounted, root's own; the site sees
+// it bound into its home (BindSiteMount), never mounted through its paths.
+func mountStage(cfg config.Config, domain, name string) string {
+	return filepath.Join(cfg.StateDir, "mnt", domain, name)
+}
+
+func mountKnownHosts(env *Env, user, name string) string {
+	return filepath.Join(env.Cfg.StateDir, "mounts", user+"-"+name+".known_hosts")
+}
+
+// agentCommand: this binary with its config, for a unit's ExecStartPost/ExecStop.
+func agentCommand(env *Env, flag, arg string) string {
+	bin, err := os.Executable()
+	if err != nil || env.Cfg.DryRun {
+		bin = "/usr/local/sbin/panel-agent"
+	}
+	cfg := env.ConfigPath
+	if cfg == "" {
+		cfg = "/etc/panel-agent/agent.json"
+	}
+	return bin + " -config " + unitWord(cfg) + " " + flag + " " + unitWord(arg)
+}
+
 func mountCacheDir(user, name string) string {
 	return "/var/cache/wspanel-mounts/" + user + "-" + name
 }
@@ -108,14 +136,18 @@ func (m *siteMount) validate() error {
 		if !slices.Contains(smbVersions, m.Version) {
 			return protocol.Invalid("version: 3.1.1, 3.0, 2.1, 2.0 or 1.0")
 		}
+		if m.Encrypt && !strings.HasPrefix(m.Version, "3") {
+			return protocol.Invalid("encrypt: needs SMB 3")
+		}
 		m.TLS = ""
 	case "ftp":
+		m.Encrypt = false
 		if m.TLS != "" && m.TLS != "explicit" && m.TLS != "implicit" {
 			return protocol.Invalid("tls: explicit, implicit or empty")
 		}
 		m.Share, m.Domain, m.Version = "", "", ""
 	case "sftp":
-		m.Share, m.Domain, m.Version, m.TLS = "", "", "", ""
+		m.Share, m.Domain, m.Version, m.TLS, m.Encrypt = "", "", "", "", false
 	}
 	return nil
 }
@@ -128,10 +160,12 @@ func unitWord(s string) string {
 	return `"` + s + `"`
 }
 
-// mountUnitContent is the unit that mounts m for the site's user and group.
+// mountUnitContent is the unit that mounts m for the site's user and group:
+// at the root-owned stage, then bound into the home.
 func mountUnitContent(env *Env, l siteLayout, m siteMount, uid, gid int) string {
-	where := mountPoint(l, m.Name)
+	stage := mountStage(env.Cfg, l.Domain, m.Name)
 	secret := mountSecretFile(env, l.User, m.Name)
+	ref := l.Domain + "/" + m.Name
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Managed by WSPanel agent (site %s).\n[Unit]\nDescription=WSPanel: %s disk %s of %s\n", l.Domain, strings.ToUpper(m.Type), m.Name, l.Domain)
 	b.WriteString("Wants=network-online.target\nAfter=network-online.target\n\n[Service]\n")
@@ -146,21 +180,31 @@ func mountUnitContent(env *Env, l siteLayout, m siteMount, uid, gid int) string 
 		if m.Port > 0 {
 			opts = append(opts, "port="+strconv.Itoa(m.Port))
 		}
+		if m.Encrypt {
+			opts = append(opts, "seal") // the server must encrypt, or the mount fails
+		}
 		if m.ReadOnly {
 			opts = append(opts, "ro")
 		}
 		b.WriteString("Type=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=60\n")
-		fmt.Fprintf(&b, "ExecStart=/usr/bin/mount -t cifs %s %s -o %s\n", unitWord(src), unitWord(where), strings.Join(opts, ","))
-		fmt.Fprintf(&b, "ExecStop=/usr/bin/umount -l %s\n", unitWord(where))
+		fmt.Fprintf(&b, "ExecStart=/usr/bin/mount -t cifs %s %s -o %s\n", unitWord(src), unitWord(stage), strings.Join(opts, ","))
+		fmt.Fprintf(&b, "ExecStartPost=%s\n", agentCommand(env, "-mount-bind", ref))
+		fmt.Fprintf(&b, "ExecStop=-%s\n", agentCommand(env, "-mount-unbind", ref))
+		fmt.Fprintf(&b, "ExecStop=/usr/bin/umount -l %s\n", unitWord(stage))
+		fmt.Fprintf(&b, "ExecStopPost=-/usr/bin/umount -l %s\n", unitWord(stage))
 	default:
 		backend := m.Type
-		args := []string{"/usr/bin/rclone", "mount", unitWord(":" + backend + ":" + m.Path), unitWord(where), "--config=/dev/null",
+		args := []string{"/usr/bin/rclone", "mount", unitWord(":" + backend + ":" + m.Path), unitWord(stage), "--config=/dev/null",
 			"--" + backend + "-host=" + m.Host, "--" + backend + "-user=" + unitWord(m.User)}
 		if m.Port > 0 {
 			args = append(args, "--"+backend+"-port="+strconv.Itoa(m.Port))
 		}
 		if backend == "ftp" {
 			args = append(args, "--no-modtime") // FTP cannot set it; rclone would log every write
+		}
+		if backend == "sftp" {
+			// Only the host key seen when the disk was added (no silent MITM).
+			args = append(args, "--sftp-known-hosts-file="+unitWord(mountKnownHosts(env, l.User, m.Name)))
 		}
 		switch m.TLS {
 		case "explicit":
@@ -176,7 +220,10 @@ func mountUnitContent(env *Env, l siteLayout, m siteMount, uid, gid int) string 
 		b.WriteString("Type=notify\nRestart=on-failure\nRestartSec=15\nTimeoutStartSec=60\n")
 		fmt.Fprintf(&b, "EnvironmentFile=%s\n", secret)
 		fmt.Fprintf(&b, "ExecStart=%s\n", strings.Join(args, " "))
-		fmt.Fprintf(&b, "ExecStop=/usr/bin/fusermount3 -uz %s\n", unitWord(where))
+		fmt.Fprintf(&b, "ExecStartPost=%s\n", agentCommand(env, "-mount-bind", ref))
+		fmt.Fprintf(&b, "ExecStop=-%s\n", agentCommand(env, "-mount-unbind", ref))
+		fmt.Fprintf(&b, "ExecStop=/usr/bin/fusermount3 -uz %s\n", unitWord(stage))
+		fmt.Fprintf(&b, "ExecStopPost=-/usr/bin/fusermount3 -uz %s\n", unitWord(stage))
 	}
 	b.WriteString("\n[Install]\nWantedBy=multi-user.target\n")
 	return b.String()
@@ -289,7 +336,8 @@ func siteMountChange(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 			_ = stopMount(ctx, env, l, m.Name)
 			return nil, err
 		}
-		return map[string]any{"name": m.Name, "path": mountPoint(l, m.Name), "not_visible_to": unitsWithoutMount(ctx, env, st, l, mountPoint(l, m.Name))}, nil
+		return map[string]any{"name": m.Name, "path": mountPoint(l, m.Name), "not_visible_to": unitsWithoutMount(ctx, env, st, l, mountPoint(l, m.Name)),
+			"host_keys": hostKeyFingerprints(mountKnownHosts(env, l.User, m.Name))}, nil
 	case "remove":
 		if idx < 0 {
 			return nil, protocol.NotFound("disk " + p.Mount.Name + " does not exist")
@@ -350,6 +398,17 @@ func startMount(ctx context.Context, env *Env, st siteState, l siteLayout, m sit
 	}
 	if err := env.FS.MkdirAll(where, 0o555, fsx.Root); err != nil {
 		return err
+	}
+	stage := mountStage(env.Cfg, l.Domain, m.Name)
+	if err := env.FS.MkdirAll(stage, 0o700, fsx.Root); err != nil {
+		return err
+	}
+	rollback.add(func() { _ = os.Remove(stage) })
+	if m.Type == "sftp" {
+		if err := trustHostKey(ctx, env, m, mountKnownHosts(env, l.User, m.Name)); err != nil {
+			return err
+		}
+		rollback.add(func() { _ = os.Remove(mountKnownHosts(env, l.User, m.Name)) })
 	}
 	rollback.add(func() { _ = os.Remove(where) })
 	if m.Type != "smb" && !env.Cfg.DryRun {
@@ -428,7 +487,10 @@ func stopMount(ctx context.Context, env *Env, l siteLayout, name string) error {
 		_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", unit)
 	}
 	_ = os.Remove(mountSecretFile(env, l.User, name))
+	_ = os.Remove(mountKnownHosts(env, l.User, name))
 	_ = os.RemoveAll(mountCacheDir(l.User, name))
+	_ = os.Remove(mountStage(env.Cfg, l.Domain, name))
+	_ = os.Remove(filepath.Dir(mountStage(env.Cfg, l.Domain, name))) // the site's, once its last disk is gone
 	// Only an empty folder, never what was on the disk; a lazy unmount
 	// (FUSE) may take a moment to let go of it.
 	for i := 0; i < 15; i++ {
@@ -488,16 +550,79 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, " / ")
 }
 
-// removeSiteMounts unmounts every disk of a site (deleting it).
+// removeSiteMounts unmounts every disk of a site (deleting it): the ones its
+// state lists, never units found by a name prefix (another site's user name
+// can start with this one's).
 func removeSiteMounts(ctx context.Context, env *Env, l siteLayout) error {
-	files, _ := filepath.Glob(filepath.Join(env.Cfg.SystemdDir, "wspanel-mount-"+l.User+"-*.service"))
-	for _, f := range files {
-		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "wspanel-mount-"+l.User+"-"), ".service")
-		if err := stopMount(ctx, env, l, name); err != nil {
+	b, err := os.ReadFile(siteStatePath(env.Cfg, l.Domain))
+	if err != nil {
+		return nil
+	}
+	var st siteState
+	if err := json.Unmarshal(b, &st); err != nil {
+		return err
+	}
+	for _, m := range st.Mounts {
+		if err := stopMount(ctx, env, l, m.Name); err != nil {
 			return err
 		}
 	}
+	_ = os.Remove(filepath.Join(env.Cfg.StateDir, "mnt", l.Domain))
 	return nil
+}
+
+// trustHostKey records the SFTP server's host key when the disk is added
+// (trust on first use); rclone then refuses any other key, so a server
+// swapped in between never sees the password. The fingerprints are shown.
+func trustHostKey(ctx context.Context, env *Env, m siteMount, file string) error {
+	port := m.Port
+	if port == 0 {
+		port = 22
+	}
+	keys := "dry-run ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+	if !env.Cfg.DryRun {
+		res, err := env.Exec.Run(ctx, "ssh-keyscan", "-T", "10", "-p", strconv.Itoa(port), "--", m.Host)
+		if err != nil && strings.TrimSpace(res.Stdout) == "" {
+			return fmt.Errorf("the disk did not connect: ssh-keyscan: no host key from %s:%d", m.Host, port)
+		}
+		keys = res.Stdout
+	}
+	var lines []string
+	for _, line := range strings.Split(keys, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 3 && !strings.HasPrefix(line, "#") && strings.HasPrefix(f[1], "ssh-") || len(f) == 3 && strings.HasPrefix(f[1], "ecdsa-") {
+			lines = append(lines, strings.Join(f, " "))
+		}
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("the disk did not connect: no host key from %s:%d", m.Host, port)
+	}
+	if err := env.FS.MkdirAll(filepath.Dir(file), 0o700, fsx.Root); err != nil {
+		return err
+	}
+	return env.FS.WriteFile(file, []byte(strings.Join(lines, "\n")+"\n"), 0o600, fsx.Root)
+}
+
+// hostKeyFingerprints: SHA256 fingerprints of the recorded host keys.
+func hostKeyFingerprints(file string) []string {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			continue
+		}
+		blob, err := base64.StdEncoding.DecodeString(f[2])
+		if err != nil {
+			continue
+		}
+		sum := sha256.Sum256(blob)
+		out = append(out, f[1]+" SHA256:"+base64.RawStdEncoding.EncodeToString(sum[:]))
+	}
+	return out
 }
 
 // stopSiteMounts / startSiteMounts bracket a change of the site's group: the

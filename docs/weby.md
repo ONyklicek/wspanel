@@ -527,7 +527,7 @@ požadavků měřit (na produkci jen část, měření požadavek zpomalí).
   jinde PHP neovlivní.
 - Profily zůstávají v adresáři webu (`xhgui/`), zapisuje je uživatel webu.
   Proměnné prostředí (hesla v `.env`) se do profilů neukládají.
-- **Otevřít XHGui** v detailu webu otevře `https://<doména>/_wsp_xhgui/` přes
+- **Otevřít XHGui** (Nastavení → Výkon a ladění, přehled webu nebo menu Další) otevře `https://<doména>/_wsp_xhgui/` přes
   jednorázový odkaz z panelu (platí 2 minuty, jednou). Přihlášení pak drží
   cookie jen pro tuto doménu a cestu, 8 hodin. Bez odkazu edge XHGui nepustí.
 - XHGui běží na doméně webu, ne panelu, v poolu webu pod jeho uživatelem

@@ -743,7 +743,14 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                 Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
                     TextInput::make('domain')->label(__('Doména / pracovní skupina'))->placeholder('FIRMA')->maxLength(128)->visibleWhen('type', 'smb'),
                     Select::make('version')->label(__('Verze SMB'))->options(Lang::values(ManageSiteMounts::SMB_VERSIONS))->default('3.0')
-                        ->visibleWhen('type', 'smb')->rules([Options::rule(ManageSiteMounts::SMB_VERSIONS)]),
+                        ->visibleWhen('type', 'smb')->rules([Options::rule(ManageSiteMounts::SMB_VERSIONS)])->live(),
+                    Toggle::make('encrypt')->label(__('Šifrovat přenos (SMB 3)'))->default(true)->visibleWhen('type', 'smb')
+                        ->helperText(__('Nutné, když disk není ve stejné síti. Starší NAS šifrování neumí: pak vypněte, nebo připojte přes SFTP.'))
+                        ->rules([fn ($get) => function (string $attribute, mixed $value, Closure $fail) use ($get) {
+                            if ($value && $get('type') === 'smb' && ! str_starts_with((string) $get('version'), '3')) {
+                                $fail(__('Šifrování umí jen SMB 3.'));
+                            }
+                        }]),
                     Select::make('tls')->label(__('Šifrování'))->options(Lang::values(ManageSiteMounts::FTP_TLS))->default('explicit')
                         ->visibleWhen('type', 'ftp')->rules([Options::rule(ManageSiteMounts::FTP_TLS)]),
                 ]),
@@ -757,13 +764,15 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepodařilo připojit'), function () use ($record, $data) {
                 $mount = collect($data)->only(['name', 'type', 'host', 'share', 'path', 'user', 'domain', 'version', 'tls'])
                     ->map(fn ($v) => is_string($v) ? trim($v) : $v)->filter(fn ($v) => $v !== null && $v !== '')->all()
-                    + ['port' => (int) ($data['port'] ?? 0), 'read_only' => (bool) ($data['read_only'] ?? false)];
+                    + ['port' => (int) ($data['port'] ?? 0), 'read_only' => (bool) ($data['read_only'] ?? false),
+                        'encrypt' => ($data['type'] ?? '') === 'smb' && (bool) ($data['encrypt'] ?? false)];
                 $out = app(ManageSiteMounts::class)->add($record, $mount, (string) ($data['password'] ?? ''));
                 match (true) {
                     $out === null => Toast::success(__('Disk se připojuje'), __('Instalují se nástroje pro připojení, stav uvidíte za chvíli v Nastavení.')),
                     ($out['not_visible_to'] ?? []) !== [] => Toast::warning(__('Disk připojen, některé procesy ho ještě nevidí'),
                         __('Běžely už před připojením: :units. Do disku zapíšou až po restartu (do té doby zápis selže, nic se neuloží jinam).', ['units' => implode(', ', $out['not_visible_to'])])),
-                    default => Toast::success(__('Disk připojen'), self::homeOf($record).'/mounts/'.$mount['name']),
+                    default => Toast::success(__('Disk připojen'), self::homeOf($record).'/mounts/'.$mount['name']
+                        .(($out['host_keys'] ?? []) !== [] ? ' · '.__('klíč serveru (ověřte u správce serveru): :keys', ['keys' => implode(', ', $out['host_keys'])]) : '')),
                 };
             }));
     }
@@ -822,8 +831,20 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Profilování se nepodařilo nastavit'), function () use ($record, $data) {
                 app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null);
-                Toast::success($data['enabled'] ? __('Profilování zapnuto') : __('Profilování vypnuto'), $data['enabled'] ? __('Výsledky otevřete v detailu webu (Otevřít XHGui).') : null);
+                Toast::success($data['enabled'] ? __('Profilování zapnuto') : __('Profilování vypnuto'), $data['enabled']
+                    ? __('Otevřete web, ať vzniknou první měření. Výsledky: tlačítko Otevřít XHGui v Nastavení → Výkon a ladění, na přehledu webu nebo v menu Další.') : null);
             }));
+    }
+
+    /** The site's XHGui (profiles), signed in through the panel; while profiling is on. */
+    public static function openXhgui(): Action
+    {
+        return Action::make('openXhgui')
+            ->label(__('Otevřít XHGui'))
+            ->icon('outline:chart-bar')
+            ->color('gray')
+            ->visible(fn (Site $record) => $record->xhprof !== null && $record->mode === SiteMode::Classic)
+            ->url(fn (Site $record) => ManageXhprof::viewerUrl($record), openInNewTab: true);
     }
 
     public static function valkeyFlush(): Action
@@ -886,7 +907,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
      */
     public static function quick(): array
     {
-        return [self::restart(), self::checkHealth(), self::createDatabase(), self::addWorker(), self::settingsLink()];
+        return [self::restart(), self::checkHealth(), self::createDatabase(), self::addWorker(), self::openXhgui(), self::settingsLink()];
     }
 
     /**

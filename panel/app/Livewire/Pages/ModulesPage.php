@@ -91,11 +91,11 @@ class ModulesPage extends Page
                 ->icon('outline:chart-bar')
                 ->visible(fn () => ! app(ManageXhprof::class)->installed())
                 ->requiresConfirmation()
-                ->modalDescription(__('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Další → Profilování), načte se jen do poolu webů, které ho mají zapnuté.'))
+                ->modalDescription(__('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Nastavení → Výkon a ladění → XHProf), načte se jen do poolu webů, které ho mají zapnuté.'))
                 ->action(function () {
                     try {
                         app(ManageXhprof::class)->install()
-                            ? Toast::success(__('XHProf nainstalován'), __('Zapnete ho u webu v menu Další → Profilování.'))
+                            ? Toast::success(__('XHProf nainstalován'), __('Zapnete ho u webu v menu Nastavení → Výkon a ladění → XHProf.'))
                             : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());

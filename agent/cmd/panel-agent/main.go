@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,7 +34,26 @@ func main() {
 	keep := flag.Int("keep", 7, "with -backup: number of backups to keep")
 	siteBackup := flag.String("site-backup", "", "run a scheduled backup of the site <domain> and exit (used by site backup timers)")
 	fileopHome := flag.String("fileop", "", "internal: serve one file-manager request inside this site home (run as the site user)")
+	mountBind := flag.String("mount-bind", "", "internal: bind the staged network disk <domain>/<name> into the site (its unit's ExecStartPost)")
+	mountUnbind := flag.String("mount-unbind", "", "internal: remove the bind of the network disk <domain>/<name> (its unit's ExecStop)")
 	flag.Parse()
+	if *mountBind != "" || *mountUnbind != "" {
+		cfg, err := config.Load(*cfgPath)
+		if err == nil {
+			ref := *mountBind + *mountUnbind
+			domain, name, _ := strings.Cut(ref, "/")
+			if *mountBind != "" {
+				err = ops.BindSiteMount(cfg, domain, name)
+			} else {
+				err = ops.UnbindSiteMount(cfg, domain, name)
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *showVersion {
 		fmt.Println(ops.Version)
 		return
@@ -223,7 +243,8 @@ func binaries(cfg config.Config) map[string]string {
 		"unattended-upgrade": "/usr/bin/unattended-upgrade",
 		"fail2ban-client":    "/usr/bin/fail2ban-client",
 		"smbclient":          "/usr/bin/smbclient",
-		"rclone":             "/usr/bin/rclone", // obscure only (a mount's password, on stdin)
+		"rclone":             "/usr/bin/rclone",      // obscure only (a mount's password, on stdin)
+		"ssh-keyscan":        "/usr/bin/ssh-keyscan", // an SFTP disk's host key, when it is added
 		"journalctl":         "/usr/bin/journalctl",
 		"dpkg-query":         "/usr/bin/dpkg-query",
 		"apt-cache":          "/usr/bin/apt-cache",

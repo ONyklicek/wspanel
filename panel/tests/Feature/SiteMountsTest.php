@@ -35,12 +35,22 @@ class SiteMountsTest extends TestCase
         $site = Site::create(['domain' => 'nas.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active', 'home' => '/srv/sites/nas.example.com']);
         $this->agent->shouldReceive('call')->once()->with('site.mount', [
             'domain' => 'nas.example.com', 'action' => 'add',
-            'mount' => ['name' => 'nas', 'type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'path' => 'web', 'user' => 'web', 'version' => '3.0', 'tls' => 'explicit', 'port' => 0, 'read_only' => false],
+            'mount' => ['name' => 'nas', 'type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'path' => 'web', 'user' => 'web', 'version' => '3.0', 'tls' => 'explicit', 'port' => 0, 'read_only' => false, 'encrypt' => true],
             'password' => 'Tajne-heslo-1',
         ])->andReturn(['name' => 'nas']);
 
         $this->siteSetting($site, 'mountAdd', ['type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'path' => 'web', 'user' => 'web', 'password' => 'Tajne-heslo-1', 'name' => 'nas'])
             ->assertHasNoErrors()->assertNotified('Disk připojen');
+    }
+
+    public function test_encryption_needs_smb_3(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $site = Site::create(['domain' => 'nas.example.com', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $this->agent->shouldNotReceive('call')->with('site.mount', Mockery::any());
+
+        $this->siteSetting($site, 'mountAdd', ['type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'user' => 'web', 'password' => 'x', 'name' => 'nas', 'version' => '2.1', 'encrypt' => true])
+            ->assertHasErrors();
     }
 
     public function test_the_settings_show_the_disks_and_whether_they_are_connected(): void
