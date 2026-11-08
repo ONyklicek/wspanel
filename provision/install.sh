@@ -103,9 +103,11 @@ done
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
+# ip(8) finds the server's addresses; a minimal system may not have it yet.
+command -v ip >/dev/null || { apt-get update -q >/dev/null && apt-get install -y -q --no-install-recommends iproute2 >/dev/null; } || true
 if [[ -z "$PANEL_DOMAIN" ]]; then
   [[ $PANEL_PORT -ne 443 ]] || die "--panel-domain is required (or give --panel-port to reach the panel at the server's IP address)"
-  PANEL_DOMAIN="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  PANEL_DOMAIN="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
   [[ -n "$PANEL_DOMAIN" ]] || die "cannot find the server's IPv4 address; give --panel-domain"
 fi
 [[ "$PANEL_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || die "invalid --panel-domain"
@@ -667,6 +669,16 @@ if [[ -d /etc/roundcube ]]; then
     install -m 0644 /var/lib/panel-proxy/caddy/pki/authorities/local/root.crt /etc/roundcube/wspanel-edge-root-ca.crt
   fi
 fi
+
+# The choices of this run, for the next upgrade ("./install" offers to keep
+# them). Paths of this bundle are left out: the next one has its own.
+install -d -m 0755 /etc/wspanel
+saved=()
+for arg in "$@"; do
+  case "$arg" in --agent-bin=*|--panel-source=*) ;; *) saved+=("$arg") ;; esac
+done
+printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
+chmod 0600 /etc/wspanel/install.flags
 
 log "Done. Panel: $PANEL_URL"
 if [[ -n "$PANEL_SOURCE" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then

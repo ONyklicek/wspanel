@@ -26,16 +26,21 @@ tar -xzf wspanel-1.0.0-linux-amd64.tar.gz && cd wspanel && ./install
 
 Průvodce (textové okno, šipky a mezerník) se postupně zeptá:
 
-- kde bude panel: doména, IP adresa s portem, nebo obojí,
+- kde bude panel: na doméně (Let's Encrypt), na IP adrese s portem, na doméně
+  s vlastním portem, nebo ve vnitřní síti bez internetu (např. `panel.firma.lan`;
+  panel i weby pak dostanou certifikáty od vlastní certifikační autority serveru),
+- jestli je server za NATem: veřejná IP adresa a přesměrované porty HTTPS a SSH
+  (panel podle nich doporučuje DNS záznamy a ukazuje adresy pro připojení),
+- na port SSH a jestli úplně zakázat přihlášení roota (jinak root jen s klíčem),
 - které databázové servery, verze PHP a Node instalovat,
 - které moduly zapnout (klienti a balíčky, pošta se schránkami a webmailem,
   DNS server, profilování XHProf),
 - jestli pošta z webů odchází, nebo se zachytává v Mailpitu,
 - jestli omezit panel na vybrané adresy,
-- na e-mail prvního správce.
+- na prvního správce: jméno, e-mail a heslo (prázdné = vygeneruje se
+  a ukáže jednou).
 
-Na konci ukáže souhrn a teprve potom instaluje. Heslo správce vygeneruje
-a ukáže jednou.
+Na konci ukáže souhrn a teprve potom instaluje.
 
 Bez otázek (automatizace) se stejné volby zadávají jako parametry, viz
 [Volby](#volby-installsh):
@@ -45,8 +50,11 @@ Bez otázek (automatizace) se stejné volby zadávají jako parametry, viz
   --db=mariadb --php=8.3,8.4 --mail-hosting=yes --admin-email=admin@example.com
 ```
 
-Aktualizace: rozbalte novější balíček a spusťte `./install --yes` se stejnými
-volbami, nebo znovu průvodce. Data, weby ani nastavení se nemažou.
+Aktualizace: rozbalte novější balíček a spusťte `./install`. Na nainstalovaném
+serveru průvodce nabídne aktualizaci se stávajícím nastavením (instalátor si
+volby pamatuje v `/etc/wspanel/install.flags`), nebo projití otázek znovu.
+Bez otázek stačí `./install --yes`: bez dalších voleb použije ty uložené.
+Účty, weby, data ani nastavení se nemažou a správce se znovu nezakládá.
 
 ## Postup ze zdrojáků
 
