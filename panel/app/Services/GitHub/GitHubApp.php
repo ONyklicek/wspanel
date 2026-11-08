@@ -89,7 +89,24 @@ class GitHubApp
         // already exists; the code stays valid for an hour, so try a few times.
         $http = Http::baseUrl(GitHubClient::API)->withHeaders(self::headers())
             ->retry([1000, 3000, 6000], when: fn ($e) => $e instanceof ConnectionException || ($e instanceof RequestException && $e->response->serverError()), throw: false);
-        $r = self::send($http, 'post', "/app-manifests/{$code}/conversions");
+
+        return self::fromConversion(self::send($http, 'post', "/app-manifests/{$code}/conversions"));
+    }
+
+    /**
+     * Keeps the app from GitHub's answer to the manifest conversion (also
+     * when that answer was fetched another way, e.g. `gh api` on a network
+     * where GitHub refuses anonymous calls).
+     *
+     * @param  array<string, mixed>  $r
+     */
+    public static function fromConversion(array $r): self
+    {
+        foreach (['id', 'slug', 'client_id', 'client_secret', 'pem'] as $key) {
+            if (empty($r[$key])) {
+                throw new GitHubException(__('Odpověď GitHubu neobsahuje klíče aplikace (:key).', ['key' => $key]));
+            }
+        }
 
         return self::store(new self((int) $r['id'], (string) $r['slug'], (string) $r['client_id'], (string) $r['client_secret'], (string) $r['pem'], (string) ($r['owner']['login'] ?? '')), $r['html_url'] ?? null);
     }

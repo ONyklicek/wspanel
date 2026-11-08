@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\ManageGitHub;
+use App\Actions\Sites\ManageWebhook;
 use App\Actions\Sites\ReportGitHubDeployments;
 use App\Livewire\Pages\IntegrationsPage;
 use App\Livewire\Sites\SiteDeploy;
 use App\Models\Deployment;
 use App\Models\GithubConnection;
+use App\Models\Setting;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -274,6 +276,41 @@ class GitHubDeployTest extends TestCase
             $this->assertStringContainsString('kontrolu repozitáře každou minutu', $e->getMessage());
         }
         $this->assertNull($this->site->fresh()->github_repo, 'nothing half-linked');
+    }
+
+    public function test_a_panel_on_the_local_network_gets_webhooks_through_the_sites_public_domain(): void
+    {
+        config(['app.url' => 'https://panel.firma.lan']);
+        $this->fakeGitHub();
+
+        app(ManageGitHub::class)->link($this->site, $this->connection(), ['repo' => 'acme/app', 'branch' => 'main', 'trigger' => 'branch', 'notify' => 'webhook']);
+
+        $site = $this->site->fresh();
+        Http::assertSent(fn (Request $r) => $r->url() === self::API.'/repos/acme/app/hooks'
+            && $r['config']['url'] === 'https://app.example.com/.well-known/wspanel-deploy/'.$site->webhook_id);
+    }
+
+    public function test_a_public_panel_limited_to_some_addresses_also_goes_through_the_site(): void
+    {
+        Setting::put('panel_access', ['allow' => ['10.0.0.0/8'], 'public_hooks' => false]);
+        app(ManageWebhook::class)->enable($this->site);
+
+        $this->assertSame('https://app.example.com/.well-known/wspanel-deploy/'.$this->site->fresh()->webhook_id, ManageWebhook::publicUrl($this->site->fresh()));
+        $this->assertStringStartsWith('https://panel.example.com/hooks/deploy/', (string) ManageWebhook::url($this->site->fresh()), 'a git server in the same network still uses the panel');
+
+        Setting::put('panel_access', ['allow' => ['10.0.0.0/8'], 'public_hooks' => true]);
+        $this->assertStringStartsWith('https://panel.example.com/hooks/deploy/', (string) ManageWebhook::publicUrl($this->site->fresh()));
+    }
+
+    public function test_when_neither_the_panel_nor_the_site_is_public_only_watching_is_offered(): void
+    {
+        config(['app.url' => 'https://panel.firma.lan']);
+        $this->site->update(['domain' => 'intranet.local']);
+        $this->agent->shouldReceive('call')->with('deploy.history', ['domain' => 'intranet.local'])->andReturn(['deploys' => [], 'releases' => [], 'current' => '', 'running' => false, 'config' => null]);
+        $this->connection();
+
+        $this->assertNull(ManageWebhook::publicUrl(tap($this->site->fresh(), fn ($s) => app(ManageWebhook::class)->enable($s))));
+        $this->assertFalse(ManageWebhook::reachable($this->site->fresh()));
     }
 
     public function test_a_local_panel_is_not_public(): void

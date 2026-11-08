@@ -68,7 +68,7 @@ func TestSiteDirectivesInEdgeRoute(t *testing.T) {
 	edge, _ := os.ReadFile(filepath.Join(env.Cfg.ProxySitesDir, "rules.example.com.caddy"))
 	route := string(edge)[strings.Index(string(edge), "route {"):]
 	rules := strings.Index(route, "\t\theader X-Rule yes\n\t\tredir /old /new 301")
-	if rules < 0 || rules > strings.Index(route, "reverse_proxy") {
+	if rules < 0 || rules > strings.LastIndex(route, "reverse_proxy") {
 		t.Fatalf("rules must sit in the route, before the backend:\n%s", edge)
 	}
 	if _, err := call(t, env, siteDirectives, map[string]string{"domain": "rules.example.com", "directives": "reverse_proxy 127.0.0.1:8025"}); code(err) != "invalid_params" {

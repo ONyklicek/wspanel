@@ -38,6 +38,18 @@
 
 	# In written order (a route block): who may come in, then redirects, then the app.
 	route {
+		# Deploy webhooks from the git host through the site's public domain,
+		# for a panel reachable only from the local network: exactly this path
+		# (an opaque hook id), ahead of the site's own access rules; the panel
+		# checks each delivery's signature and takes it once.
+		@wsp_deploy_hook path_regexp wsp_hook ^/\.well-known/wspanel-deploy/([a-f0-9]{32})$
+		handle @wsp_deploy_hook {
+			rewrite * /hooks/deploy/{re.wsp_hook.1}
+			reverse_proxy unix/{{.WebSocket}} {
+				header_up Host wspanel-panel.internal
+				header_up X-Forwarded-For {remote_host}
+			}
+		}
 {{- if .Edge.AllowIPs}}
 		@wsp_not_allowed {
 			{{.AllowMatcher}}

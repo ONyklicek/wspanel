@@ -130,7 +130,7 @@ class ManageGitHub
             $hookId = null;
             if ($data['notify'] === 'webhook') {
                 $site = $this->webhook->enable($site);
-                $hookId = $gh->addWebhook($data['repo'], (string) ManageWebhook::url($site), (string) $site->webhook_secret);
+                $hookId = $gh->addWebhook($data['repo'], (string) ManageWebhook::publicUrl($site), (string) $site->webhook_secret);
                 $created[] = fn () => $gh->deleteWebhook($data['repo'], $hookId);
                 $trigger = $data['trigger'];
             } else {

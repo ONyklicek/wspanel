@@ -97,6 +97,12 @@ VPN). **Server → Firewall → Přístup k panelu:** zadejte adresy nebo sítě
   veřejné, aby GitHub mohl spouštět deploy. Pokud je vypnete, použijte
   [automatický deploy kontrolou repozitáře](deploy.md#automatický-deploy) –
   ten nepotřebuje žádné spojení zvenku.
+- **Webhook přes doménu webu:** u panelu, na který GitHub nedosáhne, posílá
+  GitHub webhook na `https://<web>/.well-known/wspanel-deploy/<id>`. Edge každého
+  webu pustí k panelu jen tuto cestu (32 hex znaků ID, nic jiného), a to i přes
+  omezení webu na IP a heslo. Panel doručení ověří podpisem HMAC secretem webu,
+  odmítne opakované doručení a víc než 1 MB. Jiná část panelu přes domény webů
+  dostupná není. Viz [GitHub → Panel jen v lokální síti](github.md#panel-jen-v-lokální-síti-nebo-veřejný).
 - Totéž jde nastavit při instalaci: `install.sh --panel-allow=10.8.0.0/24,203.0.113.7`.
 - Omezení se týká i Mailpitu a phpMyAdminu/Admineru (běží pod doménou panelu).
 

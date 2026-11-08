@@ -236,6 +236,14 @@ hook() { pc -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -
 expect "webhook with a bad signature is refused" "$(hook -H 'X-Hub-Signature-256: sha256=00')" "403"
 expect "signed webhook starts a deploy" "$(hook -H "X-Hub-Signature-256: $sig")" "202"
 expect "replayed webhook is ignored" "$(hook -H "X-Hub-Signature-256: $sig" -H 'X-GitHub-Delivery: replay-0000-0000')" "200"
+# The same hook through the site's own domain (a panel the internet does not reach):
+# only that path goes to the panel, still signature-checked.
+hook_id=${url##*/}
+site_hook() { curl -sk --resolve app.localhost:443:127.0.0.1 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: ping' "$@" "https://app.localhost/.well-known/wspanel-deploy/$hook_id"; }
+expect "webhook via the site's domain checks the signature" "$(site_hook -H 'X-Hub-Signature-256: sha256=00' -d '{"zen":"x"}')" "403"
+ping='{"zen":"via site"}'
+expect "signed ping via the site's domain reaches the panel" "$(site_hook -H "X-Hub-Signature-256: sha256=$(printf '%s' "$ping" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')" -d "$ping")" "200"
+check "any other path goes to the site, not the panel" bash -c '! curl -sk --resolve app.localhost:443:127.0.0.1 -X POST https://app.localhost/.well-known/wspanel-deploy/x | grep -q "\"error\":\"not found\""'
 sleep 2
 rel=$(php "$(site app.localhost) echo App\\Models\\Deployment::where('site_id', \$s->id)->latest('started_at')->value('release');" | tr -d '[:space:]')
 php "$(site app.localhost) app(App\\Actions\\Sites\\ManageDeploys::class)->history(\$s);" >/dev/null

@@ -69,8 +69,18 @@ func TestEdgeSettingsRender(t *testing.T) {
 		}
 	}
 	// Protection comes before the app inside the route block.
-	if strings.Index(string(edge), "basic_auth") > strings.Index(string(edge), "reverse_proxy") {
+	if strings.Index(string(edge), "basic_auth") > strings.LastIndex(string(edge), "reverse_proxy") {
 		t.Fatal("basic_auth after reverse_proxy")
+	}
+	// The deploy webhook (a panel on the local network) comes in through the
+	// site's domain: exactly that path, to the panel, ahead of the site's IP
+	// list and password (GitHub is neither); the panel checks the signature.
+	hook := strings.Index(string(edge), "@wsp_deploy_hook path_regexp wsp_hook ^/\\.well-known/wspanel-deploy/([a-f0-9]{32})$")
+	if hook < 0 || !strings.Contains(string(edge), "rewrite * /hooks/deploy/{re.wsp_hook.1}") || !strings.Contains(string(edge), "header_up Host wspanel-panel.internal") {
+		t.Fatalf("deploy webhook route missing:\n%s", edge)
+	}
+	if hook > strings.Index(string(edge), "@wsp_not_allowed") || hook > strings.Index(string(edge), "basic_auth") {
+		t.Fatal("the webhook route must come before the site's own access rules")
 	}
 	for _, c := range dr.Calls() {
 		if strings.Contains(strings.Join(c.Args, " "), "s3cret") {
@@ -168,5 +178,29 @@ func TestProtectedPathCoversTheFrontController(t *testing.T) {
 	}
 	if edgePathMatcher("/") != "path *" || !strings.Contains(edgePathMatcher("/blog/*"), `/+blog(/.*)?$`) {
 		t.Fatal(edgePathMatcher("/blog/*"))
+	}
+}
+
+// A new agent brings existing sites' edge blocks up to its template, and only
+// the changed ones; nothing to do = no reload.
+func TestRenderEdgesRefreshesStaleBlocks(t *testing.T) {
+	env, dr := edgeEnv(t)
+	l, _ := layoutFor(t, env, "shop.example.com")
+	if err := os.WriteFile(l.EdgeFile, []byte("# an older agent's block\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n, err := renderEdges(t.Context(), env)
+	if err != nil || n != 1 {
+		t.Fatalf("refreshed %d, %v", n, err)
+	}
+	if edge, _ := os.ReadFile(l.EdgeFile); !strings.Contains(string(edge), "wsp_deploy_hook") {
+		t.Fatalf("not re-rendered:\n%s", edge)
+	}
+	before := len(dr.Calls())
+	if n, err := renderEdges(t.Context(), env); err != nil || n != 0 {
+		t.Fatalf("second run refreshed %d, %v", n, err)
+	}
+	if len(dr.Calls()) != before {
+		t.Error("nothing changed, yet the proxy was validated or reloaded")
 	}
 }

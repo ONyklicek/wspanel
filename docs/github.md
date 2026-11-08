@@ -75,10 +75,11 @@ V okně vyberte:
 - **Účet GitHub**: když jich máte víc,
 - **Repozitář** a **Větev**: nabízí se jen repozitáře, které spravujete,
 - **Co nasadit**: každý push do větve, nebo jen nový release / tag,
-- **Jak se panel o změně dozví**: *Webhook*, když je panel dostupný z internetu.
-  Když běží ve vnitřní síti (`localhost`, `*.lan`, privátní IP), nabídne jen
-  *kontrolu každou minutu*: GitHub webhook na adresu, kterou z internetu nevidí,
-  odmítne („isn't reachable over the public Internet“),
+- **Jak se panel o změně dozví**: *Webhook* (okamžitě) jde na panel, nebo u
+  panelu jen v lokální síti přes veřejnou doménu webu (viz
+  [Panel jen v lokální síti](#panel-jen-v-lokální-síti-nebo-veřejný)). Když
+  není veřejný ani web, nabídne se jen *kontrola každou minutu*: GitHub webhook
+  na adresu, kterou z internetu nevidí, odmítne,
 - **Uložit CI token do secretů**: jen pokud budete nasazovat hotový build
   z GitHub Actions.
 
@@ -241,6 +242,31 @@ Tlačítko pak ukazuje název repozitáře. Pod ním je **Odpojit**: panel z rep
 odebere svůj webhook a deploy klíč, automatický deploy přes webhook vypne
 a nastavení deploye nechá.
 
+## Panel jen v lokální síti, nebo veřejný
+
+Panel může být dostupný jen z lokální sítě (nebo omezený na pár adres) a
+z internetu jen weby. Panel to pozná a webhooky podle toho nasměruje:
+
+| Panel | Web | Kam GitHub posílá webhook |
+|---|---|---|
+| veřejný (přístup z internetu nebo s výjimkou pro webhooky) | jakýkoli | na panel: `https://panel…/hooks/deploy/<id>` |
+| jen lokální síť / omezený na adresy | veřejná doména | **přes doménu webu**: `https://<web>/.well-known/wspanel-deploy/<id>` |
+| jen lokální síť | interní (`.local`, `.lan`, privátní IP) | nikam: panel repozitář **kontroluje každou minutu** |
+
+Přes doménu webu edge pustí k panelu **jen tuto jednu cestu** s neuhádnutelným
+ID webu, a to i když má web omezení na IP adresy nebo heslo (GitHub ani jedno
+nemá). Panel každé doručení ověří podpisem HMAC a přijme ho jen jednou. Zbytek
+panelu z internetu dostupný není.
+
+Ostatní na přístupnosti panelu nezávisí:
+
+- **Propojení s GitHubem** (vytvoření aplikace, instalace) jde přes prohlížeč:
+  GitHub vás vrátí na adresu panelu, kterou máte otevřenou, i když je jen
+  v lokální síti.
+- Panel volá GitHub API **ven** (`api.github.com`), dovnitř nic nepotřebuje.
+- Odkaz **log** u deploye v GitHubu vede do panelu, otevře se tedy jen z lokální
+  sítě. Odkaz na web funguje odkudkoli.
+
 ## Deploye v GitHubu
 
 Každý deploy webu (z tlačítka, webhooku, kontroly repozitáře, z CI i staging →
@@ -301,6 +327,7 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 | „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, aplikace u účtu není nainstalovaná, nebo v instalaci nespravujete žádný repozitář |
 | „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte na Propojit s GitHubem znovu |
 | „This page has expired“ po kliknutí na tlačítko v tabulce | opraveno (tlačítka v hlavičce tabulek volala neexistující metodu); aktualizujte panel |
+| „GitHub je teď přetížený nebo nedostupný (HTTP 504)“ při vytváření aplikace | GitHub z vaší sítě odmítá nepřihlášená volání API (předání klíčů aplikace je vždy nepřihlášené). Zkuste **Dokončit vytvoření aplikace** později, nebo **Mám už aplikaci na GitHubu** s klíči z jejího nastavení |
 | GitHub hlásí „Invalid GitHub App configuration“ | starší panel posílal v manifestu webhook aplikace s lokální adresou, kterou GitHub odmítne; aktualizujte panel a klikněte na Propojit s GitHubem znovu |
 | „GitHub aplikaci se nepodařilo dokončit … HTTP 503/504“ | aplikace na GitHubu vznikla, jen GitHub (přetížený) nevydal její klíče. Na stránce Integrace klikněte na **Dokončit vytvoření aplikace** (kód platí hodinu). Po hodině použijte **Mám už aplikaci na GitHubu** a zadejte App ID, Client ID, nový client secret a privátní klíč z nastavení aplikace. Aplikaci nezakládejte znovu |
 | GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |

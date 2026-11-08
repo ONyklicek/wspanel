@@ -18,6 +18,7 @@ use App\Services\Agent\AgentException;
 use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubException;
 use App\Support\Lang;
+use App\Support\PublicAddress;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
@@ -245,7 +246,7 @@ class SiteDeploy extends ViewPage
                 'repo' => $this->site()->github_repo,
                 'branch' => $this->config['branch'] ?? null,
                 'trigger' => in_array($this->site()->deploy_trigger, ['tags', 'poll_tags'], true) ? 'tags' : 'branch',
-                'notify' => self::panelIsPublic() ? 'webhook' : 'poll',
+                'notify' => ManageWebhook::reachable($this->site()) ? 'webhook' : 'poll',
                 'ci_secret' => false,
             ])
             ->form(fn () => [
@@ -276,14 +277,16 @@ class SiteDeploy extends ViewPage
                 // GitHub refuses a webhook to an address it cannot reach
                 // (panel.localhost, *.lan, private IPs): only watching is offered then.
                 Radio::make('notify')->label(__('Jak se panel o změně dozví'))->rules([Options::rule()])
-                    ->options(self::panelIsPublic()
+                    ->options(ManageWebhook::reachable($this->site())
                         ? ['webhook' => __('Webhook (GitHub zavolá panel)'), 'poll' => __('Panel se každou minutu podívá do repozitáře')]
                         : ['poll' => __('Panel se každou minutu podívá do repozitáře')])
                     ->descriptions([
-                        'webhook' => __('Okamžité. Panel musí být z internetu dostupný na :url.', ['url' => rtrim((string) config('app.url'), '/')]),
-                        'poll' => self::panelIsPublic()
-                            ? __('Pro panel ve vnitřní síti nebo za NATem: nic nemusí volat dovnitř.')
-                            : __('Panel běží na adrese :url, kterou GitHub z internetu nevidí, takže webhook nejde. Změnu panel zjistí do minuty.', ['url' => rtrim((string) config('app.url'), '/')]),
+                        'webhook' => ManageWebhook::panelReachable()
+                            ? __('Okamžité. GitHub volá panel na :url.', ['url' => rtrim((string) config('app.url'), '/')])
+                            : __('Okamžité. Panel z internetu dostupný není, GitHub proto volá veřejnou doménu webu (:domain); její edge předá jen tento podepsaný požadavek panelu.', ['domain' => $this->site()->domain]),
+                        'poll' => ManageWebhook::reachable($this->site())
+                            ? __('Nic nemusí volat dovnitř; změnu panel zjistí do minuty.')
+                            : __('Panel ani web :domain nejsou z internetu dostupné, takže webhook nejde. Změnu panel zjistí do minuty.', ['domain' => $this->site()->domain]),
                     ])
                     ->required(),
                 Toggle::make('ci_secret')->label(__('Uložit CI token do secretů repozitáře (WSPANEL_TOKEN)'))
@@ -362,15 +365,7 @@ class SiteDeploy extends ViewPage
     /** A panel on a local or private address cannot receive GitHub's webhooks. */
     public static function panelIsPublic(): bool
     {
-        $host = (string) parse_url((string) config('app.url'), PHP_URL_HOST);
-        if ($host === '' || preg_match('/(^|\.)(localhost|local|lan|internal|home\.arpa)$/i', $host)) {
-            return false;
-        }
-        if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return (bool) filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
-        }
-
-        return true;
+        return PublicAddress::url((string) config('app.url'));
     }
 
     private function settingsAction(): Action
@@ -460,6 +455,13 @@ class SiteDeploy extends ViewPage
                     ->live(),
                 TextInput::make('url')->label(__('Payload URL (webhook)'))->readOnly()
                     ->default(fn () => ManageWebhook::url($this->site()) ?? __('vytvoří se po zapnutí'))
+                    ->helperText(fn () => ManageWebhook::panelReachable() ? null : __('Pro git server ve stejné síti jako panel (Gitea, GitLab).'))
+                    ->hiddenWhen('trigger', ['poll_branch', 'poll_tags']),
+                TextInput::make('public_url')->label(__('Payload URL z internetu (GitHub.com)'))->readOnly()
+                    ->default(fn () => ManageWebhook::publicUrl($this->site())
+                        ?? (ManageWebhook::reachable($this->site()) ? __('vytvoří se po zapnutí') : __('není: panel ani web nejsou z internetu dostupné, zvolte kontrolu repozitáře')))
+                    ->helperText(__('Panel z internetu dostupný není, proto přes veřejnou doménu webu; její edge předá panelu jen tento podepsaný požadavek.'))
+                    ->visible(fn () => ! ManageWebhook::panelReachable())
                     ->hiddenWhen('trigger', ['poll_branch', 'poll_tags']),
                 TextInput::make('secret')->label(__('Secret'))->readOnly()
                     ->default(fn () => $this->site()->webhook_secret ?? __('vytvoří se po zapnutí'))
@@ -491,6 +493,7 @@ class SiteDeploy extends ViewPage
                     ->action(function ($set) {
                         $site = app(ManageWebhook::class)->rotate($this->site());
                         $set('url', ManageWebhook::url($site) ?? '');
+                        $set('public_url', ManageWebhook::publicUrl($site) ?? '');
                         $set('secret', (string) $site->webhook_secret);
                         Toast::success(__('Webhook má nové URL a secret'), __('Zadejte je znovu v nastavení repozitáře.'));
                     }),
