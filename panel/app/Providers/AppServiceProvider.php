@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Http\Middleware\SetLocale;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Dns\DnsPrerequisites;
 use App\Support\Features;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -32,6 +33,8 @@ class AppServiceProvider extends ServiceProvider
             config('agent.socket'),
             config('agent.timeout'),
         ));
+        // Remembers DNS answers for one request (a form asks several times per render).
+        $this->app->scoped(DnsPrerequisites::class);
     }
 
     /**

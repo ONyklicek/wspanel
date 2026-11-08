@@ -6,8 +6,10 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Models\MailAlias;
 use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
-use App\Services\Mail\Deliverability;
+use App\Services\Dns\DnsPrerequisites;
 use App\Support\Toast;
+use App\Wire\Forms\DnsGate;
+use Closure;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\Action;
@@ -29,16 +31,12 @@ class MailAliasTable extends Component
         return MailDomain::findOrFail($this->domain);
     }
 
-    /**
-     * @param  array<string, list<string>>  $aliases
-     * @param  list<string>  $destinations  the newly set ones, checked for mail leaving the server
-     */
-    private function save(MailDomain $domain, array $aliases, string $ok, array $destinations = []): void
+    /** @param array<string, list<string>> $aliases */
+    private function save(MailDomain $domain, array $aliases, string $ok): void
     {
         try {
             app(ManageMailHosting::class)->setAliases($domain, $aliases);
-            $warning = $destinations === [] ? null : app(Deliverability::class)->forwardingWarning($destinations);
-            $warning === null ? Toast::success($ok) : Toast::warning($ok, $warning);
+            Toast::success($ok);
         } catch (AgentException $e) {
             Toast::error(__('Aliasy se nepodařilo uložit'), $e->getMessage());
         }
@@ -57,7 +55,7 @@ class MailAliasTable extends Component
             TextInput::make('local_part')->label(__('Adresa (před @').$domain->domain.__('; prázdné = vše ostatní, catch-all)'))
                 ->rules(['nullable', 'regex:/^[a-z0-9]([a-z0-9._+-]{0,62}[a-z0-9])?$/']),
             Textarea::make('destinations')->label(__('Doručit na (jedna adresa na řádek)'))->rows(3)->required()
-                ->rules([fn () => function (string $attr, mixed $value, \Closure $fail) {
+                ->rules([fn () => function (string $attr, mixed $value, Closure $fail) {
                     foreach (preg_split('/[\s,]+/', (string) $value, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $a) {
                         if (! filter_var($a, FILTER_VALIDATE_EMAIL)) {
                             $fail(__(':a není e-mailová adresa.', ['a' => $a]));
@@ -66,6 +64,7 @@ class MailAliasTable extends Component
                 }]),
         ];
         $lines = fn (string $v) => array_values(array_unique(array_map('strtolower', preg_split('/[\s,]+/', $v, -1, PREG_SPLIT_NO_EMPTY) ?: [])));
+        $form = [...$form, ...DnsGate::fields(fn (DnsPrerequisites $dns, callable $get) => $dns->forwardingSpf($lines((string) $get('destinations'))))];
 
         return $table
             ->stackedOnMobile()
@@ -80,9 +79,8 @@ class MailAliasTable extends Component
                     ->form($form)
                     ->action(function (array $data) use ($domain, $lines) {
                         $aliases = $this->current($domain);
-                        $destinations = $lines((string) $data['destinations']);
-                        $aliases[strtolower(trim((string) ($data['local_part'] ?? '')))] = $destinations;
-                        $this->save($domain, $aliases, __('Alias uložen'), $destinations);
+                        $aliases[strtolower(trim((string) ($data['local_part'] ?? '')))] = $lines((string) $data['destinations']);
+                        $this->save($domain, $aliases, __('Alias uložen'));
                     }),
             ])
             ->actions([

@@ -5,8 +5,10 @@ namespace App\Livewire\Mail;
 use App\Actions\Mail\ManageMailHosting;
 use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
+use App\Services\Dns\DnsPrerequisites;
 use App\Services\Mail\Deliverability;
 use App\Support\Toast;
+use App\Wire\Forms\DnsGate;
 use App\Wire\Resources\MailDomainResource;
 use Illuminate\Contracts\View\View;
 use NyonCode\WireCore\Actions\Action;
@@ -45,9 +47,14 @@ class ViewMailDomain extends ViewPage
                 ->fillFormUsing(fn () => ['webmail' => $domain->webmail, 'autoconfig' => $domain->autoconfig])
                 ->form([
                     Toggle::make('webmail')->label(__('Webmail na webmail.').$domain->domain)
-                        ->helperText(__('Přihlášení jen jménem schránky (bez @').$domain->domain.__('). Potřebuje DNS záznam webmail.').$domain->domain.'.'),
+                        ->helperText(__('Přihlášení jen jménem schránky (bez @').$domain->domain.__('). Potřebuje DNS záznam webmail.').$domain->domain.'.')->live(),
                     Toggle::make('autoconfig')->label(__('Automatické nastavení poštovních programů'))
-                        ->helperText(__('Thunderbird a Outlook si server najdou samy (autoconfig.').$domain->domain.', autodiscover.'.$domain->domain.').'),
+                        ->helperText(__('Thunderbird a Outlook si server najdou samy (autoconfig.').$domain->domain.', autodiscover.'.$domain->domain.').')->live(),
+                    // Only what is being switched on now: its certificate is issued once DNS points here.
+                    ...DnsGate::fields(fn (DnsPrerequisites $dns, callable $get) => $dns->pointHere([
+                        ...($get('webmail') && ! $domain->webmail ? ['webmail.'.$domain->domain] : []),
+                        ...($get('autoconfig') && ! $domain->autoconfig ? ['autoconfig.'.$domain->domain, 'autodiscover.'.$domain->domain] : []),
+                    ])),
                 ])
                 ->action(function (array $data) use ($domain) {
                     try {

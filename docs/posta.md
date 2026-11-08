@@ -181,10 +181,11 @@ přímo.
 
 Aby přeposlaná pošta prošla SPF, potřebuje server pošty vlastní SPF záznam,
 např. `mail.example.net TXT "v=spf1 a -all"`. Je-li zóna serveru pošty
-v panelu, doplní ho **DNS → zóna → Doplnit doporučené**. U externího DNS na
-jeho chybění upozorní kontrola doručitelnosti a také panel při uložení
-přesměrování nebo aliasu, který vede mimo server. S relayem (SMTP poskytovatel) rozhoduje poskytovatel: mnozí
-přeposílání cizí pošty nedovolí.
+v panelu, doplní ho **DNS → zóna → Doplnit doporučené**. U externího DNS ho
+hlídá kontrola doručitelnosti a přesměrování nebo alias mimo server bez něj
+jde uložit jen s potvrzením (viz [Kontrola před zapnutím](dns.md#kontrola-před-zapnutím)).
+S relayem (SMTP poskytovatel) rozhoduje poskytovatel: mnozí přeposílání cizí
+pošty nedovolí.
 
 V doručených zprávách je proto i u běžné příchozí pošty `Return-Path`
 v podobě `SRS0=…`; seznamy antispamu s tím počítají.

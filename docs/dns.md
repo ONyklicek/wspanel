@@ -68,3 +68,20 @@ Detail zóny → **Kontrola DNS** ověří přes veřejné DNS:
 - existuje SPF a DMARC.
 
 Změny se šíří podle TTL, obvykle minuty až hodiny.
+
+## Kontrola před zapnutím
+
+Funkce, které bez DNS nefungují, se před zapnutím na DNS podívají:
+
+| Funkce | Co musí být v DNS |
+|---|---|
+| Další a přesměrované domény webu (nově přidané) | míří na server (certifikát) |
+| HTTPS → přepnutí na automatický certifikát | doména webu a jeho další domény míří na server |
+| Webmail a automatické nastavení programů (při zapnutí) | `webmail.`, `autoconfig.`, `autodiscover.` míří na server |
+| Přesměrování schránky nebo alias mimo server | SPF serveru pošty (viz [Pošta](posta.md#přeposílání-mimo-server-srs)) |
+
+Když něco chybí, dialog to ukáže a uložit jde až po potvrzení **Zapnout
+i tak** (DNS často nastavujete hned potom a šíří se podle TTL). Jména jen pro
+vnitřní síť (`.local`, `.test`…) a server bez nastavené veřejné IP se
+nekontrolují. Nová poštovní doména kontrolu MX nemá záměrně: schránky se
+zakládají dřív, než se MX přepne.

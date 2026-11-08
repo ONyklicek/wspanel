@@ -348,30 +348,57 @@ class MailHostingTest extends TestCase
         $this->assertNull($alice->fresh()->forward);
     }
 
-    public function test_forwarding_off_the_server_warns_when_the_mail_hosts_spf_is_missing(): void
+    /** @param  array<string, list<string>>  $records  "name|type" => values, changeable later through the reference */
+    private function fakeDns(array &$records): void
     {
-        $this->actingAs(User::factory()->create());
         config(['panel.mail_host' => 'mail.hosting.cz', 'panel.public_ipv4' => '203.0.113.7']);
-        $spf = [];
-        $this->app->instance(Resolver::class, new class($spf) extends Resolver
+        $this->app->instance(Resolver::class, new class($records) extends Resolver
         {
-            public function __construct(public array &$spf) {}
+            public function __construct(public array &$records) {}
 
             public function records(string $name, int $type, string $field): array
             {
-                return $name === 'mail.hosting.cz' && $type === DNS_TXT ? $this->spf : [];
+                return $this->records[$name.'|'.$type] ?? [];
             }
         });
+    }
+
+    public function test_forwarding_off_the_server_waits_for_the_mail_hosts_spf_or_a_confirmation(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $dns = [];
+        $this->fakeDns($dns);
         $domain = MailDomain::create(['domain' => 'firma.cz']);
         $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 500, 'enabled' => true]);
-        $this->agent->shouldReceive('call')->with('mail.forward.set', Mockery::any())->andReturn([]);
-        $table = Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
-        $warning = 'Pošta přeposlaná mimo server neprojde u příjemce SPF: mail.hosting.cz nemá SPF záznam, který by povoloval tento server. Do DNS přidejte mail.hosting.cz TXT "v=spf1 a -all".';
+        $this->agent->shouldReceive('call')->twice()->with('mail.forward.set', Mockery::any())->andReturn([]);
+        $table = fn () => Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
 
-        $this->tableAction($table, $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1'])->assertNotified($warning, 'warning');
+        $this->tableAction($table(), $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1'])->assertHasErrors()
+            ->assertSee('V DNS zatím chybí')->assertSee('mail.hosting.cz TXT');
+        $this->assertNull($alice->fresh()->forward);
 
-        $spf[] = 'v=spf1 a -all';
-        $this->tableAction($table, $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1'])->assertNotified('Pošta se přeposílá na petr@seznam.cz', 'success');
+        $this->tableAction($table(), $alice, 'forward', ['to' => ['petr@seznam.cz'], 'keep_copy' => '1', 'dns_anyway' => true])->assertHasNoErrors();
+        $this->assertSame(['petr@seznam.cz'], $alice->fresh()->forward['to']);
+
+        $dns['mail.hosting.cz|'.DNS_TXT] = ['v=spf1 a -all'];
+        $this->tableAction($table(), $alice, 'forward', ['to' => ['jana@seznam.cz'], 'keep_copy' => '1'])->assertHasNoErrors();
+    }
+
+    public function test_webmail_waits_for_its_dns_or_a_confirmation(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $dns = [];
+        $this->fakeDns($dns);
+        $domain = MailDomain::create(['domain' => 'firma.cz', 'webmail' => false, 'autoconfig' => false]);
+        $this->agent->shouldReceive('call')->once()->with('mail.domain.set', Mockery::on(fn ($p) => $p['webmail'] === true))->andReturn([]);
+
+        $this->pageAction(Livewire::test(ViewMailDomain::class, ['record' => $domain->id]), 'features', ['webmail' => true, 'autoconfig' => false])
+            ->assertHasErrors();
+
+        $dns['webmail.firma.cz|'.DNS_A] = ['203.0.113.7'];
+        $this->app->forgetScopedInstances(); // a new request: DNS answers are remembered for one only
+        $this->pageAction(Livewire::test(ViewMailDomain::class, ['record' => $domain->id]), 'features', ['webmail' => true, 'autoconfig' => false])
+            ->assertHasNoErrors();
     }
 
     public function test_dns_recommends_an_spf_for_the_mail_host_in_its_zone(): void

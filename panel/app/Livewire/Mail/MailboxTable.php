@@ -6,8 +6,9 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
-use App\Services\Mail\Deliverability;
+use App\Services\Dns\DnsPrerequisites;
 use App\Support\Toast;
+use App\Wire\Forms\DnsGate;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Number;
 use Livewire\Component;
@@ -113,11 +114,12 @@ class MailboxTable extends Component
                             Tags::make('to')->label(__('Přeposílat na'))
                                 ->suggestions(fn () => Mailbox::query()->with('mailDomain')->get()->map->address()->sort()->values()->all())
                                 ->helperText(__('Prázdné = přesměrování vypnuto.'))
-                                ->rules(['array', 'max:50']),
+                                ->rules(['array', 'max:50'])->live(),
                             Radio::make('keep_copy')->label(__('Ponechat kopii ve schránce'))
                                 ->options(['1' => __('Ano'), '0' => __('Ne')])
                                 ->descriptions(['1' => __('Zprávy zůstanou i v této schránce.'), '0' => __('Zprávy se jen přepošlou, schránka zůstane prázdná (neběží ani její automatická odpověď).')])
                                 ->rules(['in:0,1'])->default('1'),
+                            ...DnsGate::fields(fn (DnsPrerequisites $dns, callable $get) => $dns->forwardingSpf((array) $get('to'))),
                         ])
                         ->action(fn (Mailbox $record, array $data) => $this->attempt(__('Přesměrování se nepodařilo nastavit'), function () use ($record, $data) {
                             $to = array_values(array_unique(array_map(fn ($a) => strtolower(trim((string) $a)), (array) ($data['to'] ?? []))));
@@ -130,10 +132,7 @@ class MailboxTable extends Component
                                 throw new AgentException('invalid', __('Schránka nemůže přeposílat sama sobě.'), 'panel');
                             }
                             app(ManageMailHosting::class)->forward($record, $to, (string) ($data['keep_copy'] ?? '1') === '1');
-                            $warning = $to === [] ? null : app(Deliverability::class)->forwardingWarning($to);
-                            $warning === null
-                                ? Toast::success($to === [] ? __('Přesměrování vypnuto') : __('Pošta se přeposílá na ').implode(', ', $to))
-                                : Toast::warning(__('Pošta se přeposílá na ').implode(', ', $to), $warning);
+                            Toast::success($to === [] ? __('Přesměrování vypnuto') : __('Pošta se přeposílá na ').implode(', ', $to));
                         })),
                     Action::make('autoreply')->label(__('Automatická odpověď'))->icon('outline:paper-airplane')
                         ->fillFormUsing(fn (Mailbox $record) => ['enabled' => $record->autoreply !== null] + ($record->autoreply ?? ['subject' => __('Nejsem k zastižení'), 'body' => '', 'days' => 1]))

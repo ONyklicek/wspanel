@@ -98,24 +98,6 @@ class Deliverability
         return ['record' => $spf, 'ok' => $spf !== null && self::spfAllowsServer($spf, $v4)];
     }
 
-    /**
-     * What to tell someone forwarding mail to the given addresses when part of
-     * it leaves the server and the mail host's SPF (usually in an external DNS
-     * the panel cannot fill) would not let it through; null when all is well.
-     *
-     * @param  list<string>  $destinations
-     */
-    public function forwardingWarning(array $destinations): ?string
-    {
-        $local = MailDomain::acrossClients()->pluck('domain')->map(fn ($d) => strtolower($d))->all();
-        $leaves = collect($destinations)->contains(fn ($a) => ! in_array(strtolower((string) substr((string) strrchr($a, '@'), 1)), $local, true));
-        if (! $leaves || $this->hostSpf()['ok']) {
-            return null;
-        }
-
-        return __('Pošta přeposlaná mimo server neprojde u příjemce SPF: :host nemá SPF záznam, který by povoloval tento server. Do DNS přidejte :host TXT "v=spf1 a -all".', ['host' => ManageMailHosting::mailHost()]);
-    }
-
     private static function spfAllowsServer(string $spf, string $v4): bool
     {
         return $v4 !== '' && str_contains($spf, 'ip4:'.$v4) || preg_match('/\s(\+?mx|\+?a)(\s|$)/', $spf) || str_contains($spf, 'include:');

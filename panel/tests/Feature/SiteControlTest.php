@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\CreateSite;
+use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteLogs;
@@ -11,6 +12,7 @@ use App\Livewire\Sites\ViewSite;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Dns\Resolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -235,7 +237,7 @@ class SiteControlTest extends TestCase
         $site->refresh();
         $this->assertSame(['app.example.net'], $site->edge_settings['aliases']);
         $this->assertStringNotContainsString('secret-pass', json_encode($site->getAttributes()));
-        $this->assertSame('path', \App\Actions\Sites\ManageEdge::formData($site)['auth_mode']);
+        $this->assertSame('path', ManageEdge::formData($site)['auth_mode']);
     }
 
     public function test_domains_and_access_are_checked_in_the_panel(): void
@@ -253,5 +255,23 @@ class SiteControlTest extends TestCase
         ] as $bad) {
             $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', $bad)->assertHasErrors();
         }
+    }
+
+    public function test_a_new_domain_waits_until_it_points_here_or_is_confirmed(): void
+    {
+        $site = $this->site();
+        config(['panel.public_ipv4' => '203.0.113.7']);
+        $this->app->instance(Resolver::class, new class extends Resolver
+        {
+            public function records(string $name, int $type, string $field): array
+            {
+                return $name === 'shop.example.com' && $type === DNS_A ? ['203.0.113.7'] : [];
+            }
+        });
+        $this->agent->shouldReceive('call')->twice()->with('site.edge', Mockery::any())->andReturn(['edge' => []]);
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['elsewhere.example.com']])->assertHasErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['elsewhere.example.com'], 'dns_anyway' => true])->assertHasNoErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'edge', ['aliases' => ['shop.example.com']])->assertHasNoErrors();
     }
 }

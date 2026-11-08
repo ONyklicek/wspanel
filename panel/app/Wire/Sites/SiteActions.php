@@ -25,13 +25,16 @@ use App\Models\Client;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
+use App\Services\Dns\DnsPrerequisites;
 use App\Support\Domains;
 use App\Support\Lang;
 use App\Support\Limits;
 use App\Support\Toast;
 use App\Support\WebRules\RulesConverter;
+use App\Wire\Forms\DnsGate;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\SiteResource;
+use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
@@ -262,7 +265,7 @@ final class SiteActions
                     ->hiddenWhen('access', SshAccess::Off->value)
                     ->required(fn ($get) => ! in_array($get('password_mode') ?? 'keep', ['generate', 'set'], true)
                         && ! ($record->ssh_password && ($get('password_mode') ?? 'keep') === 'keep'))
-                    ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                    ->rules([function (string $attribute, mixed $value, Closure $fail) {
                         if (trim((string) $value) !== '' && ManageSsh::parseKeys((string) $value) === []) {
                             $fail(__('Nenašel jsem žádný platný klíč.'));
                         }
@@ -289,7 +292,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->modalHeading(fn (Site $record) => "HTTPS pro {$record->domain}")
             ->modalWidth('2xl')
             ->fillFormUsing(fn (Site $record) => ['mode' => $record->tls_mode ?? 'auto'])
-            ->form([
+            ->form(fn (Site $record) => [
                 Radio::make('mode')->rules([Options::rule()])
                     ->label(__('Odkud je certifikát'))
                     ->options(Lang::values(ManageTls::MODES))
@@ -300,6 +303,10 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ])
                     ->required()
                     ->live(),
+                // Switching to a public certificate: it is issued only for names pointing here.
+                ...DnsGate::fields(fn (DnsPrerequisites $dns, callable $get) => $get('mode') === 'auto' && ($record->tls_mode ?? 'auto') !== 'auto'
+                    ? $dns->pointHere([$record->domain, ...($record->edge_settings['aliases'] ?? []), ...($record->edge_settings['redirect_hosts'] ?? [])])
+                    : []),
                 Textarea::make('cert')
                     ->label(__('Certifikát (PEM, včetně mezilehlých)'))
                     ->placeholder('-----BEGIN CERTIFICATE-----')
@@ -441,7 +448,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function edge(): Action
     {
-        $domainRule = function (string $attribute, mixed $value, \Closure $fail) {
+        $domainRule = function (string $attribute, mixed $value, Closure $fail) {
             foreach ((array) $value as $d) {
                 if (! Domains::isValid(Domains::normalize((string) $d))) {
                     $fail("{$d} není platná doména.");
@@ -462,11 +469,16 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     Tab::make('domains')->label(__('Domény'))->icon('outline:globe-alt')->schema([
                         Tags::make('aliases')->label(__('Další domény webu'))
                             ->helperText(__('Web odpovídá i na nich (stejný obsah). Musí mířit na tento server.'))
-                            ->rules([$domainRule]),
+                            ->rules([$domainRule])->live(),
                         Tags::make('redirect_hosts')->label(__('Domény přesměrované na ').$record->domain)
                             ->helperText(__('Např. www.').$record->domain.__(' nebo stará doména. Přesměrují trvale (308) i s cestou.'))
                             ->suggestions(str_starts_with($record->domain, 'www.') ? [substr($record->domain, 4)] : ['www.'.$record->domain])
-                            ->rules([$domainRule]),
+                            ->rules([$domainRule])->live(),
+                        // Only domains added now: each gets a certificate once it points here.
+                        ...DnsGate::fields(fn (DnsPrerequisites $dns, callable $get) => $dns->pointHere(array_values(array_diff(
+                            [...(array) $get('aliases'), ...(array) $get('redirect_hosts')],
+                            [...($record->edge_settings['aliases'] ?? []), ...($record->edge_settings['redirect_hosts'] ?? [])],
+                        )))),
                     ]),
                     Tab::make('redirects')->label(__('Přesměrování'))->icon('outline:arrow-uturn-right')->schema([
                         Repeater::make('redirects')->label(__('Pravidla přesměrování'))->table()->addButtonLabel(__('Přidat přesměrování'))->schema([
@@ -494,7 +506,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                         ]),
                         Textarea::make('allow_ips')->label(__('Povolené IP adresy'))->rows(3)->placeholder("203.0.113.7\n10.8.0.0/24")
                             ->helperText(__('Prázdné = kdokoli. Ostatní dostanou 403. Jedna adresa nebo síť na řádek.'))
-                            ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                            ->rules([function (string $attribute, mixed $value, Closure $fail) {
                                 foreach (ManageDatabaseServers::parseAllow((string) $value) as $ip) {
                                     if (! ManageDatabaseServers::validAddress($ip)) {
                                         $fail(__(':ip není IP adresa ani síť.', ['ip' => $ip]));
