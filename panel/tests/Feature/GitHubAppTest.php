@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\ManageGitHub;
+use App\Livewire\Pages\IntegrationsPage;
 use App\Models\GithubConnection;
 use App\Models\Setting;
 use App\Models\Site;
@@ -14,6 +15,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 /** Connecting GitHub with a button: the panel's GitHub App, created from a manifest. */
@@ -31,6 +33,7 @@ class GitHubAppTest extends TestCase
     {
         parent::setUp();
         config(['app.url' => 'https://panel.localhost:8443']);
+        Sleep::fake(); // the retries' pauses
         $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         openssl_pkey_export($key, $this->pem);
         $this->publicKey = openssl_pkey_get_details($key)['key'];
@@ -80,6 +83,59 @@ class GitHubAppTest extends TestCase
         $raw = (string) DB::table('settings')->where('key', GitHubApp::SETTING)->value('value');
         $this->assertStringNotContainsString('shh-secret', $raw);
         $this->assertStringNotContainsString('PRIVATE KEY', $raw);
+    }
+
+    public function test_a_busy_github_is_retried_while_handing_over_the_keys(): void
+    {
+        Http::fake([self::API.'/app-manifests/abcdefgh123/conversions' => Http::sequence()
+            ->push(['message' => 'Service Unavailable'], 503)
+            ->push(['id' => 42, 'slug' => 'wspanel-panel', 'client_id' => 'Iv1.abc', 'client_secret' => 's', 'pem' => $this->pem, 'owner' => ['login' => 'acme']], 201)]);
+        $this->actingAs(User::factory()->create())->withSession(['github.app_state' => 'st']);
+
+        $this->get('/github/app/created?code=abcdefgh123&state=st')->assertRedirectContains('https://github.com/apps/wspanel-panel/installations/new');
+    }
+
+    public function test_when_github_stays_down_the_same_code_finishes_it_later(): void
+    {
+        Http::fake([self::API.'/app-manifests/abcdefgh123/conversions' => Http::sequence()
+            ->push([], 503)->push([], 503)->push([], 504)->push([], 503)
+            ->push(['id' => 42, 'slug' => 'wspanel-panel', 'client_id' => 'Iv1.abc', 'client_secret' => 's', 'pem' => $this->pem, 'owner' => ['login' => 'acme']], 201)]);
+        $this->actingAs(User::factory()->create())->withSession(['github.app_state' => 'st']);
+
+        $this->get('/github/app/created?code=abcdefgh123&state=st')->assertRedirect(IntegrationsPage::url());
+        $this->assertNull(GitHubApp::configured());
+        $this->get('/integrations')->assertSee('Dokončit vytvoření aplikace')->assertSee('Nezakládejte aplikaci znovu');
+
+        $this->post('/github/app/retry')->assertRedirectContains('https://github.com/apps/wspanel-panel/installations/new');
+        $this->assertSame('wspanel-panel', GitHubApp::configured()?->slug);
+        $this->assertNull(session('github.app_pending'));
+    }
+
+    public function test_finishing_later_is_the_administrators_and_needs_a_live_code(): void
+    {
+        $this->actingAs(User::factory()->forClient()->create())->withSession(['github.app_pending' => ['code' => 'abcdefgh123', 'until' => time() + 60]]);
+        $this->post('/github/app/retry')->assertForbidden();
+
+        $this->actingAs(User::factory()->create())->withSession(['github.app_pending' => ['code' => 'abcdefgh123', 'until' => time() - 1]]);
+        $this->post('/github/app/retry')->assertStatus(410);
+    }
+
+    public function test_an_existing_apps_keys_are_checked_with_github_before_they_are_kept(): void
+    {
+        Http::fake([self::API.'/app' => Http::response(['id' => 77, 'slug' => 'wspanel-mine', 'client_id' => 'Iv1.mine', 'owner' => ['login' => 'acme'], 'html_url' => 'https://github.com/apps/wspanel-mine'])]);
+
+        $app = GitHubApp::createFromCredentials(77, 'Iv1.mine', 'secret-secret-secret-1', $this->pem);
+
+        $this->assertSame('wspanel-mine', GitHubApp::configured()->slug);
+        Http::assertSent(function (Request $r) {
+            [$h, $p] = explode('.', substr($r->header('Authorization')[0], 7));
+
+            return $r->url() === self::API.'/app' && json_decode(base64_decode(strtr($p, '-_', '+/')), true)['iss'] === '77';
+        });
+
+        GitHubApp::forget();
+        $this->expectException(GitHubException::class);
+        GitHubApp::createFromCredentials(77, 'Iv1.other', 'secret-secret-secret-1', $this->pem);
     }
 
     public function test_a_return_without_this_sessions_state_is_refused(): void

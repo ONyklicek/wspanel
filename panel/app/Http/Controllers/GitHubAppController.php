@@ -45,13 +45,37 @@ class GitHubAppController
     {
         Gate::authorize('admin');
         $this->checkState($request, 'github.app_state');
-        try {
-            $app = GitHubApp::createFromCode((string) $request->query('code'));
-        } catch (GitHubException $e) {
-            Toast::error(__('GitHub aplikaci se nepodařilo vytvořit'), $e->getMessage());
 
-            return $this->back($request);
+        return $this->finishCreating($request, (string) $request->query('code'));
+    }
+
+    /**
+     * Finishing again with the code GitHub gave (valid an hour): the app
+     * exists on GitHub, only the hand-over of its keys failed.
+     */
+    public function retry(Request $request): RedirectResponse
+    {
+        Gate::authorize('admin');
+        $pending = $request->session()->get('github.app_pending');
+        abort_unless(is_array($pending) && ($pending['until'] ?? 0) > time(), 410, __('Kód od GitHubu vypršel. Zadejte klíče aplikace ručně, nebo ji vytvořte znovu.'));
+
+        return $this->finishCreating($request, (string) $pending['code']);
+    }
+
+    private function finishCreating(Request $request, string $code): RedirectResponse
+    {
+        try {
+            $app = GitHubApp::createFromCode($code);
+        } catch (GitHubException $e) {
+            if ($e->status >= 500 || $e->status === 0) {
+                // The app exists on GitHub; the code works for an hour.
+                $request->session()->put('github.app_pending', ['code' => $code, 'until' => time() + 3300]);
+            }
+            Toast::error(__('GitHub aplikaci se nepodařilo dokončit'), $e->getMessage());
+
+            return redirect(IntegrationsPage::url());
         }
+        $request->session()->forget('github.app_pending');
 
         return redirect()->away($app->installUrl($this->state($request, 'github.connect_state')));
     }

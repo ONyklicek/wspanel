@@ -5,6 +5,7 @@ namespace App\Services\GitHub;
 use App\Models\Setting;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -84,11 +85,40 @@ class GitHubApp
         if (! preg_match('/^[A-Za-z0-9_-]{8,128}$/', $code)) {
             throw new GitHubException(__('Neplatný kód od GitHubu.'));
         }
-        $r = self::send(Http::baseUrl(GitHubClient::API)->withHeaders(self::headers()), 'post', "/app-manifests/{$code}/conversions");
-        $app = new self((int) $r['id'], (string) $r['slug'], (string) $r['client_id'], (string) $r['client_secret'], (string) $r['pem'], (string) ($r['owner']['login'] ?? ''));
+        // GitHub answers this one call with 502–504 under load while the app
+        // already exists; the code stays valid for an hour, so try a few times.
+        $http = Http::baseUrl(GitHubClient::API)->withHeaders(self::headers())
+            ->retry([1000, 3000, 6000], when: fn ($e) => $e instanceof ConnectionException || ($e instanceof RequestException && $e->response->serverError()), throw: false);
+        $r = self::send($http, 'post', "/app-manifests/{$code}/conversions");
+
+        return self::store(new self((int) $r['id'], (string) $r['slug'], (string) $r['client_id'], (string) $r['client_secret'], (string) $r['pem'], (string) ($r['owner']['login'] ?? '')), $r['html_url'] ?? null);
+    }
+
+    /**
+     * An app that already exists on GitHub (the hand-over failed, or it was
+     * made by hand): its ID, client ID, a client secret and a private key from
+     * its settings. Checked with GitHub (GET /app signed by the key) before it
+     * is kept.
+     */
+    public static function createFromCredentials(int $id, string $clientId, string $clientSecret, string $privateKey): self
+    {
+        if (openssl_pkey_get_private($privateKey) === false) {
+            throw new GitHubException(__('Privátní klíč není platný klíč PEM (soubor .pem stažený z nastavení aplikace).'));
+        }
+        $probe = new self($id, '', $clientId, $clientSecret, $privateKey, '');
+        $r = self::send($probe->asApp()->retry([1000, 3000], when: fn ($e) => $e instanceof ConnectionException || ($e instanceof RequestException && $e->response->serverError()), throw: false), 'get', '/app');
+        if ((string) ($r['client_id'] ?? '') !== $clientId) {
+            throw new GitHubException(__('Client ID nepatří aplikaci s tímto ID.'));
+        }
+
+        return self::store(new self($id, (string) $r['slug'], $clientId, $clientSecret, $privateKey, (string) ($r['owner']['login'] ?? '')), $r['html_url'] ?? null);
+    }
+
+    private static function store(self $app, ?string $htmlUrl): self
+    {
         Setting::put(self::SETTING, [
             'id' => $app->id, 'slug' => $app->slug, 'client_id' => $app->clientId, 'owner' => $app->owner,
-            'html_url' => $r['html_url'] ?? null,
+            'html_url' => $htmlUrl,
             'secret' => Crypt::encryptString(json_encode(['client_secret' => $app->clientSecret, 'pem' => $app->privateKey])),
         ]);
 
@@ -220,6 +250,9 @@ class GitHubApp
         }
         if ($allowMissing && $response->status() === 404) {
             return [];
+        }
+        if ($response->serverError()) {
+            throw new GitHubException(__('GitHub je teď přetížený nebo nedostupný (HTTP :status). Zkuste to za chvíli znovu.', ['status' => $response->status()]), $response->status());
         }
         if ($response->failed()) {
             throw new GitHubException('GitHub: '.($response->json('message') ?? 'HTTP '.$response->status()), $response->status());

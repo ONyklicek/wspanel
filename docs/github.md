@@ -128,6 +128,10 @@ a hned pak ji nainstalujete. Je to jeden průchod:
 
 - **Aplikace pro organizaci:** když má aplikace patřit organizaci místo vašeho
   účtu (spravuje ji pak kdokoli z vlastníků organizace).
+- **Mám už aplikaci na GitHubu:** aplikace existuje (předání klíčů selhalo, nebo
+  jste ji založili ručně). GitHub → Settings → Developer settings → GitHub Apps →
+  aplikace: zkopírujte **App ID** a **Client ID**, vygenerujte **client secret**
+  a **privátní klíč** (.pem) a vložte je. Panel je ověří u GitHubu.
 - Aplikace je **veřejná**, aby ji klienti mohli nainstalovat na své účty. Nic
   jiného, než co je v tabulce oprávnění, neumí, a vlastní webhook nemá.
 - Funguje i pro panel ve vnitřní síti (`panel.firma.lan`, `localhost`):
@@ -298,6 +302,7 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 | „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte na Propojit s GitHubem znovu |
 | „This page has expired“ po kliknutí na tlačítko v tabulce | opraveno (tlačítka v hlavičce tabulek volala neexistující metodu); aktualizujte panel |
 | GitHub hlásí „Invalid GitHub App configuration“ | starší panel posílal v manifestu webhook aplikace s lokální adresou, kterou GitHub odmítne; aktualizujte panel a klikněte na Propojit s GitHubem znovu |
+| „GitHub aplikaci se nepodařilo dokončit … HTTP 503/504“ | aplikace na GitHubu vznikla, jen GitHub (přetížený) nevydal její klíče. Na stránce Integrace klikněte na **Dokončit vytvoření aplikace** (kód platí hodinu). Po hodině použijte **Mám už aplikaci na GitHubu** a zadejte App ID, Client ID, nový client secret a privátní klíč z nastavení aplikace. Aplikaci nezakládejte znovu |
 | GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |

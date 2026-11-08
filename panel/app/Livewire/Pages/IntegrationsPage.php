@@ -12,6 +12,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Display\Placeholder;
+use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WirePanels\Pages\Page;
 
@@ -56,7 +57,7 @@ class IntegrationsPage extends Page
 
     protected function actions(): array
     {
-        $actions = [$this->connectAction(), $this->createAppAction(), $this->organizationAppAction(), $this->tokenAction()];
+        $actions = [$this->connectAction(), $this->createAppAction(), $this->organizationAppAction(), $this->existingAppAction(), $this->tokenAction()];
         foreach ($this->connections() as $c) {
             $actions[] = $this->manageAction($c);
             $actions[] = $this->disconnectAction($c);
@@ -98,6 +99,45 @@ class IntegrationsPage extends Page
             ])
             ->modalSubmitActionLabel(__('Pokračovat na GitHub'))
             ->action(fn (array $data) => $this->redirect(route('github.app.create', ['org' => $data['org']])));
+    }
+
+    /** The hand-over of the keys failed and the code from GitHub is still valid. */
+    public function pendingApp(): bool
+    {
+        $p = session('github.app_pending');
+
+        return $this->isAdmin() && is_array($p) && ($p['until'] ?? 0) > time();
+    }
+
+    /** An app that exists on GitHub already: its keys entered by hand, checked with GitHub. */
+    public function existingAppAction(): Action
+    {
+        return Action::make('existingApp')
+            ->label(__('Mám už aplikaci na GitHubu'))
+            ->color('gray')
+            ->quiet()
+            ->modalHeading(__('Klíče existující GitHub aplikace'))
+            ->modalWidth('2xl')
+            ->form([
+                Placeholder::make('how')->hiddenLabel()->content(__('GitHub → Settings → Developer settings → GitHub Apps → aplikace panelu. Na stránce General najdete App ID a Client ID; tlačítkem Generate a new client secret získáte client secret a dole v Private keys tlačítkem Generate a private key stáhnete soubor .pem. Jeho obsah vložte celý. Panel klíče ověří u GitHubu a uloží šifrovaně.')),
+                TextInput::make('app_id')->label(__('App ID'))->required()->integer()->rules(['integer', 'min:1']),
+                TextInput::make('client_id')->label(__('Client ID'))->required()->rules(['regex:/^Iv[0-9A-Za-z.]{4,40}$/'])
+                    ->validationMessages(['regex' => __('Client ID začíná Iv… (najdete ho na stránce General).')]),
+                TextInput::make('client_secret')->label(__('Client secret'))->password()->required()->rules(['string', 'min:20', 'max:100']),
+                Textarea::make('private_key')->label(__('Privátní klíč (obsah souboru .pem)'))->rows(6)->required()
+                    ->rules(['string', 'max:10000', 'regex:/-----BEGIN (RSA )?PRIVATE KEY-----/'])
+                    ->placeholder('-----BEGIN RSA PRIVATE KEY-----'),
+            ])
+            ->modalSubmitActionLabel(__('Ověřit a uložit'))
+            ->action(function (array $data) {
+                try {
+                    $app = GitHubApp::createFromCredentials((int) $data['app_id'], trim($data['client_id']), trim($data['client_secret']), trim($data['private_key']));
+                    session()->forget('github.app_pending');
+                    Toast::success(__('GitHub aplikace uložena'), __('Aplikace :slug. Teď ji nainstalujte tlačítkem Propojit s GitHubem.', ['slug' => $app->slug]));
+                } catch (GitHubException $e) {
+                    Toast::error(__('Klíče aplikace nejdou použít'), $e->getMessage());
+                }
+            });
     }
 
     /** Without the app (GitHub Enterprise, apps forbidden in the organisation): a fine-grained token. */

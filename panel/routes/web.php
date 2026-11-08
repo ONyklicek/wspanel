@@ -43,6 +43,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     })->name('help.image');
     Route::get('/github/app/create', [GitHubAppController::class, 'create'])->name('github.app.create');
     Route::get('/github/app/created', [GitHubAppController::class, 'created'])->name('github.app.created');
+    Route::post('/github/app/retry', [GitHubAppController::class, 'retry'])->middleware('throttle:10,1')->name('github.app.retry');
     Route::get('/github/connect', [GitHubAppController::class, 'connect'])->middleware('throttle:20,1')->name('github.connect');
     Route::get('/github/callback', [GitHubAppController::class, 'callback'])->middleware('throttle:20,1')->name('github.callback');
     Route::post('/locale/{locale}', function (string $locale) {
