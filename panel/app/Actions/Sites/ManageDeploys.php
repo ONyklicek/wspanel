@@ -46,7 +46,7 @@ class ManageDeploys
     {
         $this->agent->call('deploy.config', [
             'domain' => $site->domain,
-            'repo' => trim($config['repo']),
+            'repo' => trim((string) ($config['repo'] ?? '')),
             'branch' => trim($config['branch']),
             'migrate' => (bool) $config['migrate'],
             'assets' => (bool) $config['assets'],

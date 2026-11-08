@@ -50,14 +50,9 @@ type workerParams struct {
 	PublicPort int `json:"public_port,omitempty"`
 }
 
-// workerUnitData builds the unit for a worker. The PHP binary follows the
-// site's mode: FPM's CLI of the same version in classic mode, the PHP built
-// into FrankenPHP in worker mode.
+// workerUnitData builds the unit for a worker, run by workerPHP.
 func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitData {
-	php := config.ForVersion(env.Cfg.PHPCLIBinary, l.PHPVersion)
-	if l.Mode == "worker" {
-		php = env.Cfg.FrankenPHPBin + " php-cli"
-	}
+	php := workerPHP(env, l)
 	args := strings.Join(spec.Args, " ")
 	extra := noBindExtra
 	if typ == "reverb" {
@@ -301,3 +296,50 @@ func allWorkerUnits(cfg config.Config) []string {
 	slices.Sort(out)
 	return out
 }
+
+
+// workerPHP is the PHP that runs a site's long-running workers: the CLI of
+// the site's version. In worker mode too it is a system CLI and not
+// FrankenPHP's php-cli, which crashes (SIGSEGV) as soon as a PHP signal
+// handler runs: Horizon, queue:work, Reverb and the scheduler would never
+// stop gracefully (a job cut off mid-way, the unit left failed after every
+// deploy). The site's own version when installed, else the newest one;
+// php-cli only on a server with no system PHP.
+func workerPHP(env *Env, l siteLayout) string {
+	if l.Mode != "worker" {
+		return config.ForVersion(env.Cfg.PHPCLIBinary, l.PHPVersion)
+	}
+	version := ""
+	for _, v := range env.Cfg.PHPVersions {
+		if v == l.PHPVersion {
+			version = v
+			break
+		}
+		if version == "" || newerVersion(v, version) {
+			version = v
+		}
+	}
+	if version == "" {
+		return env.Cfg.FrankenPHPBin + " php-cli"
+	}
+	return config.ForVersion(env.Cfg.PHPCLIBinary, version)
+}
+
+// newerVersion compares "major.minor" versions numerically (8.10 > 8.9).
+func newerVersion(a, b string) bool {
+	pa, pb := strings.SplitN(a, ".", 2), strings.SplitN(b, ".", 2)
+	for i := 0; i < 2; i++ {
+		var x, y int
+		if i < len(pa) {
+			x, _ = strconv.Atoi(pa[i])
+		}
+		if i < len(pb) {
+			y, _ = strconv.Atoi(pb[i])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+

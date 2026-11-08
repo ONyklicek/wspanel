@@ -63,11 +63,11 @@ func TestReverbAndPulse(t *testing.T) {
 	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-pulse@.service")); !strings.Contains(u, "artisan pulse:check") {
 		t.Errorf("pulse unit:\n%s", u)
 	}
-	// Reverb survives a switch to worker mode (port and route kept, now on FrankenPHP's PHP).
+	// Reverb survives a switch to worker mode (port and route kept; still the system CLI, see workerPHP).
 	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "rt.example.com", "mode": "worker", "framework": "laravel"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb@.service")); !strings.Contains(u, "frankenphp php-cli artisan reverb:start --host=127.0.0.1 --port="+itoa(port)) {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-reverb@.service")); !strings.Contains(u, "ExecStart=/usr/bin/php8.4 artisan reverb:start --host=127.0.0.1 --port="+itoa(port)) {
 		t.Errorf("reverb after switch:\n%s", u)
 	}
 	if e := read(t, filepath.Join(env.Cfg.ProxySitesDir, "rt.example.com.caddy")); !strings.Contains(e, "reverse_proxy 127.0.0.1:"+itoa(port)) {

@@ -14,6 +14,11 @@
    - **Classic (PHP-FPM):** pro většinu webů. Lze zvolit verzi PHP.
    - **Worker (FrankenPHP):** aplikace zůstává v paměti mezi požadavky (Laravel
      Octane, Symfony 7.4+ s Runtime). Rychlejší, ale kód musí být „worker-safe“.
+     Laravel potřebuje balíček `laravel/octane` a soubor `public/frankenphp-worker.php`
+     (`php artisan octane:install --server=frankenphp`). Workery webu (fronty, Horizon,
+     plánovač, Reverb) běží i v tomto režimu na systémovém PHP CLI (verze webu, jinak
+     nejnovější nainstalovaná), protože CLI zabudované ve FrankenPHP neumí signály a
+     workery by se při deployi nezastavily čistě.
    - **Node SSR:** Nuxt, Next.js nebo vlastní `server.js` jako stále běžící proces.
 4. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js nebo Node.
    Podle typu panel připraví adresáře, `.env`, workery a postup deploye.

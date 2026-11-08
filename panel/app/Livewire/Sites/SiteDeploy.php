@@ -191,7 +191,7 @@ class SiteDeploy extends ViewPage
             Action::make('deploy')
                 ->label(__('Deploy'))
                 ->icon('outline:rocket-launch')
-                ->disabled(fn () => $this->config === null || $this->running)
+                ->disabled(fn () => ($this->config['repo'] ?? '') === '' || $this->running)
                 ->requiresConfirmation()
                 ->modalHeading(__('Spustit deploy?'))
                 ->modalDescription(fn () => __('Nasadí větev ').($this->config['branch'] ?? '?').__('. Build běží pod uživatelem webu; web se přepne až po úspěšném buildu.'))
@@ -235,9 +235,8 @@ class SiteDeploy extends ViewPage
                 TextInput::make('repo')
                     ->label(__('Repozitář'))
                     ->placeholder('git@github.com:firma/aplikace.git')
-                    ->helperText(__('SSH adresa (s deploy klíčem) nebo veřejné https://. Bez hesla či tokenu v URL.'))
-                    ->required()
-                    ->rules(['regex:~^(https://[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+|git@[A-Za-z0-9.-]+:[A-Za-z0-9._\~/-]+|ssh://git@[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+)$~']),
+                    ->helperText(__('SSH adresa (s deploy klíčem) nebo veřejné https://. Bez hesla či tokenu v URL. Prázdné = web se nasazuje jen z CI (GitHub Actions…).'))
+                    ->rules(['nullable', 'regex:~^(https://[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+|git@[A-Za-z0-9.-]+:[A-Za-z0-9._\~/-]+|ssh://git@[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+)$~']),
                 TextInput::make('branch')->label(__('Větev'))->required()->rules(['regex:~^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$~']),
                 Toggle::make('migrate')
                     ->label($site->framework === Framework::Symfony ? __('Spouštět Doctrine migrace') : __('Spouštět migrace (artisan migrate --force)'))

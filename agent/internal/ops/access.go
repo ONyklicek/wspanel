@@ -112,8 +112,8 @@ func deployRemoteRef(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
-	if st.Deploy == nil {
-		return nil, protocol.Invalid("deploy is not configured for " + p.Domain)
+	if st.Deploy == nil || st.Deploy.Repo == "" {
+		return nil, protocol.Invalid("no repository is set for " + p.Domain)
 	}
 	args := []string{"/usr/bin/git", "ls-remote", "--quiet"}
 	if p.Kind == "branch" {

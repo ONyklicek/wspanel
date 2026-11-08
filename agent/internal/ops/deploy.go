@@ -60,7 +60,8 @@ var (
 )
 
 func (c *deployConfig) validate() error {
-	if !(repoHTTPSRe.MatchString(c.Repo) || repoSCPRe.MatchString(c.Repo) || repoSSHRe.MatchString(c.Repo)) || strings.Contains(c.Repo, "..") {
+	// No repository: the site deploys only artifacts built in CI.
+	if c.Repo != "" && !(repoHTTPSRe.MatchString(c.Repo) || repoSCPRe.MatchString(c.Repo) || repoSSHRe.MatchString(c.Repo)) || strings.Contains(c.Repo, "..") {
 		return protocol.Invalid("repo: https://host/path, git@host:path or ssh://git@host/path (no credentials in the URL; use the deploy key)")
 	}
 	if !branchRe.MatchString(c.Branch) || strings.Contains(c.Branch, "..") || strings.HasSuffix(c.Branch, ".lock") {
@@ -355,6 +356,9 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 			// A ready release (a copy from another site, a CI build): nothing to
 			// fetch or build, the defaults do.
 			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true, Migrate: st.Framework == "laravel" || st.Framework == "symfony"}
+		}
+		if p.Artifact == "" && st.Deploy.Repo == "" {
+			return protocol.Invalid("no repository is set for " + p.Domain + "; it deploys only artifacts from CI")
 		}
 		if st.Disabled {
 			return protocol.Conflict(p.Domain + " is disabled; enable it before deploying")
@@ -652,6 +656,13 @@ func (d *deployment) build(ctx context.Context) error {
 		}
 		if d.cfg.Migrate {
 			if err := d.step(ctx, "Migrations", dir, nil, php, "artisan", "migrate", "--force"); err != nil {
+				return err
+			}
+		}
+		// A repository that commits public/storage/.gitignore ships a real folder
+		// where the link belongs, and storage:link refuses to replace it.
+		if placeholderDir(filepath.Join(dir, "public", "storage")) {
+			if err := d.step(ctx, "Storage link: public/storage from the repository holds only a placeholder", dir, nil, "/bin/rm", "-r", "--", "public/storage"); err != nil {
 				return err
 			}
 		}
@@ -1122,4 +1133,22 @@ func (c *capReader) Read(p []byte) (int, error) {
 		return n, fmt.Errorf("size limit exceeded")
 	}
 	return n, err
+}
+
+// placeholderDir reports a real folder (not a link) holding nothing but
+// dotfiles such as .gitignore: a placeholder a repository keeps for a link.
+func placeholderDir(path string) bool {
+	if fi, err := os.Lstat(path); err != nil || !fi.IsDir() {
+		return false
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !strings.HasPrefix(e.Name(), ".") {
+			return false
+		}
+	}
+	return true
 }

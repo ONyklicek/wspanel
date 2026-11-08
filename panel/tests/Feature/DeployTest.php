@@ -75,6 +75,14 @@ class DeployTest extends TestCase
             ->assertHasNoErrors();
     }
 
+    public function test_settings_without_a_repository_are_for_deploys_from_ci(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('deploy.config', Mockery::on(fn (array $p) => $p['repo'] === '' && $p['commands'] === ['install:permissions']))->andReturn([]);
+
+        $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'settings', ['repo' => null, 'branch' => 'main', 'keep' => 5, 'commands' => 'install:permissions'])
+            ->assertHasNoErrors();
+    }
+
     public function test_deploy_starts_a_job_and_follows_its_log(): void
     {
         $started = false;

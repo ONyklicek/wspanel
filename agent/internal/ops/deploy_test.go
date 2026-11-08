@@ -79,6 +79,17 @@ func TestDeployConfigValidation(t *testing.T) {
 			t.Errorf("%s: %v", ok, err)
 		}
 	}
+
+	// No repository: artifacts from CI only; a git deploy and the remote check refuse.
+	if _, err := call(t, env, deployConfigure, map[string]any{"domain": "app.example.com", "repo": "", "branch": "main", "keep": 5}); err != nil {
+		t.Fatalf("CI-only config: %v", err)
+	}
+	if _, err := call(t, env, deployRun, map[string]string{"domain": "app.example.com"}); code(err) != protocol.CodeInvalidParams || !strings.Contains(err.Error(), "only artifacts from CI") {
+		t.Errorf("git deploy without a repository: %v", err)
+	}
+	if _, err := call(t, env, deployRemoteRef, map[string]string{"domain": "app.example.com", "kind": "branch"}); code(err) != protocol.CodeInvalidParams {
+		t.Errorf("remote ref without a repository: %v", err)
+	}
 }
 
 func TestDeployLaravelPipeline(t *testing.T) {
@@ -424,5 +435,33 @@ func TestCapReader(t *testing.T) {
 	c = &capReader{r: strings.NewReader("01234"), left: 5}
 	if b, err := io.ReadAll(c); err != nil || string(b) != "01234" || c.exceeded {
 		t.Fatalf("exact size: %q %v", b, err)
+	}
+}
+
+func TestPlaceholderDir(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel string, files ...string) string {
+		dir := filepath.Join(root, rel)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range files {
+			if err := os.WriteFile(filepath.Join(dir, f), []byte("*\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	if !placeholderDir(mk("a", ".gitignore")) || !placeholderDir(mk("empty")) {
+		t.Error("a folder with only .gitignore (or nothing) is a placeholder")
+	}
+	if placeholderDir(mk("b", ".gitignore", "logo.png")) {
+		t.Error("a folder with real files is not")
+	}
+	if err := os.Symlink(filepath.Join(root, "a"), filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if placeholderDir(filepath.Join(root, "link")) || placeholderDir(filepath.Join(root, "missing")) {
+		t.Error("a link or a missing path is not")
 	}
 }

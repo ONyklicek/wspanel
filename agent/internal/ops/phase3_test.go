@@ -89,7 +89,7 @@ func TestWorkerModeSite(t *testing.T) {
 	if _, err := call(t, env, workerCreate, map[string]string{"domain": "w.example.com", "worker": "horizon"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-horizon@.service")); !strings.Contains(u, "ExecStart=/usr/local/bin/frankenphp php-cli artisan horizon") {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-horizon@.service")); !strings.Contains(u, "ExecStart=/usr/bin/php8.4 artisan horizon") {
 		t.Errorf("worker unit:\n%s", u)
 	}
 	// Version is fixed in worker mode.
@@ -192,8 +192,8 @@ func TestSwitchModes(t *testing.T) {
 	if fsx.Exists(pool84) || fsx.Exists(webFile) || !fsx.Exists(appUnit) {
 		t.Fatal("classic -> worker incomplete")
 	}
-	if !strings.Contains(read(t, queue), "frankenphp php-cli artisan queue:work") {
-		t.Error("worker not moved to FrankenPHP")
+	if !strings.Contains(read(t, queue), "ExecStart=/usr/bin/php8.4 artisan queue:work") {
+		t.Error("worker not on the system CLI after the switch")
 	}
 	var revoked bool
 	for _, c := range dr.Calls() {

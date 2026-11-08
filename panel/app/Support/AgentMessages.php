@@ -127,6 +127,8 @@ final class AgentMessages
                 : 'Selhalo: '.$m[1].'.',
             '/^a deploy of (\S+) is (?:already )?running$/' => 'Deploy webu $1 už běží.',
             '/^deploy is not configured for (\S+)/' => 'Deploy webu $1 není nastavený (Deploy → Nastavení).',
+            '/^no repository is set for (\S+); it deploys only artifacts from CI/' => 'Web $1 nemá nastavený repozitář, nasazuje se jen z CI. Repozitář doplňte v Deploy → Nastavení.',
+            '/^no repository is set for (\S+)$/' => 'Web $1 nemá nastavený repozitář (Deploy → Nastavení).',
             '/^no release before (\S+)$/' => 'Před releasem $1 už žádný starší není.',
             '/^rollback failed: (.+)$/' => fn ($m) => 'Rollback selhal: '.$cs($m[1]),
             '/^git ls-remote failed: (.*)$/' => fn ($m) => 'Repozitář se nepodařilo zkontrolovat: '.self::git($m[1]),

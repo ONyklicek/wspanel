@@ -110,7 +110,7 @@ final class SiteFields
                 ->rules([fn () => Rule::in(array_keys($phpOptions()))]),
             Placeholder::make('worker_php')
                 ->label('PHP')
-                ->content(fn () => __('Worker režim běží na PHP ').($system->workerPhpVersion() ?? '?').__(' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+.'))
+                ->content(fn () => __('Worker režim běží na PHP ').($system->workerPhpVersion() ?? '?').__(' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+. Fronty, plánovač a další workery běží na systémovém PHP CLI.'))
                 ->visibleWhen('mode', SiteMode::Worker->value),
             Select::make('node_version')
                 ->label(__('Verze Node'))

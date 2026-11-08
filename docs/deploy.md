@@ -53,7 +53,9 @@ Stránka Deploy ukazuje kroky pro konkrétní web. Obecně:
    `composer.json`).
 4. **Assety:** `npm ci && npm run build` (pokud je zapnuto a je `package.json`).
 5. **Framework:**
-   - Laravel: `migrate --force`, `storage:link`, `optimize`,
+   - Laravel: `migrate --force`, `storage:link`, `optimize`. Když repozitář
+     verzuje `public/storage/.gitignore` (složka místo odkazu), deploy ji nahradí
+     odkazem na `storage/app/public`,
    - Symfony: Doctrine migrace, `asset-map:compile`, `cache:warmup` (prod).
 6. **Přepnutí:** `current` se atomicky přepne na nový release. PHP-FPM se
    plynule znovu načte, nebo se restartuje proces aplikace. Restartují se i
@@ -142,6 +144,12 @@ migrace a optimalizaci a přepne web.
 - run: tar --exclude=.git --exclude=node_modules -czf /tmp/build.tar.gz .
 # POST https://panel.example.com/api/deploy/<id>/artifact  (multipart: artifact, ref, commit)
 ```
+
+Varianta B nepotřebuje v panelu repozitář: v Deploy → Nastavení nechte pole
+**Repozitář** prázdné a nastavte jen migrace, vlastní příkazy a údržbovou
+stránku. Tlačítko Deploy a automatický deploy z Gitu pak nejsou dostupné, web
+se nasazuje jen z CI. Balík balte na Linuxu, nebo na macOS s
+`COPYFILE_DISABLE=1 tar …`, jinak v něm budou soubory `._*`.
 
 V obou variantách workflow čte stav deploye a **selže, když deploy selže nebo
 se vrátil zpět**. V GitHubu tak hned vidíte, že release se nenasadil.

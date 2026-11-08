@@ -42,6 +42,11 @@ func TestDeployRotatesWorkersWithoutMixingCode(t *testing.T) {
 		}
 		return executor.Result{}, nil
 	}
+	// A template written by an older agent (FrankenPHP's php-cli) is rewritten by the deploy.
+	queueTpl := filepath.Join(env.Cfg.SystemdDir, "wspanel-web_rot_example_com-queue@.service")
+	if err := os.WriteFile(queueTpl, []byte("[Service]\nExecStart=/usr/local/bin/frankenphp php-cli artisan queue:work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	before := len(dr.Calls())
 	rotateWorkers(t.Context(), env, l, func(string, ...any) {})
 	var seq []string
@@ -62,6 +67,9 @@ func TestDeployRotatesWorkersWithoutMixingCode(t *testing.T) {
 		t.Errorf("scheduler: never two at once (old stops, then new starts):\n%s", got)
 	}
 	unit, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_rot_example_com-queue@.service"))
+	if strings.Contains(string(unit), "php-cli") || !strings.Contains(string(unit), "ExecStart=") {
+		t.Errorf("the deploy rewrites the template:\n%s", unit)
+	}
 	if !strings.Contains(string(unit), "WorkingDirectory="+home+"/releases/%i") {
 		t.Errorf("an instance runs from its release, so an old one keeps its code:\n%s", unit)
 	}

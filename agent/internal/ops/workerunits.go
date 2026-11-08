@@ -197,13 +197,14 @@ func rotateWorkers(ctx context.Context, env *Env, l siteLayout, logf func(string
 		if !ok {
 			continue
 		}
-		if fileIn(env.Cfg.SystemdDir, legacyWorkerUnit(l.User, typ)) {
-			var rb undo
-			if err := writeWorkerTemplate(ctx, env, l, typ, spec, &rb); err != nil {
-				rb.run()
-				logf("worker %s: %v\n", typ, err)
-				continue
-			}
+		// Rewritten on every deploy, not only from the legacy form: the new
+		// instance then starts on what the agent writes today (a fixed binary,
+		// new limits) and the template never drifts from the code.
+		var rb undo
+		if err := writeWorkerTemplate(ctx, env, l, typ, spec, &rb); err != nil {
+			rb.run()
+			logf("worker %s: %v\n", typ, err)
+			continue
 		}
 		if _, err := startWorkerRelease(ctx, env, l, typ, spec, logf); err != nil {
 			logf("worker %s: %v\n", typ, err)
