@@ -53,3 +53,22 @@ docs/       tato dokumentace (v panelu v menu Dokumentace)
 3. Test v `*_test.go` s `DryRun` executorem.
 4. Volání z panelu přes `AgentClient::call()` v akci v `panel/app/Actions`.
 5. Případně kontrola v `dev/e2e.sh`.
+
+## Simulace release flow (GitHub Release → Actions → panel)
+
+```
+docker compose -f dev/compose.yaml exec devserver /opt/wspanel/dev/simulate-release-deploy.sh
+```
+
+Skript odehraje celý postup týmu proti dev serveru:
+
+1. V panelu založí web `intranet.local` (Laravel, interní certifikát),
+   databázi a CI token.
+2. Jako „runner“ vytvoří skutečnou aplikaci Laravel 13 s Octane.
+3. Pro release `v1.0.0` sestaví build (composer, npm), nahraje ho na
+   `/api/deploy/<id>/artifact` a čeká na stav, jako Action z Deploy → GitHub
+   Actions.
+
+Ověří, že běží v PHP-FPM, s migrovanou databází, frontou a plánovačem. Potom
+přepne web do režimu FrankenPHP (worker) a release `v1.1.0` nasadí stejně.
+

@@ -998,6 +998,34 @@ check "switched off: the pool no longer loads XHProf" bash -c "! grep -q xhprof 
 check "  … and its viewer is gone" bash -c "! grep -q _wsp_xhgui /etc/panel-web/sites/$XS.caddy /etc/panel-proxy/sites/$XS.caddy"
 
 # ----------------------------------------------------------------------------
+section "Staging"
+SS=other.localhost
+php 'if ($s = App\Models\Site::where("domain","staging.other.localhost")->first()) app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null
+echo "staging-e2e-$RANDOM" > /tmp/e2e-marker; MARK=$(cat /tmp/e2e-marker)
+runuser -u web_other_localhost -- bash -c "echo $MARK > /srv/sites/$SS/current/public/e2e-marker.txt"
+contains "a staging copy is created" "$(php "$(site $SS) echo app(App\Actions\Sites\ManageStaging::class)->create(\$s)->domain;" 2>&1 | tail -1)" "staging.other.localhost"
+contains "  … serving the same release" "$(https staging.other.localhost /e2e-marker.txt)" "$MARK"
+contains "  … telling search engines to stay away" "$(curl -sk -D - -o /dev/null --resolve staging.other.localhost:443:127.0.0.1 https://staging.other.localhost/)" "noindex"
+contains "  … with its mail caught in Mailpit" "$(php 'echo App\Models\Site::where("domain","staging.other.localhost")->value("mail_mode");' | tail -1)" "capture"
+check "  … and no copy of the production .env" bash -c "! cmp -s /srv/sites/$SS/shared/.env /srv/sites/staging.other.localhost/shared/.env"
+runuser -u web_staging_other_localhost -- bash -c "echo changed-on-staging > /srv/sites/staging.other.localhost/current/public/e2e-marker.txt"
+php 'app(App\Actions\Sites\ManageStaging::class)->push(App\Models\Site::where("domain","staging.other.localhost")->sole(), true, false);' >/dev/null 2>&1
+contains "staging back to production (as a deploy, after a backup)" "$(https $SS /e2e-marker.txt)" "changed-on-staging"
+php 'app(App\Actions\Sites\DeleteSite::class)->handle(App\Models\Site::where("domain","staging.other.localhost")->sole());' >/dev/null
+
+# ----------------------------------------------------------------------------
+section "Import from a cPanel backup"
+php 'if ($s = App\Models\Site::where("domain","imp.localhost")->first()) app(App\Actions\Sites\DeleteSite::class)->handle($s); app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "imp.localhost", "mode" => "classic", "framework" => "php", "php_version" => "8.4"]);' >/dev/null
+runuser -u web_imp_localhost -- bash -c 'cd /srv/sites/imp.localhost/tmp && rm -rf cp && mkdir -p cp/cpmove-jan/homedir/public_html cp/cpmove-jan/mysql \
+  && echo "<?php echo \"imported-from-cpanel\";" > cp/cpmove-jan/homedir/public_html/index.php \
+  && printf "CREATE TABLE kv (k VARCHAR(10)); INSERT INTO kv VALUES (\x27moved\x27);\n" > cp/cpmove-jan/mysql/jan_app.sql \
+  && tar -czf cpmove-jan.tar.gz -C cp cpmove-jan && rm -rf cp'
+contains "the import finds the dump and restores it" "$(php '$s = App\Models\Site::where("domain","imp.localhost")->sole(); echo json_encode(app(App\Actions\Sites\ImportSite::class)->import($s, "cpmove-jan.tar.gz"));' 2>&1 | tail -1)" '"jan_app"'
+contains "  … the site serves the imported files" "$(https imp.localhost /)" "imported-from-cpanel"
+contains "  … and its database has the data" "$(mariadb -N -e 'SELECT k FROM jan_app.kv' 2>&1)" "moved"
+php 'app(App\Actions\Sites\DeleteSite::class)->handle(App\Models\Site::where("domain","imp.localhost")->sole());' >/dev/null
+
+# ----------------------------------------------------------------------------
 section "Delete cleans up"
 php 'if (! App\Models\Site::where("domain","tmp.localhost")->exists()) app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "tmp.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4"]);
 $s = App\Models\Site::where("domain","tmp.localhost")->sole(); app(App\Actions\Sites\ManageWorkers::class)->create($s, "queue"); app(App\Actions\Sites\DeleteSite::class)->handle($s);' >/dev/null

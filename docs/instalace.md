@@ -9,7 +9,46 @@
   Mailpit, fnm).
 - Doporučeno: alespoň 2 GB RAM a 20 GB disku.
 
-## Postup
+## Instalace z balíčku (doporučeno)
+
+Jeden archiv obsahuje instalátor, provisioning, zdroják panelu, agenta
+a příkaz `wspanel`:
+
+```
+make bundle VERSION=1.0.0 ARCH=amd64     # dist/wspanel-1.0.0-linux-amd64.tar.gz (+ .sha256)
+```
+
+Na serveru jako root:
+
+```
+tar -xzf wspanel-1.0.0-linux-amd64.tar.gz && cd wspanel && ./install
+```
+
+Průvodce (textové okno, šipky a mezerník) se postupně zeptá:
+
+- kde bude panel: doména, IP adresa s portem, nebo obojí,
+- které databázové servery, verze PHP a Node instalovat,
+- které moduly zapnout (klienti a balíčky, pošta se schránkami a webmailem,
+  DNS server, profilování XHProf),
+- jestli pošta z webů odchází, nebo se zachytává v Mailpitu,
+- jestli omezit panel na vybrané adresy,
+- na e-mail prvního správce.
+
+Na konci ukáže souhrn a teprve potom instaluje. Heslo správce vygeneruje
+a ukáže jednou.
+
+Bez otázek (automatizace) se stejné volby zadávají jako parametry, viz
+[Volby](#volby-installsh):
+
+```
+./install --yes --panel-domain=panel.example.com --acme-email=admin@example.com \
+  --db=mariadb --php=8.3,8.4 --mail-hosting=yes --admin-email=admin@example.com
+```
+
+Aktualizace: rozbalte novější balíček a spusťte `./install --yes` se stejnými
+volbami, nebo znovu průvodce. Data, weby ani nastavení se nemažou.
+
+## Postup ze zdrojáků
 
 1. Na svém počítači sestavte agenta (Go 1.25+):
    ```

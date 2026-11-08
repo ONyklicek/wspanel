@@ -9,9 +9,11 @@ use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
 use App\Actions\Sites\DeleteSite;
+use App\Actions\Sites\ImportSite;
 use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageSsh;
+use App\Actions\Sites\ManageStaging;
 use App\Actions\Sites\ManageTls;
 use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageWebRules;
@@ -636,6 +638,50 @@ final class SiteActions
             }));
     }
 
+    /** Moving a site in: a cPanel backup or an archive of its files. */
+    public static function import(): Action
+    {
+        return Action::make('import')
+            ->label('Importovat web (cPanel, archiv)')
+            ->icon('outline:arrow-down-on-square')
+            ->visible(fn (Site $record) => $record->isOperational() && $record->framework->value === 'php')
+            ->modalDescription('Nahrajte přes SFTP do složky tmp webu zálohu z cPanelu (cpmove-….tar.gz) nebo archiv souborů webu (.tar.gz). Soubory se rozbalí do webu, každý dump databáze do nové databáze webu (MariaDB). WordPress dostane v wp-config.php přístup k nové databázi.')
+            ->form([
+                TextInput::make('file')->label('Soubor v tmp/')->placeholder('cpmove-jan.tar.gz')->required()
+                    ->rules(['regex:/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(tar\.gz|tgz)$/'])->validationMessages(['regex' => 'Název souboru .tar.gz ve složce tmp webu.']),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt('Import se nepodařil', function () use ($record, $data) {
+                $out = app(ImportSite::class)->import($record, $data['file']);
+                Toast::success('Web importován', ($out['databases'] ?? []) ? 'Databáze: '.implode(', ', $out['databases']).(isset($out['wp_config']) ? '; wp-config.php upraven.' : '') : 'Bez databází.');
+            }));
+    }
+
+    /** A staging copy of the site (staging.<domain>), and back to production. */
+    public static function staging(): Action
+    {
+        return Action::make('staging')
+            ->label(fn (Site $record) => $record->staging_of ? 'Nasadit staging na produkci' : 'Vytvořit staging')
+            ->icon('outline:beaker')
+            ->visible(fn (Site $record) => $record->isOperational() && ($record->staging_of !== null || ! Site::query()->where('staging_of', $record->id)->exists()))
+            ->modalHeading(fn (Site $record) => $record->staging_of ? 'Staging '.$record->domain.' → produkce' : 'Staging pro '.$record->domain)
+            ->modalDescription(fn (Site $record) => $record->staging_of
+                ? 'Nejdřív se zazálohuje produkce (soubory i databáze). Soubory se nasadí jako běžný deploy: když nová verze neodpoví, vrátí se předchozí. Databáze produkce se přepíše databází stagingu.'
+                : 'Kopie webu na '.ManageStaging::stagingDomain($record).': aktuální verze, sdílené soubory (bez .env) a kopie databází. Pošta stagingu se vždy zachytává v Mailpitu, vyhledávače ho neindexují. Potřebuje DNS záznam pro tu adresu.')
+            ->form(fn (Site $record) => $record->staging_of ? [
+                Toggle::make('files')->label('Soubory (aktuální verze aplikace)')->default(true),
+                Toggle::make('databases')->label('Databáze (přepíše data produkce)')->default(false),
+            ] : [])
+            ->action(fn (Site $record, array $data) => self::attempt('Staging se nepodařil', function () use ($record, $data) {
+                if ($record->staging_of) {
+                    app(ManageStaging::class)->push($record, (bool) ($data['files'] ?? false), (bool) ($data['databases'] ?? false));
+                    Toast::success('Staging je na produkci', 'Záloha produkce z doby před nasazením je v Zálohách.');
+                } else {
+                    $staging = app(ManageStaging::class)->create($record);
+                    Toast::success('Staging běží', $staging->url());
+                }
+            }));
+    }
+
     /** XHProf profiling into the site's own XHGui (classic sites). */
     public static function xhprof(): Action
     {
@@ -711,7 +757,7 @@ final class SiteActions
     {
         return [
             self::credentials(), self::restart(), self::enable(), self::disable(),
-            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::xhprof(), self::webRules(), self::addWorker(),
+            self::ssh(), self::tls(), self::edge(), self::phpSettings(), self::createDatabase(), self::valkey(), self::xhprof(), self::staging(), self::import(), self::webRules(), self::addWorker(),
             self::switchMode(), self::setVersion(), self::checkHealth(),
             self::assignClient(), self::delete(),
         ];

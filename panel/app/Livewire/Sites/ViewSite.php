@@ -118,6 +118,13 @@ class ViewSite extends ViewPage
                 TextEntry::make('valkey')->label('Valkey (Redis)')
                     ->state(fn () => $this->valkeyState($site))
                     ->actions($site->valkey !== null ? [SiteActions::valkeyFlush()->size('sm'), SiteActions::valkeyRestart()->size('sm')] : []),
+                TextEntry::make('staging')->label('Staging')
+                    ->visible(fn () => $site->staging_of !== null || Site::query()->where('staging_of', $site->id)->exists())
+                    ->state(fn () => $site->staging_of !== null
+                        ? 'kopie webu '.(Site::query()->find($site->staging_of)?->domain ?? '?').' (pošta v Mailpitu, bez indexace)'
+                        : 'kopie na '.Site::query()->where('staging_of', $site->id)->value('domain'))
+                    ->actions(($other = $site->staging_of !== null ? Site::query()->find($site->staging_of) : Site::query()->where('staging_of', $site->id)->first())
+                        ? [Action::make('openStaging')->label($other->domain)->icon('outline:beaker')->color('gray')->size('sm')->url(SiteResource::url('view', $other))] : []),
                 TextEntry::make('xhprof')->label('Profilování (XHProf)')
                     ->visible(fn () => $site->xhprof !== null)
                     ->state(fn () => 'měří '.($site->xhprof['ratio'] ?? 100).' % požadavků')

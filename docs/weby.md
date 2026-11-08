@@ -415,6 +415,55 @@ s Redisem): **Další → Valkey (Redis)**.
   vyprázdnit nebo restartovat.
 - U klientů omezuje paměť balíček (**Valkey na web**, 0 = nepovoleno).
 
+## Aplikace jedním klikem
+
+**Weby → Nová aplikace** založí web, jeho databázi a aplikaci:
+
+- **WordPress**: stáhne aktuální verzi z wordpress.org a ověří ji kontrolním
+  součtem. Rozbalí ji pod uživatelem webu, `wp-config.php` dá o úroveň výš
+  než docroot (návštěvník se k němu nedostane) a doplní přístup k databázi
+  (MariaDB) a náhodné klíče. Zbytek (název, účet správce) dokončíte ve WordPressu.
+  Aktualizuje se sám, soubory zůstávají upravitelné přes SFTP.
+- **Laravel / Symfony**: nasadí oficiální kostru (`laravel/laravel`,
+  `symfony/skeleton`) jako běžný deploy, s novým `APP_KEY` / `APP_SECRET`.
+  Pak v Deploy → Nastavení zadejte svůj repozitář.
+
+## Přesun webu z jiného hostingu
+
+U čistého PHP webu (třeba WordPress z cPanelu):
+
+1. Založte web a přes SFTP nahrajte do jeho složky `tmp/` zálohu z cPanelu
+   (`cpmove-<účet>.tar.gz`, cPanel → Backup → Full Backup) nebo archiv
+   souborů webu (`.tar.gz`, se složkou `public_html/` nebo `public/`, nebo
+   rovnou obsah webu).
+2. **Další → Importovat web** a zadejte název souboru.
+
+Soubory se rozbalí do webu pod jeho uživatelem. Každý dump databáze ze zálohy
+(`mysql/*.sql`) dostane novou databázi webu (MariaDB) a nahraje se do ní.
+Když je v záloze WordPress, jeho `wp-config.php` dostane přístup k nové
+databázi. Poštu ze zálohy panel nepřenáší: schránky založte v Pošta →
+Schránky a zprávy přeneste poštovním programem nebo `imapsync`.
+
+## Staging
+
+**Další → Vytvořit staging** udělá kopii webu na `staging.<doména>`:
+
+- aktuální verzi aplikace (nasazenou jako běžný deploy) a sdílené soubory
+  (nahrané soubory, storage) bez `.env`, protože staging má vlastní nastavení,
+- kopii každé databáze webu (`stg_<název>`, přístup v `.env` stagingu),
+- pošta stagingu se **vždy zachytává v Mailpitu**, takže test nikdy nenapíše
+  skutečným zákazníkům,
+- hlavičku `X-Robots-Tag: noindex`, aby ho vyhledávače neindexovaly. Heslo
+  přidáte v Doménách a přístupu.
+
+Staging potřebuje DNS záznam pro `staging.<doména>`.
+
+**Nasadit staging na produkci** (v menu stagingu): nejdřív se zazálohuje
+produkce (soubory i databáze, záloha je pak v Zálohách). Potom se nasadí:
+
+- **soubory** jako běžný deploy: když nová verze neodpoví, vrátí se předchozí,
+- **databáze**, jen když ji zaškrtnete: přepíše data produkce.
+
 ## Návštěvnost a dostupnost
 
 Záložka **Návštěvnost** u webu ukazuje za 24 hodin, 7 nebo 30 dní:
