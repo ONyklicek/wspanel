@@ -14,7 +14,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |
 | nasazovat aplikaci z Gitu | [Deploy](deploy.md) |
 | nasazovat přes GitHub Releases / Actions | [Deploy → Release a CI](deploy.md#nasazení-releasů-a-z-ci-github-actions) |
-| napojit repozitář z GitHubu jedním kliknutím (jako Zerops) | [GitHub](github.md) |
+| napojit repozitář z GitHubu jedním kliknutím (jako Zerops) | [GitHub → Návod krok za krokem](github.md#návod-první-deploy-z-githubu-krok-za-krokem) |
 | převést existující aplikaci (CI build, Horizon, Reverb, FrankenPHP) | [Nasazení existujícího projektu](nasazeni-projektu.md) |
 | databázi a phpMyAdmin / Adminer | [Databáze](databaze.md) |
 | přístup k souborům | [SSH a SFTP](ssh-sftp.md) |
@@ -59,6 +59,8 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
 | **Server → Firewall** | pravidla UFW a přístup k panelu (z jakých adres) |
 | **Server → Audit** | co přesně a kdy agent na serveru udělal |
+| **Účet → Integrace** | propojení s GitHubem (tlačítkem nebo tokenem), připojené účty a organizace |
+| **Účet → API a CLI** | API tokeny pro skripty a příkaz `wspanel` |
 | **Dokumentace** | tato dokumentace |
 
 Vyhledávání (⌘K / Ctrl+K) najde web nebo databázi podle názvu.

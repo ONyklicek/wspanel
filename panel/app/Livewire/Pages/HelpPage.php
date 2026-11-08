@@ -85,6 +85,20 @@ class HelpPage extends Page
                 : $m[0];
         }, $html);
 
+        // Pictures next to the documents: "img/x.png" -> the help image route.
+        $html = preg_replace_callback('/src="img\/([a-z0-9-]+\.(?:png|jpg|webp))"/i', fn (array $m) => 'src="'.e(route('help.image', ['file' => $m[1]])).'" loading="lazy"', $html);
+
         return new HtmlString($html);
+    }
+
+    /** A picture of the documentation (docs/img), by a plain file name only. */
+    public static function imagePath(string $file): ?string
+    {
+        if (! preg_match('/^[a-z0-9-]+\.(png|jpg|webp)$/i', $file)) {
+            return null;
+        }
+        $path = self::docsPath().'/img/'.$file;
+
+        return is_file($path) ? $path : null;
     }
 }

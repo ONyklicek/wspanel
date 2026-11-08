@@ -211,7 +211,9 @@ Co se tím změní:
 ## 8. Napojení na GitHub
 
 Místo ručního kopírování tokenu a adres můžete web napojit na repozitář přes
-GitHub API: [GitHub](github.md). Deploye se pak ukazují přímo v GitHubu
+GitHub API: Účet → **Integrace** → **Propojit s GitHubem**, pak u webu
+Deploy → **GitHub** a výběr repozitáře. Postup se snímky obrazovky:
+[GitHub → Návod krok za krokem](github.md#návod-první-deploy-z-githubu-krok-za-krokem). Deploye se pak ukazují přímo v GitHubu
 (Deployments) s odkazem na web a log.
 
 ## Simulace na vlastním projektu

@@ -42,6 +42,7 @@
 .wsp-doc pre { @apply overflow-x-auto rounded-lg bg-gray-950 p-4 text-xs text-gray-100; }
 .wsp-doc pre code { @apply bg-transparent p-0 text-gray-100; }
 .wsp-doc table { @apply w-full border-collapse text-left; }
+.wsp-doc img { @apply my-3 max-w-full rounded-lg border border-gray-200 shadow-sm dark:border-white/10; }
 .wsp-doc th { @apply border-b border-gray-300 py-2 pe-4 font-semibold text-gray-950 dark:border-white/20 dark:text-white; }
 .wsp-doc td { @apply border-b border-gray-100 py-2 pe-4 align-top dark:border-white/5; }
 .wsp-doc blockquote { @apply border-s-4 border-amber-400 bg-amber-50 px-4 py-2 dark:bg-amber-400/10; }

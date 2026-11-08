@@ -24,6 +24,22 @@ class HelpTest extends TestCase
         }
     }
 
+    public function test_pictures_of_the_guide_are_shown_and_only_from_the_docs_folder(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $html = (string) Livewire::test(Help::class, ['doc' => 'github'])->instance()->renderedDoc();
+        preg_match_all('/<img src="([^"]+)"/', $html, $m);
+        $this->assertNotEmpty($m[1], 'the GitHub guide has screenshots');
+        foreach ($m[1] as $src) {
+            $this->assertStringStartsWith(url('/help/img/'), html_entity_decode($src));
+            $this->get(html_entity_decode($src))->assertOk()->assertHeader('Content-Type', 'image/png');
+        }
+        foreach (['..%2F..%2F.env', '.env', 'x.php', 'missing.png'] as $bad) {
+            $this->get('/help/img/'.$bad)->assertNotFound();
+        }
+    }
+
     public function test_unknown_page_falls_back_to_the_overview(): void
     {
         $this->actingAs(User::factory()->create());

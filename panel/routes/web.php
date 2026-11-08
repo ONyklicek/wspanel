@@ -13,6 +13,7 @@ use App\Http\Controllers\OpenDatabaseToolController;
 use App\Http\Controllers\OpenWebmailController;
 use App\Http\Controllers\XhguiAuthController;
 use App\Http\Middleware\SetLocale;
+use App\Livewire\Pages\HelpPage;
 use App\Models\Site;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,11 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
     // The signed-in user's language (user menu).
+    Route::get('/help/img/{file}', function (string $file) {
+        $path = HelpPage::imagePath($file) ?? abort(404);
+
+        return response()->file($path, ['Cache-Control' => 'private, max-age=86400']);
+    })->name('help.image');
     Route::get('/github/app/create', [GitHubAppController::class, 'create'])->name('github.app.create');
     Route::get('/github/app/created', [GitHubAppController::class, 'created'])->name('github.app.created');
     Route::get('/github/connect', [GitHubAppController::class, 'connect'])->middleware('throttle:20,1')->name('github.connect');

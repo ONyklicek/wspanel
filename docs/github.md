@@ -17,6 +17,92 @@ přímo v GitHubu.
 Ruční cesty (vlastní Git server, GitLab, Bitbucket, webhook zadaný ručně) dál
 fungují, viz [Deploy](deploy.md).
 
+## Návod: první deploy z GitHubu krok za krokem
+
+Celé to zabere pár minut. Potřebujete účet na GitHubu s právy **správce
+(Admin)** k repozitáři, který chcete nasazovat.
+
+### Krok 1: Propojit s GitHubem
+
+V panelu otevřete menu účtu (vpravo nahoře) → **Integrace**. Na kartě GitHub
+klikněte na **Propojit s GitHubem**.
+
+![Karta GitHub na stránce Integrace před propojením](img/github-1-propojit.png)
+
+Stejně dobře můžete začít přímo u webu: **Deploy** → tlačítko **GitHub**.
+Po propojení se vrátíte tam, odkud jste přišli.
+
+### Krok 2: Jen poprvé – vytvořit aplikaci panelu (správce)
+
+Když s GitHubem propojuje panel úplně první člověk (správce), GitHub nejdřív
+ukáže stránku **Create GitHub App for …** s předvyplněnou aplikací panelu.
+
+- **GitHub App name**: nechte, nebo změňte (musí být na celém GitHubu jedinečný).
+- Nic dalšího nevyplňujte. Oprávnění i adresy připravil panel.
+- Klikněte na zelené **Create GitHub App for …**.
+
+GitHub předá panelu klíče aplikace a rovnou pokračuje krokem 3. Tento krok už
+nikdo další dělat nebude. Klient, který přijde dřív než správce, uvidí
+„Propojení tlačítkem zatím nenastavil správce panelu“ (viz
+[Nebo připojit tokenem](#2-nebo-připojit-tokenem)).
+
+### Krok 3: Na GitHubu – nainstalovat a vybrat repozitáře
+
+GitHub zobrazí **Install WSPanel …**:
+
+1. Vyberte, kam aplikaci nainstalovat: **váš účet**, nebo **organizaci**.
+2. **Only select repositories** a vyberte repozitáře, které chcete nasazovat
+   (nebo *All repositories*).
+3. Klikněte na **Install** (u nové instalace **Install & Authorize**).
+4. Pokud se GitHub zeptá **Authorize WSPanel …**, potvrďte. Panel tím ověří,
+   že instalace patří vám.
+
+Vrátíte se do panelu. Na kartě přibude účet s počtem repozitářů:
+
+![Karta GitHub s připojeným osobním účtem a organizací](img/github-3-propojeno.png)
+
+U organizace, kde nejste vlastník, instalaci musí schválit vlastník. Panel do
+té doby napíše „Nic k připojení“; po schválení klikněte na Propojit znovu.
+
+### Krok 4: Napojit web na repozitář
+
+Otevřete web → záložka **Deploy** → tlačítko **GitHub**:
+
+![Tlačítko GitHub na stránce Deploy](img/github-4-tlacitko.png)
+
+V okně vyberte:
+
+- **Účet GitHub**: když jich máte víc,
+- **Repozitář** a **Větev**: nabízí se jen repozitáře, které spravujete,
+- **Co nasadit**: každý push do větve, nebo jen nový release / tag,
+- **Jak se panel o změně dozví**: *Webhook*, když je panel dostupný z internetu.
+  *Kontrola každou minutu*, když panel běží ve vnitřní síti (panel tu správnou
+  volbu předvyplní),
+- **Uložit CI token do secretů**: jen pokud budete nasazovat hotový build
+  z GitHub Actions.
+
+![Okno Napojit na GitHub s vybraným repozitářem a větví](img/github-5-repozitar.png)
+
+Klikněte na **Napojit**. Panel přidá do repozitáře deploy klíč, nastaví deploy
+na repozitář a větev a založí webhook (nebo začne repozitář sledovat).
+
+### Krok 5: Hotovo – první deploy
+
+Tlačítko teď ukazuje napojený repozitář:
+
+![Stránka Deploy s napojeným repozitářem](img/github-6-napojeno.png)
+
+- **První deploy** spusťte tlačítkem **Deploy**, nebo pushněte do větve
+  (vytvořte release, pokud jste zvolili release / tag).
+- Průběh vidíte v **Historii** a **Logu** na stránce Deploy.
+- V GitHubu se deploy objeví v **Deployments** (pravý sloupec repozitáře)
+  s odkazem na web a na log v panelu.
+- Migrace, vlastní příkazy po deployi a údržbovou stránku nastavíte v
+  **Deploy → Nastavení**.
+
+Další repozitář nebo web napojíte stejně (krok 4). Další účet nebo organizaci
+přidáte na stránce Integrace tlačítkem **Přidat účet nebo organizaci**.
+
 ## 1. Propojit s GitHubem
 
 Stejně jako v Zerops: kliknete, na GitHubu vyberete účet nebo organizaci

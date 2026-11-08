@@ -36,7 +36,10 @@
             <ul role="list" class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-800 dark:border-gray-800">
                 @foreach ($connections as $c)
                     <li wire:key="gh-{{ $c->id }}" class="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center">
-                        <img src="{{ $c->avatarUrl() }}" alt="" class="size-10 shrink-0 rounded-full bg-gray-100 ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">
+                        <span class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gray-100 text-sm font-semibold uppercase text-gray-500 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700" aria-hidden="true">
+                            {{ mb_substr($c->login, 0, 1) }}
+                            <img src="{{ $c->avatarUrl() }}" alt="" class="absolute inset-0 size-full object-cover" referrerpolicy="no-referrer" onerror="this.remove()">
+                        </span>
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ $c->login }}</span>
