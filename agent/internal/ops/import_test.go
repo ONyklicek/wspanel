@@ -65,6 +65,9 @@ func TestImportedSQLRunsAsAnAccountOfThatDatabaseOnly(t *testing.T) {
 	if grant.Name == "" {
 		t.Fatal("a temporary user with rights on the one database")
 	}
+	if !strings.Contains(strings.Join(restore.Args, " "), "--local-infile=0") {
+		t.Errorf("the client never reads local files for the dump: %v", restore.Args)
+	}
 	if restore.Name == "" || strings.Contains(strings.Join(restore.Args, " "), "password") {
 		t.Fatalf("restored as that user, the password not in argv: %v", restore)
 	}

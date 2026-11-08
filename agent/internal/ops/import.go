@@ -202,8 +202,10 @@ func restoreUntrusted(ctx context.Context, env *Env, db string, r io.Reader) err
 		return err
 	}
 	defer os.Remove(cnf)
+	// --local-infile=0: LOAD DATA LOCAL in the dump would make this (root)
+	// client read a file of the server and hand it to the database.
 	_, err := env.Exec.RunIO(ctx, withoutDefiners(r), io.Discard, "mariadb", "--defaults-extra-file="+cnf,
-		"--protocol=socket", "--sandbox", "--default-character-set=utf8mb4", db)
+		"--protocol=socket", "--sandbox", "--local-infile=0", "--default-character-set=utf8mb4", db)
 	return err
 }
 

@@ -138,9 +138,10 @@ func (mariadb) dump(ctx context.Context, env *Env, name string, w io.Writer) err
 }
 
 // The dump's content comes from the site's database. --sandbox makes the
-// client refuse its own commands that touch the system (\!, source, ...).
+// client refuse its own commands that touch the system (\!, source, ...),
+// --local-infile=0 its reading of local files (LOAD DATA LOCAL).
 func (mariadb) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
-	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", "--sandbox", "--default-character-set=utf8mb4", name)
+	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", "--sandbox", "--local-infile=0", "--default-character-set=utf8mb4", name)
 	return err
 }
 

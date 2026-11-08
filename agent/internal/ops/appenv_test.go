@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"io"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -139,5 +141,41 @@ func TestEnvFromDeployLeavesOnlyReverbsListener(t *testing.T) {
 	managed := panelManagedKeys(env, l, st, parseDotenv("MAIL_HOST=127.0.0.1\nDB_PASSWORD=x\nREVERB_SERVER_PORT=601\n"))
 	if len(managed) != 1 || !managed["REVERB_SERVER_PORT"] {
 		t.Errorf("managed %v", managed)
+	}
+}
+
+func TestAFirstDeployGetsTheAppSecretItCannotStartWithout(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "k.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	_, l, _ := loadSite(env, "k.example.com")
+	d := &deployment{env: env, l: l, log: io.Discard}
+	if err := d.ensureAppSecrets(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var written string
+	for _, c := range dr.Calls() {
+		if strings.Contains(c.String(), "/usr/bin/tee") && strings.Contains(c.String(), "/shared/..env") {
+			written = c.Stdin
+		}
+	}
+	if !regexp.MustCompile(`APP_KEY="base64:[A-Za-z0-9+/]{43}="`).MatchString(written) {
+		t.Errorf("a new APP_KEY:\n%s", written)
+	}
+
+	// One that is there (the operator's, or the release's) stays.
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if strings.Contains(c.String(), "/usr/bin/cat") {
+			return executor.Result{Stdout: "APP_KEY=base64:keep\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	before := len(dr.Calls())
+	_ = d.ensureAppSecrets(t.Context())
+	for _, c := range dr.Calls()[before:] {
+		if strings.Contains(c.String(), "/usr/bin/tee") {
+			t.Errorf("an existing key is never replaced: %s", c)
+		}
 	}
 }

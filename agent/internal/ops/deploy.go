@@ -354,7 +354,7 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 			}
 			// A ready release (a copy from another site, a CI build): nothing to
 			// fetch or build, the defaults do.
-			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true}
+			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true, Migrate: st.Framework == "laravel" || st.Framework == "symfony"}
 		}
 		if st.Disabled {
 			return protocol.Conflict(p.Domain + " is disabled; enable it before deploying")
@@ -511,6 +511,10 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 
 	// 2. Shared files and directories.
 	if err := d.mergeReleaseEnv(ctx); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := d.ensureAppSecrets(ctx); err != nil {
 		cleanup()
 		return "", err
 	}
