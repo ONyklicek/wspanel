@@ -16,7 +16,7 @@
                         PHP {{ $v['version'] }}
                         <span class="text-sm font-normal text-gray-500">PHP-FPM</span>
                         @if ($v['default'])
-                            <x-wire::badge color="primary">{{ __('výchozí pro nové weby') }}</x-wire::badge>
+                            <x-wire::badge color="primary" title="{{ __('výchozí pro nové weby') }}">{{ __('výchozí') }}</x-wire::badge>
                         @endif
                         @unless ($v['installed'])
                             <x-wire::badge color="danger">{{ __('chybí') }}</x-wire::badge>
@@ -70,7 +70,7 @@
                             <x-wire::badge color="gray">{{ $ext }}</x-wire::badge>
                         @endforeach
                     </div>
-                    <p class="mt-2 text-xs text-gray-500">{{ __('FrankenPHP je jedna binárka s pevnou sadou rozšíření; nová verze se instaluje v Server → Služby. Hodnoty php.ini a počet workerů nastavíte u každého webu v Další → PHP nastavení.') }}</p>
+                    <p class="mt-2 text-xs text-gray-500">{{ __('FrankenPHP je jedna binárka s pevnou sadou rozšíření; nová verze se instaluje v Server → Služby. Hodnoty php.ini a počet workerů nastavíte u každého webu v Nastavení → Běh a PHP.') }}</p>
                 </div>
             </div>
         </div>

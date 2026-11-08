@@ -11,7 +11,8 @@ use App\Support\Lang;
 use App\Support\Limits;
 use App\Wire\Forms\Options;
 use Illuminate\Validation\Rule;
-use NyonCode\WireForms\Components\Display\Placeholder;
+use NyonCode\WireCore\Foundation\Schema\Callout;
+use NyonCode\WireForms\Components\CheckboxList;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
@@ -108,10 +109,9 @@ final class SiteFields
                 ->visibleWhen('mode', SiteMode::Classic->value)
                 ->requiredIf('mode', SiteMode::Classic->value)
                 ->rules([fn () => Rule::in(array_keys($phpOptions()))]),
-            Placeholder::make('worker_php')
-                ->label('PHP')
-                ->content(fn () => __('Worker režim běží na PHP ').($system->workerPhpVersion() ?? '?').__(' zabudovaném ve FrankenPHP. Laravel potřebuje Octane, Symfony verzi 7.4+. Fronty, plánovač a další workery běží na systémovém PHP CLI.'))
-                ->visibleWhen('mode', SiteMode::Worker->value),
+            Callout::make()->info()->heading(fn () => __('PHP :version ve FrankenPHP', ['version' => $system->workerPhpVersion() ?? '?']))
+                ->content(__('Laravel potřebuje Octane, Symfony verzi 7.4+. Fronty, plánovač a další workery běží na systémovém PHP CLI.'))
+                ->visible(fn ($get) => $get('mode') === SiteMode::Worker->value),
             Select::make('node_version')
                 ->label(__('Verze Node'))
                 ->options(fn () => $system->nodeVersionOptions())
@@ -120,5 +120,41 @@ final class SiteFields
                 ->requiredIf('mode', SiteMode::Node->value)
                 ->rules([fn () => Rule::in(array_keys($system->nodeVersionOptions()))]),
         ];
+    }
+
+    /** Workers preselected for a new site: what nearly every app of the kind runs. */
+    public const DEFAULT_WORKERS = ['laravel' => ['queue', 'scheduler'], 'symfony' => ['messenger', 'scheduler']];
+
+    /**
+     * Workers to set up with a new Laravel or Symfony site, so the queue and
+     * the scheduler run from the first deploy without a second trip.
+     */
+    public static function workers(): CheckboxList
+    {
+        return CheckboxList::make('workers')
+            ->label(__('Workery'))
+            ->options(fn ($get) => SiteActions::workerOptions((string) $get('framework')))
+            ->default(array_values(array_unique(array_merge(...array_values(self::DEFAULT_WORKERS)))))
+            ->visible(fn ($get) => $get('mode') !== SiteMode::Node->value && isset(self::DEFAULT_WORKERS[(string) $get('framework')]))
+            ->rules([fn ($get) => function (string $attribute, mixed $value, \Closure $fail) {
+                $chosen = (array) $value;
+                if (in_array('horizon', $chosen, true) && in_array('queue', $chosen, true)) {
+                    $fail(__('Horizon fronty zpracovává sám: vyberte buď Horizon, nebo frontu.'));
+                }
+            }])
+            ->helperText(__('Běží jako služby pod uživatelem webu a spustí se po prvním deployi. Horizon a Pulse ingest zapnou Valkey webu. Další přidáte kdykoli u webu.'));
+    }
+
+    /**
+     * The chosen workers the site's framework actually offers (the checkbox
+     * state keeps a choice made under another framework).
+     *
+     * @return list<string>
+     */
+    public static function chosenWorkers(array $data): array
+    {
+        $offered = array_keys(SiteActions::workerOptions((string) ($data['framework'] ?? '')));
+
+        return array_values(array_intersect((array) ($data['workers'] ?? []), $offered));
     }
 }

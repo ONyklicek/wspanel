@@ -98,7 +98,7 @@ class Deliverability
         return ['record' => $spf, 'ok' => $spf !== null && self::spfAllowsServer($spf, $v4)];
     }
 
-    private static function spfAllowsServer(string $spf, string $v4): bool
+    public static function spfAllowsServer(string $spf, string $v4): bool
     {
         return $v4 !== '' && str_contains($spf, 'ip4:'.$v4) || preg_match('/\s(\+?mx|\+?a)(\s|$)/', $spf) || str_contains($spf, 'include:');
     }

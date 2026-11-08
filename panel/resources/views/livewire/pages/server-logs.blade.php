@@ -1,5 +1,5 @@
 <div class="space-y-4" @if ($follow) wire:poll.5s="load" @endif>
-    <x-wire::section :heading="__('Logy serveru')" :description="__('Záznamy služeb serveru z journalu, nejnovější dole. Logy jednotlivých webů jsou na jejich detailu.')">
+    <x-wire::section :heading="__('Záznamy')" :description="__('Záznamy služeb serveru z journalu, nejnovější dole. Logy jednotlivých webů jsou na jejich detailu.')">
         <div class="mb-3 flex flex-wrap items-center gap-3">
             <select wire:model.live="source" aria-label="{{ __('Zdroj') }}" class="rounded-lg border-gray-300 text-sm shadow-sm dark:border-white/10 dark:bg-white/5">
                 @foreach (\App\Livewire\Pages\ServerLogsPage::SOURCES as $key => $label)
@@ -7,8 +7,8 @@
                 @endforeach
             </select>
             <select wire:model.live="since" aria-label="{{ __('Období') }}" class="rounded-lg border-gray-300 text-sm shadow-sm dark:border-white/10 dark:bg-white/5">
-                @foreach (['15m' => __('15 minut'), '1h' => __('hodina'), '24h' => __('24 hodin'), '7d' => __('7 dní')] as $key => $label)
-                    <option value="{{ $key }}">{{ __('posledních') }} {{ $label }}</option>
+                @foreach (['15m' => __('posledních 15 minut'), '1h' => __('poslední hodina'), '24h' => __('posledních 24 hodin'), '7d' => __('posledních 7 dní')] as $key => $label)
+                    <option value="{{ $key }}">{{ $label }}</option>
                 @endforeach
             </select>
             <select wire:model.live="priority" aria-label="{{ __('Závažnost') }}" class="rounded-lg border-gray-300 text-sm shadow-sm dark:border-white/10 dark:bg-white/5">
@@ -27,7 +27,7 @@
         @if ($error)
             <p class="text-sm text-red-600">{{ $error }}</p>
         @else
-            <p class="mb-2 text-xs text-gray-500">{{ trans_choice('{0} žádný záznam|{1} :count záznam|[2,4] :count záznamy|[5,*] :count záznamů', count($lines)) }}{{ count($lines) >= 1000 ? __(' (zobrazeno posledních 1000)') : '' }}</p>
+            <p class="mb-2 text-xs text-gray-500">{{ \App\Support\Lang::count(count($lines), ':count záznam', ':count záznamy', ':count záznamů') }}{{ count($lines) >= 1000 ? __(' (zobrazeno posledních 1000)') : '' }}</p>
             @include('livewire.sites.log-text', ['text' => $lines !== [] ? implode("\n", $lines) : __('V tomto období nic.')])
         @endif
     </x-wire::section>

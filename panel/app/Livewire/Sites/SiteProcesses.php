@@ -73,7 +73,8 @@ class SiteProcesses extends Component
             ->columns([
                 TextColumn::make('label')->label(__('Proces'))->weight('medium')->description(fn ($record) => $record->unit),
                 BadgeColumn::make('kind')->label(__('Druh'))->color('gray')
-                    ->formatStateUsing(fn ($state) => ['app' => 'aplikace', 'worker' => 'worker', 'task' => __('úloha'), 'valkey' => 'Valkey'][$state] ?? $state),
+                    ->formatStateUsing(fn ($state) => ['app' => __('aplikace'), 'worker' => 'worker', 'task' => __('úloha'), 'valkey' => 'Valkey'][$state] ?? $state)
+                    ->toggleable()->visible(false),
                 BadgeColumn::make('state_label')->label(__('Stav'))->colors([
                     __('běží') => 'success', __('naplánováno') => 'success', 'chyba' => 'danger', __('padá a restartuje se') => 'danger',
                     __('čeká na deploy / zastaveno') => 'warning', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
@@ -81,7 +82,7 @@ class SiteProcesses extends Component
                 TextColumn::make('since_label')->label(__('Od')),
                 TextColumn::make('memory_label')->label(__('Paměť')),
                 TextColumn::make('restarts')->label(__('Restartů')),
-                TextColumn::make('boot_label')->label(__('Po startu serveru'))->textColor('gray'),
+                TextColumn::make('boot_label')->label(__('Po startu serveru'))->textColor('gray')->toggleable()->visible(false),
             ])
             ->actions([
                 $this->control('start', fn ($r) => $r->kind === 'task' ? __('Obnovit plánování') : __('Spustit'), 'outline:play', 'success')

@@ -29,7 +29,7 @@
                     </ol>
                     @if ($site->framework === \App\Enums\Framework::Php)
                         <x-wire::callout color="info" :heading="__('Deploy nepotřebujete?')">
-                            {{ __('U čistého PHP stačí nahrát soubory přes SFTP do složky') }} <code>public_html/</code> {{ __('(Další → SSH / SFTP na přehledu webu).') }}
+                            {{ __('U čistého PHP stačí nahrát soubory přes SFTP do složky') }} <code>public_html/</code> {{ __('(Nastavení → Přístup → SSH / SFTP).') }}
                         </x-wire::callout>
                     @endif
                 </div>

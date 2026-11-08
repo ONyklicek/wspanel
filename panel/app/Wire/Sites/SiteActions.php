@@ -12,6 +12,7 @@ use App\Actions\Sites\DeleteSite;
 use App\Actions\Sites\ImportSite;
 use App\Actions\Sites\ManageEdge;
 use App\Actions\Sites\ManagePhpSettings;
+use App\Actions\Sites\ManageSiteMounts;
 use App\Actions\Sites\ManageSsh;
 use App\Actions\Sites\ManageStaging;
 use App\Actions\Sites\ManageTls;
@@ -68,6 +69,20 @@ final class SiteActions
         'pulse' => 'Pulse – kontroly (artisan pulse:check)',
         'pulsework' => 'Pulse – ingest z Redisu (artisan pulse:work)',
     ];
+
+    /**
+     * The workers a framework can run, labelled (the scheduler differs).
+     *
+     * @return array<string, string>
+     */
+    public static function workerOptions(string $framework): array
+    {
+        return collect(app(SystemInfo::class)->workerTypes($framework))
+            ->mapWithKeys(fn (string $t) => [$t => $t === 'scheduler'
+                ? ($framework === 'laravel' ? __('Plánovač (artisan schedule:work)') : __('Plánovač (messenger:consume scheduler_default)'))
+                : __(self::WORKER_LABELS[$t] ?? $t)])
+            ->all();
+    }
 
     /** Runs an agent-backed step and turns its failure into a toast. */
     private static function attempt(string $failure, callable $fn): void
@@ -341,11 +356,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->form(fn (Site $record) => [
                 Select::make('worker')->rules([Options::rule()])
                     ->label(__('Typ'))
-                    ->options(collect(app(SystemInfo::class)->workerTypes($record->framework->value))
-                        ->mapWithKeys(fn (string $t) => [$t => $t === 'scheduler'
-                            ? ($record->framework->value === 'laravel' ? __('Plánovač (artisan schedule:work)') : __('Plánovač (messenger:consume scheduler_default)'))
-                            : __(self::WORKER_LABELS[$t] ?? $t)])
-                        ->all())
+                    ->options(self::workerOptions($record->framework->value))
                     ->required(),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Worker se nepodařilo přidat'), function () use ($record, $data) {
@@ -628,7 +639,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                 'persist' => $record->valkey['persist'] ?? false,
                 'use' => $record->valkey['use'] ?? [],
             ])
-            ->form([
+            // The record from the form's closure: a field's own `fn (Site $record)`
+            // is handed an empty model when the dialog opens from the Settings tab.
+            ->form(fn (Site $record) => [
                 Toggle::make('enabled')->label(__('Zapnout Valkey pro tento web'))->live(),
                 TextInput::make('maxmemory_mb')->label(__('Paměť (MB)'))->integer()->minValue(8)->maxValue(65536)
                     ->rules(['integer', 'between:8,65536'])->visibleWhen('enabled', true)->requiredIf('enabled', true),
@@ -636,9 +649,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->visibleWhen('enabled', true)->requiredIf('enabled', true),
                 Toggle::make('persist')->label(__('Ukládat data na disk (přežijí restart)'))->visibleWhen('enabled', true)
                     ->helperText(__('Pro fronty a session ano, pro čistou cache není třeba.')),
-                CheckboxList::make('use')->label(__('Aplikace v něm má'))->visibleWhen('enabled', true)
-                    ->options(fn (Site $record) => ManageValkey::uses($record))
-                    ->visible(fn (Site $record) => ManageValkey::uses($record) !== [])
+                CheckboxList::make('use')->label(__('Aplikace v něm má'))
+                    ->options(ManageValkey::uses($record))
+                    ->visible(fn ($get) => $get('enabled') && ManageValkey::uses($record) !== [])
                     ->helperText(__('Panel nastaví ovladače v .env; nezaškrtnuté vrátí na výchozí (database). Fronty a session nemají být v paměti, která maže klíče: zvolte „nic nemaže“.')),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Valkey se nepodařilo nastavit'), function () use ($record, $data) {
@@ -691,6 +704,107 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             }));
     }
 
+    private static function homeOf(Site $site): string
+    {
+        return rtrim((string) ($site->home ?: '/srv/sites/'.$site->domain), '/');
+    }
+
+    /** Connects a network disk (SMB, FTP, SFTP) into the site's mounts/ (administrators). */
+    public static function mountAdd(): Action
+    {
+        return Action::make('mountAdd')
+            ->label(__('Připojit disk'))
+            ->icon('outline:server-stack')
+            ->visible(fn (Site $record) => Gate::allows('admin') && $record->isOperational())
+            ->modalHeading(fn (Site $record) => __('Síťový disk pro :domain', ['domain' => $record->domain]))
+            ->modalWidth('2xl')
+            ->modalSubmitActionLabel(__('Připojit'))
+            ->modalDescription(__('Disk se připojí do složky mounts/<název> v adresáři webu. Soubory na něm patří uživateli webu: aplikace, workery i SFTP je čtou a zapisují jako vlastní. Do záloh webu se nezahrnuje.'))
+            ->form(fn (Site $record) => [
+                Radio::make('type')->label(__('Druh'))->options(Lang::values(ManageSiteMounts::TYPES))->default('smb')->required()->inline()->live()
+                    ->rules([Options::rule(ManageSiteMounts::TYPES)]),
+                Grid::make()->columns(['default' => 1, 'sm' => 3])->schema([
+                    TextInput::make('host')->label(__('Server'))->placeholder('nas.firma.lan')->required()->maxLength(253)->columnSpan(2)
+                        ->rules(['regex:/^[A-Za-z0-9][A-Za-z0-9.\-]{0,252}$|^\[?[0-9A-Fa-f:.]{2,45}\]?$/'])
+                        ->validationMessages(['regex' => __('Název serveru nebo IP adresa.')]),
+                    TextInput::make('port')->label(__('Port'))->integer()->placeholder(__('výchozí'))->rules(['nullable', 'integer', 'between:1,65535']),
+                ]),
+                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
+                    TextInput::make('share')->label(__('Sdílená složka'))->placeholder('Data')->maxLength(80)
+                        ->visibleWhen('type', 'smb')->requiredIf('type', 'smb'),
+                    TextInput::make('path')->label(__('Složka na disku'))->placeholder('web/uploads')->maxLength(500)
+                        ->helperText(__('Prázdné = celý disk.')),
+                ]),
+                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
+                    TextInput::make('user')->label(__('Uživatel'))->required()->maxLength(128)->autocomplete('off'),
+                    TextInput::make('password')->label(__('Heslo'))->password()->revealable()->maxLength(256)->autocomplete('new-password')
+                        ->helperText(__('Panel ho neukládá, zná ho jen server.')),
+                ]),
+                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
+                    TextInput::make('domain')->label(__('Doména / pracovní skupina'))->placeholder('FIRMA')->maxLength(128)->visibleWhen('type', 'smb'),
+                    Select::make('version')->label(__('Verze SMB'))->options(Lang::values(ManageSiteMounts::SMB_VERSIONS))->default('3.0')
+                        ->visibleWhen('type', 'smb')->rules([Options::rule(ManageSiteMounts::SMB_VERSIONS)]),
+                    Select::make('tls')->label(__('Šifrování'))->options(Lang::values(ManageSiteMounts::FTP_TLS))->default('explicit')
+                        ->visibleWhen('type', 'ftp')->rules([Options::rule(ManageSiteMounts::FTP_TLS)]),
+                ]),
+                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
+                    TextInput::make('name')->label(__('Název složky'))->default('nas')->required()->maxLength(32)
+                        ->rules(['regex:/^[a-z0-9][a-z0-9_-]{0,31}$/'])->validationMessages(['regex' => __('Malá písmena, číslice, - a _.')])
+                        ->helperText(fn ($get) => __('Cesta pro aplikaci: :path', ['path' => self::homeOf($record).'/mounts/'.($get('name') ?: 'nas')])),
+                    Toggle::make('read_only')->label(__('Jen pro čtení')),
+                ]),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepodařilo připojit'), function () use ($record, $data) {
+                $mount = collect($data)->only(['name', 'type', 'host', 'share', 'path', 'user', 'domain', 'version', 'tls'])
+                    ->map(fn ($v) => is_string($v) ? trim($v) : $v)->filter(fn ($v) => $v !== null && $v !== '')->all()
+                    + ['port' => (int) ($data['port'] ?? 0), 'read_only' => (bool) ($data['read_only'] ?? false)];
+                $out = app(ManageSiteMounts::class)->add($record, $mount, (string) ($data['password'] ?? ''));
+                match (true) {
+                    $out === null => Toast::success(__('Disk se připojuje'), __('Instalují se nástroje pro připojení, stav uvidíte za chvíli v Nastavení.')),
+                    ($out['not_visible_to'] ?? []) !== [] => Toast::warning(__('Disk připojen, některé procesy ho ještě nevidí'),
+                        __('Běžely už před připojením: :units. Do disku zapíšou až po restartu (do té doby zápis selže, nic se neuloží jinam).', ['units' => implode(', ', $out['not_visible_to'])])),
+                    default => Toast::success(__('Disk připojen'), self::homeOf($record).'/mounts/'.$mount['name']),
+                };
+            }));
+    }
+
+    public static function mountRemove(): Action
+    {
+        return Action::make('mountRemove')
+            ->label(__('Odpojit disk'))
+            ->icon('outline:x-circle')
+            ->color('gray')
+            ->visible(fn (Site $record) => Gate::allows('admin') && app(ManageSiteMounts::class)->list($record) !== [])
+            ->modalDescription(__('Disk se odpojí a panel zapomene přihlašovací údaje. Soubory na disku zůstanou.'))
+            ->form(fn (Site $record) => [
+                Select::make('name')->label(__('Disk'))->required()
+                    ->options(collect(app(ManageSiteMounts::class)->list($record))->mapWithKeys(fn ($m) => [$m['mount']['name'] => $m['mount']['name'].' · '.$m['mount']['host']])->all())
+                    ->rules([Options::rule()]),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepodařilo odpojit'), function () use ($record, $data) {
+                app(ManageSiteMounts::class)->remove($record, $data['name']);
+                Toast::success(__('Disk odpojen'));
+            }));
+    }
+
+    public static function mountRemount(): Action
+    {
+        return Action::make('mountRemount')
+            ->label(__('Připojit znovu'))
+            ->icon('outline:arrow-path')
+            ->color('gray')
+            ->visible(fn (Site $record) => Gate::allows('admin') && app(ManageSiteMounts::class)->list($record) !== [])
+            ->form(fn (Site $record) => [
+                Select::make('name')->label(__('Disk'))->required()
+                    ->options(collect(app(ManageSiteMounts::class)->list($record))->mapWithKeys(fn ($m) => [$m['mount']['name'] => $m['mount']['name'].' · '.$m['mount']['host']])->all())
+                    ->rules([Options::rule()]),
+            ])
+            ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepřipojil'), function () use ($record, $data) {
+                app(ManageSiteMounts::class)->remount($record, $data['name']);
+                Toast::success(__('Disk připojen'));
+            }));
+    }
+
     /** XHProf profiling into the site's own XHGui (classic sites). */
     public static function xhprof(): Action
     {
@@ -717,7 +831,8 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
         return Action::make('valkeyFlush')
             ->label(__('Vyprázdnit Valkey'))
             ->icon('outline:trash')
-            ->color('danger')
+            ->color('gray')
+            ->modalIcon('outline:trash', 'danger')
             ->visible(fn (Site $record) => $record->valkey !== null)
             ->requiresConfirmation()
             ->modalHeading(fn (Site $record) => __('Smazat všechny klíče ve Valkey webu :domain?', ['domain' => $record->domain]))
@@ -732,6 +847,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
         return Action::make('valkeyRestart')
             ->label(__('Restartovat Valkey'))
             ->icon('outline:arrow-path')
+            ->color('gray')
             ->visible(fn (Site $record) => $record->valkey !== null)
             ->action(fn (Site $record) => self::attempt(__('Valkey se nepodařilo restartovat'), function () use ($record) {
                 app(ManageValkey::class)->restart($record);
@@ -783,7 +899,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
         return [
             self::edge(), self::tls(), self::ssh(), self::credentials(),
             self::setVersion(), self::switchMode(), self::phpSettings(), self::webRules(),
-            self::valkey(), self::xhprof(), self::staging(), self::import(),
+            self::valkey(), self::xhprof(), self::mountAdd(), self::mountRemove(), self::mountRemount(), self::staging(), self::import(),
             self::assignClient(), self::disable(), self::enable(), self::delete(),
         ];
     }

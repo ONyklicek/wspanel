@@ -385,6 +385,29 @@ class MailHostingTest extends TestCase
         $this->tableAction($table(), $alice, 'forward', ['to' => ['jana@seznam.cz'], 'keep_copy' => '1'])->assertHasNoErrors();
     }
 
+    public function test_a_mailbox_waits_for_the_domains_mx_and_spf_or_a_confirmation(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $dns = [];
+        $this->fakeDns($dns);
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $this->agent->shouldReceive('call')->twice()->with('mail.mailbox.set', Mockery::any())->andReturn([]);
+        $create = fn (array $data) => $this->headerTableAction(Livewire::test(MailboxTable::class, ['domain' => $domain->id]), 'createMailbox',
+            $data + ['password' => 'Dlouhe-heslo-1', 'quota_mb' => 500]);
+
+        $create(['local_part' => 'alice'])->assertHasErrors()->assertSee('V DNS zatím chybí')->assertSee('mail.hosting.cz');
+        $this->assertSame(0, $domain->mailboxes()->count());
+
+        // Mail moved from elsewhere: the mailboxes come first, MX after the copy.
+        $create(['local_part' => 'alice', 'dns_anyway' => true])->assertHasNoErrors();
+
+        $dns['firma.cz|'.DNS_MX] = ['mail.hosting.cz.'];
+        $dns['firma.cz|'.DNS_TXT] = ['v=spf1 ip4:203.0.113.7 -all'];
+        $this->app->forgetScopedInstances();
+        $create(['local_part' => 'bob'])->assertHasNoErrors();
+        $this->assertSame(2, $domain->mailboxes()->count());
+    }
+
     public function test_webmail_waits_for_its_dns_or_a_confirmation(): void
     {
         $this->actingAs(User::factory()->create());

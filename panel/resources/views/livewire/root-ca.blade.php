@@ -1,7 +1,7 @@
 <div class="space-y-4 text-sm">
     @if (! $ca)
         <p class="text-gray-600 dark:text-gray-300">{{ $error }}</p>
-        <p class="text-gray-500">{{ __('Autorita vznikne s prvním webem, který používá interní certifikát (web → Další → HTTPS / certifikát → Interní certifikační autorita).') }}</p>
+        <p class="text-gray-500">{{ __('Autorita vznikne s prvním webem, který používá interní certifikát (web → Nastavení → HTTPS → Interní certifikační autorita).') }}</p>
     @else
         <p>{{ __('Weby s interním certifikátem prohlížeč označí jako důvěryhodné, až počítač (nebo telefon) jednou nainstaluje tento kořenový certifikát. Instalujte ho jen na zařízení, která mají weby používat.') }}</p>
         <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1">

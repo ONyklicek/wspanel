@@ -6,6 +6,7 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Models\MailDomain;
 use App\Services\Mail\Deliverability;
 use App\Support\PublicAddress;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * DNS a feature needs before it works, asked before it is switched on:
@@ -63,6 +64,43 @@ class DnsPrerequisites
 
         return [['label' => __('SPF serveru pošty :host', ['host' => $host]), 'ok' => $spf['ok'],
             'detail' => ($spf['record'] ?? __('chybí')).__('; přeposlaná pošta ho potřebuje: :host TXT "v=spf1 a -all"', ['host' => $host])]];
+    }
+
+    /**
+     * What a domain's mailboxes need: MX pointing at the mail host (else mail
+     * for them goes elsewhere) and an SPF allowing this server (else what they
+     * send lands in spam). Unknown (null) without a public address or for a
+     * domain only a local network knows.
+     *
+     * @return list<array{label: string, ok: bool|null, detail: string, bad?: string}>
+     */
+    public function mailboxes(string $domain): array
+    {
+        $v4 = (string) config('panel.public_ipv4');
+        $known = $v4 !== '' && PublicAddress::host($domain);
+        $host = ManageMailHosting::mailHost();
+
+        $mx = array_map(fn ($t) => rtrim(strtolower((string) $t), '.'), $this->records($domain, DNS_MX, 'target'));
+        $spf = collect($this->records($domain, DNS_TXT, 'txt'))->first(fn ($t) => str_starts_with((string) $t, 'v=spf1'));
+
+        return [
+            ['label' => __('MX (příchozí pošta)'), 'ok' => $known ? in_array($host, $mx, true) : null,
+                'detail' => $mx === [] ? __('chybí, má ukazovat na :host (pošta pro schránky jinak chodí jinam)', ['host' => $host])
+                    : implode(', ', $mx).__(' (má být :host)', ['host' => $host])],
+            ['label' => 'SPF', 'ok' => $known ? $spf !== null && Deliverability::spfAllowsServer($spf, $v4) : null,
+                'detail' => $spf === null ? __('chybí TXT záznam v=spf1 (odeslaná pošta skončí ve spamu)') : $spf.__(' (nepovoluje tento server)')],
+        ];
+    }
+
+    /**
+     * mailboxes() kept a few minutes, for pages that show it on every render
+     * (the domain list, the domain's page).
+     *
+     * @return list<array{label: string, ok: bool|null, detail: string, bad?: string}>
+     */
+    public static function mailboxesCached(string $domain): array
+    {
+        return Cache::remember('mail.dns.'.$domain, 300, fn () => app(self::class)->mailboxes($domain));
     }
 
     /**

@@ -9,14 +9,14 @@
         </x-wire::callout>
     @endif
 
-    <x-wire::section :heading="__('Aktualizace systému')" :description="$packages->isEmpty() ? __('Systém je aktuální.') : $packages->count().__(' balíčků k aktualizaci, z toho bezpečnostních ').$packages->where('security', true)->count().'.'">
+    <x-wire::section :heading="__('Balíčky')" :description="$packages->isEmpty() ? __('Systém je aktuální.') : \App\Support\Lang::count($packages->count(), ':count balíček k aktualizaci', ':count balíčky k aktualizaci', ':count balíčků k aktualizaci').__(', z toho bezpečnostních: :n.', ['n' => $packages->where('security', true)->count()])">
         <div class="flex flex-wrap items-center gap-3">
             <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="refresh">{{ __('Zkontrolovat znovu') }}</x-wire::button>
             <span class="text-sm text-gray-600 dark:text-gray-300">
                 {{ __('Automatické bezpečnostní aktualizace:') }}
-                <x-wire::badge :color="($updates['auto_security'] ?? false) ? 'success' : 'gray'">{{ ($updates['auto_security'] ?? false) ? __('zapnuto (denně)') : 'vypnuto' }}</x-wire::badge>
+                <x-wire::badge :color="($updates['auto_security'] ?? false) ? 'success' : 'gray'">{{ ($updates['auto_security'] ?? false) ? __('zapnuto (denně)') : __('vypnuto') }}</x-wire::badge>
             </span>
-            <x-wire::button size="sm" color="gray" outlined wire:click="toggleAuto">{{ ($updates['auto_security'] ?? false) ? 'Vypnout' : 'Zapnout' }}</x-wire::button>
+            <x-wire::button size="sm" color="gray" outlined wire:click="toggleAuto">{{ ($updates['auto_security'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
         </div>
         @if ($packages->isNotEmpty())
             <div class="mt-4 overflow-x-auto">

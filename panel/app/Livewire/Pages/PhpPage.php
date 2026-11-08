@@ -80,7 +80,7 @@ class PhpPage extends Page
                 ->label(__('Doinstalovat verzi PHP'))
                 ->icon('outline:plus')
                 ->visible($installable !== [])
-                ->modalDescription(__('Nainstaluje PHP-FPM a obvyklá rozšíření (intl, mbstring, xml, curl, zip, gd, redis…) včetně ovladačů databází. Weby pak verzi zvolí v Další → Změnit verzi.'))
+                ->modalDescription(__('Nainstaluje PHP-FPM a obvyklá rozšíření (intl, mbstring, xml, curl, zip, gd, redis…) včetně ovladačů databází. Weby pak verzi zvolí v Nastavení → Běh a PHP → Verze.'))
                 ->form([Select::make('version')->rules([Options::rule()])->label(__('Verze'))->required()
                     ->options(collect($installable)->mapWithKeys(fn ($v) => [$v => "PHP {$v}"])->all())])
                 ->action(function (array $data) {

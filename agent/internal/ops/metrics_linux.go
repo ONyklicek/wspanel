@@ -435,6 +435,14 @@ func sysSiteDisk(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	for _, st := range allSiteStates(env.Cfg) {
 		home := filepath.Join(env.Cfg.SitesRoot, st.Domain)
 		var total int64
+		// Only the home's own file system: a network disk mounted in it is not
+		// the site's disk use (and walking a NAS would take hours).
+		var homeDev uint64
+		if fi, err := os.Stat(home); err == nil {
+			if sys, ok := fi.Sys().(*syscall.Stat_t); ok {
+				homeDev = uint64(sys.Dev)
+			}
+		}
 		_ = filepath.WalkDir(home, func(_ string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil
@@ -443,6 +451,9 @@ func sysSiteDisk(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 				return ctx.Err()
 			}
 			if info, err := d.Info(); err == nil {
+				if sys, ok := info.Sys().(*syscall.Stat_t); ok && d.IsDir() && homeDev != 0 && uint64(sys.Dev) != homeDev {
+					return filepath.SkipDir
+				}
 				if sys, ok := info.Sys().(*syscall.Stat_t); ok {
 					total += sys.Blocks * 512 // allocated, like du
 				}

@@ -188,6 +188,8 @@ func siteSetGroup(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if _, err := env.Exec.Run(ctx, "usermod", "--gid", to, l.User); err != nil {
 		return nil, err
 	}
+	// Network disks off while files are re-owned: chown -R must not walk a NAS.
+	stopSiteMounts(ctx, env, st, l)
 	// Only what had the old group; -h: a link is changed, never followed.
 	if _, err := env.Exec.Run(ctx, "chown", "-R", "-h", "--from=:"+from, ":"+to, l.Home); err != nil {
 		return nil, err
@@ -205,6 +207,9 @@ func siteSetGroup(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	st.Group = p.Group
 	if err := saveSiteState(env, st); err != nil {
+		return nil, err
+	}
+	if err := startSiteMounts(ctx, env, st, l); err != nil {
 		return nil, err
 	}
 	// Running processes keep the old group until they restart.

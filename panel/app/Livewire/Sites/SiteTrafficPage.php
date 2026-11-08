@@ -3,6 +3,7 @@
 namespace App\Livewire\Sites;
 
 use App\Actions\Monitoring\SiteTraffic;
+use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Site;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
@@ -20,11 +21,11 @@ class SiteTrafficPage extends ViewPage
     #[Url]
     public string $range = '24h';
 
-    public function getTitle(): ?string
-    {
-        $site = $this->nativeRecord();
+    use IsSiteTab;
 
-        return __('Návštěvnost · ').($site instanceof Site ? $site->domain : 'web');
+    protected function tabLabel(): string
+    {
+        return __('Návštěvnost');
     }
 
     public function infolist(): Infolist

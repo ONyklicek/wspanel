@@ -3,8 +3,10 @@
 namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManagePhpSettings;
+use App\Actions\Sites\ManageSiteMounts;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
+use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Site;
 use App\Wire\Resources\SiteResource;
 use App\Wire\Sites\SiteActions;
@@ -23,11 +25,11 @@ class SiteSettings extends ViewPage
 {
     protected static ?string $resource = SiteResource::class;
 
-    public function getTitle(): ?string
-    {
-        $site = $this->nativeRecord();
+    use IsSiteTab;
 
-        return __('Nastavení · ').($site instanceof Site ? $site->domain : 'web');
+    protected function tabLabel(): string
+    {
+        return __('Nastavení');
     }
 
     /** The dialogs the sections open (mounted by name against the site). */
@@ -57,6 +59,30 @@ class SiteSettings extends ViewPage
         return array_values(array_filter($actions));
     }
 
+    /**
+     * The site's disks: whether each is connected, where it is from and where
+     * the app finds it.
+     *
+     * @return list<string>
+     */
+    private function mounts(Site $site): array
+    {
+        $mounts = app(ManageSiteMounts::class)->list($site);
+        if ($mounts === []) {
+            return [__('Žádný. Připojte SMB sdílení (NAS, Windows), FTP nebo SFTP server: web do něj bude zapisovat jako do vlastní složky.')];
+        }
+
+        return collect($mounts)->map(function (array $m) {
+            $d = $m['mount'];
+            $source = $d['type'] === 'smb'
+                ? '//'.$d['host'].'/'.$d['share'].(($d['path'] ?? '') !== '' ? '/'.$d['path'] : '')
+                : $d['type'].'://'.$d['host'].'/'.($d['path'] ?? '');
+
+            return $d['name'].' · '.($m['active'] === 'active' ? __('připojeno') : __('NEPŘIPOJENO')).(($d['read_only'] ?? false) ? ' · '.__('jen čtení') : '')
+                .' · '.$source.' → '.$m['path'];
+        })->values()->all();
+    }
+
     public function infolist(): Infolist
     {
         /** @var Site $site */
@@ -64,7 +90,8 @@ class SiteSettings extends ViewPage
         $edge = $site->edge_settings ?? [];
         $php = $site->mode !== SiteMode::Node;
 
-        return Infolist::make()->record($site)->livewireComponent($this)->schema([
+        // Side by side where the screen allows: two columns, three on a wide one.
+        return Infolist::make()->record($site)->livewireComponent($this)->columns(['default' => 1, 'lg' => 2, '2xl' => 3])->schema([
             Section::make('domains')->label(__('Domény a HTTPS'))->icon('outline:globe-alt')->columns(2)
                 ->headerActions(self::present([$this->open('edge', __('Domény a přístup'), $site), $this->open('tls', 'HTTPS', $site, 'outline:lock-closed')]))
                 ->schema([
@@ -115,6 +142,16 @@ class SiteSettings extends ViewPage
                     TextEntry::make('valkey')->label(__('Valkey (Redis)'))->state(fn () => $site->valkey === null ? __('vypnutý')
                         : __(':mb MB, :policy', ['mb' => $site->valkey['maxmemory_mb'] ?? '?', 'policy' => $site->valkey['policy'] ?? '']).(($site->valkey['persist'] ?? false) ? __(' · ukládá na disk') : '')),
                     TextEntry::make('xhprof')->label(__('Profilování (XHProf)'))->state(fn () => $site->xhprof === null ? __('vypnuté') : __('měří ').($site->xhprof['ratio'] ?? 100).__(' % požadavků')),
+                ]),
+            Section::make('mounts')->label(__('Síťové disky'))->icon('outline:server-stack')
+                ->visible(fn () => $this->open('mountAdd', '', $site) !== null)
+                ->headerActions(self::present([
+                    $this->open('mountAdd', __('Připojit disk'), $site, 'outline:plus'),
+                    $this->open('mountRemount', __('Připojit znovu'), $site, 'outline:arrow-path'),
+                    $this->open('mountRemove', __('Odpojit'), $site, 'outline:x-circle'),
+                ]))
+                ->schema([
+                    TextEntry::make('mounts')->hiddenLabel()->bulleted(count($this->mounts($site)) > 1)->listWithLineBreaks()->state(fn () => $this->mounts($site)),
                 ]),
             Section::make('copies')->label(__('Staging a přesun'))->icon('outline:beaker')
                 ->headerActions(self::present([$this->open('staging', $site->staging_of ? __('Nasadit na produkci') : __('Vytvořit staging'), $site), $this->open('import', __('Importovat web'), $site, 'outline:arrow-down-tray')]))

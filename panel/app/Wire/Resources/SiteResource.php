@@ -3,6 +3,7 @@
 namespace App\Wire\Resources;
 
 use App\Actions\Sites\CreateSite;
+use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
@@ -19,6 +20,8 @@ use App\Livewire\Sites\ViewSite;
 use App\Models\Client;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\Lang;
+use App\Support\Toast;
 use App\Wire\Sites\SiteActions;
 use App\Wire\Sites\SiteFields;
 use Illuminate\Support\Facades\Gate;
@@ -106,7 +109,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     ->searchable()
                     ->sortable()
                     ->weight('medium')
-                    ->description(fn (Site $record) => $record->framework->getLabel().' · '.$record->mode->getLabel()),
+                    ->description(fn (Site $record) => $record->framework->getLabel()),
                 BadgeColumn::make('state')
                     ->label(__('Stav'))
                     ->state(fn (Site $record) => $record->stateLabel())
@@ -127,24 +130,26 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
 
                         $failed = $services->where('active_state', 'failed')->count();
 
-                        return $services->where('active_state', 'active')->count().' / '.$services->count().__(' běží').($failed ? " · {$failed} chyba" : '');
+                        return $services->where('active_state', 'active')->count().' / '.$services->count().__(' běží')
+                            .($failed ? ' · '.Lang::count($failed, ':count chyba', ':count chyby', ':count chyb') : '');
                     }),
                 TextColumn::make('databases_list')
                     ->label(__('Databáze'))
                     ->state(fn (Site $record) => $record->databases->pluck('name')->join(', ') ?: '—')
-                    ->toggleable(),
+                    ->toggleable()->visible(false),
                 BadgeColumn::make('valkey_state')
                     ->label(__('Valkey'))
                     ->state(fn (Site $record) => $record->valkey === null ? 'ne' : $record->valkey['maxmemory_mb'].' MB')
                     ->colorUsing(fn ($state) => $state === 'ne' ? 'gray' : 'success')
-                    ->toggleable(),
+                    ->toggleable()->visible(false),
                 BadgeColumn::make('ssh_access')
                     ->label('SSH')
                     // "Vypnuto" beside "Běží" reads as a stopped site on a phone card, where the header is not shown.
-                    ->formatStateUsing(fn ($state) => $state === SshAccess::Off ? 'bez SSH' : ($state instanceof SshAccess ? $state->getLabel() : $state)),
+                    ->formatStateUsing(fn ($state) => $state === SshAccess::Off ? __('bez SSH') : ($state instanceof SshAccess ? $state->getLabel() : $state))
+                    ->toggleable()->visible(false),
                 TextColumn::make('client.name')->label(__('Klient'))->placeholder(__('správce'))->sortable()
                     ->visible(fn () => Gate::allows('clients')),
-                TextColumn::make('created_at')->label(__('Založeno'))->date('j. n. Y')->sortable()->toggleable(),
+                TextColumn::make('created_at')->label(__('Založeno'))->date('j. n. Y')->sortable()->toggleable()->visible(false),
             ])
             ->recordUrl(fn (Site $record) => self::url('view', $record))
             ->actions([
@@ -157,12 +162,34 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             ->defaultSort('domain');
     }
 
+    /**
+     * The workers chosen with a new site. The site exists by now, so a worker
+     * that fails (a package limit, the agent) is reported, not fatal: it can
+     * be added from the site later.
+     *
+     * @param  list<string>  $workers
+     */
+    private static function addWorkers(Site $site, array $workers): void
+    {
+        $failed = [];
+        foreach ($workers as $worker) {
+            try {
+                app(ManageWorkers::class)->create($site, $worker);
+            } catch (LimitReachedException|AgentException $e) {
+                $failed[] = $worker.': '.$e->getMessage();
+            }
+        }
+        if ($failed !== []) {
+            Toast::warning(__('Některé workery se nepřidaly'), implode(' · ', $failed));
+        }
+    }
+
     public function form(Form $form): Form
     {
         return $form
             ->schema([
                 Section::make('domain')->label(__('Doména'))->schema([SiteFields::domain(), SiteFields::tls()]),
-                Section::make('runtime')->label(__('Jak web poběží'))->schema(SiteFields::runtime()),
+                Section::make('runtime')->label(__('Jak web poběží'))->schema([...SiteFields::runtime(), SiteFields::workers()]),
                 Section::make('owner')->label(__('Vlastník'))->schema([SiteFields::client()])
                     ->visible(fn () => Gate::allows('clients') && Client::query()->exists()),
             ])
@@ -180,6 +207,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     $site->delete();
                     throw ValidationException::withMessages(['data.domain' => __('Web se nepodařilo založit: ').$error]);
                 }
+                self::addWorkers($site, SiteFields::chosenWorkers($data));
 
                 return $site;
             })

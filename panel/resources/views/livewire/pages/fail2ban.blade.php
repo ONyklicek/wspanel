@@ -3,7 +3,7 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    <x-wire::section :heading="__('Zablokované adresy')" :description="__('Adresy, které opakovaně selhaly při přihlášení (SSH, pošta…), jsou na čas zablokované.')">
+    <x-wire::section :heading="__('Teď zablokované')" :description="__('Adresy, které opakovaně selhaly při přihlášení (SSH, pošta…), jsou na čas zablokované.')">
         @php($banned = collect($bans)->filter())
         @if ($banned->isEmpty())
             <p class="text-sm text-gray-500">{{ __('Žádná adresa teď není zablokovaná') }}{{ $bans ? __(' (hlídá: ').implode(', ', array_keys($bans)).')' : '' }}.</p>

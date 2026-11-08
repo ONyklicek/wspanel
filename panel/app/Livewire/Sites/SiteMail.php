@@ -3,6 +3,7 @@
 namespace App\Livewire\Sites;
 
 use App\Actions\Mail\ManageMailHosting;
+use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\MailDomain;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
@@ -19,11 +20,11 @@ class SiteMail extends ViewPage
 {
     protected static ?string $resource = SiteResource::class;
 
-    public function getTitle(): ?string
-    {
-        $site = $this->nativeRecord();
+    use IsSiteTab;
 
-        return __('Pošta · ').($site instanceof Site ? $site->domain : 'web');
+    protected function tabLabel(): string
+    {
+        return __('Pošta');
     }
 
     public function infolist(): Infolist

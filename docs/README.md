@@ -50,7 +50,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
 | **Hosting → Databáze → Servery** | heslo root / postgres, přístup k databázím z internetu, phpMyAdmin / Adminer přes všechny databáze |
 | **Hosting → Naplánované úlohy** | cron úlohy webů |
-| **Pošta → Schránky** | poštovní domény, schránky, aliasy, přesměrování, webmail, antispam, doručitelnost; limity odesílání a ochrana pošty (greylisting, antivir) |
+| **Pošta → Domény a schránky** | poštovní domény, schránky, aliasy, přesměrování, webmail, antispam, doručitelnost; limity odesílání a ochrana pošty (greylisting, antivir) |
 | **Pošta → Odesílání z webů** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, fronta, log |
 | **Síť → DNS** | zóny na tomto serveru nebo v Cloudflare, záznamy, kontrola, sekundární DNS, DNSSEC |
 | **Síť → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |

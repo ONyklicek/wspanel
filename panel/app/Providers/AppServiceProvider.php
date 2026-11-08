@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Actions\Sites\ManageSiteMounts;
 use App\Http\Middleware\SetLocale;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -16,11 +17,13 @@ use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
+use NyonCode\WireCore\Core\Plugin\Hooks\TableComposingPayload;
 use NyonCode\WireCore\Core\Plugin\PluginManager;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroup;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroups;
 use NyonCode\WireCore\Foundation\Enums\Hook;
 use NyonCode\WireCore\Foundation\View\PageChrome;
+use NyonCode\WireTable\Columns\TextColumn;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -35,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         ));
         // Remembers DNS answers for one request (a form asks several times per render).
         $this->app->scoped(DnsPrerequisites::class);
+        $this->app->scoped(ManageSiteMounts::class);
     }
 
     /**
@@ -77,6 +81,27 @@ class AppServiceProvider extends ServiceProvider
             if ($record instanceof User && $record->exists && $record->id !== auth()->id()) {
                 $payload->schema = array_values(array_filter($payload->schema,
                     fn ($component) => ! (is_object($component) && method_exists($component, 'getName') && $component->getName() === 'security')));
+            }
+
+            return $payload;
+        }, for: 'users');
+
+        // Row buttons in every table (the users module's too) neutral at rest and
+        // coloured on hover: a column of red and blue buttons drowns the data.
+        // The one action a row is about keeps its colour with ->solid().
+        app(PluginManager::class)->hook(Hook::TableComposing, function (TableComposingPayload $payload): TableComposingPayload {
+            if (method_exists($payload->table, 'actionsStyle')) {
+                $payload->table->actionsStyle('quiet');
+            }
+
+            return $payload;
+        });
+
+        // Whose account it is: the administrator's or a client's.
+        app(PluginManager::class)->hook(Hook::TableComposing, function (TableComposingPayload $payload): TableComposingPayload {
+            if (Features::clients()) {
+                $payload->columns = [...$payload->columns,
+                    TextColumn::make('client.name')->label(__('Účet'))->placeholder(__('správce'))];
             }
 
             return $payload;

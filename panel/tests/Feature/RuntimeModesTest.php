@@ -68,11 +68,35 @@ class RuntimeModesTest extends TestCase
             ->with('site.create', ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony', 'tls' => 'auto'])
             ->andReturn(['mode' => 'worker', 'framework' => 'symfony', 'php_version' => '8.5', 'system_user' => 'web_w_example_com']);
 
-        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony'])
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'w.example.com', 'mode' => 'worker', 'framework' => 'symfony', 'workers' => []])
             ->call('save')
             ->assertHasNoErrors();
 
         $this->assertSame('PHP 8.5 · FrankenPHP', Site::sole()->runtimeLabel());
+    }
+
+    public function test_a_laravel_site_starts_with_the_workers_chosen_for_it(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('site.create', Mockery::any())
+            ->andReturn(['mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'system_user' => 'web_q_example_com']);
+        $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'q.example.com', 'worker' => 'queue'])->andReturn(['started' => false]);
+        $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'q.example.com', 'worker' => 'scheduler'])->andReturn(['started' => false]);
+
+        $page = $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'q.example.com', 'mode' => 'classic', 'framework' => 'laravel'])
+            ->assertSet('data.workers', fn ($w) => in_array('queue', $w, true) && in_array('scheduler', $w, true));
+        // "messenger" is Symfony's, preselected too: a Laravel site leaves it out.
+        $page->call('save')->assertHasNoErrors();
+
+        $this->assertSame(SiteMode::Classic, Site::sole()->mode);
+    }
+
+    public function test_horizon_and_a_plain_queue_are_not_chosen_together(): void
+    {
+        $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
+
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'h.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'workers' => ['horizon', 'queue']])
+            ->call('save')
+            ->assertHasErrors(['data.workers']);
     }
 
     public function test_framework_must_fit_the_mode(): void

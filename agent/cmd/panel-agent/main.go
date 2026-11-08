@@ -223,6 +223,7 @@ func binaries(cfg config.Config) map[string]string {
 		"unattended-upgrade": "/usr/bin/unattended-upgrade",
 		"fail2ban-client":    "/usr/bin/fail2ban-client",
 		"smbclient":          "/usr/bin/smbclient",
+		"rclone":             "/usr/bin/rclone", // obscure only (a mount's password, on stdin)
 		"journalctl":         "/usr/bin/journalctl",
 		"dpkg-query":         "/usr/bin/dpkg-query",
 		"apt-cache":          "/usr/bin/apt-cache",

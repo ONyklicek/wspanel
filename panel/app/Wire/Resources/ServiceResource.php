@@ -75,7 +75,14 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
                     ->colors([__('běží') => 'success', 'chyba' => 'danger', 'zastaveno' => 'gray', 'startuje' => 'warning', 'zastavuje se' => 'warning', __('načítá') => 'warning'])
                     ->tooltip(fn (Service $record) => $record->sub_state),
                 TextColumn::make('boot')->label(__('Po startu serveru'))->textColor('gray')
-                    ->state(fn (Service $record) => $record->enabled_state === 'enabled' ? __('spustí se') : ($record->enabled_state ?? '—')),
+                    ->state(fn (Service $record) => match ($record->enabled_state) {
+                        'enabled', 'enabled-runtime', 'alias' => __('spustí se'),
+                        'disabled' => __('nespustí se'),
+                        'static', 'indirect', 'generated' => __('podle jiné služby'),
+                        'masked' => __('zakázaná'),
+                        null, '' => '—',
+                        default => $record->enabled_state,
+                    }),
             ])
             ->filters([
                 SelectFilter::make('type')->label(__('Typ'))->options(collect(ServiceType::cases())->mapWithKeys(fn (ServiceType $t) => [$t->value => $t->getLabel()])->all()),

@@ -63,7 +63,7 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
             ->columns([
                 TextColumn::make('to')->label(__('Port'))->fontFamily('mono')->weight('medium')
                     ->description(fn (FirewallRule $record) => $record->description ?? $record->comment),
-                BadgeColumn::make('action')->label(__('Akce'))
+                BadgeColumn::make('action')->label(__('Pravidlo'))
                     ->formatStateUsing(fn ($state) => ['allow' => 'povolit', 'deny' => __('zakázat'), 'reject' => __('odmítnout'), 'limit' => 'omezit'][$state] ?? $state)
                     ->colors(['povolit' => 'success', 'omezit' => 'warning', __('zakázat') => 'danger', __('odmítnout') => 'danger']),
                 TextColumn::make('from')->label(__('Odkud'))->formatStateUsing(fn ($state) => $state === 'Anywhere' ? 'odkudkoli' : $state),

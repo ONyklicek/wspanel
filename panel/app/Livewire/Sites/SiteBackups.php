@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Sites;
 
+use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Site;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
@@ -18,11 +19,11 @@ class SiteBackups extends ViewPage
         parent::mount($record);
     }
 
-    public function getTitle(): ?string
-    {
-        $site = $this->nativeRecord();
+    use IsSiteTab;
 
-        return __('Zálohy · ').($site instanceof Site ? $site->domain : 'web');
+    protected function tabLabel(): string
+    {
+        return __('Zálohy');
     }
 
     public function infolist(): Infolist

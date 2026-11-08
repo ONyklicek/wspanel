@@ -10,6 +10,7 @@ use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Forms\Components\CodeIde;
 use App\Livewire\Pages\IntegrationsPage;
+use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Deployment;
 use App\Models\GithubConnection;
 use App\Models\Site;
@@ -87,9 +88,11 @@ class SiteDeploy extends ViewPage
         return $this->nativeRecord();
     }
 
-    public function getTitle(): ?string
+    use IsSiteTab;
+
+    protected function tabLabel(): string
     {
-        return 'Deploy · '.$this->site()->domain;
+        return 'Deploy';
     }
 
     /** @return Collection<int, Deployment> */

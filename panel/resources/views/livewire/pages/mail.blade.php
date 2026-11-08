@@ -42,7 +42,7 @@
                                     <x-wire::button size="sm" color="gray" outlined wire:click="setMode({{ $site->id }}, 'capture')">{{ __('Zachytávat v Mailpitu') }}</x-wire::button>
                                 @endif
                                 @unless (isset($this->dkimKeys()[$site->domain]))
-                                    <x-wire::button size="sm" wire:click="createDkim('{{ $site->domain }}')">{{ __('Vytvořit DKIM klíč') }}</x-wire::button>
+                                    <x-wire::button size="sm" color="gray" outlined icon="outline:key" wire:click="createDkim('{{ $site->domain }}')">{{ __('Vytvořit DKIM klíč') }}</x-wire::button>
                                 @endunless
                             </div>
                         </div>

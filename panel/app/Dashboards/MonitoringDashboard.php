@@ -54,7 +54,8 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
             $this->chart('load', __('Zátěž (load 1 min)'), ['load1' => ['load', '#10b981']], $ranges),
             $this->chart('network', __('Síť (MB/s)'), ['net_rx' => [__('příchozí'), '#0ea5e9'], 'net_tx' => [__('odchozí'), '#f97316']], $ranges, 1 << 20),
             $this->chart('disk_io', __('Disk – čtení a zápis (MB/s)'), ['io_read' => [__('čtení'), '#14b8a6'], 'io_write' => [__('zápis'), '#e11d48']], $ranges, 1 << 20),
-            $this->chart('disk_usage', __('Zaplnění disku (%)'), ['disk_percent' => ['obsazeno', '#64748b']], $ranges),
+            // On the full scale: auto-scaled, 1,5 % → 1,6 % looks like a cliff.
+            $this->chart('disk_usage', __('Zaplnění disku (%)'), ['disk_percent' => [__('obsazeno'), '#64748b']], $ranges, y: ['min' => 0, 'max' => 100]),
             CustomWidget::make()->key('sites')
                 ->columnSpan(2)->pollingInterval('15s')
                 ->view('livewire.monitoring.table')
@@ -84,10 +85,11 @@ class MonitoringDashboard extends Dashboard implements ProvidesNavigation, Provi
      * @param  array<string, array{0: string, 1: string}>  $series
      * @param  array<string, string>  $ranges
      */
-    private function chart(string $key, string $heading, array $series, array $ranges, int $divisor = 1): ChartWidget
+    private function chart(string $key, string $heading, array $series, array $ranges, int $divisor = 1, array $y = []): ChartWidget
     {
         return ChartWidget::make()->key($key)->heading($heading)->type('line')
             ->filter($ranges, '1h')
+            ->options(['scales' => array_filter(['x' => ['ticks' => ['maxTicksLimit' => 8, 'maxRotation' => 0]], 'y' => $y])])
             ->pollingInterval('60s')
             ->labels(fn (?string $filter) => app(ServerMetrics::class)->series($filter ?? '1h', array_keys($series))->pluck('label')->all())
             ->datasets(function (?string $filter) use ($series, $divisor) {

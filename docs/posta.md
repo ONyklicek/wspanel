@@ -87,7 +87,7 @@ zkouší znovu až 5 dní a pak je vrátí odesílateli.
 
 ## Schránky (příjem pošty)
 
-**Pošta → Schránky → Přidat doménu**, pak v detailu domény. Schránky
+**Pošta → Domény a schránky → Přidat doménu**, pak v detailu domény. Schránky
 a aliasy webu jsou i přímo u webu na záložce **Pošta**; tam jde poštu pro
 doménu webu i zřídit (u `www.firma.cz` pro `firma.cz`). Doména
 musí patřit vašemu webu (jeho doména, alias nebo nadřazená doména) nebo vaší
@@ -97,7 +97,11 @@ pošta s ním.
 
 - **Nová schránka:** adresa, heslo (prázdné = vygeneruje se a ukáže jednou),
   velikost. Heslo panel odešle na server jen jako hash (SHA512-CRYPT),
-  v čitelné podobě ho neuloží nikde.
+  v čitelné podobě ho neuloží nikde. Dokud MX domény nemíří na server pošty
+  nebo SPF nepovoluje server, panel to ukáže a schránku založí až po
+  potvrzení „Založit i tak“. Úplně to nezakazuje: při převodu pošty odjinud
+  se schránky zakládají předem a MX se přepne až po přenosu zpráv. Stav DNS
+  ukazuje i sloupec **DNS pro poštu** v seznamu domén.
 - **Velikost a stav:** kvóta; zablokovaná schránka se nepřihlásí (přihlášená
   sezení se ukončí), pošta do ní chodí dál.
 - **Automatická odpověď:** předmět, text, jednomu odesílateli nejvýš jednou

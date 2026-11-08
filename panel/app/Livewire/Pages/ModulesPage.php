@@ -79,7 +79,7 @@ class ModulesPage extends Page
                 ->action(function () {
                     try {
                         app(ManageMailHosting::class)->install()
-                            ? Toast::success(__('Pošta nainstalována'), __('Přidejte domény v Pošta → Schránky.'))
+                            ? Toast::success(__('Pošta nainstalována'), __('Přidejte domény v Pošta → Domény a schránky.'))
                             : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());

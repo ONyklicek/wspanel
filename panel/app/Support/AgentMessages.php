@@ -58,6 +58,11 @@ final class AgentMessages
             '/^(horizon|pulsework) needs the site\'s Valkey.*$/' => 'Worker $1 potřebuje Valkey webu.',
             '/^worker (\S+) keeps its data in Valkey; remove it first$/' => 'Worker $1 má data ve Valkey: nejdřív ho odeberte, pak Valkey vypněte.',
 
+            '/^the disk did not connect: (.+)$/s' => fn ($m) => 'Disk se nepřipojil: '.self::mountError($m[1]),
+            '/^disk (\S+) already exists$/' => 'Disk $1 už existuje, zvolte jiný název složky.',
+            '/^disk (\S+) does not exist$/' => 'Disk $1 neexistuje.',
+            '/^a site has at most 10 disks$/' => 'Web může mít nejvýš 10 disků.',
+            '/^installing (.+) failed: (.+)$/s' => 'Instalace $1 selhala: $2',
             '/^mail hosting is not installed.*$/' => 'Příjem pošty není nainstalovaný (Server → Moduly).',
             '/^domain (\S+) still has mailboxes$/' => 'Doména $1 má ještě schránky.',
             '/^mailbox (\S+) does not exist$/' => 'Schránka $1 neexistuje.',
@@ -200,10 +205,23 @@ final class AgentMessages
             // Low level: commands and HTTP
             '/^(\S+): exit status (\d+)$/' => 'Příkaz $1 skončil chybou (kód $2).',
             '/connection refused/i' => fn () => 'Server spojení odmítl (nic na portu neposlouchá).',
+            '/dial unix \S+\.sock: connect: no such file or directory/' => fn () => 'Proces webu neběží (aplikace neotevřela svůj socket).',
             '/(Client\.Timeout|deadline exceeded|i\/o timeout)/' => fn () => 'Vypršel časový limit, web neodpověděl včas.',
             '/no such host/' => fn () => 'Doménu se nepodařilo přeložit (DNS).',
             '/^HTTP (\d{3})$/' => 'Web vrátil HTTP $1.',
         ];
+    }
+
+    /** What mount or rclone said, in words: the usual causes first. */
+    private static function mountError(string $detail): string
+    {
+        return match (true) {
+            str_contains($detail, 'error(13)'), str_contains($detail, 'Permission denied'), str_contains($detail, '530 '), str_contains($detail, 'unable to authenticate') => 'server odmítl přihlášení (uživatel nebo heslo). Podrobnosti: '.$detail,
+            str_contains($detail, 'error(2)'), str_contains($detail, 'No such file'), str_contains($detail, '550 ') => 'sdílená složka nebo cesta neexistuje. Podrobnosti: '.$detail,
+            str_contains($detail, 'error(112)'), str_contains($detail, 'error(115)'), str_contains($detail, 'could not connect'), str_contains($detail, 'Host is down'), str_contains($detail, 'connection refused'), str_contains($detail, 'i/o timeout'), str_contains($detail, 'no route to host') => 'server není dostupný (adresa, port nebo firewall). Podrobnosti: '.$detail,
+            str_contains($detail, 'error(95)'), str_contains($detail, 'Operation not supported') => 'server tuto verzi SMB nepodporuje, zkuste jinou. Podrobnosti: '.$detail,
+            default => $detail,
+        };
     }
 
     private static function engine(string $name): string

@@ -17,9 +17,10 @@ final class DnsGate
 {
     /**
      * @param  Closure(DnsPrerequisites, callable $get): list<array{label: string, ok: bool|null, detail: string}>  $checks
+     * @param  string|null  $confirm  the confirmation's wording, when "switch on" is not the act
      * @return list<mixed>
      */
-    public static function fields(Closure $checks): array
+    public static function fields(Closure $checks, ?string $confirm = null): array
     {
         $failing = fn (callable $get): array => DnsPrerequisites::failing($checks(app(DnsPrerequisites::class), $get));
 
@@ -27,7 +28,7 @@ final class DnsGate
             Callout::make()->warning()->heading(__('V DNS zatím chybí'))
                 ->content(fn ($get) => collect($failing($get))->map(fn ($c) => $c['label'].': '.$c['detail'])->implode(' · '))
                 ->visible(fn ($get) => $failing($get) !== []),
-            Checkbox::make('dns_anyway')->label(__('Zapnout i tak: DNS nastavím, funkce začne fungovat, až se záznamy rozšíří'))
+            Checkbox::make('dns_anyway')->label($confirm ?? __('Zapnout i tak: DNS nastavím, funkce začne fungovat, až se záznamy rozšíří'))
                 ->visible(fn ($get) => $failing($get) !== [])
                 ->rules(fn ($get) => $failing($get) !== [] ? ['accepted'] : [])
                 ->validationMessages(['accepted' => __('Nejdřív nastavte DNS, nebo potvrďte zapnutí i tak.')]),

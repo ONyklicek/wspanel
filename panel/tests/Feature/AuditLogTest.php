@@ -20,6 +20,8 @@ class AuditLogTest extends TestCase
         $agent->shouldReceive('call')->with('audit.tail', ['limit' => 500])->andReturn([
             ['ts' => '2026-11-07T10:00:00Z', 'op' => 'site.create', 'params' => ['domain' => 'a.example.com'], 'peer_uid' => 995, 'ok' => true, 'duration_ms' => 120],
             ['ts' => '2026-11-07T09:00:00Z', 'op' => 'env.set', 'params' => ['domain' => 'a.example.com', 'content' => '<redacted 20 bytes sha256:abc>'], 'peer_uid' => 995, 'ok' => false, 'error' => 'boom', 'duration_ms' => 3],
+            ['ts' => '2026-11-07T08:00:00Z', 'op' => 'cron.list', 'params' => ['domain' => 'a.example.com'], 'peer_uid' => 995, 'ok' => true, 'duration_ms' => 1],
+            ['ts' => '2026-11-07T08:00:00Z', 'op' => 'sys.metrics', 'peer_uid' => 995, 'ok' => true, 'duration_ms' => 1],
         ]);
         $this->app->instance(AgentClient::class, $agent);
         $this->actingAs(User::factory()->create());
@@ -27,6 +29,11 @@ class AuditLogTest extends TestCase
         Livewire::test(AuditTable::class)
             ->assertSee('site.create')
             ->assertSee('redacted 20 bytes')
+            // What the panel only read (it polls every few seconds) waits behind a filter.
+            ->assertDontSee('cron.list')->assertDontSee('sys.metrics')
+            ->set('tableState.filters.kind', 'read')
+            ->assertSee('cron.list')->assertDontSee('site.create')
+            ->set('tableState.filters.kind', null)
             ->set('tableState.filters.area', 'env.')
             ->assertSee('env.set')
             ->assertDontSee('site.create');

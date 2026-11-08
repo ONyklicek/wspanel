@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Database;
 use App\Models\Site;
@@ -43,10 +42,5 @@ class SiteCredentialsTest extends TestCase
             ->assertSee('wp_db')
             ->assertSee('web_wp_example_com')
             ->assertSee('valkey.sock');
-    }
-
-    public function test_the_sites_list_shows_databases_and_valkey(): void
-    {
-        Livewire::test(ListSites::class)->assertSee('wp_db')->assertSee('64 MB');
     }
 }

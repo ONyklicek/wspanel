@@ -13,4 +13,9 @@ class CreateSitePage extends CreatePage
     protected static ?string $resource = SiteResource::class;
 
     protected ?string $title = 'Nový web';
+
+    public function submitLabel(): string
+    {
+        return __('Vytvořit web');
+    }
 }

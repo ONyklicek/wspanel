@@ -25,6 +25,26 @@ class AuditTable extends Component
         'fw.' => 'Firewall', 'ssh.' => 'SSH', 'cron.' => 'Úlohy', 'env.' => '.env', 'ssl.' => 'SSL', 'mail.' => 'Pošta', 'dns.' => 'DNS', 'panel.' => 'Panel',
     ];
 
+    /**
+     * Operations that only read (the agent's non-mutating ones, less those a
+     * person starts or that reveal a secret, plus the panel's periodic syncs).
+     * The panel polls them every few seconds: shown, they bury every change.
+     */
+    public const READ_OPS = [
+        'agent.ping', 'site.health', 'site.processes', 'site.logs', 'mail.status', 'mail.log', 'dns.zones', 'dns.records', 'db.list',
+        'db.backups', 'db.server_status', 'site.backups', 'offsite.get', 'offsite.list', 'php.status', 'ssl.status', 'ssl.check',
+        'ssl.root_ca', 'sys.resources', 'sys.metrics', 'sys.site_disk', 'cron.list', 'deploy.log', 'deploy.history', 'deploy.remote_ref',
+        'audit.tail', 'mail.hosting', 'mail.usage', 'xhprof.status', 'site.import_scan', 'sys.updates', 'fail2ban.status', 'valkey.status',
+        'service.status', 'fw.list', 'sys.log', 'config.validate', 'sys.services', 'sys.versions', 'job.status',
+        'mail.certs', 'site.traffic',
+    ];
+
+    /** @param  array<string, mixed>  $params */
+    public static function isRead(string $op, array $params = []): bool
+    {
+        return in_array($op, self::READ_OPS, true) || ($params['action'] ?? null) === 'get';
+    }
+
     /** @return list<array<string, mixed>> */
     private function rows(): array
     {
@@ -40,6 +60,7 @@ class AuditTable extends Component
             'ago' => Carbon::parse($e['ts'])->diffForHumans(),
             'op' => $e['op'],
             'area' => collect(array_keys(self::AREAS))->first(fn ($p) => str_starts_with($e['op'], $p)) ?? 'other',
+            'kind' => self::isRead($e['op'], (array) ($e['params'] ?? [])) ? 'read' : 'change',
             'params' => isset($e['params']) ? mb_strimwidth(json_encode($e['params'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 120, '…') : '',
             'result' => $e['ok'] ? 'OK' : 'chyba',
             'error' => $e['error'] ?? null,
@@ -63,7 +84,10 @@ class AuditTable extends Component
                 TextColumn::make('duration')->label(__('Trvání')),
                 TextColumn::make('peer')->label(__('Kdo'))->textColor('gray'),
             ])
-            ->filters([SelectFilter::make('area')->label(__('Oblast'))->options(Lang::values(self::AREAS))])
+            ->filters([
+                SelectFilter::make('kind')->label(__('Druh'))->options(['change' => __('Jen změny'), 'read' => __('Jen čtení')])->default('change'),
+                SelectFilter::make('area')->label(__('Oblast'))->options(Lang::values(self::AREAS)),
+            ])
             ->perPage(50)
             ->poll('30s');
     }

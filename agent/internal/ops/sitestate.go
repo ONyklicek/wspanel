@@ -48,6 +48,8 @@ type siteState struct {
 	// Group: the client's group (wsc_<id>), the site user's primary group, so
 	// the client's disk quota counts the site's files. Empty = the site's own group.
 	Group string `json:"group,omitempty"`
+	// Mounts: network disks (SMB, FTP, SFTP) mounted under mounts/ in the home.
+	Mounts []siteMount `json:"mounts,omitempty"`
 	// FPMChildren: classic mode, pm.max_children (0 = default).
 	FPMChildren int `json:"fpm_children,omitempty"`
 	// Maintenance: while set (a bypass secret), the edge shows a maintenance

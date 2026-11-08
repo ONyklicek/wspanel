@@ -74,6 +74,9 @@ class MailboxTable extends Component
                         TextInput::make('password')->label(__('Heslo'))->password()->revealable()
                             ->helperText(__('Prázdné = panel vygeneruje a jednou ukáže.'))->rules(['nullable', 'string', 'min:10', 'max:200']),
                         TextInput::make('quota_mb')->label(__('Velikost (MB)'))->integer()->default(1024)->required()->rules(['integer', 'between:10,1048576']),
+                        // Not a hard stop: mailboxes are made before MX moves when mail is migrated.
+                        ...DnsGate::fields(fn (DnsPrerequisites $dns) => $dns->mailboxes($domain->domain),
+                            __('Založit i tak: DNS nastavím (nebo převádím poštu odjinud a MX přepnu až po přenosu)')),
                     ])
                     ->action(fn (array $data) => $this->attempt(__('Schránku se nepodařilo založit'), function () use ($data, $domain) {
                         $password = filled($data['password'] ?? null) ? $data['password'] : ManageMailHosting::randomPassword();

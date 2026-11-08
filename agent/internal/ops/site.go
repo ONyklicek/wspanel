@@ -615,6 +615,10 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	removeNodeSlots(ctx, env, l)
+	// Network disks off before anything moves the home (into the trash).
+	if err := removeSiteMounts(ctx, env, l); err != nil {
+		return nil, err
+	}
 	for _, typ := range siteWorkerTypes(env, l.User) {
 		if err := removeWorker(ctx, env, l, typ); err != nil {
 			return nil, err

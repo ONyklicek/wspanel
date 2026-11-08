@@ -27,7 +27,7 @@ class ViewMailDomain extends ViewPage
     {
         $d = $this->nativeRecord();
 
-        return $d instanceof MailDomain ? __('Pošta · ').$d->domain : __('Pošta');
+        return $d instanceof MailDomain ? $d->domain : __('Poštovní doména');
     }
 
     public function infolist(): Infolist
@@ -44,6 +44,7 @@ class ViewMailDomain extends ViewPage
             Action::make('features')
                 ->label(__('Webmail a nastavení programů'))
                 ->icon('outline:cog-6-tooth')
+                ->color('gray')
                 ->fillFormUsing(fn () => ['webmail' => $domain->webmail, 'autoconfig' => $domain->autoconfig])
                 ->form([
                     Toggle::make('webmail')->label(__('Webmail na webmail.').$domain->domain)
@@ -90,7 +91,6 @@ class ViewMailDomain extends ViewPage
             Action::make('deliverability')
                 ->label(__('Kontrola doručitelnosti'))
                 ->icon('outline:shield-check')
-                ->color('gray')
                 ->modalHeading(__('Doručitelnost pošty ').$domain->domain)
                 ->modalDescription(__('Co kontrolují ostatní servery, než poštu přijmou, a co ji přivede sem.'))
                 ->modalSubmitActionLabel(__('Zavřít'))
@@ -101,7 +101,8 @@ class ViewMailDomain extends ViewPage
             Action::make('deleteDomain')
                 ->label(__('Odebrat doménu'))
                 ->icon('outline:trash')
-                ->color('danger')
+                ->color('gray')
+                ->modalIcon('outline:trash', 'danger')
                 ->requiresConfirmation()
                 ->modalDescription(__('Server přestane přijímat poštu pro tuto doménu. Jde to, jen když v ní není žádná schránka.'))
                 ->action(function () {
@@ -129,6 +130,8 @@ class ViewMailDomain extends ViewPage
             'subNavigation' => $this->subNavigation($domain),
             'domain' => $domain,
             'settings' => ManageMailHosting::clientSettings($domain),
+            // Looked up at most every few minutes: the page re-renders on every action.
+            'dnsMissing' => DnsPrerequisites::failing(DnsPrerequisites::mailboxesCached($domain->domain)),
         ]);
     }
 }

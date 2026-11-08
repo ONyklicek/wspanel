@@ -22,7 +22,12 @@
    - **Node SSR:** Nuxt, Next.js nebo vlastní `server.js` jako stále běžící proces.
 4. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js nebo Node.
    Podle typu panel připraví adresáře, `.env`, workery a postup deploye.
-5. Po uložení se otevře **detail webu**. Web už odpovídá úvodní stránkou
+5. **Workery** (jen Laravel a Symfony): co má běžet od prvního deploye.
+   Předvybrané jsou fronta a plánovač (Laravel), resp. Messenger a plánovač
+   (Symfony); dál Horizon, Reverb a Pulse. Horizon nahrazuje frontu, obojí
+   najednou vybrat nejde. Horizon a Pulse ingest zapnou Valkey webu. Další
+   workery přidáte kdykoli u webu (Další → Přidat worker).
+6. Po vytvoření se otevře **detail webu**. Web už odpovídá úvodní stránkou
    „Web běží“, která popisuje, jak pokračovat.
 
 Co se při založení stane:
@@ -453,6 +458,30 @@ Soubory se rozbalí do webu pod jeho uživatelem. Každý dump databáze ze zál
 Když je v záloze WordPress, jeho `wp-config.php` dostane přístup k nové
 databázi. Poštu ze zálohy panel nepřenáší: schránky založte v Pošta →
 Schránky a zprávy přeneste poštovním programem nebo `imapsync`.
+
+## Síťové disky (NAS, FTP)
+
+**Nastavení → Síťové disky → Připojit disk** (jen správce). K webu jde připojit:
+
+- **SMB**: sdílenou složku Windows, NAS (Synology, QNAP) nebo Samby, verze SMB 1 až 3.1.1,
+- **FTP / FTPS**: FTP server, s explicitním (AUTH TLS) nebo implicitním šifrováním,
+- **SFTP**: server přes SSH.
+
+Disk se připojí do `/srv/sites/<doména>/mounts/<název>`. Soubory na něm patří
+uživateli webu: aplikace (PHP-FPM i FrankenPHP), workery, naplánované úlohy
+i SFTP webu je čtou a zapisují jako vlastní. Jiné weby na server do disku
+nevidí. V Laravelu stačí přidat disk do `config/filesystems.php` s `root` na tuto
+cestu.
+
+- Heslo zná jen server (v souboru, který čte jen root), panel ho neukládá.
+- Disk se připojí znovu i po restartu serveru. Když nejde připojit, panel ukáže
+  proč (špatné heslo, nedostupný server, neexistující sdílená složka).
+- Když disk připojený není, zápis do jeho složky **selže**. Nic se tiše neuloží
+  na lokální disk pod ním.
+- FTP a SFTP: zapisovaný soubor se nahraje na server po zavření (rclone
+  s místní cache). Velké soubory tedy chvíli trvají.
+- Disk **není součástí záloh webu** ani se nepočítá do místa na disku webu.
+- Při smazání webu se disk odpojí; soubory na NAS zůstanou.
 
 ## Staging
 

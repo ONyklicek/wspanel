@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Attention;
+use App\Support\Lang;
 use App\Support\Limits;
 use App\Support\SetupChecklist;
 use App\Wire\Resources\SiteResource;
@@ -110,7 +111,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                 ->heading(__('Poslední deploye'))
                 ->items(fn () => Deployment::query()->with('site')->latest('started_at')->limit(6)->get()
                     ->map(fn (Deployment $d) => ListItem::make($d->site?->domain ?? '?')
-                        ->description(trim(($d->ref ? $d->ref.' · ' : '').($d->commit ? substr($d->commit, 0, 10) : '').($d->source === 'artifact' ? ' · build z CI' : '')))
+                        ->description(collect([$d->ref, $d->commit ? substr($d->commit, 0, 10) : null, $d->source === 'artifact' ? __('build z CI') : null])->filter()->join(' · '))
                         ->meta($d->started_at?->diffForHumans())
                         ->icon('outline:rocket-launch')
                         ->color($d->statusColor())
@@ -207,7 +208,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                 ->description($badCerts ? __(':bad_certs vyžaduje pozornost', ['bad_certs' => $badCerts]) : __('všechny platí'))
                 ->icon('outline:lock-closed')->color($badCerts ? 'warning' : 'success'),
             Stat::make(__('Deploye dnes'), (string) Deployment::query()->where('started_at', '>=', now()->startOfDay())->count())
-                ->description(Deployment::query()->where('started_at', '>=', now()->startOfDay())->whereIn('status', ['failed', 'rolled_back'])->count().__(' neúspěšných'))
+                ->description(Lang::count(Deployment::query()->where('started_at', '>=', now()->startOfDay())->whereIn('status', ['failed', 'rolled_back'])->count(), ':count neúspěšný', ':count neúspěšné', ':count neúspěšných'))
                 ->icon('outline:rocket-launch')->color('gray'),
         ];
     }

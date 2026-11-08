@@ -36,7 +36,7 @@ final class Attention
             $add('danger', __('Služba neběží: ').$s->label(), $s->unit, $s->site ? $s->site->url() : null);
         }
         foreach (Site::query()->where('status', SiteStatus::Active)->where('enabled', true)->where('health_ok', false)->get() as $site) {
-            $add('danger', __(':domain neodpovídá', ['domain' => $site->domain]), trim('HTTP '.($site->health_status ?? '—').' '.($site->health_error ?? '')));
+            $add('danger', __(':domain neodpovídá', ['domain' => $site->domain]), $site->health_error ?: __('Web vrátil HTTP :status.', ['status' => $site->health_status ?? '—']));
         }
         foreach (Site::query()->where('status', SiteStatus::Failed)->get() as $site) {
             $add('danger', "{$site->domain}: chyba", (string) $site->last_error);

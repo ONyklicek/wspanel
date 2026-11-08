@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\ManageValkey;
+use App\Livewire\Sites\SiteSettings;
 use App\Models\Client;
 use App\Models\Package;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
 use Tests\TestCase;
@@ -44,6 +46,17 @@ class ValkeyTest extends TestCase
         app(ManageValkey::class)->set($site, ['enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []]);
 
         $this->assertSame(128, $site->fresh()->valkey['maxmemory_mb']);
+    }
+
+    public function test_the_dialog_opens_from_the_settings_tab(): void
+    {
+        $site = $this->site();
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test(SiteSettings::class, ['record' => $site->id])
+            ->call('callInfolistAction', 'open_valkey')
+            ->assertOk()
+            ->assertSee('Zapnout Valkey pro tento web');
     }
 
     public function test_disabling_forgets_it(): void
