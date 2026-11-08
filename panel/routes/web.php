@@ -11,11 +11,11 @@ use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
 use App\Http\Controllers\OpenWebmailController;
 use App\Http\Controllers\XhguiAuthController;
+use App\Models\Site;
 use Illuminate\Support\Facades\Route;
 
 // Edge forward_auth for Mailpit (outside the panel group: answers 204 or redirects).
 Route::get('/auth/check', ForwardAuthController::class)->name('auth.check');
-Route::get('/auth/xhgui', XhguiAuthController::class)->name('auth.xhgui');
 
 Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');
@@ -32,6 +32,8 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
         ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
+    Route::get('/sites/{site}/xhgui', fn (Site $site) => $site->xhprof === null ? abort(404) : redirect()->away(XhguiAuthController::link($site)))
+        ->middleware('throttle:30,1')->name('sites.xhgui');
     Route::get('/mailboxes/{mailbox}/webmail', OpenWebmailController::class)->middleware('throttle:30,1')->name('mailboxes.webmail');
     Route::get('/mailboxes/{mailbox}/apple.mobileconfig', AppleMailProfileController::class)->name('mailboxes.apple-profile');
     Route::get('/ssl/root-ca.crt', function () {

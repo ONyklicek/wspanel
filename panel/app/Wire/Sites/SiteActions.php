@@ -653,7 +653,7 @@ final class SiteActions
             ])
             ->action(fn (Site $record, array $data) => self::attempt('Profilování se nepodařilo nastavit', function () use ($record, $data) {
                 app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null);
-                Toast::success($data['enabled'] ? 'Profilování zapnuto' : 'Profilování vypnuto', $data['enabled'] ? 'Výsledky: '.ManageXhprof::viewerUrl($record) : null);
+                Toast::success($data['enabled'] ? 'Profilování zapnuto' : 'Profilování vypnuto', $data['enabled'] ? 'Výsledky otevřete v detailu webu (Otevřít XHGui).' : null);
             }));
     }
 

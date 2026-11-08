@@ -1,15 +1,12 @@
 package ops
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestXhprofLoadsOnlyInTheSitesPoolAndAddsItsViewer(t *testing.T) {
 	env, _ := testEnv(t)
-	env.Cfg.XhguiWebDir = filepath.Join(t.TempDir(), "xhgui")
 	if _, err := call(t, env, siteCreate, map[string]string{"domain": "prof.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
 		t.Fatal(err)
 	}
@@ -30,21 +27,24 @@ func TestXhprofLoadsOnlyInTheSitesPoolAndAddsItsViewer(t *testing.T) {
 			t.Errorf("pool lacks %q:\n%s", want, pool)
 		}
 	}
-	viewer := read2(t, filepath.Join(env.Cfg.XhguiWebDir, "prof.example.com.caddy"))
-	if !strings.Contains(viewer, "handle_path /xhgui/prof.example.com/*") || !strings.Contains(viewer, "php_fastcgi unix/"+l.Socket) {
-		t.Errorf("the viewer runs in the site's own pool:\n%s", viewer)
+	web := read2(t, l.WebFile)
+	if !strings.Contains(web, "handle_path /_wsp_xhgui/*") || !strings.Contains(web, "php_fastcgi unix/"+l.Socket) {
+		t.Errorf("the viewer runs in the site's own pool, on its own domain:\n%s", web)
 	}
-	if !strings.Contains(viewer, "env XHGUI_PDO_DSN sqlite:"+l.Home+"/xhgui/xhgui.sqlite3") {
-		t.Errorf("and reads only the site's profiles:\n%s", viewer)
+	if !strings.Contains(web, "env XHGUI_PDO_DSN sqlite:"+l.Home+"/xhgui/xhgui.sqlite3") {
+		t.Errorf("and reads only the site's profiles:\n%s", web)
 	}
-
+	edge := read2(t, l.EdgeFile)
+	if !strings.Contains(edge, "handle /_wsp_xhgui/*") || !strings.Contains(edge, "uri /auth/xhgui/prof.example.com") {
+		t.Errorf("the edge asks the panel about this very domain:\n%s", edge)
+	}
 	if _, err := call(t, env, siteXhprof, map[string]any{"domain": "prof.example.com", "enabled": false}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(read2(t, l.PoolFile), "xhprof") {
 		t.Error("switched off: the pool no longer loads it")
 	}
-	if _, err := os.Stat(filepath.Join(env.Cfg.XhguiWebDir, "prof.example.com.caddy")); err == nil {
+	if strings.Contains(read2(t, l.WebFile), "_wsp_xhgui") || strings.Contains(read2(t, l.EdgeFile), "_wsp_xhgui") {
 		t.Error("switched off: the viewer is gone")
 	}
 }

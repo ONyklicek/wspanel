@@ -65,6 +65,18 @@
 		# Custom rules of the site (panel: Další → Pravidla webserveru).
 {{.Directives}}
 {{- end}}
+{{- if .Xhprof}}
+
+		# The site's XHGui (XHProf profiles), on the site's own origin: only after
+		# a sign-in link from the panel for this very domain (forward_auth).
+		handle /_wsp_xhgui/* {
+			forward_auth unix/{{.WebSocket}} {
+				uri /auth/xhgui/{{.Domain}}
+				header_up Host wspanel-panel.internal
+			}
+			reverse_proxy {{.Upstream}}
+		}
+{{- end}}
 {{- if .ReverbPort}}
 
 		# Laravel Reverb: browsers' WebSockets (/app). The app publishes to Reverb

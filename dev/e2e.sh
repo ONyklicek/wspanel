@@ -929,6 +929,12 @@ PY
 }
 contains "mail from a mailbox carries a DKIM signature" "$(last_header bob@shop.localhost Bob-heslo-12345 DKIM-SIGNATURE 2>&1)" "d=shop.localhost"
 
+# Notifications by e-mail (the panel sends through the local Postfix).
+n0=$(box_count alice@shop.localhost Alice-heslo-123 INBOX)
+contains "a notification channel delivers an e-mail" "$(php '$u = App\Models\User::query()->where("role","admin")->orWhereNull("role")->first(); auth()->login($u); $c = App\Models\NotificationChannel::create(["type" => "email", "name" => "e2e", "config" => ["address" => "alice@shop.localhost"], "events" => ["problems"]]); echo app(App\Services\Notify\Notifier::class)->send($c, "e2e notifikace", "zkouska") ? "SENT" : "FAILED ".$c->fresh()->last_error; $c->delete();')" "SENT"
+for _ in $(seq 1 10); do [[ "$(box_count alice@shop.localhost Alice-heslo-123 INBOX)" -gt "${n0:-0}" ]] && break; sleep 1; done
+check "  … and it arrives" test "$(box_count alice@shop.localhost Alice-heslo-123 INBOX)" -gt "${n0:-0}"
+
 # Autoreply: bob writes to alice, alice is away.
 php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","alice")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->autoreply($mb, ["enabled" => true, "subject" => "Jsem na dovolene", "body" => "Vratim se v pondeli.", "days" => 1]);' >/dev/null
 b1=$(imap_count bob@shop.localhost Bob-heslo-12345)
@@ -954,16 +960,22 @@ rm -f /srv/sites/$XS/xhgui/spool.jsonl
 for _ in 1 2 3; do https $XS / >/dev/null; done
 check "requests are profiled into the site's own spool" test -s /srv/sites/$XS/xhgui/spool.jsonl
 check "  … owned by the site user" bash -c "[[ \$(stat -c %U /srv/sites/$XS/xhgui/spool.jsonl) == web_other_localhost ]]"
-viewer() { curl -s --unix-socket /run/panel-web/web.sock -H "Host: wspanel-panel.internal" "http://x/xhgui/$XS$1"; }
+# The viewer lives on the site's own domain, behind a sign-in link from the panel.
+contains "XHGui without the panel's link is refused" "$(curl -sk -o /dev/null -w '%{http_code}' --resolve $XS:443:127.0.0.1 https://$XS/_wsp_xhgui/)" "403"
+LINK=$(php "$(site $XS) echo App\Http\Controllers\XhguiAuthController::link(\$s);" | tail -1)
+rm -f /tmp/e2e-xh
+contains "the panel's link signs in (cookie for this domain only)" "$(curl -sk -c /tmp/e2e-xh -o /dev/null -w '%{http_code} %{redirect_url}' --resolve $XS:443:127.0.0.1 "https://$XS/_wsp_xhgui/?${LINK#*\?}")" "302"
+viewer() { curl -sk -b /tmp/e2e-xh --resolve $XS:443:127.0.0.1 "https://$XS/_wsp_xhgui$1"; }
 contains "the site's XHGui lists its runs" "$(viewer /)" "XHGui - Run list"
 check "  … imported from the spool into its SQLite" bash -c "[[ ! -s /srv/sites/$XS/xhgui/spool.jsonl ]] && [[ \$(sqlite3 /srv/sites/$XS/xhgui/xhgui.sqlite3 'select count(*) from results') -ge 3 ]]"
 RUN=$(sqlite3 /srv/sites/$XS/xhgui/xhgui.sqlite3 'select id from results limit 1')
 contains "  … and shows a run's functions" "$(viewer "/run/view?id=$RUN")" "main()"
-contains "the viewer through the edge needs a panel login" "$(curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' --resolve panel.localhost:443:127.0.0.1 https://panel.localhost/xhgui/$XS/)" "/login"
+not_contains "the link works once" "$(curl -sk -o /dev/null -w '%{http_code}' --resolve $XS:443:127.0.0.1 "https://$XS/_wsp_xhgui/?${LINK#*\?}")" "302"
+check "nothing of XHGui on the panel's own domain" bash -c "! grep -q xhgui /etc/panel-proxy/Caddyfile /etc/panel-web/Caddyfile"
 check "the XHGui cache is not writable by sites" bash -c '[[ $(stat -c %U /usr/share/wspanel-xhgui/xhgui/cache) == root ]] && ! runuser -u web_other_localhost -- touch /usr/share/wspanel-xhgui/xhgui/cache/x 2>/dev/null'
 php "$(site $XS) app(App\Actions\Sites\ManageXhprof::class)->set(\$s, null);" >/dev/null
 check "switched off: the pool no longer loads XHProf" bash -c "! grep -q xhprof /etc/php/*/fpm/pool.d/web_other_localhost.conf"
-check "  … and its viewer is gone" test ! -f /etc/panel-web/xhgui/$XS.caddy
+check "  … and its viewer is gone" bash -c "! grep -q _wsp_xhgui /etc/panel-web/sites/$XS.caddy /etc/panel-proxy/sites/$XS.caddy"
 
 # ----------------------------------------------------------------------------
 section "Delete cleans up"

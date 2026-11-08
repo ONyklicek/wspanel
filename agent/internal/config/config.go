@@ -39,14 +39,12 @@ type Config struct {
 	// Web tier: serves static files and routes PHP to FPM. Holds no secrets
 	// and may read only the public/ directories of sites (Caddy follows
 	// symlinks, so whatever this user can read, a site could expose).
-	WebUser       string `json:"web_user"`
-	WebUnit       string `json:"web_unit"`
-	WebConfig     string `json:"web_config"`
-	WebSitesDir   string `json:"web_sites_dir"`
-	// XHProf + XHGui (optional, xhprof.sh): the shared code and the panel's
-	// per-site viewer blocks.
-	XhguiDir    string `json:"xhgui_dir"`
-	XhguiWebDir string `json:"xhgui_web_dir"`
+	WebUser     string `json:"web_user"`
+	WebUnit     string `json:"web_unit"`
+	WebConfig   string `json:"web_config"`
+	WebSitesDir string `json:"web_sites_dir"`
+	// XHProf + XHGui (optional, xhprof.sh): the shared, read-only code.
+	XhguiDir      string `json:"xhgui_dir"`
 	WebSocket     string `json:"web_socket"`
 	FrankenPHPBin string `json:"frankenphp_bin"`
 	DefaultPHPVer string `json:"default_php_version"`
@@ -125,9 +123,9 @@ type Config struct {
 	DovecotBlocked string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
 	MailEdgeFile   string `json:"mail_edge_file"`  // edge: webmail.<domain>, autoconfig/autodiscover
 	WebmailUser    string `json:"webmail_user"`
-	WebmailTokens  string `json:"webmail_tokens"`  // one-time sign-in tokens for Roundcube
+	WebmailTokens  string `json:"webmail_tokens"`   // one-time sign-in tokens for Roundcube
 	DomainSieveDir string `json:"domain_sieve_dir"` // per mail domain: sender lists, spam into Junk
-	LoginSenders   string `json:"login_senders"`   // Postfix: Unix login -> senders allowed with sendmail -f
+	LoginSenders   string `json:"login_senders"`    // Postfix: Unix login -> senders allowed with sendmail -f
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
@@ -164,7 +162,6 @@ func Defaults() Config {
 		WebConfig:     "/etc/panel-web/Caddyfile",
 		WebSitesDir:   "/etc/panel-web/sites",
 		XhguiDir:      "/usr/share/wspanel-xhgui",
-		XhguiWebDir:   "/etc/panel-web/xhgui",
 		WebSocket:     "/run/panel-web/web.sock",
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
 		DefaultPHPVer: "8.4",

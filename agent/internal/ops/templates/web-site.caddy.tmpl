@@ -8,6 +8,26 @@ http://{{.Domain}} {
 		not path /.well-known/*
 	}
 	respond @hidden 404
+{{- if .Xhprof}}
+
+	# XHGui of this site (the edge lets in only a panel sign-in): XHGui's code,
+	# the site's own profiles, the site's own pool.
+	handle_path /_wsp_xhgui/* {
+		root * {{.XhguiDir}}/xhgui/webroot
+		php_fastcgi unix/{{.Socket}} {
+			env XHGUI_SAVE_HANDLER pdo
+			env XHGUI_PDO_DSN sqlite:{{.Home}}/xhgui/xhgui.sqlite3
+			env XHGUI_PATH_PREFIX /_wsp_xhgui
+			env WSP_XHGUI_SPOOL {{.Home}}/xhgui/spool.jsonl
+			# Slim takes the prefix as its base path (routes see what is below it).
+			env SCRIPT_NAME /_wsp_xhgui/index.php
+			env HTTPS on
+			env SERVER_PORT 443
+			env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+		}
+		file_server
+	}
+{{- end}}
 
 	php_fastcgi unix/{{.Socket}} {
 		resolve_root_symlink

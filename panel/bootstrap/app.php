@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
+use App\Http\Controllers\XhguiAuthController;
 use App\Http\Middleware\EnsureAccountActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +21,13 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::post('/hooks/deploy/{hook}', DeployWebhookController::class)
                 ->middleware('throttle:webhooks')
                 ->name('hooks.deploy');
+
+            // A site's XHGui sign-in (edge forward_auth from the site's domain): no
+            // session, so no panel cookie is ever set on a site's domain.
+            Route::get('/auth/xhgui/{domain}', XhguiAuthController::class)
+                ->where('domain', '[a-z0-9.-]+')
+                ->middleware('throttle:120,1')
+                ->name('auth.xhgui');
 
             // Deploy API for CI pipelines: bearer token, no session.
             Route::middleware('throttle:ci-deploy')->prefix('api/deploy/{hook}')->group(function () {

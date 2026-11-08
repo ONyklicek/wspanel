@@ -371,7 +371,7 @@ install -d -m 0755 /usr/lib/wspanel/files/xhgui /usr/lib/wspanel/files/xhgui/xhg
 install -m 0644 "$HERE"/files/xhgui/*.php /usr/lib/wspanel/files/xhgui/
 install -m 0644 "$HERE"/files/xhgui/xhgui/composer.* /usr/lib/wspanel/files/xhgui/xhgui/
 install -m 0644 "$HERE"/files/xhgui/collector/composer.* /usr/lib/wspanel/files/xhgui/collector/
-install -d -m 0755 /etc/panel-web/xhgui
+rm -rf /etc/panel-web/xhgui # viewers moved onto the sites' own domains
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
   /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
@@ -525,6 +525,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs
+  # Notifications by e-mail go through the local Postfix (sendmail as the panel user).
+  set_panel_env MAIL_MAILER sendmail
+  set_panel_env MAIL_FROM_ADDRESS "\"wspanel@$MAIL_NAME\""
+  set_panel_env MAIL_FROM_NAME "\"WSPanel\""
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
   # Documentation shown in the panel (Nápověda).
   if [[ -d "$HERE/../docs" ]]; then rsync -a --delete "$HERE/../docs/" "$release/resources/docs/"; fi

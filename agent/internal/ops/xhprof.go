@@ -13,9 +13,10 @@ import (
 
 // XHProf + XHGui, per site and switchable. Classic (PHP-FPM) sites only: the
 // pool loads the extension and a prepend file that profiles a share of the
-// requests into SQLite in the site's home. The viewer (XHGui) runs in the
-// same pool under the panel's address, /xhgui/<domain>/, so it reads only
-// that site's profiles, as that site's user.
+// requests into a spool in the site's home. The viewer (XHGui) runs in the
+// same pool on the site's own address (/_wsp_xhgui/), never the panel's: the
+// site's user controls its pool, so nothing it serves may share the panel's
+// origin. The edge lets in only a sign-in link from the panel.
 
 func xhprofRatio(st siteState) int {
 	if st.Xhprof == nil {
@@ -92,22 +93,20 @@ func siteXhprof(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := rewritePool(ctx, env, l); err != nil {
 		return nil, err
 	}
+	// The viewer lives in the site's own blocks (web tier and edge).
 	var rb undo
-	if p.Enabled {
-		if err := env.FS.MkdirAll(env.Cfg.XhguiWebDir, 0o755, fsx.Root); err != nil {
-			return nil, err
-		}
-		if err := writeCaddyBlock(ctx, env, "xhgui-web.caddy.tmpl", l, l.XhguiFile, env.Cfg.WebUnit, validateWeb, &rb); err != nil {
-			rb.run()
-			return nil, err
-		}
-	} else if err := removeCaddyBlock(ctx, env, l.XhguiFile, env.Cfg.WebUnit, validateWeb); err != nil {
+	if err := writeCaddyBlock(ctx, env, "web-site.caddy.tmpl", l, l.WebFile, env.Cfg.WebUnit, validateWeb, &rb); err != nil {
+		rb.run()
+		return nil, err
+	}
+	if err := writeEdge(ctx, env, l, &rb); err != nil {
+		rb.run()
 		return nil, err
 	}
 	if err := saveSiteState(env, st); err != nil {
 		return nil, err
 	}
-	return map[string]any{"domain": p.Domain, "enabled": p.Enabled, "ratio": l.XhprofRatio, "viewer": "/xhgui/" + p.Domain + "/"}, nil
+	return map[string]any{"domain": p.Domain, "enabled": p.Enabled, "ratio": l.XhprofRatio, "viewer": "/_wsp_xhgui/"}, nil
 }
 
 // rewritePool renders a classic site's pool, checks it with php-fpm -t (the

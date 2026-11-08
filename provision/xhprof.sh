@@ -51,5 +51,4 @@ install -m 0644 "$FILES/xhgui/viewer-index.php" "$DIR/xhgui/webroot/index.php"
 rm -rf "$DIR/xhgui/cache" && install -d -m 0755 "$DIR/xhgui/cache"
 php "$FILES/xhgui/warm.php"
 chown -R root:root "$DIR" && chmod -R a+rX,go-w "$DIR"
-install -d -m 0755 /etc/panel-web/xhgui
 echo "xhprof ready"

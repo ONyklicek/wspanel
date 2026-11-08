@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\ManageXhprof;
+use App\Http\Controllers\XhguiAuthController;
 use App\Models\Client;
 use App\Models\Site;
 use App\Models\User;
@@ -46,23 +47,33 @@ class XhprofTest extends TestCase
         $this->assertNull($site->fresh()->xhprof);
     }
 
-    public function test_the_viewer_lets_in_only_who_may_see_the_site(): void
+    public function test_the_panel_link_signs_in_to_the_viewer_on_the_sites_own_domain(): void
     {
         [$alice, $bob] = Client::factory()->count(2)->create();
-        $this->site('alice.cz', $alice);
-        $this->site('bob.cz', $bob);
-        $this->site('off.cz', $alice, null);
+        $alices = $this->site('alice.cz', $alice);
+        $bobs = $this->site('bob.cz', $bob);
         $this->actingAs(User::factory()->forClient($alice)->create());
 
-        $this->get('/auth/xhgui', ['X-Forwarded-Uri' => '/xhgui/alice.cz/run/view?id=1'])->assertNoContent();
-        $this->get('/auth/xhgui', ['X-Forwarded-Uri' => '/xhgui/bob.cz/'])->assertForbidden();
-        $this->get('/auth/xhgui', ['X-Forwarded-Uri' => '/xhgui/off.cz/'])->assertForbidden();
-        $this->get('/auth/xhgui', ['X-Forwarded-Uri' => '/xhgui/../bob.cz/'])->assertForbidden();
-    }
+        $this->get('/sites/'.$bobs->id.'/xhgui')->assertNotFound();
+        $link = $this->get('/sites/'.$alices->id.'/xhgui')->assertRedirect()->headers->get('Location');
+        $this->assertMatchesRegularExpression('#^https://alice\.cz(:\d+)?/_wsp_xhgui/\?wsp_token=[a-f0-9]{48}$#', $link);
+        $token = substr($link, strpos($link, 'wsp_token=') + 10);
+        auth()->logout();
 
-    public function test_a_guest_is_sent_to_the_login_and_back(): void
-    {
-        $this->get('/auth/xhgui', ['X-Forwarded-Uri' => '/xhgui/alice.cz/'])->assertRedirect(route('login'));
-        $this->assertStringEndsWith('/xhgui/alice.cz/', (string) session('url.intended'));
+        // The edge asks about the domain of its own block; a token for another
+        // domain is refused there (and spent).
+        $other = XhguiAuthController::link($alices);
+        $this->get('/auth/xhgui/bob.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/?wsp_token='.substr($other, strpos($other, 'wsp_token=') + 10)])->assertForbidden();
+        $signIn = $this->get('/auth/xhgui/alice.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/?wsp_token='.$token])
+            ->assertRedirect('/_wsp_xhgui/');
+        $setCookie = (string) $signIn->headers->get('Set-Cookie');
+        $this->assertStringContainsStringIgnoringCase('path=/_wsp_xhgui/', $setCookie);
+        $this->assertStringNotContainsString('session', strtolower(implode(' ', $signIn->headers->all('set-cookie'))), 'no panel session on a site\'s domain');
+        $cookie = explode(';', $setCookie)[0];
+
+        $this->get('/auth/xhgui/alice.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/?wsp_token='.$token])->assertForbidden();
+        $this->get('/auth/xhgui/alice.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/run/view', 'Cookie' => $cookie])->assertNoContent();
+        $this->get('/auth/xhgui/bob.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/', 'Cookie' => $cookie])->assertForbidden();
+        $this->get('/auth/xhgui/alice.cz', ['X-Forwarded-Uri' => '/_wsp_xhgui/'])->assertForbidden();
     }
 }

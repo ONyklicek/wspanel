@@ -46,8 +46,9 @@ class ManageXhprof
         $site->update(['xhprof' => $ratio === null ? null : ['ratio' => $ratio]]);
     }
 
+    /** The panel link that signs in to the site's XHGui (on the site's domain). */
     public static function viewerUrl(Site $site): string
     {
-        return rtrim((string) config('app.url'), '/').'/xhgui/'.$site->domain.'/';
+        return route('sites.xhgui', $site);
     }
 }
