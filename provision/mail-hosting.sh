@@ -451,6 +451,19 @@ if [[ ! -s /etc/dovecot/wspanel/master-users ]] || ! doveadm pw -t "$(cut -d: -f
   install -o root -g dovecot -m 0640 /dev/null /etc/dovecot/wspanel/master-users
   printf 'webmail:%s::::::allow_real_nets=127.0.0.1/32,::1/128\n' "$(doveadm pw -s SHA512-CRYPT -p "$MASTER_PW")" > /etc/dovecot/wspanel/master-users
 fi
+# The key the webmail's password driver proves itself to the panel with: in
+# the Roundcube config (webmail) and beside the panel's .env (its PHP sees
+# only /srv/panel).
+API_KEY_FILE=/etc/wspanel/mail/webmail-api.key
+[[ -s $API_KEY_FILE ]] || ( umask 077; head -c 32 /dev/urandom | base64 | tr -d '/+=\n' > $API_KEY_FILE )
+install -d -m 0750 -o panel -g panel /srv/panel/shared
+install -o root -g panel -m 0640 $API_KEY_FILE /srv/panel/shared/webmail-api.key
+# The edge's internal CA root (public), for a panel without a public
+# certificate: the webmail's driver verifies the panel against it.
+EDGE_ROOT=/var/lib/panel-proxy/caddy/pki/authorities/local/root.crt
+[[ -s $EDGE_ROOT ]] && install -m 0644 $EDGE_ROOT /etc/roundcube/wspanel-edge-root-ca.crt
+PANEL_DOMAIN=$(sed -nE 's/.*"panel_domain": *"([a-z0-9.-]+)".*/\1/p' /etc/panel-agent/agent.json 2>/dev/null)
+PANEL_PORT=$(sed -nE 's/.*"panel_port": *([0-9]+).*/\1/p' /etc/panel-agent/agent.json 2>/dev/null)
 DES_KEY_FILE=/etc/wspanel/mail/webmail-des.key
 [[ -s $DES_KEY_FILE ]] || ( umask 077; head -c 18 /dev/urandom | base64 | tr -d '\n' > $DES_KEY_FILE )
 [[ -f /etc/roundcube/config.inc.php.debian ]] || cp -a /etc/roundcube/config.inc.php /etc/roundcube/config.inc.php.debian
@@ -473,7 +486,15 @@ cat >/etc/roundcube/config.inc.php <<RCCONF
 \$config['des_key'] = '$(cat $DES_KEY_FILE)';
 \$config['wspanel_master_user'] = 'webmail';
 \$config['wspanel_master_password'] = '$MASTER_PW';
-\$config['plugins'] = ['wspanel', 'archive', 'zipdownload', 'managesieve', 'markasjunk'];
+\$config['plugins'] = ['wspanel', 'archive', 'zipdownload', 'managesieve', 'markasjunk', 'password'];
+// Password change through the panel (driver: plugins/password/drivers/wspanel.php).
+\$config['password_driver'] = 'wspanel';
+\$config['password_confirm_current'] = true;
+\$config['password_minimum_length'] = 10;
+\$config['password_force_save'] = false;
+\$config['wspanel_panel_host'] = '${PANEL_DOMAIN:-$MAIL_HOST}';
+\$config['wspanel_panel_port'] = ${PANEL_PORT:-443};
+\$config['wspanel_panel_key'] = '$(cat $API_KEY_FILE)';
 \$config['product_name'] = 'Webmail';
 \$config['skin'] = 'elastic';
 \$config['language'] = 'cs_CZ';
@@ -496,6 +517,7 @@ chown root:webmail /etc/roundcube/config.inc.php && chmod 0640 /etc/roundcube/co
 install -d -m 0755 /usr/share/roundcube/plugins/wspanel
 install -m 0644 "$FILES/webmail/wspanel.php" /usr/share/roundcube/plugins/wspanel/wspanel.php
 ln -sfn /usr/share/roundcube/plugins/wspanel /var/lib/roundcube/plugins/wspanel
+install -m 0644 "$FILES/webmail/password-driver.php" /usr/share/roundcube/plugins/password/drivers/wspanel.php
 if [[ ! -s /var/lib/wspanel-webmail/db/roundcube.db ]]; then
   runuser -u webmail -- sqlite3 /var/lib/wspanel-webmail/db/roundcube.db < /usr/share/roundcube/SQL/sqlite.initial.sql
 else

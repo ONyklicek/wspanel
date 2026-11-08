@@ -8,6 +8,7 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageEdge;
 use App\Exceptions\LimitReachedException;
+use App\Livewire\Mail\ListMailDomains;
 use App\Livewire\Mail\MailboxTable;
 use App\Livewire\Mail\ViewMailDomain;
 use App\Livewire\Sites\SiteMail;
@@ -440,5 +441,18 @@ class MailHostingTest extends TestCase
         $this->assertSame('firma.cz', $domain->domain);
         Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'info', 'quota_mb' => 500, 'enabled' => true]);
         $this->get("/sites/{$site->id}/mail")->assertOk()->assertSee('info@firma.cz')->assertDontSee('Zřídit poštu');
+    }
+
+    public function test_the_administrator_sets_the_sending_limits(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('mail.hosting')->andReturn(['installed' => true, 'limits' => ['mailbox_per_hour' => 200, 'site_per_hour' => 1000]]);
+        $this->agent->shouldReceive('call')->once()->with('mail.limits.set', ['mailbox_per_hour' => 50, 'site_per_hour' => 0])->andReturn([]);
+
+        $this->headerTableAction(Livewire::test(ListMailDomains::class), 'limits', ['mailbox_per_hour' => 50, 'site_per_hour' => 0])
+            ->assertHasNoErrors()->assertNotified('Limity uloženy');
+
+        $this->actingAs(User::factory()->forClient(Client::factory()->create())->create());
+        $this->assertFalse($this->headerActionVisible(Livewire::test(ListMailDomains::class), 'limits'));
     }
 }

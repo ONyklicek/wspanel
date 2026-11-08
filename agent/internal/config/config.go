@@ -123,14 +123,17 @@ type Config struct {
 	// SRSExclude: Postfix canonical map of the domains that send from here
 	// (sites, mail domains); their senders are never SRS-rewritten.
 	SRSExclude string `json:"srs_exclude"`
-	DovecotUsers   string `json:"dovecot_users"`
-	VmailRoot      string `json:"vmail_root"`
-	DovecotBlocked string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
-	MailEdgeFile   string `json:"mail_edge_file"`  // edge: webmail.<domain>, autoconfig/autodiscover
-	WebmailUser    string `json:"webmail_user"`
-	WebmailTokens  string `json:"webmail_tokens"`   // one-time sign-in tokens for Roundcube
-	DomainSieveDir string `json:"domain_sieve_dir"` // per mail domain: sender lists, spam into Junk
-	LoginSenders   string `json:"login_senders"`    // Postfix: Unix login -> senders allowed with sendmail -f
+	// RspamdRatelimit: Rspamd's ratelimit settings, how much a mailbox and
+	// a site's SMTP login may send per hour (from mail.json).
+	RspamdRatelimit string `json:"rspamd_ratelimit"`
+	DovecotUsers    string `json:"dovecot_users"`
+	VmailRoot       string `json:"vmail_root"`
+	DovecotBlocked  string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
+	MailEdgeFile    string `json:"mail_edge_file"`  // edge: webmail.<domain>, autoconfig/autodiscover
+	WebmailUser     string `json:"webmail_user"`
+	WebmailTokens   string `json:"webmail_tokens"`   // one-time sign-in tokens for Roundcube
+	DomainSieveDir  string `json:"domain_sieve_dir"` // per mail domain: sender lists, spam into Junk
+	LoginSenders    string `json:"login_senders"`    // Postfix: Unix login -> senders allowed with sendmail -f
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
@@ -224,6 +227,7 @@ func Defaults() Config {
 		VAliases:          "/etc/postfix/wspanel_valiases",
 		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
 		SRSExclude:        "/etc/postfix/wspanel_srs_exclude",
+		RspamdRatelimit:   "/etc/rspamd/local.d/ratelimit.conf",
 		DovecotUsers:      "/etc/dovecot/wspanel/users",
 		VmailRoot:         "/var/mail/vmail",
 		DovecotBlocked:    "/etc/dovecot/wspanel/blocked",

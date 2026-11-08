@@ -47,6 +47,8 @@ class wspanel extends rcube_plugin
         }
         if (!empty($_SESSION['wsp_sso'])) {
             $this->act_for_mailbox();
+            // Signed in from the panel: the session never knew the mailbox password.
+            rcmail::get_instance()->config->set('password_disabled', 'Heslo změníte po přihlášení heslem schránky (ne z panelu), nebo ho změní správce v panelu.');
         }
 
         return $args;

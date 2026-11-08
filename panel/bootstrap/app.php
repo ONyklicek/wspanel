@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1Controller;
 use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
+use App\Http\Controllers\WebmailPasswordController;
 use App\Http\Controllers\XhguiAuthController;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureAccountActive;
@@ -32,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->where('domain', '[a-z0-9.-]+')
                 ->middleware('throttle:120,1')
                 ->name('auth.xhgui');
+
+            // A mailbox's own password change from the webmail (server-local, keyed).
+            Route::post('/internal/webmail/password', WebmailPasswordController::class)
+                ->middleware('throttle:30,1')
+                ->name('webmail.password');
 
             // REST API v1: personal tokens (Authorization: Bearer wspa_…), no session.
             Route::middleware(['throttle:api-v1', AuthenticateApiToken::class])->prefix('api/v1')->name('api.v1.')->group(function () {

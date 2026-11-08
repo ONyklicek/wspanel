@@ -23,6 +23,10 @@ return [
     // Host name of the mail server (MX, IMAP/SMTP for clients); default: the panel's.
     'mail_host' => env('PANEL_MAIL_HOST'),
 
+    // Key the webmail proves itself with when a mailbox changes its password
+    // (written by the mail hosting install, readable by the webmail and the panel).
+    'webmail_api_key_file' => env('PANEL_WEBMAIL_API_KEY_FILE', '/srv/panel/shared/webmail-api.key'),
+
     // Mailpit web UI path on the panel domain (behind the panel login).
     'mailpit_path' => '/mailpit/',
 ];

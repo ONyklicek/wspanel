@@ -54,6 +54,22 @@ type mailSpam struct {
 
 type mailState struct {
 	Domains map[string]*mailDomain `json:"domains"`
+	Limits  *mailLimits            `json:"limits,omitempty"` // nil = the defaults
+}
+
+// mailLimits: how many messages per hour one mailbox, and one site's SMTP
+// login, may send (0 = no limit). A stolen mailbox password or a hacked site
+// otherwise sends spam until the server's address is on every blacklist.
+type mailLimits struct {
+	MailboxPerHour int `json:"mailbox_per_hour"`
+	SitePerHour    int `json:"site_per_hour"`
+}
+
+func (st *mailState) limits() mailLimits {
+	if st.Limits == nil {
+		return mailLimits{MailboxPerHour: 200, SitePerHour: 1000}
+	}
+	return *st.Limits
 }
 
 var (
@@ -232,7 +248,71 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if err := writeDomainSieve(env, st, names); err != nil {
 		return err
 	}
+	if err := writeRatelimit(ctx, env, st); err != nil {
+		return err
+	}
 	return writeMailEdge(ctx, env, st, names)
+}
+
+// writeRatelimit renders Rspamd's per-sender limits: one bucket per mailbox
+// (an authenticated address) and one per site SMTP login (web_…@<realm>,
+// sasldb), each refilling over an hour. Over it, Rspamd answers with a
+// temporary failure, so the client keeps the message and tries later.
+// Mail a site sends through sendmail (PHP mail()) does not pass Rspamd.
+func writeRatelimit(ctx context.Context, env *Env, st *mailState) error {
+	if env.Cfg.RspamdRatelimit == "" {
+		return nil
+	}
+	l := st.limits()
+	site := "web_[a-z0-9_]+@" + strings.ReplaceAll(saslRealm(env.Cfg), ".", "[.]")
+	var b strings.Builder
+	b.WriteString("# Managed by WSPanel agent (mail.json).\nrates {\n")
+	for _, r := range []struct {
+		name, re string
+		perHour  int
+	}{
+		{"wspanel_mailbox", "^(?!" + site + "$)[^@]+@[^@]+$", l.MailboxPerHour},
+		{"wspanel_site", "^" + site + "$", l.SitePerHour},
+	} {
+		if r.perHour > 0 {
+			fmt.Fprintf(&b, "  %s {\n    selector = \"user.lower.regexp('%s')\";\n    bucket = { burst = %d; rate = \"%d / 1h\"; }\n  }\n", r.name, r.re, r.perHour, r.perHour)
+		}
+	}
+	b.WriteString("}\n")
+	if old, err := os.ReadFile(env.Cfg.RspamdRatelimit); err == nil && string(old) == b.String() {
+		return nil
+	}
+	if err := env.FS.MkdirAll(filepath.Dir(env.Cfg.RspamdRatelimit), 0o755, fsx.Root); err != nil {
+		return err
+	}
+	if err := env.FS.WriteFile(env.Cfg.RspamdRatelimit, []byte(b.String()), 0o644, fsx.Root); err != nil {
+		return err
+	}
+	_, err := env.Exec.Run(ctx, "systemctl", "reload-or-restart", "rspamd.service")
+	return err
+}
+
+// mailLimitsSet sets the sending limits (messages per hour, 0 = none).
+func mailLimitsSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p mailLimits
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.MailboxPerHour < 0 || p.MailboxPerHour > 100000 || p.SitePerHour < 0 || p.SitePerHour > 100000 {
+		return nil, protocol.Invalid("limits: 0 to 100000 messages per hour")
+	}
+	if err := requireHosting(env); err != nil {
+		return nil, err
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	st.Limits = &p
+	if err := saveMail(ctx, env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"limits": st.limits()}, nil
 }
 
 // writeDomainSieve renders each mail domain's delivery script (Dovecot runs
@@ -502,6 +582,7 @@ func mailHostingStatus(ctx context.Context, env *Env, raw json.RawMessage) (any,
 		return nil, err
 	}
 	out["domains"] = len(st.Domains)
+	out["limits"] = st.limits()
 	return out, nil
 }
 
@@ -604,6 +685,46 @@ func mailMailboxSet(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 		_, _ = env.Exec.Run(ctx, "doveadm", "kick", lp+"@"+d)
 	}
 	return map[string]any{"address": lp + "@" + d, "created": !exists}, nil
+}
+
+// mailMailboxPassword: the mailbox owner changes its own password (from the
+// webmail, through the panel), proving the current one. A blocked mailbox
+// cannot. Other sessions with the old password end.
+func mailMailboxPassword(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Address string `json:"address"`
+		Current string `json:"current_password"`
+		Hash    string `json:"password_hash"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	lp, d, err := splitAddress("address", p.Address)
+	if err != nil {
+		return nil, err
+	}
+	if !sha512Re.MatchString(p.Hash) {
+		return nil, protocol.Invalid("password_hash: SHA512-CRYPT ($6$…) expected")
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	md := st.Domains[d]
+	if md == nil {
+		return nil, protocol.Forbidden("wrong address or password")
+	}
+	mb, exists := md.Mailboxes[lp]
+	if !exists || !mb.Enabled || !sha512CryptMatches(p.Current, mb.Hash) {
+		return nil, protocol.Forbidden("wrong address or password")
+	}
+	mb.Hash = p.Hash
+	md.Mailboxes[lp] = mb
+	if err := saveMail(ctx, env, st); err != nil {
+		return nil, err
+	}
+	_, _ = env.Exec.Run(ctx, "doveadm", "kick", lp+"@"+d)
+	return map[string]any{"address": lp + "@" + d}, nil
 }
 
 func mailMailboxDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {

@@ -150,6 +150,8 @@ func Registry() map[string]Op {
 		{"mail.usage", false, mailUsage},
 		{"mail.autoreply", true, mailAutoreply},
 		{"mail.forward.set", true, mailForwardSet},
+		{"mail.limits.set", true, mailLimitsSet},
+		{"mail.mailbox.password", true, mailMailboxPassword},
 		{"mail.certs", true, mailCerts},
 		{"mail.webmail.login", false, mailWebmailLogin},
 		{"mail.queue", true, mailQueue},

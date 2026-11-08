@@ -35,6 +35,25 @@ class ManageMailHosting
         return Cache::remember('mail.hosting.status', 30, fn () => $this->agent->call('mail.hosting'));
     }
 
+    /**
+     * How many messages per hour a mailbox and a site's SMTP login may send.
+     *
+     * @return array{mailbox_per_hour: int, site_per_hour: int}
+     */
+    public function limits(): array
+    {
+        $l = rescue(fn () => $this->status(), [], report: false)['limits'] ?? [];
+
+        return ['mailbox_per_hour' => (int) ($l['mailbox_per_hour'] ?? 200), 'site_per_hour' => (int) ($l['site_per_hour'] ?? 1000)];
+    }
+
+    /** @throws AgentException */
+    public function setLimits(int $mailboxPerHour, int $sitePerHour): void
+    {
+        $this->agent->call('mail.limits.set', ['mailbox_per_hour' => $mailboxPerHour, 'site_per_hour' => $sitePerHour]);
+        Cache::forget('mail.hosting.status');
+    }
+
     public function installed(): bool
     {
         return (bool) (rescue(fn () => $this->status(), [], report: false)['installed'] ?? false);

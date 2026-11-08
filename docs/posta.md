@@ -129,7 +129,11 @@ server získá sám, jakmile na něj DNS ukazuje. Adresy `webmail.`, `autoconfig
 a `autodiscover.` poštovní domény si nemůže vzít žádný web. Pokud už některou
 web má, zůstane ta funkce vypnutá.
 
-Heslo schránky mění v panelu správce nebo klient, webmail změnu hesla nenabízí.
+Heslo si schránka změní sama ve webmailu (**Nastavení → Heslo**, se zadáním
+současného hesla, nejméně 10 znaků). Ostatní přihlášení se starým heslem
+skončí. Po pěti chybných pokusech počká 15 minut. Při otevření webmailu
+z panelu změna hesla není (sezení heslo schránky nezná). Kdo heslo zapomněl,
+tomu ho nastaví správce nebo klient v panelu.
 
 ### Poštovní programy
 
@@ -189,6 +193,20 @@ pošty nedovolí.
 
 V doručených zprávách je proto i u běžné příchozí pošty `Return-Path`
 v podobě `SRS0=…`; seznamy antispamu s tím počítají.
+
+### Limity odesílání
+
+Ukradené heslo schránky nebo napadený web rozešle během chvíle tisíce zpráv
+a adresa serveru skončí na blacklistech, takže pak nedojde pošta nikomu.
+**Schránky → Limity odesílání** (jen správce) určí, kolik zpráv za hodinu smí
+odeslat:
+
+- **schránka** (poštovní programy a webmail), výchozí 200,
+- **web** přes své SMTP přihlášení (Laravel, Symfony, Node), výchozí 1 000.
+
+0 = bez limitu. Nad limit server zprávu dočasně odmítne (451) a odesílatel ji
+zkusí později, nic se neztratí. Limit se dobíjí průběžně během hodiny. Pošta
+přes PHP `mail()` limitem neprochází.
 
 ### Antispam
 

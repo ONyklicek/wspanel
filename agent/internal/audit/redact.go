@@ -11,11 +11,12 @@ import (
 // sensitive lists params that must never reach the audit log in clear: the
 // whole env file (passwords, keys) and anything named like a secret.
 var sensitive = map[string]map[string]bool{
-	"env.set":     {"content": true},
-	"site.tls":    {"key": true, "cert": true},               // private key; the chain is just bulky
-	"site.files":  {"content": true},                         // edited files (.env, configs) may hold secrets
-	"offsite.set": {"secret_key": true, "signing_key": true}, // storage credentials, backup signing key
-	"*":           {"password": true, "secret": true, "token": true, "key": true, "private_key": true},
+	"env.set":               {"content": true},
+	"site.tls":              {"key": true, "cert": true},               // private key; the chain is just bulky
+	"site.files":            {"content": true},                         // edited files (.env, configs) may hold secrets
+	"offsite.set":           {"secret_key": true, "signing_key": true}, // storage credentials, backup signing key
+	"mail.mailbox.password": {"current_password": true},                // the mailbox's own, proving the change
+	"*":                     {"password": true, "secret": true, "token": true, "key": true, "private_key": true},
 }
 
 // Redact replaces sensitive values with their length and a short hash, so

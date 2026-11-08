@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -283,5 +284,65 @@ func TestSenderListsAlsoMatchTheSRSFormOfAForeignSender(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in %s", want, got)
 		}
+	}
+}
+
+func TestSendingLimitsAreRenderedForMailboxesAndSiteLogins(t *testing.T) {
+	env, _ := testEnv(t)
+	env.Cfg.PanelDomain = "panel.example.net"
+	st := &mailState{Domains: map[string]*mailDomain{}}
+	if err := writeRatelimit(context.Background(), env, st); err != nil {
+		t.Fatal(err)
+	}
+	got := read2(t, env.Cfg.RspamdRatelimit)
+	for _, want := range []string{
+		`selector = "user.lower.regexp('^(?!web_[a-z0-9_]+@panel[.]example[.]net$)[^@]+@[^@]+$')";`,
+		`bucket = { burst = 200; rate = "200 / 1h"; }`,
+		`selector = "user.lower.regexp('^web_[a-z0-9_]+@panel[.]example[.]net$')";`,
+		`bucket = { burst = 1000; rate = "1000 / 1h"; }`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in\n%s", want, got)
+		}
+	}
+
+	st.Limits = &mailLimits{MailboxPerHour: 50}
+	if err := writeRatelimit(context.Background(), env, st); err != nil {
+		t.Fatal(err)
+	}
+	got = read2(t, env.Cfg.RspamdRatelimit)
+	if !strings.Contains(got, `rate = "50 / 1h"`) || strings.Contains(got, "wspanel_site") {
+		t.Errorf("site limit 0 must mean none, mailbox 50:\n%s", got)
+	}
+}
+
+func TestAMailboxChangesItsOwnPasswordOnlyWithTheCurrentOne(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	// "Hello world!" (Drepper's reference vector).
+	const current = "$6$saltstring$svn8UoSVapNtMuq1ukKS4tPQd8iKwSMHWjl/O817G3uBnIFNjnQJuesI68u4OTLiBFdcbYEdFCoEOfaS35inz1"
+	if _, err := call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, mailMailboxSet, map[string]any{"address": "alice@firma.cz", "password_hash": current, "quota_mb": 500, "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	change := func(pw string) error {
+		_, err := call(t, env, mailMailboxPassword, map[string]any{"address": "alice@firma.cz", "current_password": pw, "password_hash": testHash})
+		return err
+	}
+	if change("wrong") == nil || change("") == nil {
+		t.Fatal("changed without the current password")
+	}
+	if !strings.Contains(read2(t, env.Cfg.DovecotUsers), current) {
+		t.Fatal("a refused change must keep the old hash")
+	}
+	if err := change("Hello world!"); err != nil {
+		t.Fatal(err)
+	}
+	if u := read2(t, env.Cfg.DovecotUsers); !strings.Contains(u, testHash) {
+		t.Errorf("new hash not in the users file:\n%s", u)
+	}
+	if _, err := call(t, env, mailMailboxPassword, map[string]any{"address": "nobody@firma.cz", "current_password": "x", "password_hash": testHash}); err == nil {
+		t.Error("an unknown mailbox must be refused like a wrong password")
 	}
 }
