@@ -193,6 +193,7 @@ func Registry() map[string]Op {
 		{"fw.deny", true, fwDeny},
 		{"fw.delete", true, fwDelete},
 		{"fw.geoblock", true, fwGeoblock},
+		{"sys.log", false, sysLog},
 		{"config.validate", false, configValidate},
 		{"sys.services", false, sysServices},
 		{"sys.versions", false, sysVersions},

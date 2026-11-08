@@ -56,6 +56,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané |
 | **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
+| **Server → Logy** | záznamy služeb serveru (pošta, proxy a certifikáty, SSH, fail2ban, DNS, agent, varování systému) s filtrem, obdobím a živým sledováním |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
 | **Server → Firewall** | pravidla UFW a přístup k panelu (z jakých adres) |
 | **Server → Audit** | co přesně a kdy agent na serveru udělal |
