@@ -122,7 +122,7 @@ type Config struct {
 	MailEdgeFile   string `json:"mail_edge_file"`  // edge: webmail.<domain>, autoconfig/autodiscover
 	WebmailUser    string `json:"webmail_user"`
 	WebmailTokens  string `json:"webmail_tokens"`  // one-time sign-in tokens for Roundcube
-	RspamdSettings string `json:"rspamd_settings"` // per-domain spam levels and sender lists
+	DomainSieveDir string `json:"domain_sieve_dir"` // per mail domain: sender lists, spam into Junk
 	LoginSenders   string `json:"login_senders"`   // Postfix: Unix login -> senders allowed with sendmail -f
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
@@ -219,7 +219,7 @@ func Defaults() Config {
 		MailEdgeFile:      "/etc/panel-proxy/mail-sites.caddy",
 		WebmailUser:       "webmail",
 		WebmailTokens:     "/run/wspanel-webmail",
-		RspamdSettings:    "/etc/rspamd/local.d/settings.conf",
+		DomainSieveDir:    "/var/mail/vmail/.wspanel-domains",
 		LoginSenders:      "/etc/postfix/wspanel_login_senders",
 	}
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Clients\ManageClients;
+use App\Actions\Dns\ManageDnsZones;
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageEdge;
@@ -130,6 +131,12 @@ class MailHostingTest extends TestCase
         try {
             app(CreateSite::class)->handle(['domain' => 'shop.bob.cz', 'framework' => 'php', 'php_version' => '8.4']);
             $this->fail('a site inside another client\'s zone');
+        } catch (AgentException $e) {
+            $this->assertStringContainsString('jiného vlastníka', $e->getMessage());
+        }
+        try {
+            app(ManageDnsZones::class)->create(['domain' => 'eshop.bob.cz', 'provider' => 'local']);
+            $this->fail('a zone inside another client\'s zone');
         } catch (AgentException $e) {
             $this->assertStringContainsString('jiného vlastníka', $e->getMessage());
         }
@@ -284,19 +291,19 @@ class MailHostingTest extends TestCase
         $this->assertFalse(Site::hostTaken('shop.firma.cz'));
     }
 
-    public function test_spam_levels_and_lists_are_set_from_the_domain_page(): void
+    public function test_sender_lists_are_set_from_the_domain_page(): void
     {
         $this->actingAs(User::factory()->create());
         $domain = MailDomain::create(['domain' => 'firma.cz']);
         $this->agent->shouldReceive('call')->once()->with('mail.spam.set', ['domain' => 'firma.cz', 'spam' => [
-            'reject' => 20.0, 'junk' => 5.0, 'allow' => ['boss@partner.cz', '@bank.cz'], 'block' => ['@spam.example'],
+            'allow' => ['boss@partner.cz', '@bank.cz'], 'block' => ['@spam.example'],
         ]])->andReturn([]);
 
         $page = Livewire::test(ViewMailDomain::class, ['record' => $domain->id]);
-        $this->pageAction($page, 'spam', ['custom' => true, 'reject' => '20', 'junk' => '5', 'allow' => "boss@partner.cz\n@bank.cz", 'block' => '@spam.example'])
+        $this->pageAction($page, 'spam', ['allow' => "boss@partner.cz\n@bank.cz", 'block' => '@spam.example'])
             ->assertHasNoErrors();
 
-        $this->assertSame(20.0, (float) $domain->fresh()->spam['reject']);
+        $this->assertSame(['@spam.example'], $domain->fresh()->spam['block']);
     }
 
     public function test_the_deliverability_check_opens_on_the_domain_page(): void

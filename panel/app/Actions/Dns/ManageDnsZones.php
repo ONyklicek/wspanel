@@ -5,9 +5,12 @@ namespace App\Actions\Dns;
 use App\Enums\DnsProvider;
 use App\Models\DnsZone;
 use App\Models\Site;
+use App\Services\Agent\AgentException;
 use App\Services\Dns\CloudflareDns;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\LocalDns;
+use App\Support\CurrentClient;
+use App\Support\DomainOwnership;
 
 class ManageDnsZones
 {
@@ -18,9 +21,15 @@ class ManageDnsZones
      * (Cloudflare), optionally filling in the recommended records.
      *
      * @param  array{domain: string, provider: string, nameservers?: list<string>, cloudflare_token?: string|null, recommended?: bool}  $data
+     *
+     * @throws AgentException
      */
     public function create(array $data): DnsZone
     {
+        // A client's zone never covers (or sits inside) another owner's names.
+        if (CurrentClient::restricted() && DomainOwnership::takenByAnother($data['domain'], CurrentClient::id())) {
+            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
+        }
         $provider = DnsProvider::from($data['provider']);
         $attributes = [
             'domain' => $data['domain'],

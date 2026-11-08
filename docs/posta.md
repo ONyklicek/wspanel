@@ -164,10 +164,13 @@ Rspamd hodnotí každou příchozí zprávu: nad 15 bodů ji odmítne, nad 6 ji
 označí a Sieve ji přesune do složky **Junk**. Testovací zpráva GTUBE se
 odmítá vždy. Odesílání z programů vyžaduje přihlášení a schránka smí
 odesílat jen za sebe (a své aliasy); neúspěšná přihlášení hlídá fail2ban.
-**Antispam** v detailu domény: vlastní prahy (do Junk od, odmítnout od),
-seznam odesílatelů, které přijmout vždy (bez kontroly), a seznam odesílatelů,
-které vždy odmítnout. Obojí jako adresa nebo `@doména`. Zprávu GTUBE
-odmítne Rspamd vždy, i od povoleného odesílatele.
+**Antispam** v detailu domény: odesílatelé, jejichž pošta nikdy nepadne do
+Junk, a odesílatelé, jejichž pošta se tiše zahodí. Obojí jako adresa nebo
+`@doména`. Seznamy platí pro každého příjemce zvlášť (při doručení), takže
+seznam jedné domény nerozhoduje o poště pro jinou doménu ve stejné zprávě.
+Povolený odesílatel platí, jen když projde SPF: Rspamd zahodí každou hlavičku
+`Authentication-Results`, kterou si zpráva přinese, a doplní vlastní. Prahy
+jsou společné pro celý server (odmítnout od 15 bodů, Junk od 6).
 
 Statistiky učení drží Rspamd ve vlastní instanci Valkey (jen unix socket).
 Jeho rozhraní (učení, statistiky) chce heslo i z localhostu, které má jen

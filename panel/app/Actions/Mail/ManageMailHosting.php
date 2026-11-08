@@ -95,10 +95,11 @@ class ManageMailHosting
     }
 
     /**
-     * The domain's own spam levels and sender lists; null = the server's
-     * (refuse from 15 points, Junk from 6).
+     * The domain's sender lists, applied per recipient at delivery: allowed
+     * senders never go to Junk (when SPF passes for them), blocked ones are
+     * dropped. null = no lists.
      *
-     * @param  array{reject: float, junk: float, allow: list<string>, block: list<string>}|null  $spam
+     * @param  array{allow: list<string>, block: list<string>}|null  $spam
      *
      * @throws AgentException
      */

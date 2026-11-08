@@ -901,13 +901,19 @@ curl -sk --max-time 10 "imaps://127.0.0.1/INBOX" -u alice@shop.localhost:Alice-h
 for _ in $(seq 1 10); do [[ "$(learned)" -gt "${l0:-0}" ]] && break; sleep 1; done
 check "moving mail into Junk teaches Rspamd spam" test "$(learned)" -gt "${l0:-0}"
 
-# The domain's own spam lists (Rspamd settings).
-php '$d = App\Models\MailDomain::where("domain","shop.localhost")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->setSpam($d, ["reject" => 15, "junk" => 6, "allow" => ["friend@example.org"], "block" => ["@spam.example"]]);' >/dev/null
-sleep 2 # rspamd reload
-contains "a blocked sender is refused" "$(swaks --server 127.0.0.1 --to alice@shop.localhost --from bad@spam.example --header 'Subject: hello' --body 'Hello there, an ordinary message.' 2>&1)" "554"
-swaks --server 127.0.0.1 --to alice@shop.localhost --from friend@example.org --header "Subject: allow-$RANDOM" --body 'Hi, from a friend.' >/dev/null 2>&1
-sleep 1
-contains "an allowed sender skips the spam checks" "$(tail -n 50 /var/log/rspamd/rspamd.log | grep 'friend@example.org' | tail -1)" "settings_id: wspanel_shop_localhost_allow"
+# The domain's sender lists: per recipient, at delivery (Sieve).
+php '$d = App\Models\MailDomain::where("domain","shop.localhost")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->setSpam($d, ["allow" => ["friend@example.org"], "block" => ["@spam.example"]]);' >/dev/null
+box_count() { curl -sk --max-time 10 "imaps://127.0.0.1/$3" -u "$1:$2" -X "STATUS $3 (MESSAGES)" 2>/dev/null | grep -o 'MESSAGES [0-9]*' | awk '{print $2}'; }
+i0=$(box_count alice@shop.localhost Alice-heslo-123 INBOX); j0=$(box_count alice@shop.localhost Alice-heslo-123 Junk)
+swaks --server 127.0.0.1 --to alice@shop.localhost --from bad@spam.example --header "Subject: blocked-$RANDOM" --body 'Hello there, an ordinary message.' >/dev/null 2>&1
+sleep 2
+expect "a blocked sender's mail is dropped (not in INBOX)" "$(box_count alice@shop.localhost Alice-heslo-123 INBOX)" "${i0:-0}"
+expect "  … nor in Junk" "$(box_count alice@shop.localhost Alice-heslo-123 Junk)" "${j0:-0}"
+# Forged: an allowed address bringing its own "spf=pass" is not trusted.
+FORGED="forged-$RANDOM"
+swaks --server 127.0.0.1 --to alice@shop.localhost --from friend@example.org --add-header "Authentication-Results: panel.localhost; spf=pass smtp.mailfrom=friend@example.org" --header "Subject: $FORGED" --body 'Hi, from a friend.' >/dev/null 2>&1
+sleep 2
+not_contains "a forged spf=pass never reaches the domain's script" "$(grep -h -A1 '^Authentication-Results' $(grep -l "$FORGED" /var/mail/vmail/shop.localhost/alice/Maildir/new/* /var/mail/vmail/shop.localhost/alice/Maildir/.Junk/new/* 2>/dev/null) 2>/dev/null)" "spf=pass"
 php '$d = App\Models\MailDomain::where("domain","shop.localhost")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->setSpam($d, null);' >/dev/null
 contains "the queue lists as JSON" "$(php 'echo json_encode(app(App\Actions\Mail\ManageMail::class)->queue());')" "["
 # What a mailbox sends is DKIM-signed (its domain got a key with the mail domain).

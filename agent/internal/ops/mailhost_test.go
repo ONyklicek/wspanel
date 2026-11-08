@@ -25,7 +25,7 @@ func mailTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.MailEdgeFile = filepath.Join(root, "mail-sites.caddy")
 	env.Cfg.WebmailTokens = filepath.Join(root, "webmail-tokens")
 	env.Cfg.WebmailUser = "root"
-	env.Cfg.RspamdSettings = filepath.Join(root, "rspamd-settings.conf")
+	env.Cfg.DomainSieveDir = filepath.Join(root, "domain-sieve")
 	return env, dr
 }
 
@@ -175,35 +175,38 @@ func TestBlockedMailboxCannotSignInToWebmail(t *testing.T) {
 	}
 }
 
-func TestDomainSpamLevelsAndSenderLists(t *testing.T) {
+func TestDomainSenderListsApplyPerRecipientInSieve(t *testing.T) {
 	env, _ := mailTestEnv(t)
 	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true})
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "druha.cz", "enabled": true})
 	if _, err := call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": map[string]any{
-		"reject": 20, "junk": 4.5, "allow": []string{"Boss@Partner.cz"}, "block": []string{"@spam.example"},
+		"allow": []string{"Boss@Partner.cz", "@bank.cz"}, "block": []string{"@spam.example"},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	got := read2(t, env.Cfg.RspamdSettings)
+	got := read2(t, filepath.Join(env.Cfg.DomainSieveDir, "firma.cz.sieve"))
 	for _, want := range []string{
-		"wspanel_firma_cz_allow {", `from = ["boss@partner.cz"];`, "want_spam = yes;",
-		"wspanel_firma_cz_block {", `from = ["@spam.example"];`, "reject = -1000;",
-		`rcpt = "@firma.cz";`, "reject = 20;", `"add header" = 4.5;`,
+		`if envelope :domain :is "from" ["spam.example"] {` + "\n  discard;",
+		`if not allof (anyof (envelope :all :is "from" ["boss@partner.cz"], envelope :domain :is "from" ["bank.cz"]), header :contains "Authentication-Results" "spf=pass") {`,
+		`fileinto "Junk";`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
+	if other := read2(t, filepath.Join(env.Cfg.DomainSieveDir, "druha.cz.sieve")); strings.Contains(other, "partner") || !strings.Contains(other, `fileinto "Junk"`) {
+		t.Errorf("another domain keeps only the spam rule:\n%s", other)
+	}
 	for name, spam := range map[string]map[string]any{
-		"junk above reject": {"reject": 10, "junk": 12},
-		"injected sender":   {"reject": 15, "junk": 6, "allow": []string{"a@b.cz\"; want_spam = yes; x = \""}},
-		"bare word":         {"reject": 15, "junk": 6, "block": []string{"spammer"}},
+		"injected sender": {"allow": []string{"a@b.cz\"]; discard; [\""}},
+		"bare word":       {"block": []string{"spammer"}},
 	} {
 		if _, err := call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": spam}); code(err) != "invalid_params" {
 			t.Errorf("%s must be refused: %v", name, err)
 		}
 	}
-	_, _ = call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": nil})
-	if strings.Contains(read2(t, env.Cfg.RspamdSettings), "firma") {
-		t.Error("nil = back to the server's levels")
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "druha.cz", "enabled": false})
+	if _, err := os.Stat(filepath.Join(env.Cfg.DomainSieveDir, "druha.cz.sieve")); err == nil {
+		t.Error("a removed domain's script goes")
 	}
 }

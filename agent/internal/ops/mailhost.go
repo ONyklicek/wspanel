@@ -41,12 +41,12 @@ type mailDomain struct {
 	Spam       *mailSpam `json:"spam,omitempty"` // nil = the server's levels
 }
 
-// mailSpam: a domain's own spam levels (Rspamd scores) and sender lists.
+// mailSpam: a domain's sender lists (address or @domain). Applied per
+// recipient at delivery (Sieve), never message-wide, so one domain's lists
+// cannot decide for another domain's recipient of the same message.
 type mailSpam struct {
-	Reject float64  `json:"reject"` // refuse at or above
-	Junk   float64  `json:"junk"`   // mark (into Junk) at or above
-	Allow  []string `json:"allow,omitempty"`
-	Block  []string `json:"block,omitempty"`
+	Allow []string `json:"allow,omitempty"` // never into Junk, if SPF passes for the sender
+	Block []string `json:"block,omitempty"` // dropped
 }
 
 type mailState struct {
@@ -216,56 +216,95 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if _, err := env.Exec.Run(ctx, "postfix", "reload"); err != nil {
 		return err
 	}
-	if err := writeSpamSettings(ctx, env, st, names); err != nil {
+	if err := writeDomainSieve(env, st, names); err != nil {
 		return err
 	}
 	return writeMailEdge(ctx, env, st, names)
 }
 
-// writeSpamSettings renders Rspamd's settings: per recipient domain, an
-// allowed sender skips the checks, a blocked one is refused, and the
-// domain's own levels apply to the rest.
-func writeSpamSettings(ctx context.Context, env *Env, st *mailState, names []string) error {
-	var b strings.Builder
-	b.WriteString("# Managed by WSPanel agent (mail.json).\n")
-	q := func(list []string) string {
-		quoted := make([]string, len(list))
-		for i, s := range list {
-			quoted[i] = strconv.Quote(s)
-		}
-		return "[" + strings.Join(quoted, ", ") + "]"
-	}
-	for _, d := range names {
-		sp := st.Domains[d].Spam
-		if sp == nil {
-			continue
-		}
-		id := "wspanel_" + strings.NewReplacer(".", "_", "-", "_").Replace(d)
-		rcpt := strconv.Quote("@" + d)
-		if len(sp.Allow) > 0 {
-			fmt.Fprintf(&b, "%s_allow {\n  priority = high;\n  rcpt = %s;\n  from = %s;\n  want_spam = yes;\n}\n", id, rcpt, q(sp.Allow))
-		}
-		if len(sp.Block) > 0 {
-			fmt.Fprintf(&b, "%s_block {\n  priority = high;\n  rcpt = %s;\n  from = %s;\n  apply {\n    actions {\n      reject = -1000;\n    }\n  }\n}\n", id, rcpt, q(sp.Block))
-		}
-		fmt.Fprintf(&b, "%s {\n  priority = low;\n  rcpt = %s;\n  apply {\n    actions {\n      reject = %s;\n      \"add header\" = %s;\n    }\n  }\n}\n",
-			id, rcpt, strconv.FormatFloat(sp.Reject, 'f', -1, 64), strconv.FormatFloat(sp.Junk, 'f', -1, 64))
-	}
-	old, err := os.ReadFile(env.Cfg.RspamdSettings)
-	if err == nil && string(old) == b.String() {
-		return nil
-	}
-	if err := env.FS.WriteFile(env.Cfg.RspamdSettings, []byte(b.String()), 0o644, fsx.Root); err != nil {
+// writeDomainSieve renders each mail domain's delivery script (Dovecot runs
+// it before the mailbox's own filters, for every recipient on its own):
+// blocked senders are dropped, allowed ones never go to Junk, and Rspamd's
+// spam verdict moves the rest there. An allowed sender counts only with
+// SPF passing for it, in Rspamd's own Authentication-Results (Rspamd drops
+// every such header that arrives with the message).
+func writeDomainSieve(env *Env, st *mailState, names []string) error {
+	if err := env.FS.MkdirAll(env.Cfg.DomainSieveDir, 0o755, fsx.Root); err != nil {
 		return err
 	}
-	_, err = env.Exec.Run(ctx, "systemctl", "reload", "rspamd")
-	return err
+	want := map[string]bool{}
+	for _, d := range names {
+		want[d+".sieve"] = true
+		var allow, block []string
+		if sp := st.Domains[d].Spam; sp != nil {
+			allow, block = sp.Allow, sp.Block
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "# Managed by WSPanel agent (mail.json): %s\nrequire [\"fileinto\", \"envelope\"];\n", d)
+		if c := senderTest(block); c != "" {
+			fmt.Fprintf(&b, "if %s {\n  discard;\n  stop;\n}\n", c)
+		}
+		spam := "if header :is \"X-Spam\" \"Yes\" {\n  fileinto \"Junk\";\n  stop;\n}\n"
+		if c := senderTest(allow); c != "" {
+			fmt.Fprintf(&b, "if not allof (%s, header :contains \"Authentication-Results\" \"spf=pass\") {\n%s}\n", c, indent(spam))
+		} else {
+			b.WriteString(spam)
+		}
+		if err := env.FS.WriteFile(filepath.Join(env.Cfg.DomainSieveDir, d+".sieve"), []byte(b.String()), 0o644, fsx.Root); err != nil {
+			return err
+		}
+	}
+	old, _ := filepath.Glob(filepath.Join(env.Cfg.DomainSieveDir, "*"))
+	for _, f := range old {
+		name := filepath.Base(f)
+		if base, ok := strings.CutSuffix(name, ".svbin"); ok {
+			name = base + ".sieve"
+		}
+		if !want[name] { // a domain that is gone
+			_ = os.Remove(f)
+		}
+	}
+	return nil
+}
+
+// senderTest: a Sieve test matching the envelope sender against addresses
+// and @domains ("" for an empty list). The values are validated already.
+func senderTest(list []string) string {
+	var addrs, domains []string
+	for _, s := range list {
+		if strings.HasPrefix(s, "@") {
+			domains = append(domains, strconv.Quote(s[1:]))
+		} else {
+			addrs = append(addrs, strconv.Quote(s))
+		}
+	}
+	var tests []string
+	if len(addrs) > 0 {
+		tests = append(tests, "envelope :all :is \"from\" ["+strings.Join(addrs, ", ")+"]")
+	}
+	if len(domains) > 0 {
+		tests = append(tests, "envelope :domain :is \"from\" ["+strings.Join(domains, ", ")+"]")
+	}
+	switch len(tests) {
+	case 0:
+		return ""
+	case 1:
+		return tests[0]
+	}
+	return "anyof (" + strings.Join(tests, ", ") + ")"
+}
+
+func indent(s string) string {
+	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = "  " + l
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 var spamSenderRe = regexp.MustCompile(`^([A-Za-z0-9._%+-]{1,64})?@[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$`)
 
-// mailSpamSet sets a domain's spam levels and sender lists (nil levels =
-// back to the server's).
+// mailSpamSet sets a domain's sender lists (nil = none).
 func mailSpamSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
 		Domain string    `json:"domain"`
@@ -278,9 +317,6 @@ func mailSpamSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		return nil, err
 	}
 	if sp := p.Spam; sp != nil {
-		if sp.Reject < 5 || sp.Reject > 100 || sp.Junk < 1 || sp.Junk >= sp.Reject {
-			return nil, protocol.Invalid("spam: reject 5-100, junk from 1 and below reject")
-		}
 		if len(sp.Allow) > 500 || len(sp.Block) > 500 {
 			return nil, protocol.Invalid("spam: at most 500 senders per list")
 		}

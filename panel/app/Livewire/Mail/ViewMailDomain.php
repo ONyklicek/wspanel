@@ -13,7 +13,6 @@ use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Infolists\Infolist;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Textarea;
-use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
 
@@ -62,24 +61,20 @@ class ViewMailDomain extends ViewPage
                 ->label('Antispam')
                 ->icon('outline:no-symbol')
                 ->color('gray')
-                ->modalDescription('Rspamd hodnotí každou zprávu body. Bez vlastního nastavení platí serverové: odmítnout od 15, do složky Junk od 6.')
-                ->fillFormUsing(fn () => ['custom' => $domain->spam !== null, 'reject' => $domain->spam['reject'] ?? 15, 'junk' => $domain->spam['junk'] ?? 6,
-                    'allow' => implode("\n", $domain->spam['allow'] ?? []), 'block' => implode("\n", $domain->spam['block'] ?? [])])
+                ->modalDescription('Rspamd hodnotí každou zprávu: od 15 bodů ji odmítne, od 6 ji přesune do složky Junk. Seznamy platí pro schránky této domény.')
+                ->fillFormUsing(fn () => ['allow' => implode("\n", $domain->spam['allow'] ?? []), 'block' => implode("\n", $domain->spam['block'] ?? [])])
                 ->form([
-                    Toggle::make('custom')->label('Vlastní nastavení pro doménu')->live(),
-                    TextInput::make('junk')->label('Do složky Junk od (bodů)')->numeric()->visibleWhen('custom', true)->rules(['nullable', 'numeric', 'between:1,99']),
-                    TextInput::make('reject')->label('Odmítnout od (bodů)')->numeric()->visibleWhen('custom', true)->rules(['nullable', 'numeric', 'between:5,100']),
-                    Textarea::make('allow')->label('Vždy přijmout od')->rows(3)->visibleWhen('custom', true)
-                        ->helperText('Adresa nebo @doména na řádek; tyto zprávy se nekontrolují.'),
-                    Textarea::make('block')->label('Vždy odmítnout od')->rows(3)->visibleWhen('custom', true)
-                        ->helperText('Adresa nebo @doména na řádek.'),
+                    Textarea::make('allow')->label('Nikdy do Junk')->rows(3)
+                        ->helperText('Adresa nebo @doména na řádek. Platí, jen když odesílatel projde SPF (podvržená adresa nestačí).'),
+                    Textarea::make('block')->label('Zahodit')->rows(3)
+                        ->helperText('Adresa nebo @doména na řádek; zprávy se tiše zahodí.'),
                 ])
                 ->action(function (array $data) use ($domain) {
                     $list = fn ($v) => array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', (string) $v) ?: [])));
+                    $allow = $list($data['allow'] ?? '');
+                    $block = $list($data['block'] ?? '');
                     try {
-                        app(ManageMailHosting::class)->setSpam($domain, $data['custom'] ? [
-                            'reject' => (float) $data['reject'], 'junk' => (float) $data['junk'], 'allow' => $list($data['allow'] ?? ''), 'block' => $list($data['block'] ?? ''),
-                        ] : null);
+                        app(ManageMailHosting::class)->setSpam($domain, $allow === [] && $block === [] ? null : ['allow' => $allow, 'block' => $block]);
                         Toast::success('Antispam uložen');
                     } catch (AgentException $e) {
                         Toast::error('Nastavení se nepodařilo uložit', $e->getMessage());

@@ -35,15 +35,10 @@ for f in users blocked; do
   [[ -f /etc/dovecot/wspanel/$f ]] || install -o root -g dovecot -m 0640 /dev/null /etc/dovecot/wspanel/$f
 done
 
-# Spam goes to Junk (Rspamd marks it); the mailbox's own rules come after.
-cat >/etc/dovecot/wspanel/spam.sieve <<'SIEVE'
-require ["fileinto"];
-if header :is "X-Spam" "Yes" {
-  fileinto "Junk";
-  stop;
-}
-SIEVE
-sievec /etc/dovecot/wspanel/spam.sieve 2>/dev/null || true
+# Each mail domain's delivery script (the agent writes it: sender lists, spam
+# into Junk); compiled where the delivery process (vmail) may write.
+install -d -o vmail -g vmail -m 0755 /var/mail/vmail/.wspanel-domains
+rm -f /etc/dovecot/wspanel/spam.sieve /etc/dovecot/wspanel/spam.svbin
 
 # Moving a message into Junk teaches Rspamd spam, moving it out teaches ham
 # (IMAPSieve, so it works from any mail client and from the webmail).
@@ -182,16 +177,17 @@ sieve_global_extensions {
 }
 sieve_pipe_bin_dir = /etc/dovecot/wspanel/pipe
 
-# Sieve: spam to Junk first, then the mailbox's own rules (autoreply, filters).
+# Sieve: the domain's script first (sender lists, spam to Junk), then the
+# mailbox's own filters, then the autoreply.
 protocol lmtp {
   mail_plugins {
     sieve = yes
   }
   auth_username_format = %{user | lower}
 }
-sieve_script before {
+sieve_script domain {
   type = before
-  path = /etc/dovecot/wspanel/spam.sieve
+  path = /var/mail/vmail/.wspanel-domains/%{user | domain}.sieve
 }
 sieve_script personal {
   type = personal
@@ -255,10 +251,19 @@ add_header = 6;
 greylist = null;
 RSPAMD
 cat >/etc/rspamd/local.d/milter_headers.conf <<'RSPAMD'
-# Managed by WSPanel: X-Spam: Yes on spam (Sieve moves it to Junk).
+# Managed by WSPanel: X-Spam: Yes on spam (Sieve moves it to Junk). Every
+# Authentication-Results that arrives with a message is dropped, so the one
+# Sieve reads (an allowed sender needs spf=pass) is Rspamd's own.
 use = ["x-spam-status", "x-spamd-bar", "authentication-results"];
 extended_spam_headers = false;
+skip_local = false;
+routines {
+  authentication-results {
+    remove = 0;
+  }
+}
 RSPAMD
+rm -f /etc/rspamd/local.d/settings.conf
 # The controller (learning, statistics) is password-only, from every address:
 # Debian trusts the loopback by default, which would hand it to every site user.
 install -d /etc/rspamd/override.d
