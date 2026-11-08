@@ -2,12 +2,14 @@
 
 use App\Actions\Clients\Impersonation;
 use App\Actions\Sites\ManageTls;
+use App\Http\Controllers\AppleMailProfileController;
 use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\DownloadSiteBackupController;
 use App\Http\Controllers\DownloadSiteFileController;
 use App\Http\Controllers\ForwardAuthController;
 use App\Http\Controllers\OpenDatabaseServerToolController;
 use App\Http\Controllers\OpenDatabaseToolController;
+use App\Http\Controllers\OpenWebmailController;
 use Illuminate\Support\Facades\Route;
 
 // Edge forward_auth for Mailpit (outside the panel group: answers 204 or redirects).
@@ -28,6 +30,8 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
         ->middleware(['can:admin', 'throttle:30,1'])
         ->name('dbtools.server');
+    Route::get('/mailboxes/{mailbox}/webmail', OpenWebmailController::class)->middleware('throttle:30,1')->name('mailboxes.webmail');
+    Route::get('/mailboxes/{mailbox}/apple.mobileconfig', AppleMailProfileController::class)->name('mailboxes.apple-profile');
     Route::get('/ssl/root-ca.crt', function () {
         return response(app(ManageTls::class)->rootCa()['pem'], 200, [
             'Content-Type' => 'application/x-x509-ca-cert',

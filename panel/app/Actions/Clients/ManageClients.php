@@ -6,6 +6,7 @@ use App\Actions\Sites\ControlSite;
 use App\Enums\UserRole;
 use App\Models\Client;
 use App\Models\DnsZone;
+use App\Models\MailDomain;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -169,8 +170,12 @@ class ManageClients
             throw new AgentException('timeout', 'Přesun souborů webu ještě běží, zkontrolujte ho za chvíli.', 'site.set_group');
         }
         $this->agent->call('site.limits', ['domain' => $site->domain, 'fpm_children' => (int) ($client?->limit('fpm_children') ?? 0)]);
-        DB::transaction(function () use ($site, $client): void {
+        $previous = $site->client_id;
+        $hosts = array_merge([$site->domain], $site->edge_settings['aliases'] ?? []);
+        DB::transaction(function () use ($site, $client, $previous, $hosts): void {
             $site->update(['client_id' => $client?->id]);
+            // Its mail goes with it: the domain must not stay with the old owner.
+            MailDomain::acrossClients()->whereIn('domain', $hosts)->where('client_id', $previous)->update(['client_id' => $client?->id]);
             $site->databases()->withoutGlobalScope('client')->update(['client_id' => $client?->id]);
             DnsZone::acrossClients()->where('site_id', $site->id)->update(['client_id' => $client?->id]);
         });

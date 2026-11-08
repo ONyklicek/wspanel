@@ -78,7 +78,12 @@ class MailboxTable extends Component
                     })),
             ])
             ->actions([
+                Action::make('webmail')->label('Webmail')->icon('outline:envelope-open')
+                    ->url(fn (Mailbox $record) => route('mailboxes.webmail', $record), openInNewTab: true)
+                    ->visible(fn (Mailbox $record) => $domain->webmail && $record->enabled),
                 ActionGroup::make([
+                    Action::make('appleProfile')->label('Profil pro iPhone a Mac')->icon('outline:device-phone-mobile')
+                        ->url(fn (Mailbox $record) => route('mailboxes.apple-profile', $record)),
                     Action::make('password')->label('Nové heslo')->icon('outline:key')
                         ->form([TextInput::make('password')->label('Heslo')->password()->revealable()->helperText('Prázdné = vygenerovat.')->rules(['nullable', 'string', 'min:10', 'max:200'])])
                         ->action(fn (Mailbox $record, array $data) => $this->attempt('Heslo se nepodařilo změnit', function () use ($record, $data, $domain) {

@@ -32,8 +32,13 @@ class DnsAdvisor
         }
         $out[] = ['name' => $domain, 'type' => 'CAA', 'ttl' => 3600, 'records' => ['0 issue "letsencrypt.org"', '0 issue "zerossl.com"'], 'note' => 'Certifikáty smí vydat jen autority, které používá server.'];
         // Mail hosting: MX to this server, client autodiscovery by SRV (RFC 6186).
-        if (MailDomain::acrossClients()->where('domain', $domain)->exists()) {
+        if ($mailDomain = MailDomain::acrossClients()->where('domain', $domain)->first()) {
             $host = ManageMailHosting::mailHost();
+            // webmail.<domain>, autoconfig./autodiscover.<domain> are served here.
+            foreach ($mailDomain->serviceHosts() as $service) {
+                $out[] = ['name' => $service, 'type' => 'CNAME', 'ttl' => 3600, 'records' => [$host.'.'],
+                    'note' => str_starts_with($service, 'webmail.') ? 'Webmail domény.' : 'Poštovní programy si samy načtou nastavení.'];
+            }
             $out[] = ['name' => $domain, 'type' => 'MX', 'ttl' => 3600, 'records' => ['10 '.$host.'.'], 'note' => 'Pošta pro doménu chodí na tento server.'];
             foreach (['_imaps._tcp' => '993', '_pop3s._tcp' => '995', '_submission._tcp' => '587'] as $srv => $port) {
                 $out[] = ['name' => $srv.'.'.$domain, 'type' => 'SRV', 'ttl' => 3600, 'records' => ['0 1 '.$port.' '.$host.'.'], 'note' => 'Poštovní programy samy najdou server.'];

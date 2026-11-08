@@ -11,7 +11,35 @@ class MailDomain extends Model
 {
     use OwnedByClient;
 
-    protected $fillable = ['domain', 'client_id'];
+    protected $fillable = ['domain', 'client_id', 'webmail', 'autoconfig'];
+
+    /** Host names the edge serves for the domain's mail (webmail, client settings). */
+    public const SERVICE_PREFIXES = ['webmail' => ['webmail'], 'autoconfig' => ['autoconfig', 'autodiscover']];
+
+    protected function casts(): array
+    {
+        return ['webmail' => 'boolean', 'autoconfig' => 'boolean'];
+    }
+
+    public function webmailUrl(): ?string
+    {
+        return $this->webmail ? 'https://webmail.'.$this->domain : null;
+    }
+
+    /** @return list<string> host names taken by the features switched on */
+    public function serviceHosts(): array
+    {
+        $hosts = [];
+        foreach (self::SERVICE_PREFIXES as $feature => $prefixes) {
+            if ($this->{$feature} ?? true) {
+                foreach ($prefixes as $p) {
+                    $hosts[] = $p.'.'.$this->domain;
+                }
+            }
+        }
+
+        return $hosts;
+    }
 
     public function mailboxes(): HasMany
     {

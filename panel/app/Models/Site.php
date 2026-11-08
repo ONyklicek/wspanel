@@ -57,6 +57,11 @@ class Site extends Model
             return true;
         }
 
+        // webmail.<domain>, autoconfig./autodiscover.<domain> of a mail domain.
+        if (MailDomain::acrossClients()->get()->contains(fn (MailDomain $d) => in_array($host, $d->serviceHosts(), true))) {
+            return true;
+        }
+
         return self::acrossClients()->when($exceptSiteId, fn ($q) => $q->whereKeyNot($exceptSiteId))->get(['id', 'domain', 'edge_settings'])
             ->contains(fn (Site $s) => $s->domain === $host
                 || in_array($host, $s->edge_settings['aliases'] ?? [], true)

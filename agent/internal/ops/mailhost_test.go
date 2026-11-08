@@ -21,6 +21,10 @@ func mailTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.MailboxSenders = filepath.Join(root, "senders")
 	env.Cfg.DovecotUsers = filepath.Join(root, "users")
 	env.Cfg.VmailRoot = filepath.Join(root, "vmail")
+	env.Cfg.DovecotBlocked = filepath.Join(root, "blocked")
+	env.Cfg.MailEdgeFile = filepath.Join(root, "mail-sites.caddy")
+	env.Cfg.WebmailTokens = filepath.Join(root, "webmail-tokens")
+	env.Cfg.WebmailUser = "root"
 	return env, dr
 }
 
@@ -114,5 +118,58 @@ func TestAutoreplyIsOneSieveScriptAsVmail(t *testing.T) {
 	}
 	if !strings.Contains(script, `:subject "Dovolená  Bcc: x@y"`) || !strings.Contains(script, `"Jsem pryč \"do\" pondělí"`) {
 		t.Errorf("subject on one line, quotes escaped:\n%s", script)
+	}
+}
+
+func TestEveryMailDomainGetsItsOwnWebmailAndClientSettings(t *testing.T) {
+	env, dr := mailTestEnv(t)
+	env.Cfg.MailHost = "mail.hosting.cz"
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true})
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "druha.cz", "enabled": true, "webmail": false, "autoconfig": false})
+	edge := read2(t, env.Cfg.MailEdgeFile)
+	if !strings.Contains(edge, "webmail.firma.cz {") || !strings.Contains(edge, "header_up X-Wsp-Mail-Domain firma.cz") {
+		t.Errorf("webmail.<domain> tells Roundcube its domain:\n%s", edge)
+	}
+	if !strings.Contains(edge, "autoconfig.firma.cz, autodiscover.firma.cz {") || !strings.Contains(edge, "<hostname>mail.hosting.cz</hostname>") {
+		t.Errorf("mail clients find the mail host:\n%s", edge)
+	}
+	if strings.Contains(edge, "druha.cz") {
+		t.Errorf("a domain with both off has no hosts:\n%s", edge)
+	}
+	reloaded := false
+	for _, c := range dr.Calls() {
+		if c.Name == "systemctl" && strings.Contains(c.String(), "reload "+env.Cfg.ProxyUnit) {
+			reloaded = true
+		}
+	}
+	if !reloaded {
+		t.Error("the edge reloads with the new hosts")
+	}
+}
+
+func TestBlockedMailboxCannotSignInToWebmail(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true})
+	_, _ = call(t, env, mailMailboxSet, map[string]any{"address": "alice@firma.cz", "password_hash": testHash, "quota_mb": 100, "enabled": true})
+
+	out, err := call(t, env, mailWebmailLogin, map[string]any{"address": "alice@firma.cz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := out.(map[string]any)
+	token := res["token"].(string)
+	if res["url"] != "https://webmail.firma.cz/?_task=login" || len(token) != 64 || strings.Contains(res["url"].(string), token) {
+		t.Fatalf("a one-time token for the domain's own webmail, never in the URL: %v", res)
+	}
+	if got := read2(t, filepath.Join(env.Cfg.WebmailTokens, token+".json")); !strings.Contains(got, `"address":"alice@firma.cz"`) {
+		t.Errorf("token file: %s", got)
+	}
+
+	_, _ = call(t, env, mailMailboxSet, map[string]any{"address": "alice@firma.cz", "quota_mb": 100, "enabled": false})
+	if got := read2(t, env.Cfg.DovecotBlocked); got != "alice@firma.cz:\n" {
+		t.Errorf("the deny passdb lists the blocked mailbox (also against the master login): %q", got)
+	}
+	if _, err := call(t, env, mailWebmailLogin, map[string]any{"address": "alice@firma.cz"}); code(err) != "conflict" {
+		t.Errorf("no sign-in link for a blocked mailbox: %v", err)
 	}
 }

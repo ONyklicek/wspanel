@@ -357,9 +357,11 @@ systemctl restart mailpit
 # Mail hosting (optional): the script the agent also runs when it is added later.
 install -d -m 0755 /usr/lib/wspanel
 install -m 0755 "$HERE/mail-hosting.sh" /usr/lib/wspanel/mail-hosting.sh
+install -d -m 0755 /usr/lib/wspanel/files/webmail
+install -m 0644 "$HERE"/files/webmail/* /usr/lib/wspanel/files/webmail/
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
-  /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME"
+  /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
 fi
 
 # ---------------------------------------------------------------- DNS (optional)

@@ -26,6 +26,9 @@ expect() { # expect NAME ACTUAL WANTED
 contains() { # contains NAME HAYSTACK NEEDLE
 	if [[ "$2" == *"$3"* ]]; then ok "$1"; else bad "$1" "'$3' not in '${2:0:160}'"; fi
 }
+not_contains() { # not_contains NAME HAYSTACK NEEDLE
+	if [[ "$2" != *"$3"* ]]; then ok "$1"; else bad "$1" "'$3' unexpectedly in '${2:0:160}'"; fi
+}
 
 # php CODE [VAR=VALUE ...]: run PHP in the panel's context (Laravel booted) as the panel user.
 php() {
@@ -814,7 +817,7 @@ contains "Node now serves from the other slot" "$(cat /var/lib/panel-agent/sites
 # ----------------------------------------------------------------------------
 section "Mail hosting (mailboxes, IMAP, submission, antispam)"
 command -v swaks >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q swaks libnet-ssleay-perl libio-socket-ssl-perl >/dev/null 2>&1
-check "dovecot and rspamd active" systemctl is-active --quiet dovecot rspamd
+check "dovecot, rspamd and its valkey active" systemctl is-active --quiet dovecot rspamd rspamd-valkey
 php '$m = app(App\Actions\Mail\ManageMailHosting::class);
 foreach (App\Models\MailDomain::where("domain","shop.localhost")->get() as $d) { foreach ($d->mailboxes as $mb) { $m->deleteMailbox($mb); } $m->setAliases($d, []); $m->removeDomain($d); }
 $d = $m->addDomain("shop.localhost");
@@ -834,6 +837,70 @@ contains "but not as anyone else" "$(swaks --server 127.0.0.1 --port 587 --tls -
 contains "SMTPS (465) works" "$(swaks --server 127.0.0.1 --port 465 --tlsc --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from alice@shop.localhost --to bob@shop.localhost 2>&1)" "queued"
 contains "no relay without login" "$(swaks --server 127.0.0.1 --to someone@example.net --from x@example.org 2>&1)" "Relay access denied"
 contains "spam (GTUBE) is rejected by Rspamd" "$(swaks --server 127.0.0.1 --to info@shop.localhost --from x@example.org --body 'XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X' 2>&1)" "Gtube"
+# Port 25 is public with mail hosting: the sites' SMTP logins stay a loopback thing.
+PUBLIC_IP=$(hostname -I | awk '{print $1}')
+smtp_probe() { python3 - "$@" <<'PY'
+import smtplib, sys, base64
+ip, user, pw = sys.argv[1:4]
+s = smtplib.SMTP(ip, 25, timeout=10); s.ehlo()
+adv = "auth" in s.esmtp_features
+code, _ = s.docmd("AUTH", "PLAIN " + base64.b64encode(f"\0{user}\0{pw}".encode()).decode())
+try:
+    s.sendmail(user, ["someone@example.net"], "Subject: relay\r\n\r\nx"); relay = "relayed"
+except Exception:
+    relay = "refused"
+print(f"advertised={adv} auth={code} {relay}")
+PY
+}
+# A login like a site's (sasldb), made for the probe and removed after it.
+SMTP_USER=e2eprobe@$(postconf -h myhostname); SMTP_PASS=Probe-$RANDOM-$RANDOM
+echo "$SMTP_PASS" | saslpasswd2 -p -c -f /etc/sasldb2 -u "${SMTP_USER#*@}" e2eprobe
+{
+	contains "port 25 from outside: no AUTH offered, a site login relays nothing" "$(smtp_probe "$PUBLIC_IP" "$SMTP_USER" "$SMTP_PASS" 2>&1)" "advertised=False"
+	contains "  … and the relay is refused" "$(smtp_probe "$PUBLIC_IP" "$SMTP_USER" "$SMTP_PASS" 2>&1)" "refused"
+	contains "the site's login still works on the loopback" "$(smtp_probe 127.0.0.1 "$SMTP_USER" "$SMTP_PASS" 2>&1)" "auth=235"
+}
+saslpasswd2 -d -f /etc/sasldb2 -u "${SMTP_USER#*@}" e2eprobe
+check "Rspamd controller refuses without its password" bash -c '[[ $(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:11334/learnspam -d x) == 401 ]]'
+
+# Webmail: every mail domain has its own, a mailbox signs in by name alone.
+WM="--resolve webmail.shop.localhost:443:127.0.0.1"
+wm_login() { # user password -> HTTP code and redirect after the login form
+	rm -f /tmp/e2e-wm; local t
+	t=$(curl -sk $WM -c /tmp/e2e-wm -b /tmp/e2e-wm https://webmail.shop.localhost/ | grep -o 'name="_token" value="[^"]*' | head -1 | sed 's/.*value="//')
+	curl -sk $WM -c /tmp/e2e-wm -b /tmp/e2e-wm -o /dev/null -w '%{http_code} %{redirect_url}' -d "_task=login&_action=login&_token=$t&_user=$1&_pass=$2&_timezone=UTC" "https://webmail.shop.localhost/?_task=login"
+}
+contains "webmail.<domain> serves Roundcube" "$(curl -sk $WM https://webmail.shop.localhost/)" "rcmloginuser"
+contains "webmail: sign-in by the mailbox name alone" "$(wm_login alice Alice-heslo-123)" "_task=mail"
+contains "  … the session is alice's" "$(curl -sk $WM -b /tmp/e2e-wm 'https://webmail.shop.localhost/?_task=mail&_mbox=INBOX')" "alice@shop.localhost"
+not_contains "webmail: another domain's address is refused here" "$(wm_login alice@app.localhost Alice-heslo-123)" "_task=mail"
+not_contains "webmail: a wrong password is refused" "$(wm_login alice spatne-heslo)" "_task=mail"
+SSO=$(php 'echo app(App\Services\Agent\AgentClient::class)->call("mail.webmail.login", ["address" => "alice@shop.localhost"])["token"];')
+rm -f /tmp/e2e-wm2
+contains "webmail: one-time sign-in from the panel" "$(curl -sk $WM -c /tmp/e2e-wm2 -b /tmp/e2e-wm2 -o /dev/null -w '%{redirect_url}' -d "_wsp_sso=$SSO" 'https://webmail.shop.localhost/?_task=login')" "_task=mail"
+not_contains "  … and the token works only once" "$(curl -sk $WM -o /dev/null -w '%{redirect_url}' -d "_wsp_sso=$SSO" 'https://webmail.shop.localhost/?_task=login')" "_task=mail"
+master_imap() { PW=$(cat /etc/wspanel/mail/webmail-master.pw) python3 - "$@" <<'PY'
+import imaplib, ssl, os, sys
+try:
+    m = imaplib.IMAP4_SSL(sys.argv[1], 993, ssl_context=ssl._create_unverified_context())
+    m.authenticate("PLAIN", lambda _: f"{sys.argv[2]}\0webmail\0{os.environ['PW']}".encode()); print("ok")
+except Exception as e:
+    print("refused")
+PY
+}
+expect "webmail master login acts for a mailbox (loopback)" "$(master_imap 127.0.0.1 alice@shop.localhost)" "ok"
+expect "  … but never from outside" "$(master_imap "$PUBLIC_IP" alice@shop.localhost)" "refused"
+contains "autoconfig for Thunderbird" "$(curl -sk --resolve autoconfig.shop.localhost:443:127.0.0.1 https://autoconfig.shop.localhost/mail/config-v1.1.xml)" "<hostname>panel.localhost</hostname>"
+contains "autodiscover for Outlook" "$(curl -sk --resolve autodiscover.shop.localhost:443:127.0.0.1 -X POST https://autodiscover.shop.localhost/Autodiscover/Autodiscover.xml)" "<Server>panel.localhost</Server>"
+# Moving a message into Junk teaches Rspamd (IMAPSieve).
+learned() { curl -s -H @/var/mail/vmail/.wspanel-learn/rspamd.header http://127.0.0.1:11334/stat | python3 -c 'import json,sys; print(json.load(sys.stdin)["learned"])'; }
+l0=$(learned)
+swaks --server 127.0.0.1 --to alice@shop.localhost --from x@example.org --header "Subject: e2e-junk" --body "Cheap watches and miracle pills, limited offer today only, click the link to claim your prize now, unique $RANDOM $RANDOM $(date +%s%N)" >/dev/null 2>&1
+sleep 2
+curl -sk --max-time 10 "imaps://127.0.0.1/INBOX" -u alice@shop.localhost:Alice-heslo-123 -X "MOVE * Junk" >/dev/null 2>&1
+for _ in $(seq 1 10); do [[ "$(learned)" -gt "${l0:-0}" ]] && break; sleep 1; done
+check "moving mail into Junk teaches Rspamd spam" test "$(learned)" -gt "${l0:-0}"
+
 # Autoreply: bob writes to alice, alice is away.
 php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","alice")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->autoreply($mb, ["enabled" => true, "subject" => "Jsem na dovolene", "body" => "Vratim se v pondeli.", "days" => 1]);' >/dev/null
 b1=$(imap_count bob@shop.localhost Bob-heslo-12345)
@@ -845,6 +912,7 @@ contains "IMAP uses the edge's certificate" "$(echo | openssl s_client -connect 
 contains "blocking a mailbox" "$(php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","bob")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->saveMailbox($mb->mailDomain, "bob", null, 50, false, $mb); echo "BLOCKED";' 2>&1)" "BLOCKED"
 for _ in $(seq 1 10); do [[ -z "$(imap_count bob@shop.localhost Bob-heslo-12345)" ]] && break; sleep 0.5; done # Dovecot re-reads the users file within a second
 expect "a blocked mailbox cannot log in" "$(imap_count bob@shop.localhost Bob-heslo-12345)" ""
+expect "  … not even through the webmail's master login" "$(master_imap 127.0.0.1 bob@shop.localhost)" "refused"
 php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","bob")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->deleteMailbox($mb);' >/dev/null
 check "a deleted mailbox's mail is gone" test ! -d /var/mail/vmail/shop.localhost/bob
 check "the agent never stored a plain password" bash -c '! grep -rq "Alice-heslo-123" /var/lib/panel-agent /etc/dovecot/wspanel /var/log/panel-agent 2>/dev/null'

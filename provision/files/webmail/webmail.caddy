@@ -1,0 +1,21 @@
+# Managed by WSPanel (mail-hosting.sh). Roundcube for every mail domain: the
+# edge sends webmail.<domain> here and says which domain (X-Wsp-Mail-Domain).
+http://wspanel-webmail.internal {
+	# PHP only through index.php; no dot files, no configuration samples.
+	@hidden {
+		path */.* *.dist *.sql *.sh *.md *.json *.lock
+	}
+	respond @hidden 404
+	@otherphp {
+		path *.php
+		not path /index.php
+	}
+	respond @otherphp 404
+	root * /var/lib/roundcube/public_html
+	php_fastcgi unix//run/php/php__PHP__-webmail.sock {
+		env HTTPS on
+		env SERVER_PORT 443
+		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+	}
+	file_server
+}

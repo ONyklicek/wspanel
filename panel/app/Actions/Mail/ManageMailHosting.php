@@ -3,9 +3,11 @@
 namespace App\Actions\Mail;
 
 use App\Models\Client;
+use App\Models\DnsZone;
 use App\Models\MailAlias;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
+use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
@@ -61,9 +63,143 @@ class ManageMailHosting
             throw new AgentException('conflict', 'Doména už poštu na tomto serveru má.', 'panel');
         }
         $owner ??= Client::find(CurrentClient::id());
-        $this->agent->call('mail.domain.set', ['domain' => $domain, 'enabled' => true]);
+        $this->assertMayReceive($domain, $owner);
+        $record = new MailDomain(['domain' => $domain, 'client_id' => $owner?->id, 'webmail' => true, 'autoconfig' => true]);
+        foreach (['webmail', 'autoconfig'] as $feature) {
+            $record->{$feature} = ! $this->hostsTaken($record, $feature);
+        }
+        $this->agent->call('mail.domain.set', ['domain' => $domain, 'enabled' => true, 'webmail' => $record->webmail, 'autoconfig' => $record->autoconfig]);
+        $record->save();
 
-        return MailDomain::create(['domain' => $domain, 'client_id' => $owner?->id]);
+        return $record;
+    }
+
+    /**
+     * Switches the domain's webmail (webmail.<domain>) and the addresses mail
+     * clients read their settings from (autoconfig./autodiscover.<domain>).
+     *
+     * @throws AgentException
+     */
+    public function setFeatures(MailDomain $domain, bool $webmail, bool $autoconfig): void
+    {
+        $wanted = (clone $domain)->fill(['webmail' => $webmail, 'autoconfig' => $autoconfig]);
+        foreach (['webmail' => $webmail, 'autoconfig' => $autoconfig] as $feature => $on) {
+            if ($on && ! $domain->{$feature} && $this->hostsTaken($wanted, $feature)) {
+                throw new AgentException('conflict', 'Adresa '.MailDomain::SERVICE_PREFIXES[$feature][0].'.'.$domain->domain.' už patří webu.', 'panel');
+            }
+        }
+        $this->agent->call('mail.domain.set', ['domain' => $domain->domain, 'enabled' => true, 'webmail' => $webmail, 'autoconfig' => $autoconfig]);
+        $domain->update(['webmail' => $webmail, 'autoconfig' => $autoconfig]);
+    }
+
+    /** A site already answers for one of the feature's host names. */
+    private function hostsTaken(MailDomain $domain, string $feature): bool
+    {
+        foreach (MailDomain::SERVICE_PREFIXES[$feature] as $prefix) {
+            $host = $prefix.'.'.$domain->domain;
+            if (Site::acrossClients()->get(['domain', 'edge_settings'])->contains(fn (Site $s) => $s->domain === $host
+                || in_array($host, $s->edge_settings['aliases'] ?? [], true) || in_array($host, $s->edge_settings['redirect_hosts'] ?? [], true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A one-time link that signs the mailbox in to its domain's webmail.
+     *
+     * @throws AgentException
+     */
+    public function webmailLogin(Mailbox $mailbox): string
+    {
+        return (string) $this->agent->call('mail.webmail.login', ['address' => $mailbox->address()])['url'];
+    }
+
+    /**
+     * An Apple configuration profile (iPhone, iPad, Mac Mail) for the mailbox.
+     * No password inside: the device asks for it.
+     */
+    public static function appleProfile(Mailbox $mailbox): string
+    {
+        $host = e(self::mailHost());
+        $address = e($mailbox->address());
+        $domain = e($mailbox->mailDomain->domain);
+        $uuid = fn () => strtoupper((string) Str::uuid());
+        $reverse = implode('.', array_reverse(explode('.', $mailbox->mailDomain->domain)));
+
+        return <<<XML
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>PayloadContent</key>
+              <array>
+                <dict>
+                  <key>EmailAccountDescription</key><string>{$address}</string>
+                  <key>EmailAccountType</key><string>EmailTypeIMAP</string>
+                  <key>EmailAddress</key><string>{$address}</string>
+                  <key>IncomingMailServerAuthentication</key><string>EmailAuthPassword</string>
+                  <key>IncomingMailServerHostName</key><string>{$host}</string>
+                  <key>IncomingMailServerPortNumber</key><integer>993</integer>
+                  <key>IncomingMailServerUseSSL</key><true/>
+                  <key>IncomingMailServerUsername</key><string>{$address}</string>
+                  <key>OutgoingMailServerAuthentication</key><string>EmailAuthPassword</string>
+                  <key>OutgoingMailServerHostName</key><string>{$host}</string>
+                  <key>OutgoingMailServerPortNumber</key><integer>465</integer>
+                  <key>OutgoingMailServerUseSSL</key><true/>
+                  <key>OutgoingMailServerUsername</key><string>{$address}</string>
+                  <key>OutgoingPasswordSameAsIncomingPassword</key><true/>
+                  <key>PayloadIdentifier</key><string>{$reverse}.mail.{$mailbox->local_part}</string>
+                  <key>PayloadType</key><string>com.apple.mail.managed</string>
+                  <key>PayloadUUID</key><string>{$uuid()}</string>
+                  <key>PayloadVersion</key><integer>1</integer>
+                </dict>
+              </array>
+              <key>PayloadDisplayName</key><string>Pošta {$address}</string>
+              <key>PayloadIdentifier</key><string>{$reverse}.mail</string>
+              <key>PayloadOrganization</key><string>{$domain}</string>
+              <key>PayloadType</key><string>Configuration</string>
+              <key>PayloadUUID</key><string>{$uuid()}</string>
+              <key>PayloadVersion</key><integer>1</integer>
+            </dict>
+            </plist>
+            XML;
+    }
+
+    /**
+     * Mail for a domain goes to whoever has it here, so a domain is taken only
+     * by the owner of what already answers for it on this server: a site (its
+     * domain, an alias or a subdomain of it) or a DNS zone. A client needs one
+     * of those of their own; nobody may take a domain another owner's site or
+     * zone uses (the administrator included: it would read that client's mail).
+     *
+     * @throws AgentException
+     */
+    private function assertMayReceive(string $domain, ?Client $owner): void
+    {
+        $owners = collect();
+        foreach (Site::acrossClients()->get(['id', 'domain', 'edge_settings', 'client_id']) as $site) {
+            $hosts = array_merge([$site->domain], $site->edge_settings['aliases'] ?? [], $site->edge_settings['redirect_hosts'] ?? []);
+            foreach ($hosts as $host) {
+                if ($host === $domain || str_ends_with((string) $host, '.'.$domain)) {
+                    $owners->push($site->client_id);
+                }
+            }
+        }
+        foreach (DnsZone::acrossClients()->get(['domain', 'client_id']) as $zone) {
+            if ($zone->domain === $domain || str_ends_with($domain, '.'.$zone->domain)) {
+                $owners->push($zone->client_id);
+            }
+        }
+        $owners = $owners->unique();
+        $ownerId = $owner?->id;
+        if ($owners->isNotEmpty() && ! $owners->contains($ownerId)) {
+            throw new AgentException('forbidden', 'Doména patří webu nebo DNS zóně jiného vlastníka.', 'panel');
+        }
+        if ($ownerId !== null && $owners->isEmpty()) {
+            throw new AgentException('forbidden', 'Poštu lze zřídit jen pro doménu vašeho webu nebo DNS zóny.', 'panel');
+        }
     }
 
     /** @throws AgentException */
@@ -179,11 +315,12 @@ class ManageMailHosting
      *
      * @return array<string, string>
      */
-    public static function clientSettings(): array
+    public static function clientSettings(?MailDomain $domain = null): array
     {
         $host = self::mailHost();
+        $webmail = $domain?->webmailUrl() ? ['Webmail' => $domain->webmailUrl()] : [];
 
-        return ['IMAP' => "{$host}:993 (SSL/TLS)", 'POP3' => "{$host}:995 (SSL/TLS)", 'SMTP' => "{$host}:587 (STARTTLS) nebo :465 (SSL/TLS)",
-            'Přihlášení' => 'celá e-mailová adresa a heslo schránky'];
+        return $webmail + ['IMAP' => "{$host}:993 (SSL/TLS)", 'POP3' => "{$host}:995 (SSL/TLS)", 'SMTP' => "{$host}:465 (SSL/TLS) nebo :587 (STARTTLS)",
+            'Přihlášení' => 'celá e-mailová adresa a heslo schránky (ve webmailu stačí jméno před @)'];
     }
 }

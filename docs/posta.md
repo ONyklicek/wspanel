@@ -83,8 +83,11 @@ zkouší znovu až 5 dní a pak je vrátí odesílateli.
 
 ## Schránky (příjem pošty)
 
-**Síť a pošta → Schránky → Přidat doménu** (doména některého z vašich webů),
-pak v detailu domény:
+**Síť a pošta → Schránky → Přidat doménu**, pak v detailu domény. Doména
+musí patřit vašemu webu (jeho doména, alias nebo nadřazená doména) nebo vaší
+DNS zóně. Doménu, kterou používá web či zóna jiného vlastníka, nezřídí nikdo
+(ani správce: četl by jeho poštu). Při přesunu webu ke klientovi jde jeho
+pošta s ním.
 
 - **Nová schránka:** adresa, heslo (prázdné = vygeneruje se a ukáže jednou),
   velikost. Heslo panel odešle na server jen jako hash (SHA512-CRYPT),
@@ -92,11 +95,32 @@ pak v detailu domény:
 - **Velikost a stav:** kvóta; zablokovaná schránka se nepřihlásí (přihlášená
   sezení se ukončí), pošta do ní chodí dál.
 - **Automatická odpověď:** předmět, text, jednomu odesílateli nejvýš jednou
-  za N dní.
+  za N dní. Platí vedle filtrů, které si schránka nastaví ve webmailu.
+- **Webmail:** otevře webmail domény rovnou přihlášený za tuto schránku
+  (jednorázový odkaz z panelu, bez hesla).
+- **Profil pro iPhone a Mac:** soubor `.mobileconfig`, který nastaví účet
+  v Mailu (heslo si zařízení vyžádá).
 - **Aliasy a přeposílání:** adresa → jedna či víc adres (i mimo server);
   prázdná adresa = **catch-all** (vše, co nemá vlastní schránku). Schránka
   smí odesílat i jako alias, který na ni doručuje.
 - U klientů omezuje počet schránek a jejich součet velikostí balíček.
+
+### Webmail
+
+Každá poštovní doména má vlastní webmail (Roundcube) na
+**`https://webmail.<doména>`**, žádný společný. Přihlašuje se jen jménem
+schránky: na `webmail.firma.cz` stačí `info` (= `info@firma.cz`). Adresa jiné
+domény se tam nepřihlásí. Ve webmailu jsou filtry (Sieve), archiv a tlačítko
+**Spam**; přesun zprávy do složky Junk (z webmailu i z jakéhokoli programu)
+učí antispam, přesun ven ho učí opak.
+
+Zapíná se a vypíná v detailu domény (**Webmail a nastavení programů**),
+nová doména ho má zapnutý. Potřebuje DNS záznam `webmail.<doména>`; certifikát
+server získá sám, jakmile na něj DNS ukazuje. Adresy `webmail.`, `autoconfig.`
+a `autodiscover.` poštovní domény si nemůže vzít žádný web. Pokud už některou
+web má, zůstane ta funkce vypnutá.
+
+Heslo schránky mění v panelu správce nebo klient, webmail změnu hesla nenabízí.
 
 ### Poštovní programy
 
@@ -104,18 +128,21 @@ pak v detailu domény:
 |---|---|---|
 | IMAP | `<server pošty>` | 993 (SSL/TLS) |
 | POP3 | `<server pošty>` | 995 (SSL/TLS) |
-| SMTP | `<server pošty>` | 587 (STARTTLS) nebo 465 (SSL/TLS) |
+| SMTP | `<server pošty>` | 465 (SSL/TLS) nebo 587 (STARTTLS) |
 | Filtry (Sieve) | `<server pošty>` | 4190 |
 
-Přihlašuje se celou e-mailovou adresou. Server pošty je doména panelu
+Přihlašuje se celou e-mailovou adresou. Thunderbird a Outlook si nastavení
+najdou samy (`autoconfig.<doména>`, `autodiscover.<doména>`, zapnuté spolu
+s webmailem v detailu domény), iPhone a Mac přes stažený profil. Server pošty je doména panelu
 (`--panel-domain`); jeho certifikát je stejný jako certifikát panelu a obnovuje se
 s ním.
 
 ### DNS
 
 **DNS → zóna → Doplnit doporučené** přidá k doméně se schránkami `MX`
-(na server pošty) a SRV záznamy `_imaps`, `_pop3s`, `_submission`, podle
-kterých si poštovní programy server najdou samy. SPF, DKIM a DMARC zůstávají
+(na server pošty), SRV záznamy `_imaps`, `_pop3s`, `_submission`, podle
+kterých si poštovní programy server najdou samy, a CNAME `webmail`,
+`autoconfig` a `autodiscover` na server pošty. SPF, DKIM a DMARC zůstávají
 jako u odchozí pošty.
 
 ### Antispam
@@ -124,3 +151,11 @@ Rspamd hodnotí každou příchozí zprávu: nad 15 bodů ji odmítne, nad 6 ji
 označí a Sieve ji přesune do složky **Junk**. Testovací zpráva GTUBE se
 odmítá vždy. Odesílání z programů vyžaduje přihlášení a schránka smí
 odesílat jen za sebe (a své aliasy); neúspěšná přihlášení hlídá fail2ban.
+Statistiky učení drží Rspamd ve vlastní instanci Valkey (jen unix socket).
+Jeho rozhraní (učení, statistiky) chce heslo i z localhostu, které má jen
+root a doručovací proces.
+
+Port 25 je s příjmem pošty veřejný, ale SMTP přihlášení webů na něm zvenku
+nefungují: AUTH se nenabízí a ani úspěšné přihlášení zvenku nic nepřepošle.
+Weby dál posílají přes loopback (bez STARTTLS: certifikát patří serveru pošty,
+ne adrese 127.0.0.1). Schránky odesílají přes 465/587.

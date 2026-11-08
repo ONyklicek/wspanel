@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
@@ -34,6 +35,9 @@ type mailbox struct {
 type mailDomain struct {
 	Mailboxes map[string]mailbox  `json:"mailboxes"` // local part -> mailbox
 	Aliases   map[string][]string `json:"aliases"`   // local part ("" = catch-all) -> destinations
+	// webmail.<domain> (Roundcube) and autoconfig./autodiscover.<domain> on the edge.
+	Webmail    bool `json:"webmail"`
+	Autoconfig bool `json:"autoconfig"`
 }
 
 type mailState struct {
@@ -77,7 +81,36 @@ func loadMail(env *Env) (*mailState, error) {
 	if st.Domains == nil {
 		st.Domains = map[string]*mailDomain{}
 	}
+	// Domains from before webmail had neither switch: both start on.
+	var raw struct {
+		Domains map[string]map[string]json.RawMessage `json:"domains"`
+	}
+	if json.Unmarshal(b, &raw) == nil {
+		for d, fields := range raw.Domains {
+			if _, ok := fields["webmail"]; !ok && st.Domains[d] != nil {
+				st.Domains[d].Webmail, st.Domains[d].Autoconfig = true, true
+			}
+		}
+	}
 	return st, nil
+}
+
+// RenderMailOnStart renders mail.json once when the agent starts, so what an
+// upgrade adds to the rendering (new files, new hosts) is there at once.
+func RenderMailOnStart(ctx context.Context, env *Env, logf func(string, ...any)) {
+	if env.Cfg.DryRun || !mailHostingOn(env) {
+		return
+	}
+	_ = withMutate(env, func() error {
+		st, err := loadMail(env)
+		if err == nil {
+			err = saveMail(ctx, env, st)
+		}
+		if err != nil {
+			logf("rendering mail hosting: %v", err)
+		}
+		return err
+	})
 }
 
 // saveMail stores the state and renders everything from it.
@@ -93,7 +126,7 @@ func saveMail(ctx context.Context, env *Env, st *mailState) error {
 }
 
 func renderMail(ctx context.Context, env *Env, st *mailState) error {
-	var domains, boxes, aliases, senders, users bytes.Buffer
+	var domains, boxes, aliases, senders, users, blocked bytes.Buffer
 	for _, w := range []*bytes.Buffer{&domains, &boxes, &aliases, &senders} {
 		w.WriteString("# Managed by WSPanel agent (mail.json).\n")
 	}
@@ -118,6 +151,8 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 			password := "{SHA512-CRYPT}" + mb.Hash
 			if !mb.Enabled {
 				password = "{CRYPT}*"
+				// The deny passdb also stops the webmail's master login for it.
+				fmt.Fprintf(&blocked, "%s:\n", addr)
 			}
 			fmt.Fprintf(&users, "%s:%s::::::%s\n", addr, password, extra)
 		}
@@ -166,8 +201,60 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if err := env.FS.WriteFile(env.Cfg.DovecotUsers, users.Bytes(), 0o640, dovecot); err != nil {
 		return err
 	}
-	_, err := env.Exec.Run(ctx, "postfix", "reload")
+	if err := env.FS.WriteFile(env.Cfg.DovecotBlocked, blocked.Bytes(), 0o640, dovecot); err != nil {
+		return err
+	}
+	if _, err := env.Exec.Run(ctx, "postfix", "reload"); err != nil {
+		return err
+	}
+	return writeMailEdge(ctx, env, st, names)
+}
+
+type mailEdgeDomain struct {
+	Name                string
+	Webmail, Autoconfig bool
+}
+
+// writeMailEdge renders the edge's mail hosts. Checked before the edge
+// reloads; a host another block already serves puts the old file back.
+func writeMailEdge(ctx context.Context, env *Env, st *mailState, names []string) error {
+	data := struct {
+		Host    string
+		Domains []mailEdgeDomain
+	}{Host: mailHostName(env)}
+	for _, d := range names {
+		md := st.Domains[d]
+		data.Domains = append(data.Domains, mailEdgeDomain{Name: d, Webmail: md.Webmail, Autoconfig: md.Autoconfig})
+	}
+	block, err := render("mail-edge.caddy.tmpl", data)
+	if err != nil {
+		return err
+	}
+	old, readErr := os.ReadFile(env.Cfg.MailEdgeFile)
+	if readErr == nil && bytes.Equal(old, block) {
+		return nil
+	}
+	if err := env.FS.WriteFile(env.Cfg.MailEdgeFile, block, 0o644, fsx.Root); err != nil {
+		return err
+	}
+	if err := validateEdge(ctx, env); err != nil {
+		if readErr == nil {
+			_ = env.FS.WriteFile(env.Cfg.MailEdgeFile, old, 0o644, fsx.Root)
+		} else {
+			_ = os.Remove(env.Cfg.MailEdgeFile)
+		}
+		return err
+	}
+	_, err = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
 	return err
+}
+
+// mailHostName is the host mail clients use (MX, IMAP, SMTP).
+func mailHostName(env *Env) string {
+	if env.Cfg.MailHost != "" {
+		return env.Cfg.MailHost
+	}
+	return env.Cfg.PanelDomain
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -203,10 +290,7 @@ func mailInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if err := decode(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
-	host := env.Cfg.MailHost
-	if host == "" {
-		host = env.Cfg.PanelDomain
-	}
+	host := mailHostName(env)
 	res, err := env.Exec.Run(ctx, "mail-hosting", host)
 	if err != nil {
 		return nil, err
@@ -250,8 +334,10 @@ func mailHostingStatus(ctx context.Context, env *Env, raw json.RawMessage) (any,
 
 func mailDomainSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
-		Domain  string `json:"domain"`
-		Enabled bool   `json:"enabled"`
+		Domain     string `json:"domain"`
+		Enabled    bool   `json:"enabled"`
+		Webmail    *bool  `json:"webmail,omitempty"`    // default on for a new domain
+		Autoconfig *bool  `json:"autoconfig,omitempty"` // default on for a new domain
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -270,8 +356,16 @@ func mailDomainSet(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		return nil, err
 	}
 	if p.Enabled {
-		if st.Domains[p.Domain] == nil {
-			st.Domains[p.Domain] = &mailDomain{Mailboxes: map[string]mailbox{}, Aliases: map[string][]string{}}
+		md := st.Domains[p.Domain]
+		if md == nil {
+			md = &mailDomain{Mailboxes: map[string]mailbox{}, Aliases: map[string][]string{}, Webmail: true, Autoconfig: true}
+			st.Domains[p.Domain] = md
+		}
+		if p.Webmail != nil {
+			md.Webmail = *p.Webmail
+		}
+		if p.Autoconfig != nil {
+			md.Autoconfig = *p.Autoconfig
 		}
 	} else if md := st.Domains[p.Domain]; md != nil {
 		if len(md.Mailboxes) > 0 {
@@ -282,7 +376,11 @@ func mailDomainSet(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err := saveMail(ctx, env, st); err != nil {
 		return nil, err
 	}
-	return map[string]any{"domain": p.Domain, "enabled": p.Enabled}, nil
+	out := map[string]any{"domain": p.Domain, "enabled": p.Enabled}
+	if md := st.Domains[p.Domain]; md != nil {
+		out["webmail"], out["autoconfig"] = md.Webmail, md.Autoconfig
+	}
+	return out, nil
 }
 
 func mailMailboxSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -495,9 +593,12 @@ func mailAutoreply(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		return nil, protocol.Invalid("address")
 	}
 	vmail := userCreds("vmail")
-	script := filepath.Join(home, "sieve", "wspanel.sieve")
+	// An "after" script (Dovecot): it runs after the mailbox's own filters,
+	// which the webmail manages, so neither replaces the other.
+	script := filepath.Join(home, "wspanel-autoreply.sieve")
+	dropLegacyAutoreply(ctx, env, vmail, home)
 	if !p.Enabled {
-		_, _ = env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/rm", "-f", "--", filepath.Join(home, ".dovecot.sieve"), script)...)
+		_, _ = env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/rm", "-f", "--", script, strings.TrimSuffix(script, ".sieve")+".svbin")...)
 		return map[string]any{"address": lp + "@" + d, "autoreply": false}, nil
 	}
 	q := func(s string) string {
@@ -505,16 +606,72 @@ func mailAutoreply(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	}
 	text := "require [\"vacation\"];\n" +
 		"vacation :days " + strconv.Itoa(p.Days) + " :subject " + q(p.Subject) + " " + q(p.Body) + ";\n"
-	if _, err := env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/install", "-d", "-m", "0700", filepath.Join(home, "sieve"))...); err != nil {
+	if _, err := env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/install", "-d", "-m", "0700", home)...); err != nil {
 		return nil, err
 	}
 	if _, err := env.Exec.RunIO(ctx, strings.NewReader(text), nil, "setpriv", append(vmail, "/usr/bin/tee", script)...); err != nil {
 		return nil, err
 	}
-	if _, err := env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/ln", "-sfn", "sieve/wspanel.sieve", filepath.Join(home, ".dovecot.sieve"))...); err != nil {
+	return map[string]any{"address": lp + "@" + d, "autoreply": true}, nil
+}
+
+// dropLegacyAutoreply removes the autoreply of before the webmail: it was
+// the mailbox's active personal script (~/sieve/wspanel.sieve).
+func dropLegacyAutoreply(ctx context.Context, env *Env, vmail []string, home string) {
+	link := filepath.Join(home, ".dovecot.sieve")
+	if target, err := os.Readlink(link); err == nil && target == "sieve/wspanel.sieve" {
+		_, _ = env.Exec.Run(ctx, "setpriv", append(vmail, "/usr/bin/rm", "-f", "--", link, filepath.Join(home, "sieve", "wspanel.sieve"))...)
+	}
+}
+
+// mailWebmailLogin signs a mailbox in to its domain's webmail from the panel:
+// a one-time token (60 s) the Roundcube plugin consumes.
+func mailWebmailLogin(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Address string `json:"address"`
+	}
+	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	return map[string]any{"address": lp + "@" + d, "autoreply": true}, nil
+	lp, d, err := splitAddress("address", p.Address)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireHosting(env); err != nil {
+		return nil, err
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	md := st.Domains[d]
+	if md == nil {
+		return nil, protocol.NotFound("mail domain " + d + " is not set up")
+	}
+	mb, ok := md.Mailboxes[lp]
+	if !ok {
+		return nil, protocol.NotFound("mailbox " + lp + "@" + d + " does not exist")
+	}
+	if !mb.Enabled {
+		return nil, protocol.Conflict("mailbox " + lp + "@" + d + " is blocked")
+	}
+	if !md.Webmail {
+		return nil, protocol.Conflict("webmail is off for " + d)
+	}
+	owner, err := lookupOwner(env, env.Cfg.WebmailUser)
+	if err != nil {
+		return nil, err
+	}
+	if err := env.FS.MkdirAll(env.Cfg.WebmailTokens, 0o700, owner); err != nil {
+		return nil, err
+	}
+	token := randomHex(32)
+	payload, _ := json.Marshal(map[string]any{"address": lp + "@" + d, "expires": time.Now().Add(60 * time.Second).Unix()})
+	if err := env.FS.WriteFile(filepath.Join(env.Cfg.WebmailTokens, token+".json"), payload, 0o600, owner); err != nil {
+		return nil, err
+	}
+	// The panel POSTs the token (never in a URL, so never in an access log).
+	return map[string]any{"address": lp + "@" + d, "url": "https://webmail." + d + "/?_task=login", "token": token}, nil
 }
 
 // syncMailCert puts the edge's certificate for the mail host where Postfix
@@ -523,10 +680,7 @@ func syncMailCert(ctx context.Context, env *Env) error {
 	if !mailHostingOn(env) {
 		return nil
 	}
-	host := env.Cfg.MailHost
-	if host == "" {
-		host = env.Cfg.PanelDomain
-	}
+	host := mailHostName(env)
 	crts, _ := filepath.Glob(filepath.Join(env.Cfg.ProxyStorage, "certificates", "*", host, host+".crt"))
 	if len(crts) == 0 {
 		return nil

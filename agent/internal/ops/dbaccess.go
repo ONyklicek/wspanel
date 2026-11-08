@@ -219,7 +219,8 @@ func CleanupDBAccess(ctx context.Context, env *Env) error {
 		return err
 	}
 	tokens, _ := filepath.Glob(filepath.Join(env.Cfg.DBTokenDir, "*.json"))
-	for _, t := range tokens {
+	webmail, _ := filepath.Glob(filepath.Join(env.Cfg.WebmailTokens, "*.json"))
+	for _, t := range append(tokens, webmail...) {
 		if fi, err := os.Lstat(t); err == nil && time.Since(fi.ModTime()) > 2*time.Minute {
 			_ = os.Remove(t)
 		}
