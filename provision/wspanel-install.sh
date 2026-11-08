@@ -61,6 +61,17 @@ fi
 command -v whiptail >/dev/null || { apt-get install -y -q whiptail >/dev/null; }
 W() { whiptail --title "$TITLE" "$@" 3>&1 1>&2 2>&3; }
 ask() { W --inputbox "$1" 12 72 "${2:-}"; }
+# Asks again until the answer matches (a regex), or the dialog is cancelled.
+ask_valid() { # prompt default regex error
+  local v
+  while true; do
+    v=$(ask "$1" "$2") || { echo "Zrušeno." >&2; exit 1; }
+    [[ "$v" =~ $3 ]] && { echo "$v"; return; }
+    W --msgbox "$4" 8 60 || true
+  done
+}
+DOMAIN_RE='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+EMAIL_RE='^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
 yesno() { whiptail --title "$TITLE" --yesno "$1" 12 72; }
 
 W --msgbox "Hostingový panel pro tento server (Debian 13).\n\nPrůvodce se zeptá na adresu panelu a na to, co nainstalovat. Na konci ukáže souhrn a teprve potom začne instalovat (trvá 5–15 minut).\n\nVše jde doinstalovat i později (Server → Moduly)." 15 72
@@ -72,13 +83,14 @@ mode=$(W --menu "Kde bude panel?" 15 72 3 \
   port   "Na IP adrese serveru a portu (bez domény)" \
   both   "Na doméně a vlastním portu (např. example.com:8443)")
 if [[ $mode == domain || $mode == both ]]; then
-  domain=$(ask "Doména panelu (DNS záznam A musí ukazovat na tento server):" "panel.$(hostname -d 2>/dev/null || echo example.com)")
+  base="$(hostname -d 2>/dev/null)"; [[ -n "$base" ]] || base="example.com"
+  domain=$(ask_valid "Doména panelu (DNS záznam A musí ukazovat na tento server):" "panel.$base" "$DOMAIN_RE" "Zadejte doménu, např. panel.example.com.")
   flags+=("--panel-domain=$domain")
-  email=$(ask "E-mail pro Let's Encrypt (upozornění na certifikáty):" "admin@${domain#*.}")
+  email=$(ask_valid "E-mail pro Let's Encrypt (upozornění na certifikáty):" "admin@${domain#*.}" "$EMAIL_RE" "Zadejte platný e-mail.")
   flags+=("--acme-email=$email")
 fi
 if [[ $mode == port || $mode == both ]]; then
-  port=$(ask "Port panelu:" "8443")
+  port=$(ask_valid "Port panelu:" "8443" '^[0-9]{2,5}$' "Port je číslo 10–65535.")
   flags+=("--panel-port=$port")
 fi
 
@@ -115,12 +127,12 @@ if yesno "Omezit přístup k panelu jen na vybrané adresy (VPN, kancelář)?\n\
   [[ -n "$allow" ]] && flags+=("--panel-allow=$allow")
 fi
 
-ADMIN_EMAIL=$(ask "E-mail prvního správce panelu (heslo se vygeneruje):" "${email:-admin@example.com}")
+ADMIN_EMAIL=$(ask_valid "E-mail prvního správce panelu (heslo se vygeneruje):" "${email:-admin@example.com}" "$EMAIL_RE" "Zadejte platný e-mail.")
 
 summary="Nainstaluje se:\n\n$(printf '  %s\n' "${flags[@]}" "${PASS[@]}")\n\nSprávce: $ADMIN_EMAIL\n\nPokračovat?"
 yesno "$summary" || { echo "Nic se neinstalovalo."; exit 1; }
 
-clear
+clear 2>/dev/null || true
 run_install "${flags[@]}" "${PASS[@]}"
 pw="$(create_admin "$ADMIN_EMAIL" "$ADMIN_NAME")"
 url="$(grep '^APP_URL=' /srv/panel/shared/.env | cut -d= -f2-)"
