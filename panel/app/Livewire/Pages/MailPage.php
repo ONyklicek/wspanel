@@ -44,6 +44,9 @@ class MailPage extends Page
 
     public string $log = '';
 
+    /** @var list<array<string, mixed>>|null the queue, once loaded */
+    public ?array $queue = null;
+
     public function mount(): void
     {
         $this->refreshStatus();
@@ -104,6 +107,40 @@ class MailPage extends Page
         } catch (AgentException $e) {
             Toast::error('DKIM se nepodařilo vytvořit', $e->getMessage());
         }
+        $this->refreshStatus();
+    }
+
+    public function loadQueue(): void
+    {
+        try {
+            $this->queue = app(ManageMail::class)->queue();
+        } catch (AgentException $e) {
+            $this->queue = null;
+            Toast::error('Frontu se nepodařilo načíst', $e->getMessage());
+        }
+    }
+
+    public function flushQueue(): void
+    {
+        try {
+            app(ManageMail::class)->flushQueue();
+            Toast::success('Fronta se odesílá znovu');
+        } catch (AgentException $e) {
+            Toast::error('Odeslání selhalo', $e->getMessage());
+        }
+        $this->loadQueue();
+        $this->refreshStatus();
+    }
+
+    public function deleteQueued(?string $id = null): void
+    {
+        try {
+            app(ManageMail::class)->deleteQueued($id === null ? null : [$id]);
+            Toast::success($id === null ? 'Fronta smazána' : 'Zpráva smazána z fronty');
+        } catch (AgentException $e) {
+            Toast::error('Smazání selhalo', $e->getMessage());
+        }
+        $this->loadQueue();
         $this->refreshStatus();
     }
 

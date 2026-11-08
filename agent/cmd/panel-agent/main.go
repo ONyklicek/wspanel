@@ -204,6 +204,7 @@ func binaries(cfg config.Config) map[string]string {
 		"postconf":         "/usr/sbin/postconf",
 		"postmap":          "/usr/sbin/postmap",
 		"postqueue":        "/usr/sbin/postqueue",
+		"postsuper":        "/usr/sbin/postsuper",
 		"postfix":          "/usr/sbin/postfix", // reload only
 		"doveadm":          "/usr/bin/doveadm",  // quota get
 		"mail-hosting":     "/usr/lib/wspanel/mail-hosting.sh",

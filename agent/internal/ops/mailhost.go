@@ -36,8 +36,17 @@ type mailDomain struct {
 	Mailboxes map[string]mailbox  `json:"mailboxes"` // local part -> mailbox
 	Aliases   map[string][]string `json:"aliases"`   // local part ("" = catch-all) -> destinations
 	// webmail.<domain> (Roundcube) and autoconfig./autodiscover.<domain> on the edge.
-	Webmail    bool `json:"webmail"`
-	Autoconfig bool `json:"autoconfig"`
+	Webmail    bool      `json:"webmail"`
+	Autoconfig bool      `json:"autoconfig"`
+	Spam       *mailSpam `json:"spam,omitempty"` // nil = the server's levels
+}
+
+// mailSpam: a domain's own spam levels (Rspamd scores) and sender lists.
+type mailSpam struct {
+	Reject float64  `json:"reject"` // refuse at or above
+	Junk   float64  `json:"junk"`   // mark (into Junk) at or above
+	Allow  []string `json:"allow,omitempty"`
+	Block  []string `json:"block,omitempty"`
 }
 
 type mailState struct {
@@ -207,7 +216,104 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 	if _, err := env.Exec.Run(ctx, "postfix", "reload"); err != nil {
 		return err
 	}
+	if err := writeSpamSettings(ctx, env, st, names); err != nil {
+		return err
+	}
 	return writeMailEdge(ctx, env, st, names)
+}
+
+// writeSpamSettings renders Rspamd's settings: per recipient domain, an
+// allowed sender skips the checks, a blocked one is refused, and the
+// domain's own levels apply to the rest.
+func writeSpamSettings(ctx context.Context, env *Env, st *mailState, names []string) error {
+	var b strings.Builder
+	b.WriteString("# Managed by WSPanel agent (mail.json).\n")
+	q := func(list []string) string {
+		quoted := make([]string, len(list))
+		for i, s := range list {
+			quoted[i] = strconv.Quote(s)
+		}
+		return "[" + strings.Join(quoted, ", ") + "]"
+	}
+	for _, d := range names {
+		sp := st.Domains[d].Spam
+		if sp == nil {
+			continue
+		}
+		id := "wspanel_" + strings.NewReplacer(".", "_", "-", "_").Replace(d)
+		rcpt := strconv.Quote("@" + d)
+		if len(sp.Allow) > 0 {
+			fmt.Fprintf(&b, "%s_allow {\n  priority = high;\n  rcpt = %s;\n  from = %s;\n  want_spam = yes;\n}\n", id, rcpt, q(sp.Allow))
+		}
+		if len(sp.Block) > 0 {
+			fmt.Fprintf(&b, "%s_block {\n  priority = high;\n  rcpt = %s;\n  from = %s;\n  apply {\n    actions {\n      reject = -1000;\n    }\n  }\n}\n", id, rcpt, q(sp.Block))
+		}
+		fmt.Fprintf(&b, "%s {\n  priority = low;\n  rcpt = %s;\n  apply {\n    actions {\n      reject = %s;\n      \"add header\" = %s;\n    }\n  }\n}\n",
+			id, rcpt, strconv.FormatFloat(sp.Reject, 'f', -1, 64), strconv.FormatFloat(sp.Junk, 'f', -1, 64))
+	}
+	old, err := os.ReadFile(env.Cfg.RspamdSettings)
+	if err == nil && string(old) == b.String() {
+		return nil
+	}
+	if err := env.FS.WriteFile(env.Cfg.RspamdSettings, []byte(b.String()), 0o644, fsx.Root); err != nil {
+		return err
+	}
+	_, err = env.Exec.Run(ctx, "systemctl", "reload", "rspamd")
+	return err
+}
+
+var spamSenderRe = regexp.MustCompile(`^([A-Za-z0-9._%+-]{1,64})?@[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$`)
+
+// mailSpamSet sets a domain's spam levels and sender lists (nil levels =
+// back to the server's).
+func mailSpamSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Domain string    `json:"domain"`
+		Spam   *mailSpam `json:"spam"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := validate.Domain(p.Domain); err != nil {
+		return nil, err
+	}
+	if sp := p.Spam; sp != nil {
+		if sp.Reject < 5 || sp.Reject > 100 || sp.Junk < 1 || sp.Junk >= sp.Reject {
+			return nil, protocol.Invalid("spam: reject 5-100, junk from 1 and below reject")
+		}
+		if len(sp.Allow) > 500 || len(sp.Block) > 500 {
+			return nil, protocol.Invalid("spam: at most 500 senders per list")
+		}
+		for i, list := range [][]string{sp.Allow, sp.Block} {
+			for j, s := range list {
+				s = strings.ToLower(strings.TrimSpace(s))
+				if !spamSenderRe.MatchString(s) {
+					return nil, protocol.Invalid("spam: not an address or @domain: " + s)
+				}
+				if i == 0 {
+					sp.Allow[j] = s
+				} else {
+					sp.Block[j] = s
+				}
+			}
+		}
+	}
+	if err := requireHosting(env); err != nil {
+		return nil, err
+	}
+	st, err := loadMail(env)
+	if err != nil {
+		return nil, err
+	}
+	md := st.Domains[p.Domain]
+	if md == nil {
+		return nil, protocol.NotFound("mail domain " + p.Domain + " is not set up")
+	}
+	md.Spam = p.Spam
+	if err := saveMail(ctx, env, st); err != nil {
+		return nil, err
+	}
+	return map[string]any{"domain": p.Domain, "spam": md.Spam}, nil
 }
 
 type mailEdgeDomain struct {

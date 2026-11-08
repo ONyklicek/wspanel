@@ -4,8 +4,12 @@ namespace Tests\Feature;
 
 use App\Actions\Clients\ManageClients;
 use App\Actions\Mail\ManageMailHosting;
+use App\Actions\Sites\CreateSite;
+use App\Actions\Sites\ManageEdge;
 use App\Exceptions\LimitReachedException;
+use App\Livewire\Mail\ViewMailDomain;
 use App\Models\Client;
+use App\Models\DnsZone;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
 use App\Models\Package;
@@ -14,14 +18,18 @@ use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
+use App\Services\Dns\Resolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
+use Tests\Concerns\RunsWireActions;
 use Tests\TestCase;
 
 class MailHostingTest extends TestCase
 {
     use RefreshDatabase;
+    use RunsWireActions;
 
     private MockInterface $agent;
 
@@ -93,6 +101,42 @@ class MailHostingTest extends TestCase
         $this->assertFalse(MailDomain::acrossClients()->where('domain', 'bob.cz')->exists());
     }
 
+    public function test_a_subdomain_site_is_no_claim_to_the_parent_domains_mail(): void
+    {
+        [$alice, $bob] = Client::factory()->count(2)->create();
+        Site::acrossClients()->create(['domain' => 'bob.cz', 'client_id' => $bob->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        Site::acrossClients()->create(['domain' => 'x.bob.cz', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        Site::acrossClients()->create(['domain' => 'shop.carol.cz', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $this->actingAs(User::factory()->forClient($alice)->create());
+        $mail = app(ManageMailHosting::class);
+
+        foreach (['bob.cz' => 'jiného vlastníka', 'carol.cz' => 'vašeho webu'] as $domain => $why) {
+            try {
+                $mail->addDomain($domain);
+                $this->fail("{$domain} must be refused");
+            } catch (AgentException $e) {
+                $this->assertStringContainsString($why, $e->getMessage());
+            }
+        }
+    }
+
+    public function test_a_client_cannot_put_a_site_or_alias_under_another_clients_domain(): void
+    {
+        [$alice, $bob] = Client::factory()->count(2)->create();
+        DnsZone::acrossClients()->create(['domain' => 'bob.cz', 'provider' => 'local', 'client_id' => $bob->id]);
+        $own = Site::acrossClients()->create(['domain' => 'alice.cz', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $this->actingAs(User::factory()->forClient($alice)->create());
+
+        try {
+            app(CreateSite::class)->handle(['domain' => 'shop.bob.cz', 'framework' => 'php', 'php_version' => '8.4']);
+            $this->fail('a site inside another client\'s zone');
+        } catch (AgentException $e) {
+            $this->assertStringContainsString('jiného vlastníka', $e->getMessage());
+        }
+        $this->expectExceptionMessage('shop.bob.cz: doména (nebo její část) patří jinému vlastníkovi');
+        app(ManageEdge::class)->set($own, ['aliases' => ['shop.bob.cz']]);
+    }
+
     public function test_the_administrator_cannot_take_a_clients_mail_domain(): void
     {
         $bob = Client::factory()->create();
@@ -113,6 +157,30 @@ class MailHostingTest extends TestCase
         app(ManageClients::class)->assignSite($site, $bob);
 
         $this->assertSame($bob->id, MailDomain::acrossClients()->sole()->client_id);
+    }
+
+    public function test_suspending_a_client_blocks_its_mailboxes_and_resuming_brings_back_only_those(): void
+    {
+        $client = Client::factory()->create();
+        $domain = MailDomain::acrossClients()->create(['domain' => 'klient.cz', 'client_id' => $client->id]);
+        $active = Mailbox::withoutGlobalScopes()->create(['mail_domain_id' => $domain->id, 'local_part' => 'info', 'quota_mb' => 100, 'enabled' => true]);
+        $alreadyBlocked = Mailbox::withoutGlobalScopes()->create(['mail_domain_id' => $domain->id, 'local_part' => 'old', 'quota_mb' => 100, 'enabled' => false]);
+        $sent = [];
+        $this->agent->shouldReceive('call')->with('mail.mailbox.set', Mockery::on(function ($p) use (&$sent) {
+            $sent[] = $p['address'].'='.($p['enabled'] ? 'on' : 'off');
+
+            return true;
+        }))->andReturn([]);
+        $this->actingAs(User::factory()->create());
+        $clients = app(ManageClients::class);
+
+        $clients->suspend($client);
+        $this->assertFalse($active->fresh()->enabled);
+
+        $clients->resume($client->fresh());
+        $this->assertTrue($active->fresh()->enabled);
+        $this->assertFalse($alreadyBlocked->fresh()->enabled, 'a mailbox blocked before stays blocked');
+        $this->assertSame(['info@klient.cz=off', 'info@klient.cz=on'], $sent);
     }
 
     public function test_a_client_does_not_see_another_clients_mail(): void
@@ -214,5 +282,43 @@ class MailHostingTest extends TestCase
         $this->assertTrue(Site::hostTaken('webmail.firma.cz'));
         $this->assertTrue(Site::hostTaken('autodiscover.firma.cz'));
         $this->assertFalse(Site::hostTaken('shop.firma.cz'));
+    }
+
+    public function test_spam_levels_and_lists_are_set_from_the_domain_page(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $this->agent->shouldReceive('call')->once()->with('mail.spam.set', ['domain' => 'firma.cz', 'spam' => [
+            'reject' => 20.0, 'junk' => 5.0, 'allow' => ['boss@partner.cz', '@bank.cz'], 'block' => ['@spam.example'],
+        ]])->andReturn([]);
+
+        $page = Livewire::test(ViewMailDomain::class, ['record' => $domain->id]);
+        $this->pageAction($page, 'spam', ['custom' => true, 'reject' => '20', 'junk' => '5', 'allow' => "boss@partner.cz\n@bank.cz", 'block' => '@spam.example'])
+            ->assertHasNoErrors();
+
+        $this->assertSame(20.0, (float) $domain->fresh()->spam['reject']);
+    }
+
+    public function test_the_deliverability_check_opens_on_the_domain_page(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $this->app->instance(Resolver::class, new class extends Resolver
+        {
+            public function records(string $name, int $type, string $field): array
+            {
+                return [];
+            }
+
+            public function reverse(string $ip): ?string
+            {
+                return null;
+            }
+        });
+
+        $page = Livewire::test(ViewMailDomain::class, ['record' => $domain->id])
+            ->call('mountAction', 'deliverability');
+
+        $page->assertSee('MX (příchozí pošta)')->assertSee('DMARC');
     }
 }

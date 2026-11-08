@@ -901,6 +901,28 @@ curl -sk --max-time 10 "imaps://127.0.0.1/INBOX" -u alice@shop.localhost:Alice-h
 for _ in $(seq 1 10); do [[ "$(learned)" -gt "${l0:-0}" ]] && break; sleep 1; done
 check "moving mail into Junk teaches Rspamd spam" test "$(learned)" -gt "${l0:-0}"
 
+# The domain's own spam lists (Rspamd settings).
+php '$d = App\Models\MailDomain::where("domain","shop.localhost")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->setSpam($d, ["reject" => 15, "junk" => 6, "allow" => ["friend@example.org"], "block" => ["@spam.example"]]);' >/dev/null
+sleep 2 # rspamd reload
+contains "a blocked sender is refused" "$(swaks --server 127.0.0.1 --to alice@shop.localhost --from bad@spam.example --header 'Subject: hello' --body 'Hello there, an ordinary message.' 2>&1)" "554"
+swaks --server 127.0.0.1 --to alice@shop.localhost --from friend@example.org --header "Subject: allow-$RANDOM" --body 'Hi, from a friend.' >/dev/null 2>&1
+sleep 1
+contains "an allowed sender skips the spam checks" "$(tail -n 50 /var/log/rspamd/rspamd.log | grep 'friend@example.org' | tail -1)" "settings_id: wspanel_shop_localhost_allow"
+php '$d = App\Models\MailDomain::where("domain","shop.localhost")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->setSpam($d, null);' >/dev/null
+contains "the queue lists as JSON" "$(php 'echo json_encode(app(App\Actions\Mail\ManageMail::class)->queue());')" "["
+# What a mailbox sends is DKIM-signed (its domain got a key with the mail domain).
+swaks --server 127.0.0.1 --port 587 --tls --auth LOGIN --auth-user alice@shop.localhost --auth-password Alice-heslo-123 --from alice@shop.localhost --to bob@shop.localhost --header "Subject: e2e-dkim-$RANDOM" >/dev/null 2>&1
+sleep 2
+last_header() { python3 - "$@" <<'PY'
+import imaplib, ssl, sys
+m = imaplib.IMAP4_SSL("127.0.0.1", 993, ssl_context=ssl._create_unverified_context())
+m.login(sys.argv[1], sys.argv[2]); typ, data = m.select("INBOX")
+typ, msg = m.fetch(data[0].decode(), "(BODY.PEEK[HEADER.FIELDS (" + sys.argv[3] + ")])")
+print(msg[0][1].decode(errors="replace"))
+PY
+}
+contains "mail from a mailbox carries a DKIM signature" "$(last_header bob@shop.localhost Bob-heslo-12345 DKIM-SIGNATURE 2>&1)" "d=shop.localhost"
+
 # Autoreply: bob writes to alice, alice is away.
 php '$mb = App\Models\Mailbox::whereHas("mailDomain", fn ($q) => $q->where("domain","shop.localhost"))->where("local_part","alice")->sole(); app(App\Actions\Mail\ManageMailHosting::class)->autoreply($mb, ["enabled" => true, "subject" => "Jsem na dovolene", "body" => "Vratim se v pondeli.", "days" => 1]);' >/dev/null
 b1=$(imap_count bob@shop.localhost Bob-heslo-12345)

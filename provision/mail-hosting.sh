@@ -384,6 +384,7 @@ postconf -P -e \
   "submission/inet/syslog_name=postfix/submission" \
   "submission/inet/smtpd_tls_security_level=encrypt" \
   "submission/inet/smtpd_sasl_auth_enable=yes" \
+  "submission/inet/milter_macro_daemon_name=ORIGINATING" \
   "submission/inet/smtpd_sasl_exceptions_networks=" \
   "submission/inet/smtpd_discard_ehlo_keyword_address_maps=" \
   "submission/inet/smtpd_sasl_type=dovecot" \
@@ -398,6 +399,7 @@ postconf -P -e \
   "smtps/inet/syslog_name=postfix/smtps" \
   "smtps/inet/smtpd_tls_wrappermode=yes" \
   "smtps/inet/smtpd_sasl_auth_enable=yes" \
+  "smtps/inet/milter_macro_daemon_name=ORIGINATING" \
   "smtps/inet/smtpd_sasl_exceptions_networks=" \
   "smtps/inet/smtpd_discard_ehlo_keyword_address_maps=" \
   "smtps/inet/smtpd_sasl_type=dovecot" \
@@ -481,6 +483,12 @@ sed "s/__PHP__/$PHP/g" "$FILES/webmail/webmail.caddy" > /etc/panel-web/webmail.c
 "php-fpm$PHP" -t 2>/dev/null
 systemctl reload "php$PHP-fpm" 2>/dev/null || systemctl restart "php$PHP-fpm"
 systemctl reload panel-web 2>/dev/null || true
+
+# OpenDKIM signs what mailbox users send (marked ORIGINATING above).
+if ! grep -q '^MacroList' /etc/opendkim.conf; then
+  echo 'MacroList               daemon_name|ORIGINATING' >> /etc/opendkim.conf
+  systemctl restart opendkim
+fi
 
 # ---------------------------------------------------------------- firewall, fail2ban
 if command -v ufw >/dev/null; then

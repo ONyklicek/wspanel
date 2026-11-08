@@ -11,14 +11,14 @@ class MailDomain extends Model
 {
     use OwnedByClient;
 
-    protected $fillable = ['domain', 'client_id', 'webmail', 'autoconfig'];
+    protected $fillable = ['domain', 'client_id', 'webmail', 'autoconfig', 'spam'];
 
     /** Host names the edge serves for the domain's mail (webmail, client settings). */
     public const SERVICE_PREFIXES = ['webmail' => ['webmail'], 'autoconfig' => ['autoconfig', 'autodiscover']];
 
     protected function casts(): array
     {
-        return ['webmail' => 'boolean', 'autoconfig' => 'boolean'];
+        return ['webmail' => 'boolean', 'autoconfig' => 'boolean', 'spam' => 'array'];
     }
 
     public function webmailUrl(): ?string

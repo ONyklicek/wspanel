@@ -86,4 +86,20 @@ class MailTest extends TestCase
         $this->get('/auth/check', ['X-Forwarded-Uri' => '/mailpit/'])->assertRedirect('/login');
         $this->assertStringEndsWith('/mailpit/', session('url.intended'));
     }
+
+    public function test_the_queue_shows_why_mail_waits_and_can_be_cleared(): void
+    {
+        $this->agent->shouldReceive('call')->with('mail.queue', ['action' => 'list'])->andReturn(['messages' => [
+            ['id' => 'A1B2C3D4E5', 'queue' => 'deferred', 'arrival' => 1794100000, 'size' => 900, 'sender' => 'noreply@app.example.com',
+                'recipients' => ['who@example.net'], 'reason' => 'connect to mx.example.net: Connection timed out'],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('mail.queue', ['action' => 'delete', 'ids' => ['A1B2C3D4E5']])->andReturn(['deleted' => 1]);
+
+        Livewire::test(Mail::class)
+            ->call('loadQueue')
+            ->assertSee('who@example.net')
+            ->assertSee('Connection timed out')
+            ->call('deleteQueued', 'A1B2C3D4E5')
+            ->assertNotified();
+    }
 }

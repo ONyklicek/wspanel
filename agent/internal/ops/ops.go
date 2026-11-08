@@ -150,6 +150,8 @@ func Registry() map[string]Op {
 		{"mail.autoreply", true, mailAutoreply},
 		{"mail.certs", true, mailCerts},
 		{"mail.webmail.login", false, mailWebmailLogin},
+		{"mail.queue", true, mailQueue},
+		{"mail.spam.set", true, mailSpamSet},
 		{"site.credentials", false, siteCredentials},
 		{"valkey.set", true, valkeySet},
 		{"valkey.status", false, valkeyStatus},

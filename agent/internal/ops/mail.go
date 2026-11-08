@@ -431,6 +431,93 @@ func mailDKIM(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	return dkimRecord(env, p.Domain, key)
 }
 
+var queueIDRe = regexp.MustCompile(`^[0-9A-Za-z]{6,20}$`)
+
+type queuedMail struct {
+	ID         string   `json:"id"`
+	Queue      string   `json:"queue"` // active | deferred | hold | incoming
+	Arrival    int64    `json:"arrival"`
+	Size       int64    `json:"size"`
+	Sender     string   `json:"sender"`
+	Recipients []string `json:"recipients"`
+	Reason     string   `json:"reason,omitempty"` // why delivery was deferred
+}
+
+// mailQueue lists Postfix's queue, sends it again now, or deletes messages.
+func mailQueue(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		Action string   `json:"action"` // list | flush | delete
+		IDs    []string `json:"ids,omitempty"`
+		All    bool     `json:"all,omitempty"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := validate.OneOf("action", p.Action, []string{"list", "flush", "delete"}); err != nil {
+		return nil, err
+	}
+	switch p.Action {
+	case "flush":
+		if _, err := env.Exec.Run(ctx, "postqueue", "-f"); err != nil {
+			return nil, err
+		}
+		return map[string]any{"flushed": true}, nil
+	case "delete":
+		if p.All {
+			if _, err := env.Exec.Run(ctx, "postsuper", "-d", "ALL"); err != nil {
+				return nil, err
+			}
+			return map[string]any{"deleted": "all"}, nil
+		}
+		if len(p.IDs) == 0 || len(p.IDs) > 500 {
+			return nil, protocol.Invalid("ids: 1-500 queue ids, or all")
+		}
+		for _, id := range p.IDs {
+			if !queueIDRe.MatchString(id) {
+				return nil, protocol.Invalid("ids: not a queue id: " + id)
+			}
+		}
+		// postsuper -d - reads the ids from stdin, one per line.
+		if _, err := env.Exec.RunIO(ctx, strings.NewReader(strings.Join(p.IDs, "\n")+"\n"), nil, "postsuper", "-d", "-"); err != nil {
+			return nil, err
+		}
+		return map[string]any{"deleted": len(p.IDs)}, nil
+	}
+	res, err := env.Exec.Run(ctx, "postqueue", "-j")
+	if err != nil {
+		return nil, err
+	}
+	out := []queuedMail{}
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		var m struct {
+			Queue      string `json:"queue_name"`
+			ID         string `json:"queue_id"`
+			Arrival    int64  `json:"arrival_time"`
+			Size       int64  `json:"message_size"`
+			Sender     string `json:"sender"`
+			Recipients []struct {
+				Address string `json:"address"`
+				Reason  string `json:"delay_reason"`
+			} `json:"recipients"`
+		}
+		if strings.TrimSpace(line) == "" || json.Unmarshal([]byte(line), &m) != nil {
+			continue
+		}
+		q := queuedMail{ID: m.ID, Queue: m.Queue, Arrival: m.Arrival, Size: m.Size, Sender: m.Sender}
+		for _, r := range m.Recipients {
+			q.Recipients = append(q.Recipients, r.Address)
+			if q.Reason == "" {
+				q.Reason = r.Reason
+			}
+		}
+		out = append(out, q)
+		if len(out) >= 1000 {
+			break
+		}
+	}
+	return map[string]any{"messages": out}, nil
+}
+
 // mailLog: the tail of Postfix's log (deliveries, bounces, deferrals).
 func mailLog(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {

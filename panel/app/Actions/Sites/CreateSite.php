@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Support\CurrentClient;
+use App\Support\DomainOwnership;
 use App\Support\Domains;
 use App\Support\Limits;
 
@@ -35,6 +36,10 @@ class CreateSite
     {
         $data['mode'] ??= 'classic';
         $owner = Client::find(CurrentClient::id() ?? ($data['client_id'] ?? null));
+        // A client's site never lands in (or above) another owner's domain.
+        if ($owner !== null && DomainOwnership::takenByAnother($data['domain'], $owner->id)) {
+            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
+        }
         $this->limits->assertCanAdd($owner, 'sites');
         $this->limits->assertMode($owner, $data['mode'], $data['mode'] === 'classic' ? ($data['php_version'] ?? null) : null);
         $params = ['domain' => $data['domain']] + Domains::runtimeParams($data);

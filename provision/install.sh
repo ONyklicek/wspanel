@@ -325,6 +325,9 @@ SigningTable            refile:/etc/opendkim/SigningTable
 # not by the From header a site could set to anything.
 SenderMacro             mail_addr
 InternalHosts           127.0.0.1, ::1
+# Mailbox users sending from their programs (submission/smtps, mail hosting)
+# connect from anywhere: those listeners mark the mail as originating.
+MacroList               daemon_name|ORIGINATING
 TrustAnchorFile         /usr/share/dns/root.key
 CONF
 systemctl enable opendkim postfix >/dev/null

@@ -15,6 +15,7 @@ use App\Livewire\Sites\SiteFiles;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Client;
 use App\Models\Site;
+use App\Services\Agent\AgentException;
 use App\Wire\Sites\SiteActions;
 use App\Wire\Sites\SiteFields;
 use Illuminate\Support\Facades\Gate;
@@ -165,7 +166,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                 }
                 try {
                     $site = app(CreateSite::class)->handle($data);
-                } catch (LimitReachedException $e) {
+                } catch (LimitReachedException|AgentException $e) {
                     throw ValidationException::withMessages(['data.domain' => $e->getMessage()]);
                 }
                 if ($site->status === SiteStatus::Failed) {

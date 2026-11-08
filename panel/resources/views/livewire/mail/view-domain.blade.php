@@ -1,5 +1,6 @@
 <div class="wire-resource-page space-y-4 sm:space-y-6">
     @include('wire-panels::pages.partials.header')
+    @include('wire-panels::pages.partials.action-modals')
 
     <x-wire::section heading="Nastavení poštovních programů" description="Thunderbird, Outlook, telefon: server a porty, přihlašuje se celou adresou.">
         <dl class="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[10rem_1fr]">

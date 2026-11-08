@@ -11,13 +11,14 @@ return new class extends Migration
         Schema::table('mail_domains', function (Blueprint $table) {
             $table->boolean('webmail')->default(true)->after('client_id');
             $table->boolean('autoconfig')->default(true)->after('webmail');
+            $table->json('spam')->nullable()->after('autoconfig');
         });
     }
 
     public function down(): void
     {
         Schema::table('mail_domains', function (Blueprint $table) {
-            $table->dropColumn(['webmail', 'autoconfig']);
+            $table->dropColumn(['webmail', 'autoconfig', 'spam']);
         });
     }
 };

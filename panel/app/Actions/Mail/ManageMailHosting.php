@@ -3,7 +3,6 @@
 namespace App\Actions\Mail;
 
 use App\Models\Client;
-use App\Models\DnsZone;
 use App\Models\MailAlias;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
@@ -12,6 +11,7 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
 use App\Support\CurrentClient;
+use App\Support\DomainOwnership;
 use App\Support\Limits;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +69,8 @@ class ManageMailHosting
             $record->{$feature} = ! $this->hostsTaken($record, $feature);
         }
         $this->agent->call('mail.domain.set', ['domain' => $domain, 'enabled' => true, 'webmail' => $record->webmail, 'autoconfig' => $record->autoconfig]);
+        // What the mailboxes send is DKIM-signed (the key is kept if a site has one).
+        app(ManageMail::class)->dkim($domain);
         $record->save();
 
         return $record;
@@ -90,6 +92,20 @@ class ManageMailHosting
         }
         $this->agent->call('mail.domain.set', ['domain' => $domain->domain, 'enabled' => true, 'webmail' => $webmail, 'autoconfig' => $autoconfig]);
         $domain->update(['webmail' => $webmail, 'autoconfig' => $autoconfig]);
+    }
+
+    /**
+     * The domain's own spam levels and sender lists; null = the server's
+     * (refuse from 15 points, Junk from 6).
+     *
+     * @param  array{reject: float, junk: float, allow: list<string>, block: list<string>}|null  $spam
+     *
+     * @throws AgentException
+     */
+    public function setSpam(MailDomain $domain, ?array $spam): void
+    {
+        $this->agent->call('mail.spam.set', ['domain' => $domain->domain, 'spam' => $spam]);
+        $domain->update(['spam' => $spam]);
     }
 
     /** A site already answers for one of the feature's host names. */
@@ -178,26 +194,11 @@ class ManageMailHosting
      */
     private function assertMayReceive(string $domain, ?Client $owner): void
     {
-        $owners = collect();
-        foreach (Site::acrossClients()->get(['id', 'domain', 'edge_settings', 'client_id']) as $site) {
-            $hosts = array_merge([$site->domain], $site->edge_settings['aliases'] ?? [], $site->edge_settings['redirect_hosts'] ?? []);
-            foreach ($hosts as $host) {
-                if ($host === $domain || str_ends_with((string) $host, '.'.$domain)) {
-                    $owners->push($site->client_id);
-                }
-            }
-        }
-        foreach (DnsZone::acrossClients()->get(['domain', 'client_id']) as $zone) {
-            if ($zone->domain === $domain || str_ends_with($domain, '.'.$zone->domain)) {
-                $owners->push($zone->client_id);
-            }
-        }
-        $owners = $owners->unique();
         $ownerId = $owner?->id;
-        if ($owners->isNotEmpty() && ! $owners->contains($ownerId)) {
-            throw new AgentException('forbidden', 'Doména patří webu nebo DNS zóně jiného vlastníka.', 'panel');
+        if (DomainOwnership::takenByAnother($domain, $ownerId)) {
+            throw new AgentException('forbidden', 'Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.', 'panel');
         }
-        if ($ownerId !== null && $owners->isEmpty()) {
+        if ($ownerId !== null && ! DomainOwnership::owns($domain, $ownerId)) {
             throw new AgentException('forbidden', 'Poštu lze zřídit jen pro doménu vašeho webu nebo DNS zóny.', 'panel');
         }
     }

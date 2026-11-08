@@ -76,8 +76,12 @@ Prázdný server = doručovat přímo.
 
 ## Log a fronta
 
+**Pošta → Fronta** ukáže zprávy, které čekají na doručení, a proč (server
+příjemce neodpovídá, odložil je…). Jde je poslat znovu, nebo smazat jednotlivě
+či všechny.
+
 **Pošta → Log pošty:** doručení, odmítnutí a odložené zprávy (Postfix, OpenDKIM).
-Počet zpráv ve frontě je v části Stav. Zprávy, které nejde doručit, Postfix
+Zprávy, které nejde doručit, Postfix
 zkouší znovu až 5 dní a pak je vrátí odesílateli.
 
 
@@ -145,12 +149,26 @@ kterých si poštovní programy server najdou samy, a CNAME `webmail`,
 `autoconfig` a `autodiscover` na server pošty. SPF, DKIM a DMARC zůstávají
 jako u odchozí pošty.
 
+### Doručitelnost
+
+**Kontrola doručitelnosti** v detailu domény ukáže najednou, co kontrolují
+ostatní servery: MX, adresu serveru pošty, reverzní záznam (PTR, nastavuje ho
+poskytovatel serveru), SPF, DKIM (porovná klíč v DNS s tím, kterým server
+podepisuje), DMARC, tři DNS blacklisty a záznamy webmailu. Pošta odeslaná
+ze schránek (programy i webmail) je podepsaná DKIM klíčem domény, který
+vznikne s poštovní doménou.
+
 ### Antispam
 
 Rspamd hodnotí každou příchozí zprávu: nad 15 bodů ji odmítne, nad 6 ji
 označí a Sieve ji přesune do složky **Junk**. Testovací zpráva GTUBE se
 odmítá vždy. Odesílání z programů vyžaduje přihlášení a schránka smí
 odesílat jen za sebe (a své aliasy); neúspěšná přihlášení hlídá fail2ban.
+**Antispam** v detailu domény: vlastní prahy (do Junk od, odmítnout od),
+seznam odesílatelů, které přijmout vždy (bez kontroly), a seznam odesílatelů,
+které vždy odmítnout. Obojí jako adresa nebo `@doména`. Zprávu GTUBE
+odmítne Rspamd vždy, i od povoleného odesílatele.
+
 Statistiky učení drží Rspamd ve vlastní instanci Valkey (jen unix socket).
 Jeho rozhraní (učení, statistiky) chce heslo i z localhostu, které má jen
 root a doručovací proces.

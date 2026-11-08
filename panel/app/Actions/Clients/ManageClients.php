@@ -2,10 +2,12 @@
 
 namespace App\Actions\Clients;
 
+use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Sites\ControlSite;
 use App\Enums\UserRole;
 use App\Models\Client;
 use App\Models\DnsZone;
+use App\Models\Mailbox;
 use App\Models\MailDomain;
 use App\Models\Site;
 use App\Models\User;
@@ -13,6 +15,7 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\AgentJobs;
 use App\Support\CurrentClient;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -97,10 +100,10 @@ class ManageClients
 
     /**
      * Switches every running site of the client off (visitors get 503) and
-     * blocks its sign-ins. Remembers which sites were running, so resume()
-     * brings back exactly those.
+     * blocks its sign-ins, its mailboxes' included (mail still arrives).
+     * Remembers what was running, so resume() brings back exactly that.
      *
-     * @return list<string> sites that could not be switched off
+     * @return list<string> sites and mailboxes that could not be switched off
      */
     public function suspend(Client $client): array
     {
@@ -116,9 +119,28 @@ class ManageClients
                 }
             }
         });
-        $client->update(['suspended_at' => now(), 'suspended_sites' => $stopped]);
+        $blocked = [];
+        CurrentClient::unrestricted(function () use ($client, &$failed, &$blocked): void {
+            foreach ($this->clientMailboxes($client)->where('enabled', true) as $mailbox) {
+                try {
+                    app(ManageMailHosting::class)->saveMailbox($mailbox->mailDomain, $mailbox->local_part, null, $mailbox->quota_mb, false, $mailbox);
+                    $blocked[] = $mailbox->id;
+                } catch (AgentException $e) {
+                    $failed[] = $mailbox->address().': '.$e->getMessage();
+                }
+            }
+        });
+        $client->update(['suspended_at' => now(), 'suspended_sites' => $stopped, 'suspended_mailboxes' => $blocked]);
 
         return $failed;
+    }
+
+    /** @return Collection<int, Mailbox> */
+    private function clientMailboxes(Client $client): Collection
+    {
+        $domains = MailDomain::acrossClients()->where('client_id', $client->id)->pluck('id');
+
+        return Mailbox::withoutGlobalScopes()->with('mailDomain')->whereIn('mail_domain_id', $domains)->get();
     }
 
     /** @return list<string> sites that could not be switched back on */
@@ -133,8 +155,15 @@ class ManageClients
                     $failed[] = $site->domain.': '.$e->getMessage();
                 }
             }
+            foreach ($this->clientMailboxes($client)->whereIn('id', $client->suspended_mailboxes ?? []) as $mailbox) {
+                try {
+                    app(ManageMailHosting::class)->saveMailbox($mailbox->mailDomain, $mailbox->local_part, null, $mailbox->quota_mb, true, $mailbox);
+                } catch (AgentException $e) {
+                    $failed[] = $mailbox->address().': '.$e->getMessage();
+                }
+            }
         });
-        $client->update(['suspended_at' => null, 'suspended_sites' => null]);
+        $client->update(['suspended_at' => null, 'suspended_sites' => null, 'suspended_mailboxes' => null]);
 
         return $failed;
     }
@@ -145,9 +174,10 @@ class ManageClients
      */
     public function delete(Client $client): void
     {
-        $owned = $client->sites()->count() + $client->databases()->count() + $client->dnsZones()->count();
+        $owned = $client->sites()->count() + $client->databases()->count() + $client->dnsZones()->count()
+            + MailDomain::acrossClients()->where('client_id', $client->id)->count();
         if ($owned > 0) {
-            throw new RuntimeException('Klient ještě vlastní weby, databáze nebo DNS zóny. Smažte je nebo je převeďte jinému klientovi.');
+            throw new RuntimeException('Klient ještě vlastní weby, databáze, DNS zóny nebo poštovní domény. Smažte je nebo je převeďte jinému klientovi.');
         }
         if ($client->linux_group !== null) {
             $this->agent->call('client.delete', ['group' => $client->linux_group]);

@@ -70,6 +70,38 @@
             </div>
         </x-wire::section>
 
+        <x-wire::section heading="Fronta" description="Zprávy, které čekají na doručení (server příjemce je nedostupný nebo je odložil), a proč.">
+            <div class="flex flex-wrap gap-2">
+                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="loadQueue">{{ $queue === null ? 'Načíst frontu' : 'Obnovit' }}</x-wire::button>
+                @if (! empty($queue))
+                    <x-wire::button size="sm" color="gray" outlined icon="outline:paper-airplane" wire:click="flushQueue">Odeslat znovu</x-wire::button>
+                    <x-wire::button size="sm" color="danger" outlined icon="outline:trash" wire:click="deleteQueued" wire:confirm="Smazat všechny zprávy ve frontě? Nebudou doručeny.">Smazat vše</x-wire::button>
+                @endif
+            </div>
+            @if ($queue !== null)
+                @if ($queue === [])
+                    <p class="mt-3 text-sm text-gray-500">Fronta je prázdná.</p>
+                @else
+                    <div class="mt-3 overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="text-gray-500"><tr><th class="py-1 pe-3">Přijato</th><th class="py-1 pe-3">Od</th><th class="py-1 pe-3">Komu</th><th class="py-1 pe-3">Důvod</th><th class="py-1"></th></tr></thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-white/5">
+                                @foreach ($queue as $m)
+                                    <tr class="align-top" wire:key="q-{{ $m['id'] }}">
+                                        <td class="py-1.5 pe-3 whitespace-nowrap">{{ \Illuminate\Support\Carbon::createFromTimestamp($m['arrival'])->format('j. n. H:i') }}<span class="block font-mono text-gray-400">{{ $m['id'] }} · {{ $m['queue'] }}</span></td>
+                                        <td class="py-1.5 pe-3 font-mono break-all">{{ $m['sender'] ?: '<>' }}</td>
+                                        <td class="py-1.5 pe-3 font-mono break-all">{{ implode(', ', $m['recipients'] ?? []) }}</td>
+                                        <td class="max-w-md py-1.5 pe-3 break-words text-gray-500">{{ $m['reason'] ?? '' }}</td>
+                                        <td class="py-1.5"><x-wire::button size="xs" color="gray" outlined wire:click="deleteQueued('{{ $m['id'] }}')">Smazat</x-wire::button></td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            @endif
+        </x-wire::section>
+
         <x-wire::section heading="Log pošty" description="Doručení, odmítnutí a odložené zprávy (Postfix a OpenDKIM).">
             <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="loadLog">{{ $log === '' ? 'Načíst log' : 'Obnovit' }}</x-wire::button>
             @if ($log !== '')

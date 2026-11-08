@@ -121,8 +121,9 @@ type Config struct {
 	DovecotBlocked string `json:"dovecot_blocked"` // deny passdb: blocked mailboxes
 	MailEdgeFile   string `json:"mail_edge_file"`  // edge: webmail.<domain>, autoconfig/autodiscover
 	WebmailUser    string `json:"webmail_user"`
-	WebmailTokens  string `json:"webmail_tokens"` // one-time sign-in tokens for Roundcube
-	LoginSenders   string `json:"login_senders"`  // Postfix: Unix login -> senders allowed with sendmail -f
+	WebmailTokens  string `json:"webmail_tokens"`  // one-time sign-in tokens for Roundcube
+	RspamdSettings string `json:"rspamd_settings"` // per-domain spam levels and sender lists
+	LoginSenders   string `json:"login_senders"`   // Postfix: Unix login -> senders allowed with sendmail -f
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
@@ -218,6 +219,7 @@ func Defaults() Config {
 		MailEdgeFile:      "/etc/panel-proxy/mail-sites.caddy",
 		WebmailUser:       "webmail",
 		WebmailTokens:     "/run/wspanel-webmail",
+		RspamdSettings:    "/etc/rspamd/local.d/settings.conf",
 		LoginSenders:      "/etc/postfix/wspanel_login_senders",
 	}
 }

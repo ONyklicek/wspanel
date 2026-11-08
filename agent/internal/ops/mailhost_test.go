@@ -25,6 +25,7 @@ func mailTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.MailEdgeFile = filepath.Join(root, "mail-sites.caddy")
 	env.Cfg.WebmailTokens = filepath.Join(root, "webmail-tokens")
 	env.Cfg.WebmailUser = "root"
+	env.Cfg.RspamdSettings = filepath.Join(root, "rspamd-settings.conf")
 	return env, dr
 }
 
@@ -171,5 +172,38 @@ func TestBlockedMailboxCannotSignInToWebmail(t *testing.T) {
 	}
 	if _, err := call(t, env, mailWebmailLogin, map[string]any{"address": "alice@firma.cz"}); code(err) != "conflict" {
 		t.Errorf("no sign-in link for a blocked mailbox: %v", err)
+	}
+}
+
+func TestDomainSpamLevelsAndSenderLists(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	_, _ = call(t, env, mailDomainSet, map[string]any{"domain": "firma.cz", "enabled": true})
+	if _, err := call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": map[string]any{
+		"reject": 20, "junk": 4.5, "allow": []string{"Boss@Partner.cz"}, "block": []string{"@spam.example"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	got := read2(t, env.Cfg.RspamdSettings)
+	for _, want := range []string{
+		"wspanel_firma_cz_allow {", `from = ["boss@partner.cz"];`, "want_spam = yes;",
+		"wspanel_firma_cz_block {", `from = ["@spam.example"];`, "reject = -1000;",
+		`rcpt = "@firma.cz";`, "reject = 20;", `"add header" = 4.5;`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	for name, spam := range map[string]map[string]any{
+		"junk above reject": {"reject": 10, "junk": 12},
+		"injected sender":   {"reject": 15, "junk": 6, "allow": []string{"a@b.cz\"; want_spam = yes; x = \""}},
+		"bare word":         {"reject": 15, "junk": 6, "block": []string{"spammer"}},
+	} {
+		if _, err := call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": spam}); code(err) != "invalid_params" {
+			t.Errorf("%s must be refused: %v", name, err)
+		}
+	}
+	_, _ = call(t, env, mailSpamSet, map[string]any{"domain": "firma.cz", "spam": nil})
+	if strings.Contains(read2(t, env.Cfg.RspamdSettings), "firma") {
+		t.Error("nil = back to the server's levels")
 	}
 }

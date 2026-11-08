@@ -51,6 +51,34 @@ class ManageMail
         return $this->agent->call('mail.dkim', ['domain' => $domain, 'action' => $action]);
     }
 
+    /**
+     * Postfix's queue: what waits for delivery and why.
+     *
+     * @return list<array{id: string, queue: string, arrival: int, size: int, sender: string, recipients: list<string>, reason?: string}>
+     *
+     * @throws AgentException
+     */
+    public function queue(): array
+    {
+        return $this->agent->call('mail.queue', ['action' => 'list'])['messages'] ?? [];
+    }
+
+    /** Tries to deliver everything in the queue now. @throws AgentException */
+    public function flushQueue(): void
+    {
+        $this->agent->call('mail.queue', ['action' => 'flush']);
+    }
+
+    /**
+     * @param  list<string>|null  $ids  null = the whole queue
+     *
+     * @throws AgentException
+     */
+    public function deleteQueued(?array $ids): void
+    {
+        $this->agent->call('mail.queue', $ids === null ? ['action' => 'delete', 'all' => true] : ['action' => 'delete', 'ids' => array_values($ids)]);
+    }
+
     /** @throws AgentException */
     public function setSiteMode(Site $site, string $mode): void
     {
