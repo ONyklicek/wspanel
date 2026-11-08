@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Actions\Sites\ManageGitHub;
 use App\Actions\Sites\ReportGitHubDeployments;
+use App\Livewire\Pages\IntegrationsPage;
 use App\Livewire\Sites\SiteDeploy;
 use App\Models\Deployment;
 use App\Models\GithubConnection;
@@ -248,7 +249,15 @@ class GitHubDeployTest extends TestCase
         $this->connection();
         GithubConnection::query()->withoutGlobalScope('owner')->create(['user_id' => User::factory()->create()->id, 'login' => 'someone-else', 'token' => 'github_pat_x']);
 
-        $this->get('/api-tokens')->assertOk()->assertSee('acme-dev')->assertDontSee('someone-else')->assertDontSee('github_pat_secret');
+        $this->get('/integrations')->assertOk()->assertSee('acme-dev')->assertDontSee('someone-else')->assertDontSee('github_pat_secret');
+    }
+
+    public function test_without_an_account_the_deploy_page_button_connects_github_and_comes_back(): void
+    {
+        $html = $this->get('/sites/'.$this->site->id.'/deploy')->assertOk()->getContent();
+
+        $this->assertStringContainsString('href="'.e(IntegrationsPage::url()).'"', $html, 'no app yet: the Integrations page');
+        $this->assertStringNotContainsString("openActionModal('github')", $html);
     }
 
     public function test_a_local_panel_is_not_public(): void

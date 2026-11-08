@@ -28,10 +28,12 @@ install -m 0755 "$ROOT/provision/wspanel-install.sh" "$B/install"
 rm -f "$B/provision/wspanel-install.sh"
 rsync -a "$ROOT/docs/" "$B/docs/"
 # The panel's source: what composer/npm build on the server, without local state.
+# Patterns anchored to the panel's root: an unanchored "vendor" also dropped
+# resources/views/vendor (the published, adjusted package views).
 rsync -a --delete \
-  --exclude=vendor --exclude=node_modules --exclude=.env --exclude='.env.*.local' \
-  --exclude='storage/logs/*' --exclude='storage/framework/*/*' --exclude='database/*.sqlite' \
-  --exclude='public/build' --exclude='public/hot' --exclude=.phpunit.cache --exclude=.idea --exclude=.DS_Store \
+  --exclude=/vendor --exclude=/node_modules --exclude=/.env --exclude='/.env.*.local' \
+  --exclude='/storage/logs/*' --exclude='/storage/framework/*/*' --exclude='/database/*.sqlite' \
+  --exclude='/public/build' --exclude='/public/hot' --exclude=/.phpunit.cache --exclude=.idea --exclude=.DS_Store \
   "$ROOT/panel/" "$B/panel/"
 echo "$VERSION" > "$B/VERSION"
 

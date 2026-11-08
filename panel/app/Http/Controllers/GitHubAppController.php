@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Sites\ManageGitHub;
-use App\Livewire\Pages\ApiTokensPage;
+use App\Livewire\Pages\IntegrationsPage;
 use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubException;
 use App\Support\Toast;
@@ -29,6 +29,7 @@ class GitHubAppController
         $org = trim((string) $request->query('org', ''));
         abort_unless($org === '' || preg_match('/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/', $org), 422);
         $state = $this->state($request, 'github.app_state');
+        $this->rememberReturn($request);
 
         return view('github.create-app', [
             'action' => ($org === '' ? 'https://github.com/settings/apps/new' : "https://github.com/organizations/{$org}/settings/apps/new").'?state='.$state,
@@ -36,19 +37,23 @@ class GitHubAppController
         ]);
     }
 
-    /** GitHub came back with the new app: keep its credentials. */
+    /**
+     * GitHub came back with the new app: keep its credentials and go straight
+     * on to installing it, so the administrator's first connection is one flow.
+     */
     public function created(Request $request): RedirectResponse
     {
         Gate::authorize('admin');
         $this->checkState($request, 'github.app_state');
         try {
             $app = GitHubApp::createFromCode((string) $request->query('code'));
-            Toast::success(__('GitHub aplikace vytvořena'), __('Uživatelé teď připojí GitHub tlačítkem (aplikace :slug).', ['slug' => $app->slug]));
         } catch (GitHubException $e) {
             Toast::error(__('GitHub aplikaci se nepodařilo vytvořit'), $e->getMessage());
+
+            return $this->back($request);
         }
 
-        return redirect(ApiTokensPage::url());
+        return redirect()->away($app->installUrl($this->state($request, 'github.connect_state')));
     }
 
     /** Sends the user to install the app (or to sign in, when they installed it before). */
@@ -56,6 +61,7 @@ class GitHubAppController
     {
         $app = GitHubApp::configured() ?? abort(404);
         $state = $this->state($request, 'github.connect_state');
+        $this->rememberReturn($request);
 
         return redirect()->away($request->boolean('existing') ? $app->authorizeUrl($state) : $app->installUrl($state));
     }
@@ -92,7 +98,22 @@ class GitHubAppController
             Toast::error(__('GitHub se nepodařilo připojit'), $e->getMessage());
         }
 
-        return redirect(ApiTokensPage::url());
+        return $this->back($request);
+    }
+
+    /** Where to come back after GitHub: a page of this panel the user started from. */
+    private function rememberReturn(Request $request): void
+    {
+        $to = (string) $request->query('return', '');
+        // A path of this panel only: no scheme, no host, no protocol-relative //.
+        if ($to !== '' && str_starts_with($to, '/') && ! str_starts_with($to, '//') && ! str_contains($to, '\\')) {
+            $request->session()->put('github.return', $to);
+        }
+    }
+
+    private function back(Request $request): RedirectResponse
+    {
+        return redirect($request->session()->pull('github.return') ?? IntegrationsPage::url());
     }
 
     private function state(Request $request, string $key): string

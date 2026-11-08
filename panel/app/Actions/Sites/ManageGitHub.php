@@ -52,7 +52,7 @@ class ManageGitHub
         foreach ($installations as $id => $i) {
             $out[] = GithubConnection::query()->withoutGlobalScope('owner')->updateOrCreate(
                 ['user_id' => $user->id, 'installation_id' => $id],
-                ['login' => $i['login'], 'repositories' => array_values($i['repositories']), 'token' => null, 'last_used_at' => now()],
+                ['login' => $i['login'], 'account_type' => $i['type'], 'repositories' => array_values($i['repositories']), 'token' => null, 'last_used_at' => now()],
             );
         }
 

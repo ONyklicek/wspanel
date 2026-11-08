@@ -17,51 +17,60 @@ přímo v GitHubu.
 Ruční cesty (vlastní Git server, GitLab, Bitbucket, webhook zadaný ručně) dál
 fungují, viz [Deploy](deploy.md).
 
-## 1. Připojit GitHub tlačítkem
+## 1. Propojit s GitHubem
 
 Stejně jako v Zerops: kliknete, na GitHubu vyberete účet nebo organizaci
 a repozitáře a vrátíte se do panelu. Nic se nekopíruje.
 
-### Jednou pro celý panel: GitHub aplikace (správce)
+Kde: menu účtu (vpravo nahoře) → **Integrace** → karta **GitHub** →
+**Propojit s GitHubem**. Stejné tlačítko je přímo u webu: Deploy → **GitHub**.
+Po propojení se vrátíte na stránku, odkud jste přišli.
 
-Menu účtu (vpravo nahoře) → **API a CLI** → sekce **GitHub** → **Nastavit
-připojení tlačítkem** → **Pokračovat na GitHub**.
+### Poprvé (správce panelu)
 
-- Panel pošle GitHubu šablonu (manifest) aplikace s oprávněními níže. Na GitHubu
-  jen potvrdíte **Create GitHub App** (název jde změnit, musí být na GitHubu
-  jedinečný).
-- GitHub vrátí prohlížeč do panelu a panel si od něj převezme klíče aplikace
-  (ID, client secret, privátní klíč). Uloží je **šifrovaně**, ručně se nic
-  nevyplňuje.
-- **Organizace (nepovinné):** vyplňte, když má aplikace patřit organizaci
-  místo vašeho účtu.
+Při úplně prvním propojení GitHub nejdřív vytvoří **aplikaci tohoto panelu**
+a hned pak ji nainstalujete. Je to jeden průchod:
+
+1. **Propojit s GitHubem** → panel pošle GitHubu šablonu (manifest) aplikace
+   s oprávněními níže.
+2. Na GitHubu potvrdíte **Create GitHub App**. Název jde změnit, musí být na
+   GitHubu jedinečný.
+3. GitHub předá panelu klíče aplikace (ID, client secret, privátní klíč). Panel
+   je uloží **šifrovaně**, ručně se nic nevyplňuje.
+4. Hned pokračuje instalace: vyberete účet nebo organizaci a repozitáře.
+
+- **Aplikace pro organizaci:** když má aplikace patřit organizaci místo vašeho
+  účtu (spravuje ji pak kdokoli z vlastníků organizace).
 - Aplikace je **veřejná**, aby ji klienti mohli nainstalovat na své účty. Nic
   jiného, než co je v tabulce oprávnění, neumí, a vlastní webhook nemá.
 - Funguje i pro panel ve vnitřní síti (`panel.firma.lan`, `localhost`):
   návraty z GitHubu jdou přes prohlížeč, GitHub panel volat nemusí.
 
-### Každý uživatel: Připojit GitHub
+Klient, dokud správce aplikaci nevytvoří, vidí „Propojení tlačítkem zatím
+nenastavil správce panelu“ a může použít osobní token (krok 2).
 
-**API a CLI → GitHub → Připojit GitHub**:
+### Další uživatelé a další účty
+
+**Propojit s GitHubem** (nebo **Přidat účet nebo organizaci**, když už nějaký
+máte):
 
 1. GitHub otevře instalaci aplikace: vyberete **účet nebo organizaci** a
    **repozitáře** (všechny, nebo jen vybrané).
 2. GitHub se zeptá na potvrzení přihlášení (aby panel věděl, že instalace
    patří vám) a vrátí vás do panelu.
-3. V tabulce přibude účet s typem *aplikací (tlačítkem)*.
+3. Na kartě GitHub přibude účet s avatarem, typem (osobní účet / organizace),
+   počtem repozitářů a napojených webů.
 
 Panel nabídne jen repozitáře instalace, ve kterých jste na GitHubu
 **správce** (deploy klíče a webhooky smí přidávat jen správce repozitáře). Člen
 organizace s právy jen pro čtení nebo zápis přes panel víc práv nezíská, i když
-instalace obsahuje víc repozitářů. Když vám práva přidají, klikněte u účtu
-na **Repozitáře** a seznam se obnoví.
+instalace obsahuje víc repozitářů. **Spravovat přístup** u účtu otevře nastavení
+instalace na GitHubu; po změně klikněte na Propojit s GitHubem znovu a seznam
+se obnoví.
 
-Pro každou organizaci připojte zvlášť (Připojit GitHub → zvolit jinou
-organizaci). U organizace, kde nejste vlastník, instalaci schvaluje vlastník.
+Pro každou organizaci připojte zvlášť (Přidat účet nebo organizaci → zvolit
+jinou organizaci). U organizace, kde nejste vlastník, instalaci schvaluje vlastník.
 Panel pak napíše „Nic k připojení“; po schválení klikněte znovu.
-
-**Repozitáře** u účtu otevře instalaci na GitHubu (přidání nebo odebrání
-repozitáře) a po návratu obnoví seznam repozitářů, které spravujete.
 
 Bezpečnost tohoto toku:
 
@@ -97,8 +106,7 @@ k repozitářům:
 ## 2. Nebo připojit tokenem
 
 Když GitHub aplikaci nechcete (GitHub Enterprise, zákaz aplikací v organizaci):
-**API a CLI → GitHub → Vložit token** (bez nastavené aplikace se tlačítko
-jmenuje Připojit GitHub).
+**Integrace → GitHub → Použít osobní token**.
 
 GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token:
 
@@ -197,13 +205,14 @@ z CI, jednou z gitu). Postup pro skutečný projekt (privátní Composer balíč
 
 | Hláška | Co s tím |
 |---|---|
-| GitHub odmítl token | token vypršel nebo byl zrušen; vložte nový (API a CLI → GitHub) |
+| GitHub odmítl token | token vypršel nebo byl zrušen; vložte nový (Integrace → GitHub → Použít osobní token) |
 | „Neplatný nebo prošlý návrat z GitHubu“ | návrat z GitHubu z jiné relace nebo podruhé; klikněte na Připojit GitHub znovu |
 | „Nic k připojení“ | instalaci v organizaci musí schválit vlastník, aplikace u účtu není nainstalovaná, nebo v instalaci nespravujete žádný repozitář |
-| „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte u účtu na Repozitáře |
+| „nemáte na GitHubu práva správce“ | k repozitáři nemáte roli Admin, nebo ho instalace nezahrnuje; po změně klikněte na Propojit s GitHubem znovu |
+| „This page has expired“ po kliknutí na tlačítko v tabulce | opraveno (tlačítka v hlavičce tabulek volala neexistující metodu); aktualizujte panel |
 | GitHub aplikace se nepodařila vytvořit | název aplikace je na GitHubu obsazený (změňte ho na stránce GitHubu), nebo kód vypršel (opakujte) |
 | Token nemá přístup k repozitáři nebo mu chybí oprávnění | v nastavení tokenu přidejte repozitář do *Repository access* a zkontrolujte tabulku oprávnění výše |
 | `key is already in use` | klíč webu už je v repozitáři (přidaný dřív ručně) nebo v jiném repozitáři jako deploy klíč, což GitHub nedovolí; odeberte ho tam (Settings → Deploy keys) a napojte znovu |
-| Repozitář chybí v seznamu | u aplikace: Repozitáře → přidat ho do instalace; u tokenu: *Repository access* nebo chybí práva správce. Seznam se obnovuje po 5 minutách |
+| Repozitář chybí v seznamu | u aplikace: Spravovat přístup → přidat ho do instalace, pak Propojit s GitHubem znovu; u tokenu: *Repository access* nebo chybí práva správce. Seznam se obnovuje po 5 minutách |
 | Webhook v GitHubu hlásí chyby doručení | panel není z internetu dostupný; přepněte na kontrolu každou minutu (GitHub → Napojit znovu) |
 | Deploy se v GitHubu neukazuje | build z CI s commitem, který v repozitáři není, se přeskočí; jinak počkejte minutu (hlásí se při `panel:sync`) |

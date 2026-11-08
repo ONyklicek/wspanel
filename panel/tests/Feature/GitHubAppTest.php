@@ -226,12 +226,45 @@ class GitHubAppTest extends TestCase
         $this->assertSame(1, GithubConnection::query()->withoutGlobalScope('owner')->count(), 'the other user keeps their connection');
     }
 
-    public function test_the_page_offers_the_button_once_the_app_exists(): void
+    public function test_the_integrations_page_offers_one_button_for_each_situation(): void
     {
         $this->actingAs(User::factory()->create());
-        $this->get('/api-tokens')->assertOk()->assertSee('Nastavit připojení tlačítkem');
+        $this->get('/integrations')->assertOk()->assertSee('Propojit s GitHubem')->assertSee(route('github.app.create'), false);
+
+        $this->actingAs(User::factory()->forClient()->create());
+        $this->get('/integrations')->assertOk()->assertSee('zatím nenastavil správce')->assertDontSee(route('github.app.create'), false);
 
         $this->configureApp();
-        $this->get('/api-tokens')->assertOk()->assertSee(route('github.connect'), false)->assertDontSee('Nastavit připojení tlačítkem');
+        $this->get('/integrations')->assertOk()->assertSee(route('github.connect'), false)->assertSee('Nepropojeno');
+    }
+
+    public function test_after_creating_the_app_the_administrator_goes_straight_to_installing_it(): void
+    {
+        Http::fake([self::API.'/app-manifests/abcdefgh123/conversions' => Http::response([
+            'id' => 42, 'slug' => 'wspanel-panel', 'client_id' => 'Iv1.abc', 'client_secret' => 's', 'pem' => $this->pem, 'owner' => ['login' => 'acme'],
+        ], 201)]);
+        $this->actingAs(User::factory()->create())->withSession(['github.app_state' => 'st4te']);
+
+        $r = $this->get('/github/app/created?code=abcdefgh123&state=st4te');
+
+        $r->assertRedirect('https://github.com/apps/wspanel-panel/installations/new?state='.session('github.connect_state'));
+    }
+
+    public function test_the_user_comes_back_to_the_page_they_started_from_and_never_elsewhere(): void
+    {
+        $this->configureApp();
+        Http::fake([
+            'https://github.com/login/oauth/access_token' => Http::response(['access_token' => 'ghu']),
+            self::API.'/user/installations*' => Http::response(['installations' => []]),
+        ]);
+        $this->actingAs(User::factory()->create());
+
+        $this->get('/github/connect?return=/sites/5/deploy');
+        $this->get('/github/callback?code=c&state='.session('github.connect_state'))->assertRedirect('/sites/5/deploy');
+
+        foreach (['https://evil.example/x', '//evil.example/x'] as $evil) {
+            $this->get('/github/connect?return='.urlencode($evil));
+            $this->assertStringNotContainsString('evil', (string) $this->get('/github/callback?code=c&state='.session('github.connect_state'))->headers->get('Location'));
+        }
     }
 }

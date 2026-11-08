@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class GithubConnection extends Model
 {
-    protected $fillable = ['user_id', 'login', 'installation_id', 'repositories', 'token', 'last_used_at'];
+    protected $fillable = ['user_id', 'login', 'account_type', 'installation_id', 'repositories', 'token', 'last_used_at'];
 
     protected $hidden = ['token'];
 
@@ -45,6 +45,28 @@ class GithubConnection extends Model
     public function sites(): HasMany
     {
         return $this->hasMany(Site::class);
+    }
+
+    public function isOrganization(): bool
+    {
+        return $this->account_type === 'Organization';
+    }
+
+    public function avatarUrl(): string
+    {
+        return 'https://github.com/'.rawurlencode($this->login).'.png?size=80';
+    }
+
+    /** Where the owner changes the repositories the app may access (app connections). */
+    public function settingsUrl(): ?string
+    {
+        if (! $this->isApp()) {
+            return null;
+        }
+
+        return $this->isOrganization()
+            ? 'https://github.com/organizations/'.rawurlencode($this->login).'/settings/installations/'.$this->installation_id
+            : 'https://github.com/settings/installations/'.$this->installation_id;
     }
 
     public function isApp(): bool

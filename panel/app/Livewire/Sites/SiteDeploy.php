@@ -9,11 +9,13 @@ use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Forms\Components\CodeIde;
+use App\Livewire\Pages\IntegrationsPage;
 use App\Models\Deployment;
 use App\Models\GithubConnection;
 use App\Models\Site;
 use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
+use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubException;
 use App\Support\Lang;
 use App\Support\Toast;
@@ -210,6 +212,7 @@ class SiteDeploy extends ViewPage
                         Toast::error(__('Deploy nelze spustit'), $e->getMessage());
                     }
                 }),
+            $this->githubConnectAction(),
             $this->githubAction(),
             $this->settingsAction(),
             $this->automationAction(),
@@ -230,6 +233,7 @@ class SiteDeploy extends ViewPage
     private function githubAction(): Action
     {
         return Action::make('github')
+            ->visible(fn () => GithubConnection::query()->exists())
             ->label(fn () => $this->site()->github_repo ?? 'GitHub')
             ->icon('outline:link')
             ->color(fn () => $this->site()->github_repo ? 'success' : 'gray')
@@ -253,9 +257,6 @@ class SiteDeploy extends ViewPage
                         'env' => $this->site()->github_environment ?? ManageGitHub::ENVIRONMENT,
                     ]))
                     ->visible($this->site()->github_repo !== null),
-                Placeholder::make('none')->hiddenLabel()
-                    ->content(__('Nejdřív připojte účet GitHub v menu účtu → API a CLI → GitHub.'))
-                    ->visible(! GithubConnection::query()->exists()),
                 Select::make('connection')->label(__('Účet GitHub'))
                     ->options(fn () => GithubConnection::query()->pluck('login', 'id')->map(fn ($l) => '@'.$l)->all())
                     ->required()->live()
@@ -263,7 +264,7 @@ class SiteDeploy extends ViewPage
                 Select::make('repo')->label(__('Repozitář'))
                     ->options(fn ($get) => $this->githubOptions(fn (ManageGitHub $gh, GithubConnection $c) => $gh->repositories($c), $get('connection')))
                     ->searchable()->required()->live()
-                    ->helperText(__('Repozitáře, které token smí spravovat.'))
+                    ->helperText(__('Repozitáře, které na GitHubu spravujete a ke kterým má panel přístup.'))
                     ->afterStateUpdated(fn ($set) => $set('branch', null)),
                 Select::make('branch')->label(__('Větev'))
                     ->options(fn ($get) => $get('repo') ? $this->githubOptions(fn (ManageGitHub $gh, GithubConnection $c) => $gh->branches($c, (string) $get('repo')), $get('connection')) : [])
@@ -310,6 +311,24 @@ class SiteDeploy extends ViewPage
                     Toast::error(__('Napojení na GitHub selhalo'), $e->getMessage());
                 }
             });
+    }
+
+    /**
+     * No GitHub account yet: the same button connects one (the panel's app,
+     * or the Integrations page when there is none) and comes back here.
+     */
+    private function githubConnectAction(): Action
+    {
+        $here = '/'.ltrim((string) parse_url(SiteResource::url('deploy', $this->site()), PHP_URL_PATH), '/');
+
+        return Action::make('githubConnect')
+            ->label('GitHub')
+            ->icon('outline:link')
+            ->color('gray')
+            ->visible(fn () => ! GithubConnection::query()->exists())
+            ->tooltip(__('Propojit s GitHubem'))
+            ->url(GitHubApp::configured() ? route('github.connect', ['return' => $here]) : IntegrationsPage::url())
+            ->navigate(false);
     }
 
     /**

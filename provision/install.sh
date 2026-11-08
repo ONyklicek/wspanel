@@ -495,8 +495,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   [[ -f "$PANEL_SOURCE/artisan" ]] || die "--panel-source does not look like the Laravel panel"
   release="/srv/panel/releases/$(date -u +%Y%m%d%H%M%S)"
   install -d -m 0750 -o panel -g panel "$release"
-  rsync -a --delete --exclude=.git --exclude=vendor --exclude=node_modules --exclude=.env \
-    --exclude=storage --exclude='database/*.sqlite' "$PANEL_SOURCE/" "$release/"
+  # Anchored (/vendor, not vendor): an unanchored name also dropped
+  # resources/views/vendor, the panel's published and adjusted package views.
+  rsync -a --delete --exclude=/.git --exclude=/vendor --exclude=/node_modules --exclude=/.env \
+    --exclude=/storage --exclude='/database/*.sqlite' "$PANEL_SOURCE/" "$release/"
   chown -R panel:panel "$release"
   # Persistent state lives in shared/.
   install -d -m 0750 -o panel -g panel /srv/panel/shared/storage

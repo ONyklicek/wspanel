@@ -8,8 +8,8 @@ npm run build >/dev/null
 docker compose -f ../dev/compose.yaml exec -T devserver bash -c '
   set -e
   rel=$(readlink -f /srv/panel/current)
-  rsync -a --delete --exclude=vendor --exclude=node_modules --exclude=.env --exclude=storage --exclude=bootstrap/cache \
-    --exclude=database/database.sqlite --exclude=public/vendor /opt/wspanel/panel/ "$rel/"
+  rsync -a --delete --exclude=/vendor --exclude=/node_modules --exclude=/.env --exclude=/storage --exclude=/bootstrap/cache \
+    --exclude=/database/database.sqlite --exclude=/public/vendor /opt/wspanel/panel/ "$rel/"
   chown -R panel:panel "$rel"
   setfacl -R -m u:panel-web:rX,d:u:panel-web:rX "$rel/public"
   cd "$rel"
