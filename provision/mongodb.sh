@@ -56,7 +56,13 @@ for attempt in 1 2 3; do
   sleep 20
 done
 
-cat >/etc/mongod.conf <<'CONF'
+# mongod.conf: $1 = where it listens. While the panel's administrator does
+# not exist yet MongoDB lets anyone who reaches it create the first user (the
+# localhost exception): that first start listens only on a socket in a
+# directory only mongodb (and root) may enter, never on 127.0.0.1, where any
+# site's process could take the exception first.
+write_conf() {
+  cat >/etc/mongod.conf <<CONF
 # Managed by WSPanel (mongodb.sh): localhost only, authentication required.
 storage:
   dbPath: /var/lib/mongodb
@@ -66,32 +72,51 @@ systemLog:
   path: /var/log/mongodb/mongod.log
 net:
   port: 27017
-  bindIp: 127.0.0.1
+  bindIp: $1
+  unixDomainSocket:
+    enabled: true
+    pathPrefix: $2
+    filePermissions: 0700
 processManagement:
   timeZoneInfo: /usr/share/zoneinfo
 security:
   authorization: enabled
 CONF
+}
+wait_mongod() { # $1: connection string
+  for _ in $(seq 60); do
+    mongosh --quiet --norc "$1" --eval 'db.runCommand({ping: 1}).ok' >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "mongod does not answer" >&2
+  exit 1
+}
 systemctl enable mongod >/dev/null 2>&1
-systemctl restart mongod
-for _ in $(seq 60); do
-  mongosh --quiet --norc --eval 'db.runCommand({ping: 1}).ok' >/dev/null 2>&1 && break
-  sleep 1
-done
-mongosh --quiet --norc --eval 'db.runCommand({ping: 1}).ok' >/dev/null || { echo "mongod does not answer" >&2; exit 1; }
 
-# The panel's administrator, through the localhost exception (only while no
-# user exists). The password goes in a script file, never on a command line.
 if [[ ! -s $PW_FILE ]]; then
+  BOOT=/run/wspanel-mongodb-setup
+  install -d -o mongodb -g mongodb -m 0700 "$BOOT"
+  write_conf "$BOOT/mongod.sock" "$BOOT"
+  systemctl restart mongod
+  sock="mongodb://$(printf '%s' "$BOOT/mongod.sock" | sed 's|/|%2F|g')/admin"
+  wait_mongod "$sock"
   ( umask 077; head -c 48 /dev/urandom | base64 | tr -d '/+=\n' | head -c 32 > "$PW_FILE" )
+  # The password goes in a script file, never on a command line.
   script=$(mktemp --suffix=.js)
   chmod 0600 "$script"
+  # (The exception allows only this; it fails once any user exists.)
   printf 'db.getSiblingDB("admin").createUser({user: "wspanel", pwd: "%s", roles: ["root"]});\n' "$(cat "$PW_FILE")" > "$script"
-  if ! mongosh --quiet --norc "mongodb://127.0.0.1:27017/admin" "$script" >/dev/null; then
+  if ! mongosh --quiet --norc "$sock" "$script" >/dev/null; then
     rm -f "$script" "$PW_FILE"
+    systemctl stop mongod
     echo "creating the panel's MongoDB administrator failed (does MongoDB already have users?)" >&2
     exit 1
   fi
   rm -f "$script"
 fi
 chmod 0600 "$PW_FILE"
+# Only now on 127.0.0.1: the administrator exists, the exception is gone.
+write_conf 127.0.0.1 /tmp
+systemctl restart mongod
+wait_mongod "mongodb://127.0.0.1:27017/admin"
+rm -rf /run/wspanel-mongodb-setup
