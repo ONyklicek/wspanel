@@ -93,30 +93,56 @@ wait_mongod() { # $1: connection string
 }
 systemctl enable mongod >/dev/null 2>&1
 
-if [[ ! -s $PW_FILE ]]; then
-  BOOT=/run/wspanel-mongodb-setup
-  install -d -o mongodb -g mongodb -m 0700 "$BOOT"
-  write_conf "$BOOT/mongod.sock" "$BOOT"
-  systemctl restart mongod
-  sock="mongodb://$(printf '%s' "$BOOT/mongod.sock" | sed 's|/|%2F|g')/admin"
-  wait_mongod "$sock"
-  ( umask 077; head -c 48 /dev/urandom | base64 | tr -d '/+=\n' | head -c 32 > "$PW_FILE" )
-  # The password goes in a script file, never on a command line.
+# Every run starts on the private socket first and only opens 127.0.0.1 once
+# the administrator provably exists: the password file is only a hint (an
+# interrupted run, a wiped data directory). On any error mongod stays stopped.
+BOOT=/run/wspanel-mongodb-setup
+SOCK_URI="mongodb://$(printf '%s' "$BOOT/mongod.sock" | sed 's|/|%2F|g')"
+done_ok=0
+cleanup() {
+  if [[ $done_ok != 1 ]]; then
+    systemctl stop mongod 2>/dev/null || true
+    rm -f "$PW_FILE.new"
+    echo "MongoDB left stopped: the setup did not finish" >&2
+  fi
+  rm -rf "$BOOT"
+}
+trap cleanup EXIT
+install -d -o mongodb -g mongodb -m 0700 "$BOOT"
+write_conf "$BOOT/mongod.sock" "$BOOT"
+systemctl restart mongod
+wait_mongod "$SOCK_URI/admin"
+
+# JavaScript for mongosh in a root-only file; connection strings with a
+# password are inside it (connect()), never on a command line.
+run_js() {
+  local script rc=0
   script=$(mktemp --suffix=.js)
   chmod 0600 "$script"
-  # (The exception allows only this; it fails once any user exists.)
-  printf 'db.getSiblingDB("admin").createUser({user: "wspanel", pwd: "%s", roles: ["root"]});\n' "$(cat "$PW_FILE")" > "$script"
-  if ! mongosh --quiet --norc "$sock" "$script" >/dev/null; then
-    rm -f "$script" "$PW_FILE"
-    systemctl stop mongod
-    echo "creating the panel's MongoDB administrator failed (does MongoDB already have users?)" >&2
+  printf '%s\n' "$1" > "$script"
+  mongosh --quiet --norc --nodb "$script" >/dev/null 2>&1 || rc=$?
+  rm -f "$script"
+  return $rc
+}
+admin_works() {
+  [[ -s $PW_FILE ]] || return 1
+  run_js "const d = connect(\"$SOCK_URI/admin\"); if (!d.auth(\"wspanel\", \"$(cat "$PW_FILE")\")) { quit(1); }"
+}
+if ! admin_works; then
+  # Through the localhost exception (over the socket): it allows only
+  # createUser, and only while no user exists.
+  ( umask 077; head -c 48 /dev/urandom | base64 | tr -d '/+=\n' | head -c 32 > "$PW_FILE.new" )
+  if ! run_js "connect(\"$SOCK_URI/admin\").createUser({user: \"wspanel\", pwd: \"$(cat "$PW_FILE.new")\", roles: [\"root\"]});"; then
+    echo "creating the panel's MongoDB administrator failed: MongoDB already has users, and the panel's password ($PW_FILE) does not work" >&2
     exit 1
   fi
-  rm -f "$script"
+  mv -f "$PW_FILE.new" "$PW_FILE"
+  admin_works || { echo "the panel's MongoDB administrator does not work" >&2; exit 1; }
 fi
 chmod 0600 "$PW_FILE"
+
 # Only now on 127.0.0.1: the administrator exists, the exception is gone.
 write_conf 127.0.0.1 /tmp
 systemctl restart mongod
 wait_mongod "mongodb://127.0.0.1:27017/admin"
-rm -rf /run/wspanel-mongodb-setup
+done_ok=1
