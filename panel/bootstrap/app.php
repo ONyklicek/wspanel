@@ -9,6 +9,7 @@ use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureAccountActive;
 use App\Http\Middleware\EnsureTwoFactor;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\UsePanelAddress;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -61,6 +62,8 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Requests arrive under the web tier's internal host name: the panel's address instead.
+        $middleware->prepend(UsePanelAddress::class);
         // A suspended client is signed out on its next request (Livewire's too).
         $middleware->appendToGroup('web', SetLocale::class);
         $middleware->appendToGroup('web', EnsureAccountActive::class);

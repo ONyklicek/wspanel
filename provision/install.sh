@@ -534,6 +534,15 @@ if [[ -n "$AGENT_DEB" ]]; then
   # A release bundle: the agent as the wspanel-agent package, so that apt
   # brings its fixes. Installed from the bundle itself, nothing downloaded.
   dpkg -i "$AGENT_DEB" >/dev/null
+  # Installed through apt before (the wspanel package), now from a bundle: that
+  # package wants its own agent version exactly, and left in place it would
+  # break apt (every install and update after). The bundle is the installer
+  # from now on; apt keeps bringing the agent.
+  if dpkg-query -W -f='${Status}' wspanel 2>/dev/null | grep -q 'ok installed' \
+    && [[ "$(dpkg-query -W -f='${Version}' wspanel)" != "$(dpkg-deb -f "$AGENT_DEB" Version)" ]]; then
+    log "Installing from the bundle instead of apt: the wspanel package (an older installer) goes"
+    dpkg --remove wspanel >/dev/null
+  fi
 elif [[ "$(readlink -f "$AGENT_BIN")" == /usr/sbin/panel-agent ]] && agent_packaged; then
   : # installed through apt (wspanel-install): the package is in place already
 else
