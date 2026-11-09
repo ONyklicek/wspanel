@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sites;
 
+use App\Actions\Dns\ManageSiteDns;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -56,8 +57,15 @@ class ManageEdge
             app(Limits::class)->assertCanAdd($site->client, 'aliases', $added);
         }
 
+        $before = self::domains($site);
         $out = $this->agent->call('site.edge', $payload);
         $site->update(['edge_settings' => $out['edge'] ?? null]);
+        // New names into the zones the panel manages for them (best effort:
+        // the site's DNS tab shows what is still missing).
+        $new = array_values(array_diff(array_merge($payload['aliases'] ?? [], $payload['redirect_hosts'] ?? []), $before));
+        if ($new !== []) {
+            rescue(fn () => app(ManageSiteDns::class)->addHosts($new), report: true);
+        }
 
         return $out['edge'] ?? [];
     }

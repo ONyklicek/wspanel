@@ -2,6 +2,7 @@
 
 namespace App\Wire\Resources;
 
+use App\Actions\Dns\ManageSiteDns;
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageWorkers;
 use App\Enums\SiteStatus;
@@ -12,6 +13,7 @@ use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteBackups;
 use App\Livewire\Sites\SiteConsole;
 use App\Livewire\Sites\SiteDeploy;
+use App\Livewire\Sites\SiteDns;
 use App\Livewire\Sites\SiteEnvironment;
 use App\Livewire\Sites\SiteFiles;
 use App\Livewire\Sites\SiteMail;
@@ -78,6 +80,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             'files' => RoutePage::make(SiteFiles::class)->uri('{record}/files')->label(__('Soubory'))->icon('outline:folder')->sort(30),
             'backups' => RoutePage::make(SiteBackups::class)->uri('{record}/backups')->label(__('Zálohy'))->icon('outline:archive-box')->sort(40),
             'mail' => RoutePage::make(SiteMail::class)->uri('{record}/mail')->label(__('Pošta'))->icon('outline:envelope')->sort(45),
+            'dns' => RoutePage::make(SiteDns::class)->uri('{record}/dns')->label('DNS')->icon('outline:server')->sort(47),
             'console' => RoutePage::make(SiteConsole::class)->uri('{record}/console')->label(__('Konzole'))->icon('outline:command-line')->sort(27),
             'environment' => RoutePage::make(SiteEnvironment::class)->uri('{record}/environment')->label(__('Prostředí'))->icon('outline:variable')->sort(25),
             'traffic' => RoutePage::make(SiteTrafficPage::class)->uri('{record}/traffic')->label(__('Návštěvnost'))->icon('outline:chart-bar-square')->sort(50),
@@ -187,12 +190,32 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
         }
     }
 
+    /** DNS (and mail) of a new site; a failure leaves the site and says what to do. */
+    private static function setUpDns(Site $site, array $data): void
+    {
+        if (($data['dns'] ?? 'none') === 'none' && ! ($data['mail'] ?? false)) {
+            return;
+        }
+        try {
+            $out = app(ManageSiteDns::class)->setUpForNewSite($site, $data);
+            if ($out['zone'] !== null) {
+                Toast::success(__('DNS v zóně :zone', ['zone' => $out['zone']]), $out['added'] === []
+                    ? __('Nic nechybělo.')
+                    : __('Přidáno: :list', ['list' => implode(', ', $out['added'])]).($out['kept'] === [] ? '' : ' '.__('Ponecháno (míří jinam): :list', ['list' => implode(', ', $out['kept'])])));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            Toast::warning(__('Web je založený, DNS se nepodařilo nastavit'), $e->getMessage().' '.__('Dokončíte to v záložce DNS webu.'));
+        }
+    }
+
     public function form(Form $form): Form
     {
         return $form
             ->schema([
                 Section::make('domain')->label(__('Doména'))->schema([SiteFields::domain(), SiteFields::tls()]),
                 Section::make('runtime')->label(__('Jak web poběží'))->schema([...SiteFields::runtime(), SiteFields::workers()]),
+                Section::make('dns')->label(__('DNS a pošta'))->schema(SiteFields::dns()),
                 Section::make('owner')->label(__('Vlastník'))->schema([SiteFields::client()])
                     ->visible(fn () => Gate::allows('clients') && Client::query()->exists()),
             ])
@@ -211,6 +234,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     throw ValidationException::withMessages(['data.domain' => __('Web se nepodařilo založit: ').$error]);
                 }
                 self::addWorkers($site, SiteFields::chosenWorkers($data));
+                self::setUpDns($site, $data);
 
                 return $site;
             })

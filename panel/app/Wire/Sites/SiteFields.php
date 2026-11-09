@@ -2,20 +2,25 @@
 
 namespace App\Wire\Sites;
 
+use App\Actions\Dns\ManageSiteDns;
+use App\Actions\Mail\ManageMailHosting;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Models\Client;
 use App\Services\Agent\SystemInfo;
+use App\Services\Dns\DnsAdvisor;
 use App\Support\Domains;
 use App\Support\Lang;
 use App\Support\Limits;
 use App\Wire\Forms\Options;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use NyonCode\WireCore\Foundation\Schema\Callout;
 use NyonCode\WireForms\Components\CheckboxList;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
+use NyonCode\WireForms\Components\Toggle;
 
 /** Form fields of a site, shared by "new site" and "switch mode". */
 final class SiteFields
@@ -39,8 +44,77 @@ final class SiteFields
                 }
             }])
             ->liveOnBlur()
-            ->afterStateUpdated(fn ($state, $set) => $set('tls', Domains::isInternal(Domains::normalize($state)) ? 'internal' : 'auto'))
+            ->afterStateUpdated(function ($state, $set, $get) {
+                $domain = Domains::normalize($state);
+                $set('tls', Domains::isInternal($domain) ? 'internal' : 'auto');
+                // A zone in the panel that covers the name: its records go there.
+                // Otherwise a choice made already stays (only "zone" no longer fits).
+                $covered = ManageSiteDns::zoneFor($domain) !== null;
+                if ($covered && in_array($get('dns'), [null, 'none', 'local', 'cloudflare'], true)) {
+                    $set('dns', 'zone');
+                } elseif (! $covered && $get('dns') === 'zone') {
+                    $set('dns', 'none');
+                }
+            })
             ->helperText(__('Veřejná doména musí DNS záznamem mířit na tento server. Pro vnitřní síť použijte např. intranet.firma.lan.'));
+    }
+
+    /**
+     * Where the site's DNS goes: into the panel's zone that covers it, a new
+     * zone here or in Cloudflare, or nowhere (the site's DNS tab shows what
+     * to set at the registrar). Optionally mail for its domain.
+     *
+     * @return list<mixed>
+     */
+    public static function dns(): array
+    {
+        $zone = fn ($get) => ManageSiteDns::zoneFor(Domains::normalize((string) $get('domain')));
+        $options = function ($get) use ($zone): array {
+            $out = [];
+            if ($z = $zone($get)) {
+                $out['zone'] = __('Do zóny :zone (:where)', ['zone' => $z->domain, 'where' => $z->provider->getLabel()]);
+            } else {
+                if (Gate::allows('admin') && ManageSiteDns::localAvailable()) {
+                    $out['local'] = __('Nová zóna na tomto serveru (PowerDNS)');
+                }
+                $out['cloudflare'] = __('Nová zóna v Cloudflare');
+            }
+            $out['none'] = __('DNS spravuji jinde (u registrátora)');
+
+            return $out;
+        };
+
+        return [
+            Radio::make('dns')->label(__('DNS'))
+                ->options($options)
+                ->descriptions([
+                    'zone' => __('Doplní záznamy webu, které zóna nemá. Existující se nemění.'),
+                    'local' => __('U registrátora pak nastavte nameservery :ns.', ['ns' => implode(', ', DnsAdvisor::defaultNameservers())]),
+                    'cloudflare' => __('Zónu (doménu) musíte mít v Cloudflare přidanou; panel do ní zapíše záznamy přes API.'),
+                    'none' => __('Záložka DNS u webu ukáže, co nastavit, a ověří to.'),
+                ])
+                ->default('none')
+                ->required()
+                ->live()
+                ->rules([fn ($get) => Rule::in(array_keys($options($get)))]),
+            TextInput::make('dns_zone')->label(__('Zóna'))
+                ->placeholder(fn ($get) => ManageSiteDns::suggestedZone(Domains::normalize((string) $get('domain'))) ?: 'example.com')
+                ->helperText(__('Prázdné = doména webu bez www. Pro shop.example.com obvykle example.com.'))
+                ->dehydrateStateUsing(fn (?string $state) => Domains::normalize($state))
+                ->rules(['nullable', function (string $attribute, mixed $value, \Closure $fail) {
+                    if (filled($value) && ! Domains::isValid($value)) {
+                        $fail(__('Neplatná doména.'));
+                    }
+                }])
+                ->visible(fn ($get) => in_array($get('dns'), ['local', 'cloudflare'], true)),
+            TextInput::make('cloudflare_token')->label(__('Cloudflare API token'))->password()->revealable()
+                ->helperText(__('My Profile → API Tokens → Create Token → šablona „Edit zone DNS“, omezit na tuto zónu. Uloží se šifrovaně.'))
+                ->visibleWhen('dns', 'cloudflare')
+                ->requiredIf('dns', 'cloudflare'),
+            Toggle::make('mail')->label(__('Pošta pro doménu (schránky)'))
+                ->helperText(__('Založí poštovní doménu; do DNS přidá MX, SPF, DKIM, DMARC a záznamy pro webmail a nastavení programů.'))
+                ->visible(fn () => (bool) rescue(fn () => app(ManageMailHosting::class)->installed(), false, report: false)),
+        ];
     }
 
     public static function tls(): Radio

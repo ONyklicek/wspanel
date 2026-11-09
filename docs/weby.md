@@ -32,8 +32,38 @@
    (Symfony); dál Horizon, Reverb a Pulse. Horizon nahrazuje frontu, obojí
    najednou vybrat nejde. Horizon a Pulse ingest zapnou Valkey webu. Další
    workery přidáte kdykoli u webu (Další → Přidat worker).
-6. Po vytvoření se otevře **detail webu**. Web už odpovídá úvodní stránkou
+6. **DNS a pošta:**
+   - **Do zóny …:** panel už spravuje zónu, pod kterou doména patří
+     (pro `shop.example.com` třeba `example.com`). Zapíše do ní chybějící
+     záznamy webu, existující nemění. Je předvybrané, když taková zóna je.
+   - **Nová zóna na tomto serveru / v Cloudflare:** založí zónu (výchozí je
+     doména bez `www.`) a rovnou do ní zapíše záznamy.
+   - **DNS spravuji jinde:** nic se nezapisuje. Co nastavit u registrátora,
+     ukáže záložka **DNS** webu.
+   - **Pošta pro doménu** (jen s poštovním modulem): založí poštovní doménu
+     a do DNS přidá MX, SPF, DKIM, DMARC a záznamy pro webmail a nastavení
+     poštovních programů.
+   Když se DNS nepovede (např. neplatný token Cloudflare), web se i tak založí
+   a panel napíše, co dokončit v záložce DNS.
+7. Po vytvoření se otevře **detail webu**. Web už odpovídá úvodní stránkou
    „Web běží“, která popisuje, jak pokračovat.
+
+### DNS webu
+
+Záložka **DNS** u webu ukáže, co web v DNS potřebuje:
+- A/AAAA pro doménu webu a jeho další domény (aliasy a přesměrování),
+- CAA, SPF a DMARC domény (DKIM, je-li klíč),
+- s poštou MX, SRV a `webmail.`, `autoconfig.`, `autodiscover.`.
+
+U každého záznamu je vidět, jestli ho zóna má (jen u zón spravovaných
+panelem: **je / chybí / jiná hodnota**) a jestli adresa webu ve veřejném
+DNS míří na tento server. **Doplnit chybějící** zapíše, co v zóně chybí.
+Záznam, který tam je s jinou hodnotou, panel nepřepíše, jen ho ukáže. Bez
+spravované zóny tlačítko **Spravovat DNS v panelu** založí zónu na tomto
+serveru (nebo připojí Cloudflare) a záznamy rovnou doplní.
+
+Nově přidaná další doména webu (Nastavení → Domény) se do zóny spravované
+panelem zapíše sama (A/AAAA na tento server).
 
 Co se při založení stane:
 - vytvoří se systémový uživatel `web_<doména>` bez přihlášení,
