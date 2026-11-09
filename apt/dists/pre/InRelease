@@ -4,35 +4,35 @@ Hash: SHA512
 Architectures: amd64 arm64
 Codename: pre
 Components: main
-Date: Sun, 08 Nov 2026 22:36:34 +0000
+Date: Mon, 09 Nov 2026 06:18:09 +0000
 Description: WSPanel, channel pre
 Label: WSPanel
 Origin: WSPanel
 Suite: pre
 MD5Sum:
- fb64c6323aee0fa05c389fa1ae67b0b7             1693 main/binary-amd64/Packages
- 6da8d511cfd8eebe2e1e5acbb3d9245b              919 main/binary-amd64/Packages.gz
- 061522a1c925975c52172684efccfe00             1693 main/binary-arm64/Packages
- 1edf2ddc2c22c686a00085df1db3d5c8              919 main/binary-arm64/Packages.gz
+ cdc02ce645fe371da61a2cd1e8eec0d5             4394 main/binary-amd64/Packages
+ 947a82b7f806432291d669534468e65a             1945 main/binary-amd64/Packages.gz
+ 4bfb1c14dfac8b9d462976c80311937b             4394 main/binary-arm64/Packages
+ b0e4a726ce8545b8e52f774c9f13775d             1945 main/binary-arm64/Packages.gz
 SHA1:
- 5269f7346650e1702714127dd5092c52d24db463             1693 main/binary-amd64/Packages
- cb062323648f26a38534a77e3a3128e3c4d1b27f              919 main/binary-amd64/Packages.gz
- d42323f86c0b5d923a06e679000bf70880d65388             1693 main/binary-arm64/Packages
- 999c8597387da50fa9beb1ae657fe69f1d89fd60              919 main/binary-arm64/Packages.gz
+ c1a83aee7a59224ff9fc3916359d50558d03d9e3             4394 main/binary-amd64/Packages
+ e7277f2869259aa0201d7bd078044e47071c1c1e             1945 main/binary-amd64/Packages.gz
+ aabb69c6eb8eb96eb7fb0a4ce13cedb417fd5d7e             4394 main/binary-arm64/Packages
+ 567aac3be45ab827f3593c41a818b8c467168412             1945 main/binary-arm64/Packages.gz
 SHA256:
- a2d68a395d06effdef187418382822dd79b7d27b3d885840c94598079878e9f3             1693 main/binary-amd64/Packages
- 079294b71ec5237fa8c46149f1eba790a7a47b0568029e6be822809676470a5b              919 main/binary-amd64/Packages.gz
- c3954c4fee60371c84c63053aba3a7416d86523b5f8e4416ef39e4ebb7e7c5e8             1693 main/binary-arm64/Packages
- 16ff5c2448336bf97abf6e0ac9a4fccd627bd95f42c54941b5742baa547c8603              919 main/binary-arm64/Packages.gz
+ 83e07f7ef85a037c0a67b72c1594c6a4568136368dec83aaf4d0357ce632329e             4394 main/binary-amd64/Packages
+ 52558d699efaaa91d756a655048af178871a6b571cbcfe536a78b1c253fe45c4             1945 main/binary-amd64/Packages.gz
+ 63b1f294eb9ac08b94e90fb6a2fe741f763d792b10f2da7d6ad95a4504ad0166             4394 main/binary-arm64/Packages
+ d2d2895f9695352f3147dd0a110d084607787e5f6608c5473456424c0c939f97             1945 main/binary-arm64/Packages.gz
 SHA512:
- 97221dd0cd86010f2243637a114e26d49698cda4281f725d6dacada70fc39e001090c78e50423c42ed5696888b31d86bff8502cd193704fc2c917865131e5450             1693 main/binary-amd64/Packages
- dc06daa6ccd0279cf9f9045bbb1e0c8d9b838b197a94ec9d63663fd4f2f671cfe1bf4af5fc758e5e3a000b573156f5d018a5311bc8405bfde9234d7c761dc707              919 main/binary-amd64/Packages.gz
- a2521ff0e0274b9ff48dd1e38199bab8975be1898db21233277c6827b07f6e38126bee83605adac78921326c827648d720d0ee86e5d98e101c3839687aafb371             1693 main/binary-arm64/Packages
- 7733de025b4988f8fe4772a27105be647f1c169ffc7026b3f3bb88aa5409cea651a517bfe7192f102a1339fa285cdf902823e68f436771e0cdc2d1d34c6e18db              919 main/binary-arm64/Packages.gz
+ ecdda10798f47e5340ebaf31f94a961340a05f1ee01579a3f38d43d0c0d259fc6dbe0d083696cc6e22600b96207cd4d2372cfa9e1c47670ae65b87aaacd777ce             4394 main/binary-amd64/Packages
+ 16ef517163f4cc8dd5f9fa01637fa70feda764f58cb485899ee3326ca3a4d0fffbc1f53d63e6cb2443451f750cc6c84c73d6fd1a915d618b52ab2a8c4f81ccda             1945 main/binary-amd64/Packages.gz
+ 4b90b5ab1030105d231ca25997f788d613a7ed0be4964b021dd4dc5039318c16b889073061c657c18b423b02a553a0b91422aac3899330c2b8b0d7ec4e3f2895             4394 main/binary-arm64/Packages
+ e23e3b47ea573f9cadde652bd13944977927d67115d51dbc15917832614c952ff71e4e2573355da82f9f7fa2f99020900320f12d218ec7087275ea9b02a27005             1945 main/binary-arm64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQRRUlZS68RmaWxHnp3uztGaBhAfHwUCavD5cgAKCRDuztGaBhAf
-HypMAP9MnsSDBAnCdO4SY3aUBvRxGWVZw4IgtgW8BfjW4rqiuQEAp0gpFPv7VuU4
-pMuebtUABKDBr2e9nxZ9GJKhS84plAo=
-=kRvo
+iHUEARYKAB0WIQRRUlZS68RmaWxHnp3uztGaBhAfHwUCavFloQAKCRDuztGaBhAf
+HzSlAPsGSpL5BWtgh3shy92oSZL25tuyu5PG92ABSp86Fzo4rQEAnBNTc6v/OGci
+QPwIYFsF5Cm44602/bOvxIE1AW/DVgA=
+=lTK9
 -----END PGP SIGNATURE-----
