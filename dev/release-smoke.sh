@@ -135,8 +135,13 @@ code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve panel.localhost:443
 log "A Laravel site with its workers"
 out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "app.localhost", "mode" => "classic", "framework" => "laravel", "php_version" => "8.4", "tls" => "internal"]); foreach (["queue", "scheduler"] as $w) { app(App\Actions\Sites\ManageWorkers::class)->create($s, $w); } echo $s->status->value;')
 [[ $out == active ]] || fail "site: $out"
-code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/')
-[[ $code == 200 ]] || fail "the site answered $code"
+# Its PHP-FPM pool may still be (re)loading for a moment.
+for _ in $(seq 20); do
+  code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/')
+  [[ $code == 200 ]] && break
+  sleep 1
+done
+[[ $code == 200 ]] || { on 'journalctl -u "php8.4-fpm" --no-pager -n 20' >&2 || true; fail "the site answered $code"; }
 
 log "Python: a placeholder, then a Django site with Celery deployed twice (the second through the other slot)"
 on 'test -x /usr/local/bin/uv && ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu >/dev/null' || fail "--python=3.13 did not install uv and Python 3.13"

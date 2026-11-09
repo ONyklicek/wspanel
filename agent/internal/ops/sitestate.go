@@ -32,6 +32,7 @@ type siteState struct {
 	PortB       int           `json:"port_b,omitempty"`
 	Slot        string        `json:"slot,omitempty"`
 	ReverbPort  int           `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
+	SSRPort     int           `json:"ssr_port,omitempty"`     // laravel: the Inertia SSR server's port
 	SSHAccess   string        `json:"ssh_access,omitempty"`   // off | sftp | shell
 	SSHPassword bool          `json:"ssh_password,omitempty"` // password login allowed (besides keys)
 	EnvVars     []string      `json:"env_vars,omitempty"`     // keys set in Prostředí (a deploy keeps them)

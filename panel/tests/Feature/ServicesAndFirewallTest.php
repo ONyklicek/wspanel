@@ -178,6 +178,23 @@ class ServicesAndFirewallTest extends TestCase
             ->assertHasNoErrors();
     }
 
+    public function test_inertia_ssr_says_what_the_app_still_needs(): void
+    {
+        $site = Site::create(['domain' => 'shop.example.com', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active']);
+        $this->agent->shouldReceive('call')->with('sys.versions')->andReturn([
+            'php' => [['version' => '8.4', 'installed' => true]], 'php_default' => '8.4', 'panel_units' => [],
+            'workers' => ['laravel' => ['horizon', 'queue', 'scheduler', 'ssr']],
+        ]);
+        $this->agent->shouldReceive('call')->once()
+            ->with('worker.create', ['domain' => 'shop.example.com', 'worker' => 'ssr'])
+            ->andReturn(['started' => true, 'port' => 612, 'hints' => ['config/inertia.php: ssr.url should be env(...)', 'resources/js/ssr.tsx: createServer(...)']]);
+
+        $this->tableAction(Livewire::test(ListSites::class), $site, 'addWorker', ['worker' => 'ssr'])
+            ->assertHasNoErrors()
+            ->assertNotified('Worker přidán')
+            ->assertNotified('Aplikace musí převzít port od panelu');
+    }
+
     public function test_firewall_port_range_is_checked_on_the_server(): void
     {
         $this->agent->shouldNotReceive('call')->with('fw.allow', Mockery::any());

@@ -71,6 +71,7 @@ final class SiteActions
         'reverb' => 'Reverb – WebSockets (artisan reverb:start)',
         'pulse' => 'Pulse – kontroly (artisan pulse:check)',
         'pulsework' => 'Pulse – ingest z Redisu (artisan pulse:work)',
+        'ssr' => 'Inertia SSR – vykreslení na serveru (node bootstrap/ssr/ssr.js)',
         'celery' => 'Celery – worker (úlohy z fronty)',
         'celerybeat' => 'Celery beat (plánovač úloh)',
     ];
@@ -413,11 +414,27 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     'reverb' => __(' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).'),
                     'horizon' => __(' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).'),
                     'pulsework' => __(' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).'),
+                    'ssr' => ' '.__('Port :port, v .env INERTIA_SSR_URL; deploy sestaví i SSR bundle (npm run build:ssr).', ['port' => $out['port'] ?? '?']),
                     'celery', 'celerybeat' => ' '.__('Aplikace Celery: :app. Broker (Valkey webu nebo jiný) si nastavte v aplikaci.', ['app' => $out['app'] ?? '']),
                     default => '',
                 };
                 Toast::success(__('Worker přidán'), $body);
+                if (($out['hints'] ?? []) !== []) {
+                    Toast::warning(__('Aplikace musí převzít port od panelu'), implode("\n", array_map(fn (string $h) => self::ssrHint($h), $out['hints'])));
+                }
             }));
+    }
+
+    /** What the app still needs for Inertia SSR, in Czech. */
+    public static function ssrHint(string $hint): string
+    {
+        [$file] = explode(':', $hint, 2);
+
+        return match (true) {
+            str_starts_with($hint, 'config/inertia.php') => __(':file: ssr.url nastavte na env(\'INERTIA_SSR_URL\', \'http://127.0.0.1:13714\').', ['file' => $file]),
+            str_contains($hint, 'no SSR entry') => __('Chybí resources/js/ssr.ts (vstup SSR serveru Inertia).'),
+            default => __(':file: v createServer předejte port Number(process.env.INERTIA_SSR_PORT) || 13714.', ['file' => $file]),
+        };
     }
 
     public static function delete(): Action

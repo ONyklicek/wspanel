@@ -93,6 +93,9 @@ func workerAppEnv(ctx context.Context, env *Env, l siteLayout, st siteState, wor
 		set("VITE_REVERB_HOST", l.Domain)
 		set("VITE_REVERB_PORT", strconv.Itoa(publicPort))
 		set("VITE_REVERB_SCHEME", "https")
+	case "ssr":
+		set("INERTIA_SSR_ENABLED", "true")
+		set("INERTIA_SSR_URL", "http://127.0.0.1:"+strconv.Itoa(st.SSRPort))
 	case "horizon":
 		set("QUEUE_CONNECTION", "redis")
 	case "pulsework":
@@ -186,6 +189,10 @@ func panelManagedKeys(env *Env, l siteLayout, st siteState, current map[string]s
 	}
 	if has("horizon") {
 		out["QUEUE_CONNECTION"] = true
+	}
+	if has("ssr") {
+		out["INERTIA_SSR_URL"] = true
+		out["INERTIA_SSR_ENABLED"] = true
 	}
 	if has("pulsework") {
 		out["PULSE_INGEST_DRIVER"] = true

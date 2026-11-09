@@ -33,6 +33,9 @@ var workerSpecs = map[string]map[string]workerSpec{
 		"reverb":    {"artisan", []string{"artisan", "reverb:start", "--host=127.0.0.1", "--port={port}"}, 30},
 		"pulse":     {"artisan", []string{"artisan", "pulse:check"}, 30},
 		"pulsework": {"artisan", []string{"artisan", "pulse:work"}, 30}, // only with Redis ingest
+		// Inertia SSR: the release's server bundle on Node, on an agent-allocated
+		// privileged port (no other site can take it and answer with its own HTML).
+		"ssr": {ssrBundle, []string{ssrBundle}, 10},
 	},
 	"symfony": {
 		"messenger": {"bin/console", []string{"bin/console", "messenger:consume", "async", "--time-limit=3600", "--memory-limit=256M"}, 60},
@@ -57,7 +60,38 @@ var celerySpecs = map[string]workerSpec{
 var celeryWorkers = []string{"celery", "celerybeat"}
 
 // WorkerTypes lists all known worker types (for validation messages / UI).
-var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "messenger", "celery", "celerybeat"}
+var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "ssr", "messenger", "celery", "celerybeat"}
+
+// ssrBundle: what `vite build --ssr` writes with laravel-vite-plugin.
+const ssrBundle = "bootstrap/ssr/ssr.js"
+
+// ssrHints: what the app still needs for the SSR worker (English, the panel
+// translates): its SSR server and Laravel's config read the port the panel
+// gave it. Empty when both do (or the release is not there yet).
+func ssrHints(ctx context.Context, env *Env, l siteLayout) []string {
+	hints := []string{}
+	rel := filepath.Join(l.Home, "current")
+	if !fsx.Exists(rel) {
+		return hints
+	}
+	cfg, _ := readSiteFile(ctx, env, l, filepath.Join(rel, "config", "inertia.php"))
+	if !strings.Contains(cfg, "INERTIA_SSR_URL") {
+		hints = append(hints, "config/inertia.php: ssr.url should be env('INERTIA_SSR_URL', 'http://127.0.0.1:13714')")
+	}
+	found := false
+	for _, f := range []string{"ssr.ts", "ssr.tsx", "ssr.js", "ssr.jsx"} {
+		if src, _ := readSiteFile(ctx, env, l, filepath.Join(rel, "resources", "js", f)); src != "" {
+			found = true
+			if !strings.Contains(src, "INERTIA_SSR_PORT") {
+				hints = append(hints, "resources/js/"+f+": createServer(..., Number(process.env.INERTIA_SSR_PORT) || 13714)")
+			}
+		}
+	}
+	if !found {
+		hints = append(hints, "resources/js/ssr.ts: no SSR entry (php artisan inertia:start-ssr needs one)")
+	}
+	return hints
+}
 
 type workerParams struct {
 	Domain string `json:"domain"`
@@ -80,6 +114,18 @@ func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitDat
 	if typ == "reverb" {
 		args = strings.ReplaceAll(args, "{port}", strconv.Itoa(l.ReverbPort))
 		extra = portUnitExtra(l.ReverbPort)
+	}
+	if typ == "ssr" {
+		node := filepath.Join(env.Cfg.ToolsDir, l.User, "node")
+		return unitData{
+			Description: "WSPanel Inertia SSR for " + l.Domain,
+			User:        l.User, Home: l.Home,
+			ExecStart: node + " " + args,
+			// The bundle reads its port from INERTIA_SSR_PORT (see docs/weby.md).
+			Environment: []string{"NODE_ENV=production", "INERTIA_SSR_PORT=" + strconv.Itoa(l.SSRPort), "PATH=" + filepath.Dir(node) + ":/usr/bin:/bin"},
+			Extra:       portUnitExtra(l.SSRPort),
+			StopTimeout: spec.StopTimeout,
+		}
 	}
 	return unitData{
 		Description: fmt.Sprintf("WSPanel %s worker for %s", typ, l.Domain),
@@ -151,28 +197,35 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 	} else if p.App != "" {
 		return nil, protocol.Invalid("app: only Celery workers take an app")
 	}
-	if p.Worker == "reverb" {
-		// Port + edge route first; the state change is rolled back with the edge.
+	if p.Worker == "reverb" || p.Worker == "ssr" {
+		// Port (+ Reverb's edge route) first; the state change is rolled back with it.
 		st, _, lerr := loadSite(env, p.Domain)
 		if lerr != nil {
 			return nil, lerr
 		}
-		if st.ReverbPort, err = allocatePort(env); err != nil {
-			return nil, err
+		prev := st
+		port, perr := allocatePort(env)
+		if perr != nil {
+			return nil, perr
+		}
+		if p.Worker == "reverb" {
+			st.ReverbPort = port
+		} else {
+			st.SSRPort = port
 		}
 		if l, err = layout(env.Cfg, st); err != nil {
 			return nil, err
 		}
-		if err = writeEdge(ctx, env, l, &rollback); err != nil {
-			return nil, err
+		if p.Worker == "reverb" {
+			if err = writeEdge(ctx, env, l, &rollback); err != nil {
+				return nil, err
+			}
 		}
-		prev := st
-		prev.ReverbPort = 0
 		if err = saveSiteState(env, st); err != nil {
 			return nil, err
 		}
 		rollback.add(func() { _ = saveSiteState(env, prev) })
-		out["port"] = st.ReverbPort
+		out["port"] = port
 	}
 	st1, _, err := loadSite(env, p.Domain)
 	if err != nil {
@@ -191,6 +244,9 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 		return nil, err
 	}
 	out["unit"], out["started"] = currentWorkerUnit(env, l, p.Worker), started
+	if p.Worker == "ssr" {
+		out["hints"] = ssrHints(ctx, env, l)
+	}
 	return out, nil
 }
 
@@ -215,6 +271,16 @@ func workerDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	unitName := currentWorkerUnit(env, wl, p.Worker)
 	if err := removeWorker(ctx, env, wl, p.Worker); err != nil {
 		return nil, err
+	}
+	if p.Worker == "ssr" { // release the port
+		st, _, err := loadSite(env, p.Domain)
+		if err != nil {
+			return nil, err
+		}
+		st.SSRPort = 0
+		if err := saveSiteState(env, st); err != nil {
+			return nil, err
+		}
 	}
 	if p.Worker == "reverb" { // drop the edge route and release the port
 		st, _, err := loadSite(env, p.Domain)

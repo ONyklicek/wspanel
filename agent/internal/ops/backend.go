@@ -248,6 +248,9 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if _, ok := workerSpecs[st.Framework]["reverb"]; ok {
 		st.ReverbPort = old.ReverbPort // the Reverb route survives; otherwise refreshWorkers drops the worker
 	}
+	if _, ok := workerSpecs[st.Framework]["ssr"]; ok {
+		st.SSRPort = old.SSRPort
+	}
 	if validate.AppMode(st.Mode) {
 		if st.Port, err = allocatePort(env); err != nil {
 			return nil, err

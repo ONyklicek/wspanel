@@ -30,6 +30,7 @@ type siteLayout struct {
 	PythonCelery  string
 	Port          int
 	ReverbPort    int
+	SSRPort       int
 	User          string
 
 	OpcacheProduction bool
@@ -109,6 +110,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		PythonCelery:  st.PythonCelery,
 		Port:          st.Port,
 		ReverbPort:    st.ReverbPort,
+		SSRPort:       st.SSRPort,
 
 		OpcacheProduction: st.OpcacheProduction,
 		Disabled:          st.Disabled,

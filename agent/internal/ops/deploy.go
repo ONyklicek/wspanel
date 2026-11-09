@@ -643,6 +643,12 @@ func (d *deployment) build(ctx context.Context) error {
 		if err := d.step(ctx, "npm run build", dir, []string{"NODE_ENV=production"}, d.npm(), "run", "build", "--if-present"); err != nil {
 			return err
 		}
+		// Inertia SSR: the server bundle too (the starter kits' build:ssr).
+		if l.Framework == "laravel" && hasWorker(d.env, l.User, "ssr") {
+			if err := d.step(ctx, "npm run build:ssr", dir, []string{"NODE_ENV=production"}, d.npm(), "run", "build:ssr", "--if-present"); err != nil {
+				return err
+			}
+		}
 	}
 	if l.Mode == "python" {
 		return d.buildPython(ctx)

@@ -436,6 +436,7 @@ uživatelem webu, se sandboxem, a po pádu se sám restartuje.
 | Laravel | Plánovač | `artisan schedule:work` (náhrada cronu `schedule:run`) |
 | Laravel | Reverb (WebSockets) | `artisan reverb:start`; proxy posílá `/app` a `/apps` na Reverb |
 | Laravel | Pulse | `artisan pulse:check`, volitelně `pulse:work` |
+| Laravel | Inertia SSR | `node bootstrap/ssr/ssr.js` (vykreslení stránek na serveru) |
 | Symfony | Messenger | `messenger:consume async` |
 | Symfony | Plánovač | `messenger:consume scheduler_default` |
 
@@ -452,6 +453,36 @@ uživatelem webu, se sandboxem, a po pádu se sám restartuje.
 Reverb: do `.env` dejte `REVERB_HOST=<doména>`, `REVERB_PORT=443`,
 `REVERB_SCHEME=https`. Port, na kterém Reverb poslouchá, přiděluje panel.
 
+### Inertia SSR (Laravel s Vue, React nebo Svelte)
+
+Worker **Inertia SSR** spustí SSR server Inertie vedle PHP webu. Laravel se
+k němu při každém požadavku obrátí a stránka přijde vykreslená už ze serveru.
+
+- **Port** přidělí panel z chráněného rozsahu, stejně jako u Reverbu. Žádný
+  jiný web ho nemůže obsadit a podvrhnout vlastní HTML. Výchozí port Inertie
+  (13714) by si weby na jednom serveru přetahovaly.
+- Procesu předá `INERTIA_SSR_PORT` a do `.env` zapíše
+  `INERTIA_SSR_URL=http://127.0.0.1:<port>`.
+- **Deploy** po `npm run build` spustí i `npm run build:ssr` (skript ze
+  starter kitů: `vite build && vite build --ssr`). Worker pak běží s bundlem
+  `bootstrap/ssr/ssr.js` nového releasu.
+- **V aplikaci** jsou potřeba dvě úpravy, aby port převzala od panelu. Panel
+  po přidání workeru zkontroluje, jestli je máte, a napíše, co chybí:
+  - `config/inertia.php`:
+    ```php
+    'ssr' => [
+        'enabled' => true,
+        'url' => env('INERTIA_SSR_URL', 'http://127.0.0.1:13714'),
+    ],
+    ```
+  - `resources/js/ssr.ts` (nebo `.tsx`):
+    ```ts
+    createServer((page) => createInertiaApp({ /* … */ }),
+        Number(process.env.INERTIA_SSR_PORT) || 13714)
+    ```
+- Bundle se hledá jako `bootstrap/ssr/ssr.js` (výchozí název u projektů
+  s `"type": "module"`, tedy všech starter kitů).
+
 ## Laravel: co panel nastaví sám
 
 Panel nastavuje `.env` aplikace tak, aby se servery, které spouští, vždy
@@ -464,6 +495,7 @@ shodovaly s aplikací. Nic z toho není třeba psát ručně:
 | Worker **Reverb** | `BROADCAST_CONNECTION=reverb`, `REVERB_APP_ID/KEY/SECRET` (vygenerované jednou, pak se drží), `REVERB_HOST=127.0.0.1` + port Reverbu (aplikace publikuje přímo na serveru), `VITE_REVERB_HOST=<doména>`, `VITE_REVERB_PORT=443`, `VITE_REVERB_SCHEME=https` (prohlížeč přes HTTPS webu) |
 | Worker **Horizon** | zapne Valkey webu, pokud běží jinak (nic nemaže, ukládá na disk), `QUEUE_CONNECTION=redis` |
 | Worker **Pulse (Redis ingest)** | zapne Valkey, `PULSE_INGEST_DRIVER=redis` |
+| Worker **Inertia SSR** | `INERTIA_SSR_URL=http://127.0.0.1:<port>`, `INERTIA_SSR_ENABLED=true` |
 | Pošta | `MAIL_*` podle režimu (odesílá / zachytává v Mailpitu) |
 
 - **Reverb za proxy:** prohlížeče se připojují na `wss://<doména>/app/…`, edge

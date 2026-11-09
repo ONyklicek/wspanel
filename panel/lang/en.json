@@ -2704,5 +2704,11 @@
     "Restartovat databázový server webu :domain?": "Restart the database server of :domain?",
     "Zastavit databázový server webu :domain? Web se k databázi nepřipojí.": "Stop the database server of :domain? The site will not reach its database.",
     "Smazat vyhrazený server webu :domain?": "Delete the dedicated server of :domain?",
-    "Vyhrazený server neexistuje.": "The dedicated server does not exist."
+    "Vyhrazený server neexistuje.": "The dedicated server does not exist.",
+    "Inertia SSR – vykreslení na serveru (node bootstrap/ssr/ssr.js)": "Inertia SSR – server-side rendering (node bootstrap/ssr/ssr.js)",
+    "Port :port, v .env INERTIA_SSR_URL; deploy sestaví i SSR bundle (npm run build:ssr).": "Port :port, INERTIA_SSR_URL in .env; deploys build the SSR bundle too (npm run build:ssr).",
+    "Aplikace musí převzít port od panelu": "The app must take the port from the panel",
+    ":file: ssr.url nastavte na env('INERTIA_SSR_URL', 'http://127.0.0.1:13714').": ":file: set ssr.url to env('INERTIA_SSR_URL', 'http://127.0.0.1:13714').",
+    "Chybí resources/js/ssr.ts (vstup SSR serveru Inertia).": "resources/js/ssr.ts is missing (the Inertia SSR server's entry).",
+    ":file: v createServer předejte port Number(process.env.INERTIA_SSR_PORT) || 13714.": ":file: pass the port Number(process.env.INERTIA_SSR_PORT) || 13714 to createServer."
 }

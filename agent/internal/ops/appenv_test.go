@@ -1,7 +1,10 @@
 package ops
 
 import (
+	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -177,5 +180,71 @@ func TestAFirstDeployGetsTheAppSecretItCannotStartWithout(t *testing.T) {
 		if strings.Contains(c.String(), "/usr/bin/tee") {
 			t.Errorf("an existing key is never replaced: %s", c)
 		}
+	}
+}
+
+func TestInertiaSSRWorker(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "ssr.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := call(t, env, workerCreate, map[string]any{"domain": "ssr.example.com", "worker": "ssr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := itoa(out.(map[string]any)["port"].(int))
+	unit := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-web_ssr_example_com-ssr@.service"))
+	for _, want := range []string{
+		filepath.Join(env.Cfg.ToolsDir, "web_ssr_example_com", "node") + " bootstrap/ssr/ssr.js",
+		"Environment=INERTIA_SSR_PORT=" + port, "Environment=NODE_ENV=production", "SocketBindAllow=tcp:" + port, "SocketBindDeny=any",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit lacks %q:\n%s", want, unit)
+		}
+	}
+	if e := lastEnvWrite(dr); !strings.Contains(e, `INERTIA_SSR_URL="http://127.0.0.1:`+port+`"`) {
+		t.Errorf(".env:\n%s", e)
+	}
+	// No route at the edge: only the app talks to it.
+	if e := read(t, filepath.Join(env.Cfg.ProxySitesDir, "ssr.example.com.caddy")); strings.Contains(e, port) {
+		t.Errorf("SSR exposed at the edge:\n%s", e)
+	}
+	if _, err := call(t, env, workerDelete, map[string]string{"domain": "ssr.example.com", "worker": "ssr"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, _ := loadSite(env, "ssr.example.com"); st.SSRPort != 0 {
+		t.Error("SSR port not released")
+	}
+}
+
+func TestSSRHintsReadTheApp(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "h.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	_, l, _ := loadSite(env, "h.example.com")
+	if err := os.MkdirAll(filepath.Join(l.Home, "current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"config/inertia.php": "'url' => 'http://127.0.0.1:13714',",
+		"resources/js/ssr.tsx": "createServer((page) => createInertiaApp({ page }))",
+	}
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		for f, body := range files {
+			if c.Name == "setpriv" && strings.HasSuffix(c.String(), "/current/"+f) {
+				return executor.Result{Stdout: body}, nil
+			}
+		}
+		return executor.Result{}, nil
+	}
+	h := ssrHints(context.Background(), env, l)
+	if len(h) != 2 || !strings.HasPrefix(h[0], "config/inertia.php") || !strings.HasPrefix(h[1], "resources/js/ssr.tsx") {
+		t.Fatalf("hints: %v", h)
+	}
+	files["config/inertia.php"] = "'url' => env('INERTIA_SSR_URL', 'http://127.0.0.1:13714'),"
+	files["resources/js/ssr.tsx"] = "createServer(render, Number(process.env.INERTIA_SSR_PORT) || 13714)"
+	if h := ssrHints(context.Background(), env, l); len(h) != 0 {
+		t.Fatalf("hints for a ready app: %v", h)
 	}
 }

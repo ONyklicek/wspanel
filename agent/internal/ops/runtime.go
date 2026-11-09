@@ -83,6 +83,7 @@ func allocatePort(env *Env) (int, error) {
 	for _, st := range allSiteStates(env.Cfg) {
 		used[st.Port] = true
 		used[st.ReverbPort] = true
+		used[st.SSRPort] = true
 		used[st.ValkeyPort] = true
 		used[st.PortB] = true
 		if st.Valkey != nil {

@@ -19,6 +19,7 @@ final class AgentMessages
         'Composer' => 'Composer',
         'npm install' => 'Instalace npm balíčků',
         'npm run build' => 'Build assetů',
+        'npm run build:ssr' => 'Build SSR (Inertia)',
         'Migrations' => 'Migrace databáze',
         'Storage link' => 'Odkaz na storage',
         'Optimize' => 'Optimalizace',
