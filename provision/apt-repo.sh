@@ -20,7 +20,6 @@ set -euo pipefail
 REPO=${1:?repository dir} PUBKEY=${2:?public key}
 shift 2
 PUBKEY="$(cd "$(dirname "$PUBKEY")" && pwd)/$(basename "$PUBKEY")" # used after cd "$REPO"
-for pkg in "${RETIRED[@]}"; do rm -rf "pool/main/w/$pkg"; done
 KEEP=${APT_KEEP:-5}
 PACKAGES=(wspanel wspanel-agent wspanel-archive-keyring)
 # Packages no longer published: their files leave the pool (and the indexes).
@@ -34,6 +33,7 @@ for deb in "$@"; do
   cp "$deb" "$REPO/pool/main/w/$pkg/${pkg}_$(dpkg-deb -f "$deb" Version)_$(dpkg-deb -f "$deb" Architecture).deb"
 done
 cd "$REPO"
+for pkg in "${RETIRED[@]}"; do rm -rf "pool/main/w/${pkg:?}"; done
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

@@ -256,12 +256,18 @@ if [[ ! -s $FP_KEY ]] || ! grep -qs "/api/packages/$FRANKENPHP_PHP/debian" "$FP_
   tmp="$(mktemp)"
   curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$tmp" \
     "https://pkg.henderkes.com/api/packages/$FRANKENPHP_PHP/debian/repository.key"
-  fpr="$(gpg --batch --with-colons --show-keys "$tmp" 2>/dev/null | awk -F: '/^fpr/ { print $10; exit }')"
-  [[ "$fpr" == "${FRANKENPHP_KEY_FPR[$FRANKENPHP_PHP]}" ]] \
-    || die "the FrankenPHP repository key has fingerprint ${fpr:-none}, expected ${FRANKENPHP_KEY_FPR[$FRANKENPHP_PHP]}"
+  # Only the pinned key goes into the keyring: apt accepts a signature by any
+  # key in the file, so a download carrying an extra key must not add it.
+  want="${FRANKENPHP_KEY_FPR[$FRANKENPHP_PHP]}"
+  gnupg="$(mktemp -d)"
+  GNUPGHOME="$gnupg" gpg --batch --quiet --import "$tmp" 2>/dev/null || true
+  GNUPGHOME="$gnupg" gpg --batch --armor --export "$want" > "$tmp.pinned" 2>/dev/null || true
+  fprs="$(GNUPGHOME="$gnupg" gpg --batch --with-colons --show-keys "$tmp.pinned" 2>/dev/null | awk -F: '/^pub/ { p = 1; next } p && /^fpr/ { print $10; p = 0 }')"
+  rm -rf "${gnupg:?}"
+  [[ "$fprs" == "$want" ]] || die "the FrankenPHP repository key does not have the fingerprint $want (found: ${fprs:-none})"
   install -d -m 0755 /etc/apt/keyrings
-  install -m 0644 "$tmp" "$FP_KEY"
-  rm -f "$tmp"
+  install -m 0644 "$tmp.pinned" "$FP_KEY"
+  rm -f "$tmp" "$tmp.pinned"
   cat > "$FP_SRC" <<SRC
 # Managed by the WSPanel installer: FrankenPHP and its PHP (php-zts-*), from
 # FrankenPHP's own packages (https://frankenphp.dev/docs/#linux-packages).
