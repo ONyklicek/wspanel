@@ -123,6 +123,29 @@ class ManageOffsite
     }
 
     /**
+     * The server backups on this server, newest first.
+     *
+     * @return list<array{file: string, size: int, created: string}>
+     *
+     * @throws AgentException
+     */
+    public function serverBackups(): array
+    {
+        return $this->agent->call('server.backups')['backups'] ?? [];
+    }
+
+    /**
+     * A server backup now (with the mail of every hosted domain), copied
+     * off-site when storage is set up. Runs in the background; returns the job.
+     *
+     * @throws AgentException
+     */
+    public function backupServer(): string
+    {
+        return (string) $this->agent->call('server.backup')['job_id'];
+    }
+
+    /**
      * Copies of a site's backups.
      *
      * @return array<string, array{size: int, modified: Carbon}> by file name

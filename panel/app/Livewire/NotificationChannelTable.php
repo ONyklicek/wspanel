@@ -31,7 +31,7 @@ class NotificationChannelTable extends Component
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{address?: string, url?: string, token?: string, chat_id?: string}
+     * @return array{address?: string, url?: string, token?: string, chat_id?: string, topic?: string}
      */
     public static function config(array $data): array
     {
@@ -40,6 +40,7 @@ class NotificationChannelTable extends Component
         return match ($type) {
             NotificationChannelType::Email => ['address' => trim((string) $data['address'])],
             NotificationChannelType::Telegram => ['token' => trim((string) $data['token']), 'chat_id' => trim((string) $data['chat_id'])],
+            NotificationChannelType::Ntfy => array_filter(['topic' => trim((string) $data['topic']), 'token' => trim((string) ($data['ntfy_token'] ?? ''))]),
             default => (function () use ($type, $data) {
                 $url = trim((string) $data['url']);
                 if (! preg_match((string) $type->webhookPattern(), $url)) {
@@ -63,6 +64,11 @@ class NotificationChannelTable extends Component
             TextInput::make('token')->label(__('Token bota'))->password()->revealable()->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')
                 ->helperText(__('Od @BotFather.'))->rules(['nullable', 'regex:/^[0-9]{5,15}:[A-Za-z0-9_-]{20,60}$/']),
             TextInput::make('chat_id')->label(__('Chat ID'))->visibleWhen('type', 'telegram')->requiredIf('type', 'telegram')->rules(['nullable', 'regex:/^-?[0-9]{3,20}$|^@[A-Za-z0-9_]{5,40}$/']),
+            TextInput::make('topic')->label(__('Téma (topic) na ntfy.sh'))->visibleWhen('type', 'ntfy')->requiredIf('type', 'ntfy')
+                ->helperText(__('Kdo zná téma, čte zprávy: zvolte dlouhé náhodné (např. wspanel-7f3k9q2m…) a odebírejte ho v aplikaci ntfy.'))
+                ->rules(['nullable', 'regex:/^[A-Za-z0-9_-]{12,64}$/']),
+            TextInput::make('ntfy_token')->label(__('Přístupový token (nepovinné)'))->password()->revealable()->visibleWhen('type', 'ntfy')
+                ->helperText(__('Pro rezervované téma účtu ntfy.sh (tk_…).'))->rules(['nullable', 'regex:/^tk_[A-Za-z0-9]{20,60}$/']),
             CheckboxList::make('events')->label(__('Posílat'))->options(Lang::values(NotificationChannel::EVENTS))->default(['problems', 'resolved'])->required(),
         ];
     }
@@ -122,7 +128,7 @@ class NotificationChannelTable extends Component
                         }),
                 ]),
             ])
-            ->emptyState(__('Zatím žádný kanál'), __('Přidejte e-mail, Slack, Discord nebo Telegram.'), 'outline:bell')
+            ->emptyState(__('Zatím žádný kanál'), __('Přidejte e-mail, Slack, Discord, Telegram nebo ntfy.'), 'outline:bell')
             ->searchable(false)
             ->paginated(false);
     }

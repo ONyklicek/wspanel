@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Firewall\ManageGeoblock;
+use App\Services\Notify\Heartbeat;
 use App\Support\PanelRelease;
 use Illuminate\Support\Facades\Schedule;
 
@@ -10,8 +11,18 @@ Schedule::command('panel:sync')->everyMinute()->withoutOverlapping();
 Schedule::command('panel:metrics')->everyMinute()->withoutOverlapping();
 // Notifications: new and resolved problems, finished deploys (only changes).
 Schedule::command('panel:alerts')->everyMinute()->withoutOverlapping();
+// Watching from outside (Healthchecks.io), when set: Notifikace → Hlídání zvenku.
+Schedule::command('panel:heartbeat')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => Heartbeat::url() !== null);
 // Traffic stats from the edge's access logs (and pruning of old history).
 Schedule::command('panel:traffic')->everyFiveMinutes()->withoutOverlapping();
+// The server's own backup (state, configuration, mail) for wspanel-restore,
+// nightly at a time of this server's own (between 01:00 and 04:59).
+Schedule::command('panel:server-backup')
+    ->dailyAt(sprintf('%02d:%02d', 1 + crc32((string) config('app.key')) % 4, crc32((string) config('app.url')) % 60))
+    ->withoutOverlapping();
+// DMARC aggregate reports for the hosted mail domains (from Postfix's spool).
+Schedule::command('panel:dmarc')->everyFiveMinutes()->withoutOverlapping();
 // Blocking by country: the address ranges change, download them again weekly.
 Schedule::call(fn () => app(ManageGeoblock::class)->refresh())->name('geoblock-refresh')->weekly()->withoutOverlapping();
 // A newer WSPanel: asked once a day, at a time of this server's own so that

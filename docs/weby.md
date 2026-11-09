@@ -153,8 +153,8 @@ jinak ho zadejte znovu.
 klíčem, který zná jen tento server). Podpis zahrnuje i web či databázi a
 název zálohy, takže zálohu jednoho webu nejde vydávat za zálohu jiného. Zpět na server se stáhne jen kopie
 s platným podpisem. Kdo má přístup k úložišti, tedy nemůže podstrčit
-pozměněnou zálohu, která by se pak obnovila. Tlačítkem **Klíč pro ověření
-záloh** si klíč zobrazíte; uložte si ho mimo server (správce hesel). Na novém
+pozměněnou zálohu, která by se pak obnovila. Tlačítkem **Klíč pro obnovu**
+si klíč zobrazíte; uložte si ho mimo server (správce hesel). Na novém
 serveru ho vložte do nastavení úložiště a staré zálohy půjde ověřit. Kopii bez
 platného podpisu stáhnete jen výslovně (*Přijmout i kopii bez platného
 podpisu*).
@@ -174,6 +174,53 @@ aby to bylo vidět.
 
 Zálohy obsahují `.env` a data webů. Použijte proto úložiště nebo účet jen pro
 zálohy, ideálně se šifrováním a verzováním na straně úložiště.
+
+### Záloha serveru a obnova po havárii
+
+Každou noc (a kdykoli tlačítkem **Zálohovat server teď** na stránce *Zálohy
+mimo server*) vznikne **záloha serveru**:
+
+- stav panelu (jeho databáze a `.env` s klíčem aplikace) a agenta,
+- konfigurace, kterou WSPanel vytvořil: služby a FPM pooly webů, bloky proxy,
+  SSH klíče, pošta (domény, schránky, aliasy), DKIM klíče, certifikáty
+  a vlastní certifikační autorita, DNS zóny (PowerDNS),
+- uživatelé webů a skupiny klientů (s jejich ID) a účty databází (uživatelé
+  MariaDB, role PostgreSQL),
+- volby instalace.
+
+Je **zašifrovaná** (AES-256-GCM) klíčem pro obnovu a leží
+v `/var/backups/wspanel/server` (posledních 7). Vedle ní vznikne záloha pošty
+každé domény (`/var/backups/wspanel/mail/<doména>`, poslední 3). S úložištěm
+mimo server se obojí nahraje i tam (`server/`, `mail/<doména>/`), podepsané
+jako ostatní zálohy. Data webů a databáze jsou v jejich vlastních zálohách:
+pro úplnou obnovu nastavte u webů plánované zálohy (s databázemi).
+
+**Obnova na novém serveru** (čistý Debian 13, stejná doména panelu): stáhněte
+z úložiště nejnovější `server/server-….wspbak` a spusťte:
+
+```sh
+curl -fsSL https://github.com/ONyklicek/wspanel/releases/latest/download/get.sh \
+  | sudo bash -s -- --restore=/root/server-20261109T021800Z.wspbak
+```
+
+(Z rozbaleného vydání: `sudo ./install --restore=…`, přes apt
+`sudo wspanel-install --restore=…`.) Instalátor se zeptá na klíč pro obnovu
+(nebo ho vezme z `WSPANEL_RECOVERY_KEY`) a pak:
+
+1. nainstaluje WSPanel se stejnými volbami jako starý server,
+2. obnoví ze zálohy serveru uživatele, konfiguraci, panel, DNS a účty databází,
+3. z úložiště mimo server stáhne nejnovější zálohu každého webu (soubory i jeho
+   databáze), každé další databáze a pošty každé domény (jen s platným
+   podpisem) a obnoví je.
+
+Bez úložiště mimo server přeneste celý `/var/backups/wspanel` starého serveru
+(třeba z kopie disku) a přidejte `--backups=<složka>`. Průběh a co se obnovit
+nepovedlo je v `/var/log/wspanel-restore.log`. Pak přepněte DNS (A/AAAA) na
+nový server; certifikáty Let's Encrypt si server obnoví sám.
+
+Záloha se obnovuje jen na **prázdný** server a instalátorem stejné nebo novější
+verze. Klíč pro obnovu (*Zálohy mimo server → Klíč pro obnovu*) si uložte mimo
+server: bez něj zálohu serveru otevřít nejde.
 
 ## Domény a přístup
 

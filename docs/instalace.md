@@ -5,8 +5,8 @@
 - Čistý server s **Debianem 13 (trixie)**, root přístup.
 - Doména pro panel (např. `panel.example.com`) s A/AAAA záznamem na server.
 - Otevřené porty 22 (SSH), 80 a 443. S lokálním DNS i 53 (TCP i UDP).
-- Odchozí přístup na internet: balíčky, Let's Encrypt, GitHub (FrankenPHP,
-  Mailpit, fnm).
+- Odchozí přístup na internet: balíčky (Debian, sury.org pro PHP-FPM,
+  pkg.henderkes.com pro FrankenPHP), Let's Encrypt, GitHub (Mailpit, fnm).
 - Doporučeno: alespoň 2 GB RAM a 20 GB disku.
 
 ## Instalace jedním příkazem (doporučeno)
@@ -154,8 +154,12 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 
 ## Co instalace nastaví
 
-- **PHP-FPM** zvolených verzí a **FrankenPHP** (edge proxy, web tier, worker
-  režim). Binárky z GitHubu se ověřují otiskem sha256.
+- **PHP-FPM** zvolených verzí (sury.org) a **FrankenPHP** z jeho oficiálních
+  balíčků (pkg.henderkes.com, klíč ověřený otiskem) s PHP 8.5 ZTS
+  a rozšířeními `php-zts-*`: edge proxy, web tier a weby ve worker režimu
+  (jejich workery, cron a `php` v SSH používají `php-zts`, tedy totéž PHP).
+  Vlastní `frankenphp.service` balíčku je zamaskovaná. Binárky z GitHubu
+  (Mailpit, fnm) se ověřují otiskem sha256.
 - **MariaDB / PostgreSQL** podle `--db`, **Valkey** (Redis) pro cache a fronty.
 - **Node** přes fnm v `/opt/fnm`, **Composer**, **Git**.
 - **Postfix** (jen odchozí, poslouchá na loopbacku), **OpenDKIM** a **Mailpit**.

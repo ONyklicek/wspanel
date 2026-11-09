@@ -47,7 +47,7 @@ type Op struct {
 
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
-var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "frankenphp.update": true,
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "site.backup": true, "site.restore": true,
 	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
@@ -59,6 +59,8 @@ func Registry() map[string]Op {
 		Handle   Handler
 	}{
 		{"agent.ping", false, ping},
+		{"server.backup", false, serverBackup}, // async; reads, takes no lock
+		{"server.backups", false, serverBackups},
 		{"site.create", true, siteCreate},
 		{"site.delete", true, siteDelete},
 		{"site.switch_mode", true, siteSwitchMode},
@@ -181,7 +183,6 @@ func Registry() map[string]Op {
 		{"valkey.status", false, valkeyStatus},
 		{"valkey.flush", true, valkeyFlush},
 		{"valkey.restart", true, valkeyRestart},
-		{"frankenphp.update", true, frankenphpUpdate},
 		{"service.status", false, serviceStatus},
 		{"service.start", true, serviceStart},
 		{"service.stop", true, serviceStop},

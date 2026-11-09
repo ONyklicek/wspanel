@@ -25,6 +25,7 @@ class OffsitePageTest extends TestCase
         parent::setUp();
         $this->agent = Mockery::mock(AgentClient::class);
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn([])->byDefault();
+        $this->agent->shouldReceive('call')->with('server.backups')->andReturn(['backups' => []])->byDefault();
         $this->agent->shouldReceive('call')->with('offsite.get')->andReturn([
             'configured' => true, 'has_secret' => true,
             'config' => ['enabled' => true, 'endpoint' => 'https://s3.example.com', 'region' => 'auto', 'bucket' => 'zalohy', 'prefix' => 'srv1', 'path_style' => true, 'access_key' => 'AK', 'secret_key' => '', 'keep_days' => 30],
@@ -98,5 +99,23 @@ class OffsitePageTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('offsite.signing_key')->andReturn(['signing_key' => str_repeat('ab', 32)]);
 
         $this->pageAction(Livewire::test(OffsitePage::class), 'signingKey')->assertNotified(str_repeat('ab', 32));
+    }
+
+    public function test_server_backups_are_listed_and_made_on_request(): void
+    {
+        $this->agent->shouldReceive('call')->with('server.backups')->andReturn(['backups' => [
+            ['file' => 'server-20261109T021800Z.wspbak', 'size' => 52_000, 'created' => '2026-11-09T02:18:00Z'],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('server.backup')->andReturn(['job_id' => 'abcdef0123456789']);
+
+        $page = Livewire::test(OffsitePage::class)->assertSee('server-20261109T021800Z.wspbak');
+        $this->pageAction($page, 'backupServer')->assertNotified('Záloha serveru běží');
+    }
+
+    public function test_the_nightly_server_backup_asks_the_agent(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('server.backup')->andReturn(['job_id' => 'abcdef0123456789']);
+
+        $this->artisan('panel:server-backup')->expectsOutputToContain('job abcdef0123456789')->assertSuccessful();
     }
 }

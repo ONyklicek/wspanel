@@ -54,7 +54,7 @@ Package: wspanel
 Version: $DEBVER
 Architecture: all
 Maintainer: $DEB_MAINTAINER
-Depends: wspanel-agent (= $DEBVER), wspanel-frankenphp (= $DEBVER), wspanel-archive-keyring, ca-certificates, curl
+Depends: wspanel-agent (= $DEBVER), wspanel-archive-keyring, ca-certificates, curl
 Section: admin
 Priority: optional
 Homepage: https://github.com/ONyklicek/wspanel

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Mail;
 
+use App\Models\MailDomain;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -108,7 +109,9 @@ class ManageMail
         if ($dkim !== null) {
             $records[] = ['type' => 'TXT', 'name' => $dkim['name'], 'value' => $dkim['value'], 'note' => __('DKIM: veřejný klíč podpisu.')];
         }
-        $records[] = ['type' => 'TXT', 'name' => '_dmarc.'.$domain, 'value' => "v=DMARC1; p=quarantine; rua=mailto:postmaster@{$domain}", 'note' => __('DMARC: co dělat s nepodepsanou poštou.')];
+        // Reports of a domain this server receives mail for go to the panel (Pošta → doména → DMARC).
+        $rua = MailDomain::withoutGlobalScopes()->where('domain', $domain)->exists() ? "dmarc-reports@{$domain}" : "postmaster@{$domain}";
+        $records[] = ['type' => 'TXT', 'name' => '_dmarc.'.$domain, 'value' => "v=DMARC1; p=quarantine; rua=mailto:{$rua}", 'note' => __('DMARC: co dělat s nepodepsanou poštou a kam posílat přehledy.')];
 
         return $records;
     }

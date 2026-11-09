@@ -153,7 +153,7 @@ závisí) a zdroj přepne na svůj klíč.
 **4. Instalace:**
 
 ```sh
-sudo apt install wspanel      # balíčky wspanel, wspanel-agent, wspanel-frankenphp (a keyring)
+sudo apt install wspanel      # balíčky wspanel, wspanel-agent (a wspanel-archive-keyring)
 sudo wspanel-install          # průvodce: adresa panelu, moduly, správce…
 ```
 
@@ -188,12 +188,11 @@ BASE=https://github.com/ONyklicek/wspanel/releases/download/v$V
 cd "$(mktemp -d)"
 curl -fLO "$BASE/wspanel_${V/-/.}_all.deb"
 curl -fLO "$BASE/wspanel-agent_${V/-/.}_$ARCH.deb"
-curl -fLO "$BASE/wspanel-frankenphp_${V/-/.}_$ARCH.deb"
 curl -fLO "$BASE/wspanel-archive-keyring_${V/-/.}_all.deb"
 curl -fLO "$BASE/SHA256SUMS"
-sha256sum -c SHA256SUMS --ignore-missing          # všechny čtyři soubory: OK
+sha256sum -c SHA256SUMS --ignore-missing          # všechny tři soubory: OK
 sudo apt install ./wspanel_${V/-/.}_all.deb ./wspanel-agent_${V/-/.}_$ARCH.deb \
-  ./wspanel-frankenphp_${V/-/.}_$ARCH.deb ./wspanel-archive-keyring_${V/-/.}_all.deb
+  ./wspanel-archive-keyring_${V/-/.}_all.deb
 sudo wspanel-install
 ```
 
@@ -298,6 +297,27 @@ otázek: `… | sudo bash -s -- --yes`. Účty, weby, data ani nastavení se nem
 Panel je během aktualizace pár minut nedostupný, weby jen na několik sekund
 (restart proxy a PHP).
 
+**Server po havárii** se obnoví na novém serveru ze zálohy serveru (vzniká
+každou noc, viz [Záloha serveru a obnova](docs/weby.md#záloha-serveru-a-obnova-po-havárii)):
+`… get.sh | sudo bash -s -- --restore=<záloha serveru>`.
+
+**Když se aktualizace nepovede** (nebo nová verze nesedí), vrátí server na
+verzi před poslední aktualizací:
+
+```sh
+sudo wspanel-rollback
+```
+
+Před každou aktualizací instalátor uloží snímek stavu panelu (databáze,
+`.env`, zvolené moduly; `/var/lib/wspanel/rollback`, poslední tři) a po
+úspěšné instalaci si nechá instalátor nainstalované verze
+(`/var/lib/wspanel/kit`, poslední dvě). `wspanel-rollback` vrátí databázi
+a nastavení panelu ze snímku a nainstaluje předchozí verzi se stejnými
+volbami (přes apt: `apt install --allow-downgrades` balíčků té verze). Weby,
+jejich data a databáze zůstávají, jak jsou; co se v panelu změnilo po
+aktualizaci (nové weby, účty), snímek nezná. Když se instalace nedokončí,
+instalátor tento příkaz rovnou napíše.
+
 O nové verzi panel řekne sám: jednou denně se podívá do vydání na GitHubu
 a novější verzi ukáže na **Přehledu** a v **Zabezpečení → Aktualizace** i s tímto
 příkazem; správcům pošle jednu notifikaci. Sám nic neinstaluje.
@@ -310,13 +330,9 @@ příkazem; správcům pošle jednu notifikaci. Sám nic neinstaluje.
 |---|---|---|
 | **`wspanel`** | instalátor, provisioning a zdroják panelu (`/usr/share/wspanel`), příkazy `wspanel-install` a `wspanel-update` | `all` |
 | **`wspanel-agent`** | agent `/usr/sbin/panel-agent` (jediná část s právy roota), jeho služba `panel-agent.service` a nástroj `/usr/bin/wspanel` (klient REST API) | `amd64`, `arm64` |
-| **`wspanel-frankenphp`** | FrankenPHP (PHP a Caddy v jednom), na kterém běží panel, proxy a weby v režimu FrankenPHP: přesně ten build, se kterým bylo vydání otestované (`/usr/lib/wspanel/frankenphp`, odkaz `/usr/local/bin/frankenphp`) | `amd64`, `arm64` |
 | **`wspanel-archive-keyring`** | klíč repozitáře (`/usr/share/keyrings/wspanel-archive-keyring.asc`), zdroj apt `/etc/apt/sources.list.d/wspanel.sources` a `/etc/apt/apt.conf.d/52wspanel-unattended` (opravy i v automatických aktualizacích) | `all` |
 
-`wspanel` závisí na `wspanel-agent` a `wspanel-frankenphp` stejné verze a na
-`wspanel-archive-keyring`. FrankenPHP si vydání stáhne jednou při sestavení a
-ověří, že ho sestavil workflow projektu FrankenPHP (GitHub attestation); server
-pak dostane tentýž soubor z balíčku, nic dalšího nestahuje.
+`wspanel` závisí na `wspanel-agent` stejné verze a na `wspanel-archive-keyring`.
 Nový klíč repozitáře (výměna) přijde jako aktualizace `wspanel-archive-keyring`,
 bez ručního zásahu. Všechny balíčky mají manuálové stránky (`man panel-agent`,
 `man wspanel`, `man wspanel-install`, `man wspanel-update`), licenci
@@ -325,16 +341,37 @@ na systému nic nenastaví: databáze, webserver, poštu a konfiguraci zakládá
 `wspanel-install` (nebo `./install` z vydání).
 
 Instalace jedním příkazem nebo z vydání (`get.sh`, `./install`) dá na server
-jen `wspanel-agent`, `wspanel-frankenphp` a `wspanel-archive-keyring`, aby
-opravy chodily přes apt. Kdo chce celý WSPanel
+jen `wspanel-agent` a `wspanel-archive-keyring`, aby opravy chodily přes apt. Kdo chce celý WSPanel
 spravovat přes apt, doinstaluje `wspanel` (viz [Instalace přes apt](#instalace-přes-apt)).
+
+#### FrankenPHP a jeho PHP
+
+Panel, vstupní proxy a weby v režimu FrankenPHP běží na
+[FrankenPHP](https://frankenphp.dev) z **jeho vlastních balíčků**
+(`pkg.henderkes.com`, odkaz v dokumentaci FrankenPHP). Instalátor přidá jejich
+repozitář `/etc/apt/sources.list.d/frankenphp.sources` (klíč ověří podle otisku)
+a nainstaluje:
+
+- `frankenphp` (`/usr/bin/frankenphp`; odkaz `/usr/local/bin/frankenphp`
+  používají služby WSPanelu),
+- PHP 8.5 ve variantě ZTS a jeho rozšíření `php-zts-*` (stejná sada, jakou
+  měla dřívější statická binárka: databáze, Redis, intl, gd, imagick, zip…).
+  Konfigurace je v `/etc/php-zts` (`php.ini`, `conf.d/`). Další rozšíření:
+  `sudo apt install php-zts-<název>` (seznam: `apt-cache search php-zts`).
+
+Vlastní služba balíčku (`frankenphp.service`, ukázkový web na portu 80) je
+zamaskovaná: WSPanel spouští FrankenPHP ve svých službách (`panel-web`,
+`panel-proxy`, služba každého webu ve FrankenPHP).
+
+Opravy FrankenPHP i PHP chodí přes apt (a s automatickými aktualizacemi, jsou-li
+zapnuté). Po nich balíček `wspanel-agent` restartuje panel, proxy a weby ve
+FrankenPHP (pár sekund každý), aby běžely na nové verzi.
 
 #### Jak se dostane na server
 
 Instalace z vydání ho udělá sama:
 
-1. nainstaluje `wspanel-agent` a `wspanel-frankenphp` z balíčků vydání (nic
-   nestahuje),
+1. nainstaluje `wspanel-agent` z balíčku vydání (nic nestahuje),
 2. nainstaluje `wspanel-archive-keyring` z balíčku vydání: apt repozitář
    `https://onyklicek.github.io/wspanel/apt` s kanálem podle verze, jeho klíč
    a opravy v automatických aktualizacích (soubory viz tabulka výše),

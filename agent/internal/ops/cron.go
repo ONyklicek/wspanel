@@ -176,6 +176,9 @@ func cronExecStart(env *Env, l siteLayout, p cronParams) (string, string, error)
 	php := config.ForVersion(env.Cfg.PHPCLIBinary, l.PHPVersion)
 	if l.Mode == "worker" {
 		php = env.Cfg.FrankenPHPBin + " php-cli"
+		if cli := frankenCLI(env); cli != "" {
+			php = cli
+		}
 	}
 	switch {
 	case l.Mode == "node":

@@ -297,16 +297,30 @@ func allWorkerUnits(cfg config.Config) []string {
 	return out
 }
 
+// frankenCLI is the PHP CLI of a FrankenPHP (worker-mode) site: FrankenPHP's
+// own PHP from its packages (php-zts: the same version, extensions and
+// php.ini as the site), or "" where there is none (a server from before
+// FrankenPHP came from its packages).
+func frankenCLI(env *Env) string {
+	if env.Cfg.FrankenPHPCLI != "" && fsx.Exists(env.Cfg.FrankenPHPCLI) {
+		return env.Cfg.FrankenPHPCLI
+	}
+	return ""
+}
+
 // workerPHP is the PHP that runs a site's long-running workers: the CLI of
-// the site's version. In worker mode too it is a system CLI and not
-// FrankenPHP's php-cli, which crashes (SIGSEGV) as soon as a PHP signal
+// the site's version. In worker mode FrankenPHP's own CLI (php-zts). Never
+// `frankenphp php-cli`, which crashes (SIGSEGV) as soon as a PHP signal
 // handler runs: Horizon, queue:work, Reverb and the scheduler would never
 // stop gracefully (a job cut off mid-way, the unit left failed after every
-// deploy). The site's own version when installed, else the newest one;
-// php-cli only on a server with no system PHP.
+// deploy). Without php-zts: a system CLI, the site's version when
+// installed, else the newest; php-cli only on a server with no PHP at all.
 func workerPHP(env *Env, l siteLayout) string {
 	if l.Mode != "worker" {
 		return config.ForVersion(env.Cfg.PHPCLIBinary, l.PHPVersion)
+	}
+	if cli := frankenCLI(env); cli != "" {
+		return cli
 	}
 	version := ""
 	for _, v := range env.Cfg.PHPVersions {

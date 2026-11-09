@@ -10,7 +10,7 @@ import (
 
 // writeToolLinks maintains /etc/panel-sites/bin/<user>, which /etc/profile.d
 // puts first on the site user's PATH: `php` is the site's PHP (FPM CLI of the
-// same version, or FrankenPHP's php-cli in worker mode) and node/npm/npx the
+// same version, or FrankenPHP's own PHP CLI in worker mode) and node/npm/npx the
 // site's Node (or the newest installed, for asset builds of PHP sites).
 // Root-owned: the user can use the links, not change them.
 func writeToolLinks(env *Env, l siteLayout) error {
@@ -29,6 +29,12 @@ func writeToolLinks(env *Env, l siteLayout) error {
 			return err
 		}
 	case "worker":
+		if cli := frankenCLI(env); cli != "" {
+			if err := env.FS.Symlink(cli, filepath.Join(tmp, "php"), fsx.Root); err != nil {
+				return err
+			}
+			break
+		}
 		wrapper := "#!/bin/sh\nexec " + env.Cfg.FrankenPHPBin + " php-cli \"$@\"\n"
 		if err := env.FS.WriteFile(filepath.Join(tmp, "php"), []byte(wrapper), 0o755, fsx.Root); err != nil {
 			return err

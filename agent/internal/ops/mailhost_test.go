@@ -20,6 +20,7 @@ func mailTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.VMailboxes = filepath.Join(root, "vmailboxes")
 	env.Cfg.VAliases = filepath.Join(root, "valiases")
 	env.Cfg.MailboxSenders = filepath.Join(root, "senders")
+	env.Cfg.MailTransport = filepath.Join(root, "transport")
 	env.Cfg.DovecotUsers = filepath.Join(root, "users")
 	env.Cfg.VmailRoot = filepath.Join(root, "vmail")
 	env.Cfg.DovecotBlocked = filepath.Join(root, "blocked")
@@ -381,5 +382,37 @@ func TestGreylistingAndAntivirusAreSwitchedServerWide(t *testing.T) {
 	}
 	if !ran("clamav", "disable") {
 		t.Error("ClamAV must be stopped")
+	}
+}
+
+// DMARC aggregate reports: dmarc-reports@<domain> is a valid recipient that
+// goes to the panel (and survives a catch-all), unless the domain has a
+// mailbox of that name.
+func TestDMARCReportsGoToThePanel(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	for _, d := range []string{"firma.cz", "jina.cz"} {
+		if _, err := call(t, env, mailDomainSet, map[string]any{"domain": d, "enabled": true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := call(t, env, mailAliasSet, map[string]any{"domain": "firma.cz", "aliases": map[string][]string{"": {"boss@gmail.com"}}}); err != nil {
+		t.Fatal(err)
+	}
+	tr := read2(t, env.Cfg.MailTransport)
+	if !strings.Contains(tr, "\ndmarc-reports@firma.cz wspanel-dmarc:\n") || !strings.Contains(tr, "\ndmarc-reports@jina.cz wspanel-dmarc:\n") {
+		t.Errorf("transport:\n%s", tr)
+	}
+	if got := read2(t, env.Cfg.VMailboxes); !strings.Contains(got, "dmarc-reports@firma.cz OK") {
+		t.Errorf("a listed recipient:\n%s", got)
+	}
+	if al := read2(t, env.Cfg.VAliases); !strings.Contains(al, "\ndmarc-reports@firma.cz dmarc-reports@firma.cz\n") {
+		t.Errorf("with a catch-all it maps to itself:\n%s", al)
+	}
+	// A real mailbox of that name: its owner reads the reports.
+	if _, err := call(t, env, mailMailboxSet, map[string]any{"address": "dmarc-reports@jina.cz", "password_hash": testHash, "quota_mb": 100, "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	if tr := read2(t, env.Cfg.MailTransport); strings.Contains(tr, "jina.cz") {
+		t.Errorf("a mailbox of that name wins:\n%s", tr)
 	}
 }

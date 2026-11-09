@@ -405,6 +405,15 @@ cat >/etc/postfix/wspanel_loopback_ehlo <<'CIDR'
 [::1]/128 starttls
 CIDR
 
+# DMARC aggregate reports (dmarc-reports@<mail domain>, transport map
+# written by the agent): to the panel's spool, read by the panel.
+install -d -m 0755 /usr/lib/wspanel
+install -m 0755 "$FILES/dmarc-receive" /usr/lib/wspanel/dmarc-receive
+[[ -f /etc/postfix/wspanel_transport ]] || install -m 0644 /dev/null /etc/postfix/wspanel_transport
+postmap /etc/postfix/wspanel_transport
+postconf -e "transport_maps=hash:/etc/postfix/wspanel_transport"
+postconf -M -e "wspanel-dmarc/unix=wspanel-dmarc unix - n n - 2 pipe flags=Rq user=panel argv=/usr/lib/wspanel/dmarc-receive"
+
 # Submission (587, STARTTLS) and SMTPS (465) for mailbox users: Dovecot SASL,
 # a mailbox may send only as itself (or its aliases).
 postconf -M -e "submission/inet=submission inet n - y - - smtpd"

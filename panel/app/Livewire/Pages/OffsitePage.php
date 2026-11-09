@@ -78,6 +78,16 @@ class OffsitePage extends Page
         return __(ManageOffsite::TYPES[$this->status['config']['type'] ?? 's3'] ?? 'S3');
     }
 
+    /** @return list<array{file: string, size: int, created: string}> */
+    public function serverBackups(): array
+    {
+        try {
+            return app(ManageOffsite::class)->serverBackups();
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
     protected function headerActions(): array
     {
         $providers = array_map(fn (array $p) => __($p['label']), ManageOffsite::PROVIDERS);
@@ -86,16 +96,28 @@ class OffsitePage extends Page
             : __('Uloží se jen na serveru (root, 0600), panel ho neuchovává.');
 
         return [
+            Action::make('backupServer')
+                ->label(__('Zálohovat server teď'))
+                ->icon('outline:server-stack')
+                ->color('gray')
+                ->action(function () {
+                    try {
+                        app(ManageOffsite::class)->backupServer();
+                        Toast::success(__('Záloha serveru běží'), __('Za chvíli bude v seznamu (i s poštou) a v úložišti mimo server.'));
+                    } catch (AgentException $e) {
+                        Toast::error(__('Zálohu serveru se nepodařilo spustit'), $e->getMessage());
+                    }
+                }),
             Action::make('signingKey')
-                ->label(__('Klíč pro ověření záloh'))
+                ->label(__('Klíč pro obnovu'))
                 ->icon('outline:key')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalHeading(__('Zobrazit klíč pro ověření záloh?'))
-                ->modalDescription(__('Každá kopie mimo server je podepsaná tímto klíčem a panel stáhne zpět jen kopii s platným podpisem. Uložte si ho bezpečně mimo server (správce hesel): na novém serveru ho zadáte v nastavení úložiště a staré zálohy půjde ověřit. Kdo klíč zná, dokáže podepsat podvrženou zálohu.'))
+                ->modalHeading(__('Zobrazit klíč pro obnovu?'))
+                ->modalDescription(__('Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Uložte si ho bezpečně mimo server (správce hesel); na novém serveru ho zadáte při obnově (wspanel-restore). Kdo klíč zná, přečte zálohu serveru a dokáže podepsat podvrženou zálohu.'))
                 ->action(function () {
                     try {
-                        Toast::secret(__('Klíč pro ověření záloh'), app(ManageOffsite::class)->signingKey());
+                        Toast::secret(__('Klíč pro obnovu'), app(ManageOffsite::class)->signingKey());
                     } catch (AgentException $e) {
                         Toast::error(__('Klíč se nepodařilo načíst'), $e->getMessage());
                     }

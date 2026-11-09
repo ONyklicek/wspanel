@@ -27,5 +27,25 @@
                 </dl>
             </x-wire::section>
         </div>
+
+        <x-wire::section :heading="__('Záloha serveru')"
+            :description="__('Každou noc: stav panelu a agenta, konfigurace webů, účty databází, DKIM klíče, certifikáty a DNS zóny (šifrovaně klíčem pro obnovu), a vedle ní pošta každé domény. S kopiemi webů a databází v úložišti z ní příkaz wspanel-restore postaví na novém serveru tento server znovu.')">
+            @php($backups = $this->serverBackups())
+            @if ($backups === [])
+                <p class="text-sm text-gray-500">{{ __('Zatím žádná. První vznikne v noci, nebo hned tlačítkem Zálohovat server teď.') }}</p>
+            @else
+                <ul class="divide-y divide-gray-100 text-sm dark:divide-white/5">
+                    @foreach ($backups as $b)
+                        <li class="flex justify-between gap-3 py-1.5">
+                            <span class="font-mono text-xs">{{ $b['file'] }}</span>
+                            <span class="text-gray-500">{{ \Illuminate\Support\Carbon::parse($b['created'])->format('j. n. Y H:i') }} · {{ \Illuminate\Support\Number::fileSize($b['size'], 1) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+                @if (! $this->enabled())
+                    <p class="mt-2 text-sm text-amber-600">{{ __('Bez úložiště mimo server leží zálohy jen tady: při ztrátě serveru se ztratí s ním.') }}</p>
+                @endif
+            @endif
+        </x-wire::section>
     @endif
 </div>

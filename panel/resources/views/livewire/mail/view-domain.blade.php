@@ -15,6 +15,7 @@
 
     @livewire(\App\Livewire\Mail\MailboxTable::class, ['domain' => $domain->getKey()], key('mailboxes-'.$domain->getKey()))
     @livewire(\App\Livewire\Mail\MailAliasTable::class, ['domain' => $domain->getKey()], key('aliases-'.$domain->getKey()))
+    @livewire(\App\Livewire\Mail\DmarcReportTable::class, ['domain' => $domain->getKey()], key('dmarc-'.$domain->getKey()))
 
     <x-wire::section :heading="__('Nastavení poštovních programů')" :description="__('Thunderbird, Outlook, telefon: server a porty, přihlašuje se celou adresou.')">
         <dl class="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[10rem_1fr]">

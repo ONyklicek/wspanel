@@ -115,20 +115,17 @@ CI je v `.github/workflows/`:
   balíčky, `SHA256SUMS`, záznam o původu buildu (build provenance) a seznam
   změn od předchozího tagu.
 
-  FrankenPHP jde do balíčku `wspanel-frankenphp`
-  (`provision/build-frankenphp-deb.sh`): verze podle `FRANKENPHP_VERSION`
-  v `install.sh`, stažená při sestavení a ověřená `gh attestation verify`
-  (podepsal ji workflow `static.yaml` v `php/frankenphp`). FrankenPHP své
-  vydání každou noc přestaví pod stejným názvem, takže kontrolní součet
-  napevno by přestal sedět; součty v `install.sh` slouží jen instalaci ze
-  zdrojáků.
-
-  Pravidla pro cizí soubory z GitHubu (platí pro každý nový nástroj):
-  - **Binárka, na které server běží** (jako FrankenPHP): do vlastního balíčku
-    `wspanel-<nástroj>`, stažená a ověřená jednou při sestavení vydání
-    (attestace nebo podpis projektu), ne při instalaci. Vydání projektu se
-    mohou pod stejným názvem změnit.
-  - **Ostatní stahování v instalátoru**: přes `gh_release_get` v `install.sh`
+  Cizí software:
+  - **Z balíčků jeho správců, nikdy přebalený do balíčku WSPanelu.**
+    FrankenPHP a jeho PHP jsou z oficiálních balíčků FrankenPHP
+    (`pkg.henderkes.com`, jeden repozitář pro každou verzi PHP; verze
+    a otisky klíčů v `install.sh`, `FRANKENPHP_PHP`, `FRANKENPHP_KEY_FPR`).
+    Opravy tak dodává ten, kdo je dělá, a WSPanel se přizpůsobí tomu, jak
+    balíček funguje: jeho `frankenphp.service` je zamaskovaná, rozšíření jsou
+    `php-zts-*` (`FRANKENPHP_EXTENSIONS`), a po jejich aktualizaci restartuje
+    `wspanel-agent` přes dpkg trigger (`/usr/bin/frankenphp`,
+    `/usr/bin/php-zts`, `/usr/lib/php-zts`) služby, které na nich běží.
+  - **Stahování v instalátoru, kde balíček není** (fnm, Mailpit, Adminer): přes `gh_release_get` v `install.sh`
     (zkusí odkaz `github.com/…/releases/download`, při chybě, např. 504,
     stejný soubor přes API) a vždy s ověřením kontrolního součtu. Stejnou
     zálohu přes API má `get.sh`.

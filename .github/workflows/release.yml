@@ -61,7 +61,6 @@ jobs:
       - name: Build
         env:
           WSPANEL_REPO: ${{ github.repository }} # the panel looks here for newer releases
-          GH_TOKEN: ${{ github.token }} # gh attestation verify of FrankenPHP
         run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
@@ -107,6 +106,10 @@ jobs:
           - arch: amd64
             runner: ubuntu-24.04
             via: apt
+          # A server on the previous release, upgraded to this one.
+          - arch: amd64
+            runner: ubuntu-24.04
+            via: upgrade
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -118,6 +121,14 @@ jobs:
       - name: Install on a clean Debian 13, use it, upgrade it (bundle)
         if: matrix.via == 'bundle'
         run: dev/release-smoke.sh dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
+      - name: The previous release, upgraded to this one
+        if: matrix.via == 'upgrade'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [[ -z "$prev" ]]; then echo "no published release yet: nothing to upgrade from"; exit 0; fi
+          SMOKE_REPO="${GITHUB_REPOSITORY}" dev/release-smoke.sh --from "${prev#v}" dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
       - uses: actions/download-artifact@v4
         if: matrix.via == 'apt'
         with:
@@ -153,18 +164,17 @@ jobs:
           path: dist
       - name: One-command installer
         run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
-      - name: Agent, FrankenPHP and keyring packages (.deb) from the bundles
+      - name: Agent and keyring packages (.deb) from the bundles
         run: for b in dist/wspanel-*.tar.gz; do tar -xzf "$b" -C dist --strip-components=2 --wildcards 'wspanel/bin/*.deb'; done; ls dist/*.deb
       - name: Checksums
         working-directory: dist
-        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-frankenphp_*.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
+        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
             dist/wspanel-agent_*.deb
             dist/wspanel_*_all.deb
-            dist/wspanel-frankenphp_*.deb
             dist/wspanel-archive-keyring_*.deb
             dist/get.sh
       - name: Release notes
@@ -196,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-frankenphp_*.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
 
   apt:

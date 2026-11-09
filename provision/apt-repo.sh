@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # The WSPanel apt repository (served by GitHub Pages from the gh-pages branch,
-# under apt/): adds packages (wspanel, wspanel-agent, wspanel-frankenphp,
-# wspanel-archive-keyring),
+# under apt/): adds packages (wspanel, wspanel-agent, wspanel-archive-keyring),
 # keeps the newest few,
 # rebuilds the indexes and signs them. Run by the release workflow.
 #
@@ -21,8 +20,11 @@ set -euo pipefail
 REPO=${1:?repository dir} PUBKEY=${2:?public key}
 shift 2
 PUBKEY="$(cd "$(dirname "$PUBKEY")" && pwd)/$(basename "$PUBKEY")" # used after cd "$REPO"
+for pkg in "${RETIRED[@]}"; do rm -rf "pool/main/w/$pkg"; done
 KEEP=${APT_KEEP:-5}
-PACKAGES=(wspanel wspanel-agent wspanel-frankenphp wspanel-archive-keyring)
+PACKAGES=(wspanel wspanel-agent wspanel-archive-keyring)
+# Packages no longer published: their files leave the pool (and the indexes).
+RETIRED=(wspanel-frankenphp)
 
 for deb in "$@"; do
   pkg="$(dpkg-deb -f "$deb" Package)"

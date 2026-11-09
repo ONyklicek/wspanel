@@ -55,11 +55,40 @@ Description: privileged agent and command line tool of the WSPanel hosting panel
  this package bring fixes of the agent.
 CONTROL
 
+# FrankenPHP and its PHP come from FrankenPHP's own packages (frankenphp,
+# php-zts-*), updated through apt; WSPanel runs them in units of its own
+# (panel, proxy, sites in FrankenPHP mode and their workers), which keep the
+# old code in memory until they restart. dpkg tells this package when those
+# files change (file triggers), and it restarts them.
+cat > "$ROOT/DEBIAN/triggers" <<'TRIGGERS'
+interest-noawait /usr/bin/frankenphp
+interest-noawait /usr/bin/php-zts
+interest-noawait /usr/lib/php-zts
+TRIGGERS
+chmod 0644 "$ROOT/DEBIAN/triggers"
+
 # Enabled with the package (the unit waits for the configuration), restarted
 # by an upgrade, stopped by a removal (with a warning: the panel needs it).
 cat > "$ROOT/DEBIAN/postinst" <<'SH'
 #!/bin/sh
 set -e
+if [ "$1" = triggered ]; then
+  # A new FrankenPHP or PHP: the running units on it restart (a few seconds
+  # each). Scheduled tasks (-cron-) are oneshots and pick it up on their
+  # next run.
+  [ -d /run/systemd/system ] || exit 0
+  for unit in panel-web.service panel-proxy.service; do
+    deb-systemd-invoke try-restart "$unit" >/dev/null 2>&1 || true
+  done
+  for f in /etc/systemd/system/wspanel-*.service; do
+    [ -f "$f" ] || continue
+    case "$f" in *-cron-*.service) continue ;; esac
+    grep -qE '^ExecStart=(/usr/local/bin|/usr/bin)/frankenphp ' "$f" || continue
+    deb-systemd-invoke try-restart "$(basename "$f")" >/dev/null 2>&1 || true
+  done
+  echo "wspanel-agent: FrankenPHP/PHP updated, the panel, the proxy and FrankenPHP sites restarted." >&2
+  exit 0
+fi
 if [ "$1" = configure ] || [ "$1" = abort-upgrade ] || [ "$1" = abort-deconfigure ] || [ "$1" = abort-remove ]; then
   # The installer of releases before the package carried the unit put its
   # own copy in /etc, which would hide this one.

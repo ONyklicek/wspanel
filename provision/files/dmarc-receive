@@ -1,0 +1,15 @@
+#!/bin/sh
+# DMARC aggregate reports for the panel: Postfix hands each message sent to
+# dmarc-reports@<mail domain> to this script (the wspanel-dmarc pipe service,
+# as the panel user), which leaves it in the panel's spool; the panel reads
+# the reports from there (panel:dmarc, every few minutes).
+# Exit 75 (EX_TEMPFAIL): Postfix keeps the message and tries again.
+set -u
+SPOOL=/srv/panel/shared/storage/app/dmarc-incoming
+umask 077
+mkdir -p "$SPOOL" || exit 75
+f="$SPOOL/$(date +%s).$$.eml"
+# A report is a few kilobytes zipped; anything over 10 MB is not one.
+head -c 10485760 > "$f.part" || { rm -f "$f.part"; exit 75; }
+mv "$f.part" "$f" || exit 75
+exit 0

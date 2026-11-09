@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -36,6 +37,10 @@ func main() {
 	fileopHome := flag.String("fileop", "", "internal: serve one file-manager request inside this site home (run as the site user)")
 	mountBind := flag.String("mount-bind", "", "internal: bind the staged network disk <domain>/<name> into the site (its unit's ExecStartPost)")
 	mountUnbind := flag.String("mount-unbind", "", "internal: remove the bind of the network disk <domain>/<name> (its unit's ExecStop)")
+	backupManifest := flag.String("server-backup-manifest", "", "print what a server backup holds (recovery key in WSPANEL_RECOVERY_KEY) and exit")
+	restoreState := flag.String("server-restore", "", "restore a server backup's state onto this server (wspanel-restore; the agent stopped)")
+	restoreData := flag.String("server-restore-data", "", "after -server-restore: restore the sites, databases and mail of that server backup")
+	backupsDir := flag.String("backups", "", "with -server-restore-data: a copy of the old server's /var/backups/wspanel instead of the off-site storage")
 	flag.Parse()
 	if *mountBind != "" || *mountUnbind != "" {
 		cfg, err := config.Load(*cfgPath)
@@ -49,6 +54,13 @@ func main() {
 			}
 		}
 		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *backupManifest != "" || *restoreState != "" || *restoreData != "" {
+		if err := runServerRestore(*cfgPath, *backupManifest, *restoreState, *restoreData, *backupsDir); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -239,6 +251,7 @@ func binaries(cfg config.Config) map[string]string {
 		"systemd-run":        "/usr/bin/systemd-run",
 		"mariadb":            "/usr/bin/mariadb",
 		"mariadb-dump":       "/usr/bin/mariadb-dump",
+		"sqlite3":            "/usr/bin/sqlite3", // consistent copies of the panel's and PowerDNS's databases
 		"apt-get":            "/usr/bin/apt-get",
 		"unattended-upgrade": "/usr/bin/unattended-upgrade",
 		"fail2ban-client":    "/usr/bin/fail2ban-client",
@@ -250,7 +263,6 @@ func binaries(cfg config.Config) map[string]string {
 		"apt-cache":          "/usr/bin/apt-cache",
 		"ufw":                cfg.UFWBinary,
 		"frankenphp":         cfg.FrankenPHPBin,
-		"frankenphp-new":     cfg.FrankenPHPBin + ".new", // update candidate, checked before the swap
 	}
 	// Every version the panel can install, so a version added at runtime
 	// (php.install) is usable without restarting the agent.
@@ -284,4 +296,60 @@ func dryResponder(c executor.Call) (executor.Result, error) {
 		}
 	}
 	return executor.Result{}, nil
+}
+
+// runServerRestore: the steps of wspanel-restore. The recovery key comes in
+// WSPANEL_RECOVERY_KEY (64 hex digits), never on the command line.
+func runServerRestore(cfgPath, manifestOf, statePath, dataPath, backupsDir string) error {
+	key, err := hex.DecodeString(strings.TrimSpace(os.Getenv("WSPANEL_RECOVERY_KEY")))
+	if err != nil || len(key) != 32 {
+		return errors.New("WSPANEL_RECOVERY_KEY must be the recovery key (64 hex digits, Zálohy mimo server → Klíč pro obnovu)")
+	}
+	if manifestOf != "" {
+		man, err := ops.ReadServerBackupManifest(manifestOf, key)
+		if err != nil {
+			return err
+		}
+		if os.Getenv("WSPANEL_MANIFEST_FORMAT") == "shell" {
+			// For the installer: one value per line, no JSON parser needed.
+			fmt.Printf("VERSION=%s\nCREATED=%s\nHOST=%s\nSITES=%d\nMAIL=%d\nDATABASES=%d\n", man.Version, man.Created.Format(time.RFC3339), man.Host,
+				len(man.Sites), len(man.MailDomains), len(man.Databases))
+			for _, f := range man.Flags {
+				fmt.Println("FLAG=" + f)
+			}
+			return nil
+		}
+		return json.NewEncoder(os.Stdout).Encode(man)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	env := &ops.Env{Cfg: cfg, Exec: executor.NewReal(binaries(cfg), []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}), FS: &fsx.FS{DryRun: cfg.DryRun}}
+	ctx := context.Background()
+	report := func(rep ops.RestoreReport) error {
+		for _, r := range rep.Restored {
+			fmt.Println("restored: " + r)
+		}
+		for _, p := range rep.Problems {
+			fmt.Println("PROBLEM:  " + p)
+		}
+		return nil
+	}
+	if statePath != "" {
+		_, rep, err := ops.RestoreServerState(ctx, env, statePath, key)
+		_ = report(rep)
+		return err
+	}
+	man, err := ops.ReadServerBackupManifest(dataPath, key)
+	if err != nil {
+		return err
+	}
+	src, err := ops.OpenBackupSource(ctx, env, backupsDir)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	rep := ops.RestoreServerData(ctx, env, man, src, func(f string, a ...any) { fmt.Printf("==> "+f+"\n", a...) })
+	return report(rep)
 }

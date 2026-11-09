@@ -163,9 +163,14 @@ func saveMail(ctx context.Context, env *Env, st *mailState) error {
 	return renderMail(ctx, env, st)
 }
 
+// DMARCLocalPart receives the DMARC aggregate reports of a mail domain
+// (rua=mailto:dmarc-reports@<domain>): Postfix hands them to the panel
+// instead of a mailbox, unless the domain has a mailbox of that name.
+const DMARCLocalPart = "dmarc-reports"
+
 func renderMail(ctx context.Context, env *Env, st *mailState) error {
-	var domains, boxes, aliases, senders, users, blocked bytes.Buffer
-	for _, w := range []*bytes.Buffer{&domains, &boxes, &aliases, &senders} {
+	var domains, boxes, aliases, senders, users, blocked, transport bytes.Buffer
+	for _, w := range []*bytes.Buffer{&domains, &boxes, &aliases, &senders, &transport} {
 		w.WriteString("# Managed by WSPanel agent (mail.json).\n")
 	}
 	names := make([]string, 0, len(st.Domains))
@@ -211,6 +216,18 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 				fmt.Fprintf(&aliases, "%s %s\n", addr, addr)
 			}
 		}
+		// DMARC reports: a valid recipient (listed), kept from a catch-all,
+		// delivered to the panel. A mailbox or alias of that name wins.
+		if _, box := md.Mailboxes[DMARCLocalPart]; !box {
+			if _, alias := md.Aliases[DMARCLocalPart]; !alias {
+				addr := DMARCLocalPart + "@" + d
+				fmt.Fprintf(&boxes, "%s OK\n", addr)
+				fmt.Fprintf(&transport, "%s wspanel-dmarc:\n", addr)
+				if catchAll {
+					fmt.Fprintf(&aliases, "%s %s\n", addr, addr)
+				}
+			}
+		}
 		for _, lp := range sortedKeys(md.Aliases) {
 			to := md.Aliases[lp]
 			fmt.Fprintf(&aliases, "%s@%s %s\n", lp, d, strings.Join(to, ","))
@@ -233,6 +250,7 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 		{env.Cfg.VMailboxes, boxes.Bytes(), true},
 		{env.Cfg.VAliases, aliases.Bytes(), true},
 		{env.Cfg.MailboxSenders, senders.Bytes(), true},
+		{env.Cfg.MailTransport, transport.Bytes(), true},
 	} {
 		if err := env.FS.WriteFile(f.path, f.content, 0o644, fsx.Root); err != nil {
 			return err

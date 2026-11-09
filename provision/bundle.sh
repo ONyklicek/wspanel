@@ -36,8 +36,6 @@ fi
 # which then brings its fixes.
 if command -v dpkg-deb >/dev/null; then
   "$ROOT/provision/build-deb.sh" "$VERSION" "$ARCH" "$B/bin/panel-agent-linux-$ARCH" "$B/bin/wspanel-linux-$ARCH" "$B/bin" "$B/CHANGES" >/dev/null
-  # FrankenPHP as tested, verified once here (see build-frankenphp-deb.sh).
-  "$ROOT/provision/build-frankenphp-deb.sh" "$VERSION" "$ARCH" "$B/bin" "$B/CHANGES" >/dev/null
   if [[ -n "${WSPANEL_REPO:-}" ]]; then
     "$ROOT/provision/build-keyring-deb.sh" "$VERSION" "$WSPANEL_REPO" "$ROOT/provision/files/wspanel-archive-keyring.asc" "$B/bin" "$B/CHANGES" >/dev/null
   fi
@@ -45,7 +43,7 @@ fi
 
 rsync -a --exclude='.DS_Store' "$ROOT/provision/" "$B/provision/"
 rm -f "$B/provision/bundle.sh" "$B/provision/build-deb.sh" "$B/provision/build-installer-deb.sh" \
-  "$B/provision/build-keyring-deb.sh" "$B/provision/build-frankenphp-deb.sh" "$B/provision/deb-common.sh" "$B/provision/apt-repo.sh"
+  "$B/provision/build-keyring-deb.sh" "$B/provision/deb-common.sh" "$B/provision/apt-repo.sh"
 install -m 0755 "$ROOT/provision/wspanel-install.sh" "$B/install"
 rm -f "$B/provision/wspanel-install.sh"
 rsync -a "$ROOT/docs/" "$B/docs/"

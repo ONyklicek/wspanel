@@ -58,7 +58,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Logy** | záznamy služeb serveru (pošta, proxy a certifikáty, SSH, fail2ban, DNS, agent, varování systému) s filtrem, obdobím a živým sledováním |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
-| **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané |
+| **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané; noční šifrovaná záloha serveru a pošty, klíč pro obnovu (obnova po havárii: `install --restore`) |
 | **Server → Moduly** | doinstalování klientů, pošty, XHProf; politika dvoufázového přihlášení |
 | **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
 | **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |

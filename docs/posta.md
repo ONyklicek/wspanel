@@ -172,6 +172,26 @@ blacklisty a záznamy webmailu. Pošta odeslaná
 ze schránek (programy i webmail) je podepsaná DKIM klíčem domény, který
 vznikne s poštovní doménou.
 
+### DMARC reporty
+
+Velké poštovní servery (Gmail, Outlook, Seznam…) posílají jednou denně souhrn:
+kolik zpráv s vaší doménou v adrese odesílatele dostaly, ze kterých serverů,
+a jestli prošly kontrolou DKIM a SPF. Doporučený DMARC záznam domény s poštou
+na tomto serveru je posílá na `dmarc-reports@<doména>`
+(`v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@<doména>`).
+
+Tato adresa nepotřebuje schránku: server zprávy předá panelu (každých pět
+minut je zpracuje) a výsledek je v detailu domény v sekci **DMARC reporty**:
+odesílající servery, počet zpráv, výsledek DKIM a SPF a co s poštou příjemce
+udělal. Přehled nad tabulkou shrnuje posledních 30 dní. Filtr *Výsledek DMARC
+→ neprošlo* ukáže, kdo posílá poštu jménem domény bez podpisu: buď podvržená
+pošta, nebo služba, která za doménu posílá (newsletter, fakturace, helpdesk)
+a chybí v SPF nebo nemá DKIM. Reporty starší 180 dní se mažou.
+
+Kdo chce reporty číst sám, založí schránku `dmarc-reports` (ta má přednost).
+Doména, jejíž poštu přijímá jiný server, reporty sem dostávat nemůže
+(`rua` pak míří na `postmaster@<doména>`).
+
 ### Přeposílání mimo server (SRS)
 
 Přesměrování i aliasy si nastavuje vlastník schránky. „Cizí“ je jen

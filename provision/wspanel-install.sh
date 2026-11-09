@@ -11,6 +11,18 @@
 #
 # Every install.sh flag is passed through. Re-running it upgrades the server
 # in place (the same as running install.sh again).
+#
+# Back to the version before the last upgrade (its panel database and
+# settings as they were before it):
+#
+#   ./install --rollback          (installed: sudo wspanel-rollback)
+#
+# A lost server on a new one (a clean Debian 13), from its server backup and
+# the recovery key (Zálohy mimo server → Klíč pro obnovu); the sites,
+# databases and mail come from the off-site storage, or from a copy of the
+# old server's /var/backups/wspanel:
+#
+#   ./install --restore=/root/server-20261109T021800Z.wspbak [--backups=/root/wspanel-backups]
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
@@ -25,13 +37,16 @@ die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 . /etc/os-release
 [[ "${ID:-}" == debian && "${VERSION_CODENAME:-}" == trixie ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
 
-YES=0
+YES=0 ROLLBACK=0 RESTORE="" BACKUPS=""
 ADMIN_EMAIL=""
 ADMIN_NAME="Administrator"
 PASS=()
 for arg in "$@"; do
   case "$arg" in
     --yes|-y) YES=1 ;;
+    --rollback) ROLLBACK=1 ;;
+    --restore=*) RESTORE="${arg#*=}" ;;
+    --backups=*) BACKUPS="${arg#*=}" ;;
     --admin-email=*) ADMIN_EMAIL="${arg#*=}" ;;
     --admin-name=*) ADMIN_NAME="${arg#*=}" ;;
     -h|--help) sed -n '2,/^set -euo/{/^#/p;}' "$0"; exit 0 ;;
@@ -39,9 +54,96 @@ for arg in "$@"; do
   esac
 done
 
+# ---------------------------------------------------------------- rollback
+# Before an upgrade: a snapshot of the panel's state (database, settings,
+# saved choices) and the version it belongs to. After a successful run: this
+# version's installer kept as a "kit", which a rollback runs again. The
+# newest 3 snapshots and 2 kits stay.
+STATE=/var/lib/wspanel
+THIS_VERSION="$(cat "$HERE/VERSION" 2>/dev/null || echo dev)"
+installed_version() { sed -n 's/^PANEL_VERSION=//p' /srv/panel/shared/.env 2>/dev/null | tail -1; }
+installed_method() { sed -n 's/^PANEL_INSTALL_METHOD=//p' /srv/panel/shared/.env 2>/dev/null | tail -1; }
+
+snapshot() {
+  [[ -f /srv/panel/shared/database.sqlite && -f /srv/panel/shared/.env ]] || return 0
+  local from dir
+  from="$(installed_version)"
+  [[ -n "$from" ]] || return 0
+  dir="$STATE/rollback/$(date -u +%Y%m%d%H%M%S)"
+  install -d -m 0700 "$dir"
+  sqlite3 /srv/panel/shared/database.sqlite ".backup '$dir/database.sqlite'"
+  cp -a /srv/panel/shared/.env "$dir/env"
+  [[ -s /etc/wspanel/install.flags ]] && cp -a /etc/wspanel/install.flags "$dir/install.flags"
+  printf '%s\n' "$from" > "$dir/VERSION"
+  printf '%s\n' "$(installed_method)" > "$dir/METHOD"
+  ls -1d "$STATE"/rollback/*/ 2>/dev/null | sort | head -n -3 | xargs -r rm -rf
+}
+
+keep_kit() {
+  [[ "$THIS_VERSION" != dev ]] || return 0
+  local kit="$STATE/kit/$THIS_VERSION"
+  install -d -m 0700 "$STATE/kit"
+  if [[ "$(cd "$HERE" && pwd -P)" != "$(cd "$kit" 2>/dev/null && pwd -P)" ]]; then
+    rm -rf "$kit.new" && install -d -m 0700 "$kit.new"
+    # The panel's source without what the install builds into it.
+    rsync -a --exclude='/panel/vendor' --exclude='/panel/node_modules' "$HERE/" "$kit.new/"
+    printf '%s\n' "${WSPANEL_VIA_APT:+apt}" > "$kit.new/KIT_METHOD"
+    rm -rf "$kit" && mv "$kit.new" "$kit"
+  fi
+  ls -1dt "$STATE"/kit/*/ 2>/dev/null | tail -n +3 | xargs -r rm -rf
+  # One command for it, whichever way WSPanel was installed.
+  cat > /usr/local/sbin/wspanel-rollback <<SH
+#!/bin/sh
+# Back to the WSPanel version before the last upgrade (written by the installer).
+exec "$kit/install" --rollback "\$@"
+SH
+  chmod 0755 /usr/local/sbin/wspanel-rollback
+}
+
+rollback() {
+  local snap="" from="" kit method debver d now
+  now="$(installed_version)"
+  # The newest snapshot of another version (a re-run of the same version
+  # leaves one of that version too).
+  while read -r d; do
+    [[ -n "$d" && "$(cat "$d/VERSION" 2>/dev/null)" != "$now" ]] || continue
+    snap="$d" from="$(cat "$d/VERSION")"
+    break
+  done < <(ls -1d "$STATE"/rollback/*/ 2>/dev/null | sort -r)
+  [[ -n "$snap" ]] || die "no snapshot of a version other than $now in $STATE/rollback"
+  kit="$STATE/kit/$from"
+  [[ -x "$kit/install" ]] || die "the installer of $from is not kept in $kit; install $from again (get.sh with WSPANEL_VERSION=$from)"
+  method="$(cat "$kit/KIT_METHOD" 2>/dev/null || true)"
+  printf '\033[1;34m==>\033[0m Back to WSPanel %s (the panel database and settings from %s)\n' "$from" "${snap%/}"
+  if ((! YES)); then
+    read -r -p "Continue? [y/N] " a </dev/tty || a=""
+    [[ $a == [yYaA]* ]] || { echo "Zrušeno."; exit 1; }
+  fi
+  systemctl stop panel-scheduler panel-web 2>/dev/null || true
+  install -m 0600 -o panel -g panel "$snap/database.sqlite" /srv/panel/shared/database.sqlite
+  rm -f /srv/panel/shared/database.sqlite-wal /srv/panel/shared/database.sqlite-shm
+  install -m 0600 -o panel -g panel "$snap/env" /srv/panel/shared/.env
+  [[ -f "$snap/install.flags" ]] && install -m 0600 "$snap/install.flags" /etc/wspanel/install.flags
+  if [[ $method == apt ]]; then
+    debver="${from/-/\~}"
+    apt-get update -q || true
+    apt-get install -y -q --allow-downgrades "wspanel=$debver" "wspanel-agent=$debver" \
+      || die "apt cannot install $debver any more; install $from again (get.sh with WSPANEL_VERSION=$from)"
+    WSPANEL_ROLLBACK=1 exec /usr/sbin/wspanel-install --yes
+  fi
+  WSPANEL_ROLLBACK=1 exec "$kit/install" --yes
+}
+
 run_install() {
+  [[ -n "${WSPANEL_ROLLBACK:-}" ]] || snapshot
   # This script creates the administrator itself (or keeps the existing ones).
-  WSPANEL_ADMIN_BY_INSTALLER=1 "$HERE/provision/install.sh" --agent-bin="$AGENT" --panel-source="$HERE/panel" "$@"
+  if ! WSPANEL_ADMIN_BY_INSTALLER=1 "$HERE/provision/install.sh" --agent-bin="$AGENT" --panel-source="$HERE/panel" "$@"; then
+    if [[ -z "${WSPANEL_ROLLBACK:-}" && -x /usr/local/sbin/wspanel-rollback ]]; then
+      printf '\n\033[1;31mThe installation did not finish.\033[0m Back to the previous version: sudo wspanel-rollback\n' >&2
+    fi
+    exit 1
+  fi
+  keep_kit
 }
 
 create_admin() { # email name [password] -> prints the password (generated when none)
@@ -57,6 +159,71 @@ user_count() {
   [[ -f /srv/panel/current/artisan ]] || { echo 0; return; }
   (cd /srv/panel/current && runuser -u panel -- php artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1) || echo 0
 }
+
+((ROLLBACK)) && rollback
+
+# ---------------------------------------------------------------- restore
+restore_server() {
+  local file=$1 info version flags=() newenv key
+  [[ -f "$file" ]] || die "$file does not exist"
+  [[ -z "$BACKUPS" || -d "$BACKUPS" ]] || die "$BACKUPS is not a folder"
+  if compgen -G "/var/lib/panel-agent/sites/*.json" >/dev/null; then
+    die "this server has sites already: a server backup is restored onto a new, empty server"
+  fi
+  key="${WSPANEL_RECOVERY_KEY:-}"
+  if [[ -z "$key" ]]; then
+    read -r -s -p "Klíč pro obnovu (Zálohy mimo server → Klíč pro obnovu): " key </dev/tty || true
+    echo
+  fi
+  [[ "$key" =~ ^[0-9a-fA-F]{64}$ ]] || die "the recovery key is 64 hexadecimal digits"
+  export WSPANEL_RECOVERY_KEY="$key"
+  info="$(WSPANEL_MANIFEST_FORMAT=shell "$AGENT" -server-backup-manifest "$file")" || die "the backup does not open with this key"
+  version="$(sed -n 's/^VERSION=//p' <<<"$info")"
+  mapfile -t flags < <(sed -n 's/^FLAG=//p' <<<"$info")
+  printf '\033[1;34m==>\033[0m Server backup of %s (%s), WSPanel %s: %s sites, %s mail domains, %s databases\n' \
+    "$(sed -n 's/^HOST=//p' <<<"$info")" "$(sed -n 's/^CREATED=//p' <<<"$info")" "${version:-?}" \
+    "$(sed -n 's/^SITES=//p' <<<"$info")" "$(sed -n 's/^MAIL=//p' <<<"$info")" "$(sed -n 's/^DATABASES=//p' <<<"$info")"
+  if [[ -n "$version" && "$THIS_VERSION" != dev && "$(printf '%s\n%s\n' "$version" "$THIS_VERSION" | sort -V | tail -1)" != "$THIS_VERSION" ]]; then
+    die "the backup is of WSPanel $version, newer than this installer ($THIS_VERSION): restore with $version or newer"
+  fi
+  ((${#flags[@]})) || die "the backup holds no installation choices"
+  if ((! YES)); then
+    read -r -p "Install WSPanel with the backup's choices and restore it here? [y/N] " a </dev/tty || a=""
+    [[ $a == [yYaA]* ]] || { echo "Zrušeno."; exit 1; }
+  fi
+
+  printf '\033[1;34m==>\033[0m 1/3 Installing with the choices of the old server\n'
+  WSPANEL_ROLLBACK=1 run_install "${flags[@]}"
+  # What this installation knows better than the backup's .env.
+  newenv="$(grep -E '^(PANEL_VERSION|PANEL_INSTALL_METHOD|PANEL_RELEASE_REPO)=' /srv/panel/shared/.env || true)"
+
+  printf '\033[1;34m==>\033[0m 2/3 The server backup: accounts, configuration, the panel, DNS\n'
+  systemctl stop panel-scheduler panel-web panel-agent
+  /usr/sbin/panel-agent -server-restore "$file" || die "restoring the server backup failed (see above)"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    k="${line%%=*}"
+    if grep -q "^$k=" /srv/panel/shared/.env; then sed -i "s|^$k=.*|$line|" /srv/panel/shared/.env; else echo "$line" >> /srv/panel/shared/.env; fi
+  done <<<"$newenv"
+  (cd /srv/panel/current && runuser -u panel -- php artisan migrate --force && runuser -u panel -- php artisan optimize) >/dev/null
+
+  printf '\033[1;34m==>\033[0m 3/3 Sites, databases and mail from %s\n' "${BACKUPS:-the off-site storage}"
+  local data=(-server-restore-data "$file")
+  [[ -n "$BACKUPS" ]] && data+=(-backups "$BACKUPS")
+  /usr/sbin/panel-agent "${data[@]}" | tee /var/log/wspanel-restore.log
+  for s in postfix dovecot rspamd opendkim pdns; do
+    systemctl is-enabled --quiet "$s" 2>/dev/null && systemctl restart "$s" || true
+  done
+  systemctl list-unit-files 'wspanel-*' --state=enabled --no-legend | awk '{print $1}' | xargs -r systemctl start || true
+  systemctl restart panel-proxy
+  systemctl start panel-agent panel-web panel-scheduler
+  (cd /srv/panel/current && runuser -u panel -- php artisan panel:sync) >/dev/null 2>&1 || true
+  url="$(grep '^APP_URL=' /srv/panel/shared/.env | cut -d= -f2-)"
+  printf '\nRestored. Panel: %s (the accounts of the old server)\n' "$url"
+  grep -q '^PROBLEM' /var/log/wspanel-restore.log && printf 'Some parts did not come back: see /var/log/wspanel-restore.log\n'
+  exit 0
+}
+[[ -n "$RESTORE" ]] && restore_server "$RESTORE"
 
 if ((YES)); then
   if ((${#PASS[@]} == 0)) && [[ -s /etc/wspanel/install.flags ]]; then

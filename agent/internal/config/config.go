@@ -47,6 +47,9 @@ type Config struct {
 	XhguiDir      string `json:"xhgui_dir"`
 	WebSocket     string `json:"web_socket"`
 	FrankenPHPBin string `json:"frankenphp_bin"`
+	// The CLI of FrankenPHP's own PHP (its php-zts-cli package): the same
+	// version, extensions and php.ini as the FrankenPHP sites run.
+	FrankenPHPCLI string `json:"frankenphp_cli"`
 	DefaultPHPVer string `json:"default_php_version"`
 
 	// Worker mode (one FrankenPHP instance per site) and Node SSR.
@@ -114,11 +117,14 @@ type Config struct {
 	SASLDB       string `json:"sasl_db"`       // per-site SMTP logins (Cyrus sasldb)
 	SenderLogins string `json:"sender_logins"` // Postfix: sender domain -> SMTP login allowed to use it
 	// Mail hosting (mail-hosting.sh): where mail.json is rendered to.
-	MailHost       string `json:"mail_host,omitempty"` // default: the panel domain
-	MailDir        string `json:"mail_dir"`            // TLS pair, the "hosting" marker
-	VDomains       string `json:"vdomains"`
-	VMailboxes     string `json:"vmailboxes"`
-	VAliases       string `json:"valiases"`
+	MailHost   string `json:"mail_host,omitempty"` // default: the panel domain
+	MailDir    string `json:"mail_dir"`            // TLS pair, the "hosting" marker
+	VDomains   string `json:"vdomains"`
+	VMailboxes string `json:"vmailboxes"`
+	VAliases   string `json:"valiases"`
+	// Postfix transport_maps: dmarc-reports@<domain> to the panel (DMARC
+	// aggregate reports, the wspanel-dmarc pipe service).
+	MailTransport  string `json:"mail_transport"`
 	MailboxSenders string `json:"mailbox_senders"`
 	// SRSExclude: Postfix canonical map of the domains that send from here
 	// (sites, mail domains); their senders are never SRS-rewritten.
@@ -178,6 +184,7 @@ func Defaults() Config {
 		XhguiDir:      "/usr/share/wspanel-xhgui",
 		WebSocket:     "/run/panel-web/web.sock",
 		FrankenPHPBin: "/usr/local/bin/frankenphp",
+		FrankenPHPCLI: "/usr/bin/php-zts",
 		DefaultPHPVer: "8.4",
 
 		SiteConfigDir:   "/etc/panel-sites",
@@ -231,6 +238,7 @@ func Defaults() Config {
 		VDomains:          "/etc/postfix/wspanel_vdomains",
 		VMailboxes:        "/etc/postfix/wspanel_vmailboxes",
 		VAliases:          "/etc/postfix/wspanel_valiases",
+		MailTransport:     "/etc/postfix/wspanel_transport",
 		MailboxSenders:    "/etc/postfix/wspanel_mailbox_senders",
 		SRSExclude:        "/etc/postfix/wspanel_srs_exclude",
 		RspamdRatelimit:   "/etc/rspamd/local.d/ratelimit.conf",

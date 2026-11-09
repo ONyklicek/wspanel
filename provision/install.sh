@@ -16,15 +16,20 @@
 # Safe to re-run: every step is idempotent.
 set -euo pipefail
 
-# FrankenPHP: a release ships it as the wspanel-frankenphp package
-# (build-frankenphp-deb.sh). The checksums are for an installation from
-# source only and change whenever FrankenPHP rebuilds its release (nightly):
-# then update them from a build checked with gh attestation verify.
-FRANKENPHP_VERSION="v1.13.5"
-declare -A FRANKENPHP_SHA256=(
-  [x86_64]="cdb85dd2fd6c0468f53079e845c81621563024772ac400e5d1c17d0751324b71"
-  [aarch64]="2a21b7d3b74d9e3292915608f248adc26e98bc9b34ee4128a8c87b0629f9c07f"
+# FrankenPHP: the project's own packages (frankenphp.dev, "Linux packages"):
+# one apt repository per PHP version, signed by its own key (fingerprint
+# checked here). The PHP of the panel, the proxy and every site in FrankenPHP
+# mode; its extensions are php-zts-* packages, configured in /etc/php-zts.
+FRANKENPHP_PHP="85"
+declare -A FRANKENPHP_KEY_FPR=(
+  [84]="84C55642FCEBE5C81B8ECAF984A79E3970A7B254"
+  [85]="71531E1582BE72B3E0479B8BC290E47D98B7D254"
 )
+# The extensions the panel's sites get (what FrankenPHP's static build had;
+# the rest is in php-zts-cli itself). More: apt install php-zts-<name>.
+FRANKENPHP_EXTENSIONS=(amqp apcu ast bcmath brotli bz2 dba deepclone ftp gd gettext gmp igbinary imagick
+  intl ldap lz4 memcached msgpack mysqli parallel pdo-mysql pdo-pgsql pdo-sqlite pgsql protobuf redis
+  shmop soap sqlite3 ssh2 sysvmsg sysvsem sysvshm tidy xlswriter xsl xz yaml zip zstd)
 FNM_VERSION="v1.39.0"
 declare -A FNM_ASSET=([x86_64]="fnm-linux.zip" [aarch64]="fnm-arm64.zip")
 declare -A FNM_SHA256=(
@@ -177,7 +182,7 @@ if [[ "$NODE_VERSIONS" != "none" ]]; then
 fi
 
 ARCH="$(uname -m)"
-[[ -n "${FRANKENPHP_SHA256[$ARCH]:-}" ]] || die "unsupported architecture: $ARCH"
+[[ $ARCH == x86_64 || $ARCH == aarch64 ]] || die "unsupported architecture: $ARCH"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -239,28 +244,55 @@ for engine in "${DB_ENGINES[@]}"; do
 done
 
 # ---------------------------------------------------------------- FrankenPHP
-# Output captured first: with pipefail, `cmd | grep -q` fails when grep exits early
-# (SIGPIPE to cmd), which re-downloaded installed tools on every run.
-# A release brings it as the wspanel-frankenphp package (verified when the
-# release was built; FrankenPHP rebuilds its release binaries every night, so
-# the checksums below hold only for a while): installed from the bundle, or
-# already there through apt. From source (dev): downloaded and checked here.
-FP_DEB="$(ls "$HERE"/../bin/wspanel-frankenphp_*_"$(dpkg --print-architecture)".deb 2>/dev/null | head -1 || true)"
-fp_packaged() { dpkg-query -W -f='${Status}' wspanel-frankenphp 2>/dev/null | grep -q 'ok installed'; }
-if [[ -n "$FP_DEB" ]]; then
-  log "FrankenPHP (package)"
-  dpkg -i "$FP_DEB" >/dev/null
-fi
-if fp_packaged; then
-  ln -sfn /usr/lib/wspanel/frankenphp /usr/local/bin/frankenphp
-elif [[ "$(/usr/local/bin/frankenphp version 2>/dev/null || true)" != *"${FRANKENPHP_VERSION#v}"* ]]; then
-  log "FrankenPHP $FRANKENPHP_VERSION"
+# From FrankenPHP's own repository (pkg.henderkes.com), updated through apt
+# like everything else. Its package brings a frankenphp.service of its own
+# (a demo site on port 80): masked before the install, WSPanel runs
+# FrankenPHP in its own units (panel, proxy, sites). Those restart after an
+# update of FrankenPHP or PHP: the wspanel-agent package watches the files.
+log "FrankenPHP (PHP 8.${FRANKENPHP_PHP#8}, pkg.henderkes.com)"
+FP_KEY=/etc/apt/keyrings/frankenphp-php$FRANKENPHP_PHP.asc
+FP_SRC=/etc/apt/sources.list.d/frankenphp.sources
+if [[ ! -s $FP_KEY ]] || ! grep -qs "/api/packages/$FRANKENPHP_PHP/debian" "$FP_SRC"; then
   tmp="$(mktemp)"
-  gh_release_get php/frankenphp "$FRANKENPHP_VERSION" "frankenphp-linux-${ARCH}" "$tmp"
-  echo "${FRANKENPHP_SHA256[$ARCH]}  $tmp" | sha256sum -c - || die "FrankenPHP checksum mismatch"
-  install -m 0755 "$tmp" /usr/local/bin/frankenphp
+  curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$tmp" \
+    "https://pkg.henderkes.com/api/packages/$FRANKENPHP_PHP/debian/repository.key"
+  fpr="$(gpg --batch --with-colons --show-keys "$tmp" 2>/dev/null | awk -F: '/^fpr/ { print $10; exit }')"
+  [[ "$fpr" == "${FRANKENPHP_KEY_FPR[$FRANKENPHP_PHP]}" ]] \
+    || die "the FrankenPHP repository key has fingerprint ${fpr:-none}, expected ${FRANKENPHP_KEY_FPR[$FRANKENPHP_PHP]}"
+  install -d -m 0755 /etc/apt/keyrings
+  install -m 0644 "$tmp" "$FP_KEY"
   rm -f "$tmp"
+  cat > "$FP_SRC" <<SRC
+# Managed by the WSPanel installer: FrankenPHP and its PHP (php-zts-*), from
+# FrankenPHP's own packages (https://frankenphp.dev/docs/#linux-packages).
+Types: deb
+URIs: https://pkg.henderkes.com/api/packages/$FRANKENPHP_PHP/debian
+Suites: php-zts
+Components: main
+Signed-By: $FP_KEY
+SRC
+  apt_update
 fi
+systemctl mask frankenphp.service >/dev/null 2>&1 || true
+apt-get install -y -q --no-install-recommends frankenphp "${FRANKENPHP_EXTENSIONS[@]/#/php-zts-}"
+systemctl mask frankenphp.service >/dev/null 2>&1 || true
+# Where WSPanel's units and timers (also those written before) run it from.
+ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
+# 1.2.0-rc5 shipped its own FrankenPHP package: replaced by the above, and
+# unused from now on. The wspanel package of 1.2.0-rc5 still depends on it
+# (until apt brings the new one): then it stays until the next run.
+if dpkg-query -W -f='${Status}' wspanel-frankenphp 2>/dev/null | grep -q 'ok installed'; then
+  dpkg --purge wspanel-frankenphp >/dev/null 2>&1 \
+    || log "wspanel-frankenphp (unused) stays until the wspanel package is updated"
+  ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
+fi
+# Its fixes with the daily unattended upgrades too (when those are on).
+cat > /etc/apt/apt.conf.d/52wspanel-frankenphp <<'CONF'
+// Managed by the WSPanel installer: FrankenPHP and PHP fixes from its
+// repository come with the daily unattended upgrades (when those are on,
+// Zabezpečení → Aktualizace); the panel and sites restart on them.
+Unattended-Upgrade::Origins-Pattern { "origin=Static-PHP"; };
+CONF
 
 # ---------------------------------------------------------------- Node (fnm)
 # System-wide installs in /opt/fnm, readable by every site user. The agent
@@ -415,6 +447,7 @@ install -d -m 0755 /usr/lib/wspanel
 install -m 0755 "$HERE/mail-hosting.sh" /usr/lib/wspanel/mail-hosting.sh
 install -d -m 0755 /usr/lib/wspanel/files/webmail
 install -m 0644 "$HERE"/files/webmail/* /usr/lib/wspanel/files/webmail/
+install -m 0755 "$HERE/files/dmarc-receive" /usr/lib/wspanel/files/dmarc-receive
 # ClamAV for incoming mail (optional, switched on in the panel).
 install -m 0755 "$HERE/clamav.sh" /usr/lib/wspanel/clamav.sh
 # XHProf + XHGui (optional): the script the agent also runs when added later.

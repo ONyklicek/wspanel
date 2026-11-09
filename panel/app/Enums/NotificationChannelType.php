@@ -10,6 +10,7 @@ enum NotificationChannelType: string implements HasLabel
     case Slack = 'slack';
     case Discord = 'discord';
     case Telegram = 'telegram';
+    case Ntfy = 'ntfy';
 
     public function getLabel(): string
     {
@@ -18,6 +19,7 @@ enum NotificationChannelType: string implements HasLabel
             self::Slack => 'Slack',
             self::Discord => 'Discord',
             self::Telegram => 'Telegram',
+            self::Ntfy => 'ntfy (push do telefonu)',
         };
     }
 

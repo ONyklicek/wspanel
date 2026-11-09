@@ -45,12 +45,18 @@ class Notifier
                 NotificationChannelType::Slack => Http::timeout(10)->post($cfg['url'], ['text' => $text])->throw(),
                 NotificationChannelType::Discord => Http::timeout(10)->post($cfg['url'], ['content' => mb_substr($text, 0, 1900)])->throw(),
                 NotificationChannelType::Telegram => Http::timeout(10)->post('https://api.telegram.org/bot'.$cfg['token'].'/sendMessage', ['chat_id' => $cfg['chat_id'], 'text' => $text])->throw(),
+                // ntfy.sh only (a fixed host, like the webhooks): the topic is the channel.
+                NotificationChannelType::Ntfy => Http::timeout(10)
+                    ->withHeaders(array_filter(['Title' => mb_substr('WSPanel: '.$title, 0, 250), 'Tags' => 'computer',
+                        'Authorization' => filled($cfg['token'] ?? null) ? 'Bearer '.$cfg['token'] : null]))
+                    ->withBody(mb_substr($body !== '' ? $body : $title, 0, 3500), 'text/plain')
+                    ->post('https://ntfy.sh/'.$cfg['topic'])->throw(),
             };
             $channel->forceFill(['last_sent_at' => now(), 'last_error' => null])->saveQuietly();
 
             return true;
         } catch (Throwable $e) {
-            $channel->forceFill(['last_error' => mb_substr(str_replace((string) ($cfg['token'] ?? "\0"), '***', $e->getMessage()), 0, 500)])->saveQuietly();
+            $channel->forceFill(['last_error' => mb_substr(str_replace([(string) ($cfg['token'] ?? "\0"), (string) ($cfg['topic'] ?? "\0")], '***', $e->getMessage()), 0, 500)])->saveQuietly();
 
             return false;
         }
