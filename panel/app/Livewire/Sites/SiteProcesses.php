@@ -4,10 +4,10 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ControlSite;
 use App\Enums\SiteMode;
+use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
-use App\Wire\Sites\SiteActions;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Number;
@@ -56,12 +56,13 @@ class SiteProcesses extends Component
                 'app' => __('Aplikace (').$site->runtimeLabel().')',
                 'task' => __('Úloha #').$p['name'],
                 'valkey' => __('Valkey (Redis)'),
-                default => __(SiteActions::WORKER_LABELS[$p['name']] ?? $p['name']),
+                default => Service::workerName((string) $p['name']),
             },
+            'detail' => str_contains((string) $p['unit'], '@initial.') && $p['active'] !== 'active' ? __('spustí ho první deploy webu') : $p['unit'],
             'state_label' => self::stateLabel($p),
             'since_label' => self::since($p['since'] ?? null),
             'memory_label' => ($p['memory'] ?? 0) > 0 ? Number::fileSize($p['memory'], 1) : '—',
-            'boot_label' => ($p['enabled'] ?? '') === 'enabled' ? __('spustí se') : __('nespustí se'),
+            'boot_label' => str_contains((string) $p['unit'], '@initial.') && $p['active'] !== 'active' ? __('po prvním deployi') : (($p['enabled'] ?? '') === 'enabled' ? __('spustí se') : __('nespustí se')),
         ])->values()->all();
     }
 
@@ -71,13 +72,13 @@ class SiteProcesses extends Component
             ->stackedOnMobile()
             ->dataSource(new CollectionDataSource($this->rows()))
             ->columns([
-                TextColumn::make('label')->label(__('Proces'))->weight('medium')->description(fn ($record) => $record->unit),
+                TextColumn::make('label')->label(__('Proces'))->weight('medium')->description(fn ($record) => $record->detail),
                 BadgeColumn::make('kind')->label(__('Druh'))->color('gray')
                     ->formatStateUsing(fn ($state) => ['app' => __('aplikace'), 'worker' => 'worker', 'task' => __('úloha'), 'valkey' => 'Valkey'][$state] ?? $state)
                     ->toggleable()->visible(false),
                 BadgeColumn::make('state_label')->label(__('Stav'))->colors([
                     __('běží') => 'success', __('naplánováno') => 'success', 'chyba' => 'danger', __('padá a restartuje se') => 'danger',
-                    __('čeká na deploy / zastaveno') => 'warning', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
+                    __('čeká na deploy / zastaveno') => 'warning', __('čeká na deploy') => 'info', 'zastaveno' => 'gray', 'pozastaveno' => 'warning',
                 ]),
                 TextColumn::make('since_label')->label(__('Od')),
                 TextColumn::make('memory_label')->label(__('Paměť')),
@@ -157,6 +158,7 @@ class SiteProcesses extends Component
     {
         return match (true) {
             ($p['sub'] ?? '') === 'auto-restart' => __('padá a restartuje se'),
+            str_contains((string) $p['unit'], '@initial.') && $p['active'] !== 'active' => __('čeká na deploy'),
             $p['active'] === 'failed' => 'chyba',
             $p['kind'] === 'task' && $p['active'] === 'active' => __('naplánováno'),
             $p['active'] === 'active' => __('běží'),

@@ -76,7 +76,7 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                 BadgeColumn::make('provider')->label(__('Kde je zóna'))
                     ->formatStateUsing(fn ($state) => $state instanceof DnsProvider ? $state->getLabel() : $state)
                     ->colors(['local' => 'info', 'cloudflare' => 'warning']),
-                TextColumn::make('site_domain')->label(__('Web'))->state(fn (DnsZone $record) => $record->site?->domain ?? '—'),
+                TextColumn::make('site_domain')->label(__('Weby'))->state(fn (DnsZone $record) => $record->sitesBelow()->pluck('domain')->implode(', ') ?: '—'),
                 TextColumn::make('created_at')->label(__('Přidáno'))->date('j. n. Y'),
             ])
             ->recordUrl(fn (DnsZone $record) => self::url('view', $record))

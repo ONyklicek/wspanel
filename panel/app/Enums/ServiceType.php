@@ -15,6 +15,7 @@ enum ServiceType: string implements HasLabel
     case Valkey = 'valkey';
     case Worker = 'worker';
     case App = 'app';
+    case System = 'system';
 
     public function getLabel(): string
     {
@@ -28,6 +29,7 @@ enum ServiceType: string implements HasLabel
             self::Valkey => 'Valkey',
             self::Worker => 'Worker',
             self::App => __('Aplikace (worker / Node)'),
+            self::System => __('Systém (pošta, DNS…)'),
         };
     }
 

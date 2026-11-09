@@ -72,7 +72,7 @@ final class SiteFields
         $options = function ($get) use ($zone): array {
             $out = [];
             if ($z = $zone($get)) {
-                $out['zone'] = __('Do zóny :zone (:where)', ['zone' => $z->domain, 'where' => $z->provider->getLabel()]);
+                $out['zone'] = __('Do zóny :zone · :where', ['zone' => $z->domain, 'where' => $z->provider->getLabel()]);
             } else {
                 if (Gate::allows('admin') && ManageSiteDns::localAvailable()) {
                     $out['local'] = __('Nová zóna na tomto serveru (PowerDNS)');

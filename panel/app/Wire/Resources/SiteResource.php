@@ -21,6 +21,7 @@ use App\Livewire\Sites\SiteSettings;
 use App\Livewire\Sites\SiteTrafficPage;
 use App\Livewire\Sites\ViewSite;
 use App\Models\Client;
+use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Lang;
@@ -134,6 +135,9 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                             return '—';
                         }
 
+                        if ($services->every(fn (Service $s) => $s->isWaitingForDeploy())) {
+                            return __('čekají na první deploy');
+                        }
                         $failed = $services->where('active_state', 'failed')->count();
 
                         return $services->where('active_state', 'active')->count().' / '.$services->count().__(' běží')

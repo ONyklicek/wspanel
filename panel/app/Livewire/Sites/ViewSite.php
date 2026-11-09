@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Sites;
 
+use App\Actions\Dns\ManageSiteDns;
 use App\Actions\Sites\ManageDeploys;
 use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageValkey;
@@ -10,7 +11,7 @@ use App\Enums\Framework;
 use App\Enums\SshAccess;
 use App\Models\Database;
 use App\Models\Deployment;
-use App\Models\DnsZone;
+use App\Models\MailDomain;
 use App\Models\Site;
 use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
@@ -63,7 +64,8 @@ class ViewSite extends ViewPage
     {
         /** @var Site $site */
         $site = $this->nativeRecord();
-        $zone = DnsZone::query()->where('domain', $site->domain)->first();
+        $zone = ManageSiteDns::zoneFor($site->domain);
+        $mailDomain = MailDomain::query()->where('domain', SiteMail::mailDomainName($site))->first();
         $deploy = Deployment::query()->where('site_id', $site->id)->latest('started_at')->first();
         $port = config('panel.ssh_port');
 
@@ -130,10 +132,13 @@ class ViewSite extends ViewPage
                     ->actions([Action::make('openXhgui')->label(__('Otevřít XHGui'))->icon('outline:chart-bar')->color('gray')->size('sm')
                         ->url(ManageXhprof::viewerUrl($site), openInNewTab: true)]),
                 TextEntry::make('mail')->label(__('Pošta'))
-                    ->state(fn () => $site->mail_mode === 'capture' ? __('zachytává se v Mailpitu') : __('odesílá se'))
+                    ->state(fn () => ($site->mail_mode === 'capture' ? __('web: zachytává se v Mailpitu') : __('web odesílá'))
+                        .($mailDomain ? __(' · schránky na :domain', ['domain' => $mailDomain->domain]) : ''))
                     ->badge()->color($site->mail_mode === 'capture' ? 'warning' : 'success'),
                 TextEntry::make('dns')->label('DNS')
-                    ->state(fn () => $zone ? __('zóna: ').$zone->provider->getLabel() : __('zóna není v panelu (spravuje ji registrátor)')),
+                    ->state(fn () => $zone
+                        ? __('zóna :zone · :where', ['zone' => $zone->domain, 'where' => $zone->provider->getLabel()])
+                        : __('spravuje se mimo panel (co nastavit, ukáže záložka DNS)')),
                 TextEntry::make('deploy')->label(__('Poslední deploy'))
                     ->state(fn () => $deploy ? $deploy->statusLabel().' · '.$deploy->started_at?->diffForHumans() : __('zatím žádný')),
             ]),

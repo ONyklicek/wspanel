@@ -102,7 +102,7 @@ class SiteControlTest extends TestCase
             ->andReturn(['unit' => 'x']);
 
         $list = Livewire::test(SiteProcesses::class, ['site' => $site->id])
-            ->assertSee('Fronta (artisan queue:work)')
+            ->assertSee('Fronta')
             ->assertSee('Úloha #3')
             ->assertSee('50,0 MB');
         $this->tableAction($list, 'wspanel-web_app_example_com-queue.service', 'restart')->assertNotified(type: 'success');

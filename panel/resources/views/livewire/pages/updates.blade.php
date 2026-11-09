@@ -90,8 +90,8 @@
     @php($securityCount = $packages->where('security', true)->count())
     @php($busy = $this->upgrading())
     <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-gray-700">
-            <div class="min-w-0">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-gray-700">
+            <div class="min-w-0 flex-1">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ __('Balíčky systému') }}</h3>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     @if ($packages->isEmpty())

@@ -260,3 +260,24 @@ func TestFailedInstanceKeepsAGrantedGroup(t *testing.T) {
 		t.Fatal("state left behind")
 	}
 }
+
+func TestSystemServicesAreOnlyTheKnownOnes(t *testing.T) {
+	env, _ := dbEnv(t)
+	if err := os.MkdirAll(env.Cfg.SystemdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.Cfg.SystemdDir, "pdns.service"), []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if u, err := (serviceParams{Service: "system", Unit: "pdns.service"}).unit(env.Cfg); err != nil || u != "pdns.service" {
+		t.Fatalf("pdns: %q %v", u, err)
+	}
+	for _, bad := range []string{"ssh.service", "panel-agent.service", "../../x.service", "dovecot.service"} { // dovecot: not installed here
+		if _, err := (serviceParams{Service: "system", Unit: bad}).unit(env.Cfg); code(err) != protocol.CodeInvalidParams {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+	if _, err := (serviceParams{Service: "mariadb", Unit: "pdns.service"}).unit(env.Cfg); code(err) != protocol.CodeInvalidParams {
+		t.Error("unit accepted for another service type")
+	}
+}

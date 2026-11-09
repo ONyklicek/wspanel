@@ -217,4 +217,21 @@ class ServicesAndFirewallTest extends TestCase
 
         $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'geoblock', ['countries' => ['xx'], 'scope' => 'admin'])->assertHasErrors();
     }
+
+    public function test_workers_before_the_first_deploy_wait_and_system_services_are_named(): void
+    {
+        $waiting = new Service(['unit' => 'wspanel-web_x_cz-queue@initial.service', 'type' => 'worker', 'instance' => 'x.cz', 'worker' => 'queue', 'active_state' => 'inactive']);
+        $this->assertTrue($waiting->isWaitingForDeploy());
+        $this->assertSame('čeká na deploy', $waiting->stateLabel());
+        $this->assertSame('Fronta · x.cz', $waiting->label());
+
+        $stopped = new Service(['unit' => 'wspanel-web_x_cz-queue@20261109T120000Z.service', 'type' => 'worker', 'instance' => 'x.cz', 'worker' => 'queue', 'active_state' => 'inactive']);
+        $this->assertFalse($stopped->isWaitingForDeploy());
+
+        $this->assertSame(['type' => 'system', 'instance' => 'dovecot.service', 'worker' => null], SyncServices::parseUnit('dovecot.service'));
+        $this->assertNull(SyncServices::parseUnit('ssh.service'));
+        $dovecot = new Service(['unit' => 'dovecot.service', 'type' => 'system', 'instance' => 'dovecot.service']);
+        $this->assertSame('Dovecot (schránky, IMAP/POP3)', $dovecot->label());
+        $this->assertSame(['service' => 'system', 'unit' => 'dovecot.service'], $dovecot->agentParams());
+    }
 }

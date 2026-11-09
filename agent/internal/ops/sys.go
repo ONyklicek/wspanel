@@ -32,7 +32,7 @@ func sysServices(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if err := decode(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
-	return unitStates(ctx, env, managedUnits(env.Cfg))
+	return unitStates(ctx, env, append(managedUnits(env.Cfg), systemUnits(env.Cfg)...))
 }
 
 type phpInfo struct {

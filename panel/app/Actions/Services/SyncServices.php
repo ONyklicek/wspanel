@@ -67,6 +67,7 @@ class SyncServices
             $name === 'postgresql' => ['type' => ServiceType::PostgreSql->value, 'instance' => null, 'worker' => null],
             $name === 'mongod' => ['type' => ServiceType::MongoDb->value, 'instance' => null, 'worker' => null],
             $name === 'valkey-server' => ['type' => ServiceType::Valkey->value, 'instance' => null, 'worker' => null],
+            isset(Service::SYSTEM_LABELS[$name]), (bool) preg_match('/^(wspanel-db-\d+|postgresql@\d+-wsd\d+)$/', $name) => ['type' => ServiceType::System->value, 'instance' => $unit, 'worker' => null],
             (bool) preg_match('/^php(\d\.\d)-fpm$/', $name, $m) => ['type' => ServiceType::PhpFpm->value, 'instance' => $m[1], 'worker' => null],
             (bool) preg_match('/^wspanel-(web_[a-z0-9_-]+)-([a-z]+)(?:@[A-Za-z0-9._-]+)?$/', $name, $m) => self::workerFields($m[1], $m[2]),
             default => null,

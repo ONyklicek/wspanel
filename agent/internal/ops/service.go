@@ -18,7 +18,40 @@ import (
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "mongodb", "worker", "app", "task", "site-valkey"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "mongodb", "worker", "app", "task", "site-valkey", "system"}
+
+// otherUnits: the server's other services the panel shows and may restart
+// (mail, DNS, the panel's scheduler…), each only when installed here.
+var otherUnits = []string{
+	"panel-scheduler.service",
+	"postfix.service", "postsrsd.service", "opendkim.service", "mailpit.service",
+	"dovecot.service", "rspamd.service", "rspamd-valkey.service", "clamav-daemon.service", "clamav-freshclam.service",
+	"pdns.service", "fail2ban.service",
+}
+
+func unitInstalled(cfg config.Config, unit string) bool {
+	for _, dir := range []string{cfg.SystemdDir, "/usr/lib/systemd/system", "/lib/systemd/system"} {
+		if fsx.Exists(filepath.Join(dir, unit)) {
+			return true
+		}
+	}
+	return false
+}
+
+// systemUnits: otherUnits installed here and the sites' dedicated database
+// servers.
+func systemUnits(cfg config.Config) []string {
+	var out []string
+	for _, u := range otherUnits {
+		if unitInstalled(cfg, u) {
+			out = append(out, u)
+		}
+	}
+	for _, i := range allDBInstances(&Env{Cfg: cfg}) {
+		out = append(out, i.unit())
+	}
+	return out
+}
 
 // siteServices take a domain; "worker" also a worker type, "task" a task id.
 var siteServices = []string{"worker", "app", "task", "site-valkey"}
@@ -28,6 +61,7 @@ type serviceParams struct {
 	Version string `json:"version,omitempty"` // php-fpm only
 	Domain  string `json:"domain,omitempty"`  // worker and app only
 	Worker  string `json:"worker,omitempty"`  // worker: its type; task: its id
+	Unit    string `json:"unit,omitempty"`    // system: one of systemUnits
 }
 
 // unit maps validated params to a systemd unit name.
@@ -44,7 +78,15 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 	if !slices.Contains(siteServices, p.Service) && p.Domain != "" {
 		return "", protocol.Invalid("domain: only valid for a site's services")
 	}
+	if p.Service != "system" && p.Unit != "" {
+		return "", protocol.Invalid("unit: only valid for service system")
+	}
 	switch p.Service {
+	case "system":
+		if !slices.Contains(systemUnits(cfg), p.Unit) {
+			return "", protocol.Invalid("unit: not a service the panel manages")
+		}
+		return p.Unit, nil
 	case "app": // the site's own process in worker or node mode
 		if err := validate.Domain(p.Domain); err != nil {
 			return "", err

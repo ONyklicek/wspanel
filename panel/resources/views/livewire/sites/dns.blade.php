@@ -34,12 +34,12 @@
     @endunless
 
     <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-gray-700">
-            <div class="min-w-0">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-gray-700">
+            <div class="min-w-0 flex-1">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ $zone ? __('Záznamy, které web potřebuje') : __('Co nastavit v DNS domény :domain', ['domain' => $domain]) }}</h3>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     @if ($zone)
-                        {{ __('Zóna :zone (:where) je v panelu: chybějící záznamy doplní tlačítko. Existující, které míří jinam, panel nemění.', ['zone' => $zone->domain, 'where' => $zone->provider->getLabel()]) }}
+                        {{ __('Zóna :zone · :where je v panelu: chybějící záznamy doplní tlačítko. Existující, které míří jinam, panel nemění.', ['zone' => $zone->domain, 'where' => $zone->provider->getLabel()]) }}
                     @else
                         @if ($checked === 0)
                             {{ __('Doména vnitřní sítě (nebo server bez veřejné adresy): veřejné DNS se neověřuje.') }}
@@ -50,7 +50,7 @@
                     @endif
                 </p>
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex shrink-0 flex-wrap gap-2">
                 <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="$refresh">{{ __('Zkontrolovat znovu') }}</x-wire::button>
                 @if ($zone && $missingInZone > 0)
                     <x-wire::button size="sm" icon="outline:sparkles" wire:click="fillDns">{{ __('Doplnit chybějící (:n)', ['n' => $missingInZone]) }}</x-wire::button>

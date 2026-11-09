@@ -65,17 +65,19 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
     {
         return $table
             ->stackedOnMobile()
-            ->query(Service::query()->with('site'))
+            // The panel and the web first, then databases, mail and the rest of
+            // the system, the sites' workers last.
+            ->query(Service::query()->with('site')->orderByRaw("case type when 'proxy' then 0 when 'web' then 1 when 'php-fpm' then 2 when 'mariadb' then 3 when 'postgresql' then 4 when 'mongodb' then 5 when 'system' then (case when unit like 'wspanel-db-%' or unit like 'postgresql@%' then 6 when unit like 'panel-%' then 2 else 7 end) when 'valkey' then 8 when 'app' then 9 else 10 end")->orderBy('unit'))
             ->columns([
                 TextColumn::make('name')->label(__('Služba'))->weight('medium')
                     ->state(fn (Service $record) => $record->label())
-                    ->description(fn (Service $record) => $record->unit),
+                    ->description(fn (Service $record) => $record->isWaitingForDeploy() ? __('spustí ho první deploy webu') : $record->unit),
                 BadgeColumn::make('state')->label(__('Stav'))
-                    ->state(fn (Service $record) => __(self::STATES[$record->active_state] ?? $record->active_state))
-                    ->colors([__('běží') => 'success', 'chyba' => 'danger', 'zastaveno' => 'gray', 'startuje' => 'warning', 'zastavuje se' => 'warning', __('načítá') => 'warning'])
+                    ->state(fn (Service $record) => $record->stateLabel())
+                    ->colors([__('běží') => 'success', __('chyba') => 'danger', __('zastaveno') => 'gray', __('startuje') => 'warning', __('zastavuje se') => 'warning', __('načítá') => 'warning', __('čeká na deploy') => 'info'])
                     ->tooltip(fn (Service $record) => $record->sub_state),
                 TextColumn::make('boot')->label(__('Po startu serveru'))->textColor('gray')
-                    ->state(fn (Service $record) => match ($record->enabled_state) {
+                    ->state(fn (Service $record) => $record->isWaitingForDeploy() ? __('po prvním deployi') : match ($record->enabled_state) {
                         'enabled', 'enabled-runtime', 'alias' => __('spustí se'),
                         'disabled' => __('nespustí se'),
                         'static', 'indirect', 'generated' => __('podle jiné služby'),
@@ -119,8 +121,7 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
                 ]),
             ])
             ->poll('15s')
-            ->perPage(25)
-            ->defaultSort('type');
+            ->perPage(50);
     }
 
     private static function control(string $verb, string $label, string $icon, string $color): Action

@@ -104,6 +104,11 @@ class ModulesPage extends Page
         return app(ManageXhprof::class)->installed();
     }
 
+    public function dnsLocal(): bool
+    {
+        return (bool) rescue(fn () => app(SystemInfo::class)->versions()['dns_local'] ?? false, false, report: false);
+    }
+
     public function mailHosting(): bool
     {
         return app(ManageMailHosting::class)->installed();
@@ -122,9 +127,27 @@ class ModulesPage extends Page
         }
     }
 
+    /** The policy is not a module: it stays at the top of the page. */
     protected function headerActions(): array
     {
-        return [
+        return [$this->moduleActions()['twoFactor']];
+    }
+
+    /** The modules' own buttons, drawn in each module's card. */
+    protected function actions(): array
+    {
+        return array_values(array_map(fn (Action $a) => $a->size('sm'), array_filter($this->moduleActions(), fn (Action $a) => $a->getName() !== 'twoFactor')));
+    }
+
+    public function moduleAction(string $name): ?Action
+    {
+        return ($this->moduleActions()[$name] ?? null)?->size('sm');
+    }
+
+    /** @return array<string, Action> */
+    private function moduleActions(): array
+    {
+        $list = [
             Action::make('installMail')
                 ->label(__('Nainstalovat poštu (schránky)'))
                 ->icon('outline:inbox-stack')
@@ -224,7 +247,6 @@ class ModulesPage extends Page
             Action::make('enableGames')
                 ->label(__('Zapnout herní servery'))
                 ->icon('outline:puzzle-piece')
-                ->color('gray')
                 ->visible(fn () => ! Features::games())
                 ->requiresConfirmation()
                 ->modalDescription(__('V menu Hosting přibudou Herní servery (Minecraft, Factorio). Na server se zatím nic neinstaluje: Java a server hry se stáhnou až s prvním herním serverem.'))
@@ -277,5 +299,7 @@ class ModulesPage extends Page
                     $this->redirect(self::url());
                 }),
         ];
+
+        return collect($list)->keyBy(fn (Action $a) => $a->getName())->all();
     }
 }

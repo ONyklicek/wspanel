@@ -80,7 +80,7 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
                     ->icon(['danger' => 'outline:exclamation-circle', 'warning' => 'outline:exclamation-triangle', 'info' => 'outline:information-circle'][$i['level']])
                     ->color($i['level'])
                     ->url($i['url']), Attention::items()))
-                ->emptyState(__('Vše v pořádku: služby běží, weby odpovídají, certifikáty platí.')),
+                ->emptyState(__('Nic nevyžaduje pozornost: žádná služba ani web v chybě, certifikáty platí.')),
 
             ...($client === null ? [
                 StatsOverviewWidget::make()
@@ -201,9 +201,15 @@ class OverviewDashboard extends Dashboard implements ConfiguresRoutes, ProvidesN
             Stat::make(__('Weby'), (string) $sites->count())
                 ->description($failing ? __(':failing neodpovídá', ['failing' => $failing]) : __('všechny odpovídají'))
                 ->icon('outline:globe-alt')->color($failing ? 'danger' : 'success'),
-            Stat::make(__('Služby'), $services->where('active_state', 'active')->count().' / '.$services->count())
-                ->description($services->where('active_state', 'failed')->count() ? $services->where('active_state', 'failed')->count().__(' v chybě') : __('běží'))
-                ->icon('outline:server-stack')->color($services->where('active_state', 'failed')->count() ? 'danger' : 'success'),
+            // Workers waiting for their site's first deploy are not counted: not a fault, nothing to run yet.
+            Stat::make(__('Služby'), ($live = $services->reject(fn (Service $s) => $s->isWaitingForDeploy()))->where('active_state', 'active')->count().' / '.$live->count())
+                ->description(match (true) {
+                    ($failed = $services->where('active_state', 'failed')->count()) > 0 => $failed.__(' v chybě'),
+                    ($stopped = $live->where('active_state', '!=', 'active')->count()) > 0 => Lang::count($stopped, ':count zastavená', ':count zastavené', ':count zastavených'),
+                    ($waiting = $services->count() - $live->count()) > 0 => __('běží; :n čeká na první deploy', ['n' => $waiting]),
+                    default => __('všechny běží'),
+                })
+                ->icon('outline:server-stack')->color($services->where('active_state', 'failed')->count() ? 'danger' : ($live->where('active_state', '!=', 'active')->count() ? 'warning' : 'success')),
             Stat::make(__('Certifikáty'), (string) $certs->count())
                 ->description($badCerts ? __(':bad_certs vyžaduje pozornost', ['bad_certs' => $badCerts]) : __('všechny platí'))
                 ->icon('outline:lock-closed')->color($badCerts ? 'warning' : 'success'),
