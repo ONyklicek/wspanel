@@ -1,18 +1,18 @@
 Package: wspanel-agent
 Architecture: amd64
-Version: 1.2.0~rc5
+Version: 1.2.0~rc10
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 16380
+Installed-Size: 16928
 Depends: init-system-helpers (>= 1.54~)
 Recommends: wspanel-archive-keyring
-Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc5_amd64.deb
-Size: 4751412
-MD5sum: 523efb643ce4d844c4fd5bc9922f4296
-SHA1: 26a3481163825178ce276e4d91fca7e90077e027
-SHA256: 352bf9182fd1e6308dcdbff6a90dc5e64e57511daaedb15213ca6d026a0fb224
-SHA512: b20ed2c054f4c9e3b0d0d96da09ced7ca9fbf899368186f9499a83be76c4ed09a4a3cd8d1cb1ff1b23fd9f4ea7336c1bd3a9090cce9e13019ad528960cd0b756
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc10_amd64.deb
+Size: 4905796
+MD5sum: 00533e7c406a3a9a54f259bec47f7974
+SHA1: 27c051e4f6bde75c4fc7b66cc410c7ae4822ed1a
+SHA256: 15c198736ebd5c52bf9cf3300c2d6e331aba906efde0d82c0bcb45a694608896
+SHA512: 1723450b2ac38ebcd755cd8bfe1ca206dd4e20d0cefae6e9dfad276c230a2ead0de565f39a10db2b7dfcd71132405d1e0a8c3b28952ebeba98bf632d73a69d02
 Homepage: https://github.com/ONyklicek/wspanel
 Description: privileged agent and command line tool of the WSPanel hosting panel
  The agent (panel-agent) is the only part of the WSPanel hosting panel that
@@ -125,17 +125,17 @@ Description: privileged agent and command line tool of the WSPanel hosting panel
 
 Package: wspanel-archive-keyring
 Architecture: all
-Version: 1.2.0~rc5
+Version: 1.2.0~rc10
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
 Installed-Size: 52
-Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc5_all.deb
-Size: 3472
-MD5sum: 5386a988029a25fa3140d889fe56b87e
-SHA1: e18d36020b676d8012e7e3d85a3ec81776d7474c
-SHA256: bb5c4596e2650e19fd516b4e01ee495d6a04c9c5ff9eccaaa0b95ab65e326b8d
-SHA512: e556895cfca09f416d122693a5543ab719f49bdc31e101cc87176960af5e7b932581f3b76b2c2e07cedcd1acd7b37445e44a0b875d4b651eb179481c7d4286d8
+Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc10_all.deb
+Size: 3496
+MD5sum: 0e4df31e3002e9ba70b038a0ea6f76a3
+SHA1: a3db190c9e2ec68337be5a1ad0f7ae328286e355
+SHA256: 055ec420fe78bac1c2269dcc92f6b2b329c21adc9e87d2d98c1745ed409dd717
+SHA512: 62c042c7ef5e6ff5dd58485dafc7542fa1a7ecaa846473d707dcd7b18ed039f54990459b432b3daaf1a1c56a9a92d27bd8099946de31b7f74b8ae55fbd5b02ed
 Homepage: https://github.com/ONyklicek/wspanel
 Description: apt repository of the WSPanel hosting panel and its key
  Sets apt up for the WSPanel repository: the key its indexes are signed
@@ -240,18 +240,18 @@ Description: apt repository of the WSPanel hosting panel and its key
 
 Package: wspanel
 Architecture: all
-Version: 1.2.0~rc5
+Version: 1.2.0~rc10
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 7332
-Depends: wspanel-agent (= 1.2.0~rc5), wspanel-frankenphp (= 1.2.0~rc5), wspanel-archive-keyring, ca-certificates, curl
-Filename: pool/main/w/wspanel/wspanel_1.2.0~rc5_all.deb
-Size: 1104760
-MD5sum: f8fa4cacce8a38316e8856d9043bace0
-SHA1: 4b9cd46203bd28729bf92c27ff60d254962251a5
-SHA256: fe10e1721906936765e163e2fc1f02a7595ef643c0f20fcedb65152c5a9b5680
-SHA512: 89dbf96d2e4a5d5eb25191e0c3e5afe0a9ee5a2d2ec6eda55a644dfd7e28f6ffafa1df6ac5bd9cbd0ea4b4dd4f0183c4bb4c20e270171aca009fe452a9124106
+Installed-Size: 7684
+Depends: wspanel-agent (= 1.2.0~rc10), wspanel-archive-keyring, ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.2.0~rc10_all.deb
+Size: 1150888
+MD5sum: e816ba4ff83c6aa696ebc03855aa72fe
+SHA1: 378b374884fa69cc416eb0f8f9c2c13197fa0357
+SHA256: fb74b85118ed1e786583f4684b2bed30b1607b7e625e1362d78a2a40c7bf2cdb
+SHA512: 9f6674a389abe0055a33beb08bcf3add7b62421cca8532f54584bcb824e4ed268c83e3f336825ef7098327aa1923e8f9843a7d1d78f5f1d2b4bd2511572459e7
 Homepage: https://github.com/ONyklicek/wspanel
 Description: hosting panel for one Debian server (installer and panel)
  WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
