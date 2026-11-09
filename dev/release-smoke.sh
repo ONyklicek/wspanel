@@ -105,6 +105,7 @@ if [[ $MODE == apt ]] || tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.de
   on 'test -f /usr/lib/systemd/system/panel-agent.service -a ! -e /etc/systemd/system/panel-agent.service' || fail "the agent unit is not the package's"
 fi
 
+on 'apt-config dump | grep -q "^Acquire::Retries \"5\";"' || fail "apt does not retry failed downloads"
 log "FrankenPHP from its own packages"
 on 'dpkg-query -W -f="\${Status}" frankenphp | grep -q "install ok installed"' || fail "frankenphp is not installed as a package"
 on 'apt-cache policy frankenphp | grep -q pkg.henderkes.com' || fail "frankenphp does not come from FrankenPHP's repository"

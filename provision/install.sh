@@ -130,6 +130,14 @@ done
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
+# A download that fails once (a mirror or FrankenPHP's repository answering
+# 5xx for a moment) is retried, with growing pauses, instead of failing the
+# whole installation; the panel's own apt runs (updates, Balíčky) too.
+install -d -m 0755 /etc/apt/apt.conf.d
+cat > /etc/apt/apt.conf.d/80wspanel-retries <<'CONF'
+// Managed by the WSPanel installer: retry failed downloads.
+Acquire::Retries "5";
+CONF
 # ip(8) finds the server's addresses; a minimal system may not have it yet.
 command -v ip >/dev/null || { apt-get update -q >/dev/null && apt-get install -y -q --no-install-recommends iproute2 >/dev/null; } || true
 if [[ -z "$PANEL_DOMAIN" ]]; then
