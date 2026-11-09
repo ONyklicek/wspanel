@@ -40,3 +40,15 @@ func TestOffsiteSecretIsRedacted(t *testing.T) {
 		t.Fatal(out)
 	}
 }
+
+func TestGameSecretsAreRedacted(t *testing.T) {
+	for op, params := range map[string]string{
+		"game.files":                 `{"game":1,"action":"write","path":"data/server.properties","content":"rcon.password=HUNTER2"}`,
+		"game.factorio_set_settings": `{"id":2,"values":{"max_players":8},"secrets":{"token":"HUNTER2","game_password":"HUNTER2"}}`,
+		"game.sftp":                  `{"id":3,"enabled":true,"password_mode":"set","password":"HUNTER2"}`,
+	} {
+		if out := string(Redact(op, json.RawMessage(params))); strings.Contains(out, "HUNTER2") {
+			t.Errorf("%s keeps a secret: %s", op, out)
+		}
+	}
+}
