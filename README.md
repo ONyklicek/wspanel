@@ -29,6 +29,7 @@ docs/       dokumentace
 - [Přehled](docs/README.md)
 - [Instalace](docs/instalace.md)
 - [Klienti a balíčky](docs/klienti.md)
+- [Herní servery](docs/herni-servery.md)
 - [Weby](docs/weby.md)
 - [Deploy](docs/deploy.md)
 - [Databáze](docs/databaze.md)

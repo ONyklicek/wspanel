@@ -53,6 +53,8 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
         'max_mailboxes' => 'Poštovní schránky',
         'max_mail_quota_mb' => 'Místo pro poštu (MB)',
         'backups_keep' => 'Uchovávat záloh',
+        'max_game_servers' => 'Herní servery',
+        'max_game_memory_mb' => 'Paměť herních serverů celkem (MB)',
     ];
 
     public static function modelClass(): ?string

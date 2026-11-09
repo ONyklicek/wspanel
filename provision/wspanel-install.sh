@@ -345,13 +345,15 @@ node=$(W --separate-output --checklist "Node.js pro SSR weby (Nuxt, Next):" 12 7
 flags+=("--node=${node:-none}")
 say "Databáze: ${db:-žádná}; PHP ${php:-8.4}; Node ${node:-žádný}"
 
-mods=$(W --separate-output --checklist "Moduly (mezerníkem vyberete):" 18 76 5 \
+mods=$(W --separate-output --checklist "Moduly (mezerníkem vyberete):" 19 76 6 \
   clients "Klienti a balíčky (hosting pro víc klientů, limity, kvóty)" OFF \
+  games   "Herní servery (Minecraft, Factorio)" OFF \
   mail    "Pošta: schránky, webmail, antispam (porty 25, 465, 587, 993…)" OFF \
   dns     "DNS server (PowerDNS) pro zóny z panelu" OFF \
   xhprof  "Profilování PHP (XHProf + XHGui)" OFF)
 names=()
 grep -qx clients <<<"$mods" && { flags+=("--clients=yes"); names+=("klienti"); }
+grep -qx games <<<"$mods" && { flags+=("--games=yes"); names+=("herní servery"); }
 grep -qx mail <<<"$mods" && { flags+=("--mail-hosting=yes"); names+=("pošta"); }
 grep -qx dns <<<"$mods" && { flags+=("--dns=powerdns"); names+=("DNS server"); }
 grep -qx xhprof <<<"$mods" && { flags+=("--xhprof=yes"); names+=("profilování"); }

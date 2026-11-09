@@ -21,7 +21,7 @@ class AuditTable extends Component
     use WithTable;
 
     public const AREAS = [
-        'site.' => 'Weby', 'deploy.' => 'Deploy', 'db.' => 'Databáze', 'service.' => 'Služby', 'pkg.' => 'Balíčky', 'worker.' => 'Workery',
+        'site.' => 'Weby', 'deploy.' => 'Deploy', 'db.' => 'Databáze', 'service.' => 'Služby', 'pkg.' => 'Balíčky', 'game.' => 'Herní servery', 'worker.' => 'Workery',
         'fw.' => 'Firewall', 'ssh.' => 'SSH', 'cron.' => 'Úlohy', 'env.' => '.env', 'ssl.' => 'SSL', 'mail.' => 'Pošta', 'dns.' => 'DNS', 'panel.' => 'Panel',
     ];
 
@@ -37,7 +37,7 @@ class AuditTable extends Component
         'audit.tail', 'mail.hosting', 'mail.usage', 'xhprof.status', 'site.import_scan', 'sys.updates', 'fail2ban.status', 'valkey.status',
         'service.status', 'fw.list', 'sys.log', 'config.validate', 'sys.services', 'sys.versions', 'job.status',
         'mail.certs', 'site.traffic', 'sys.settings', 'sys.disk_usage', 'sys.disks', 'sys.network', 'sys.processes',
-        'pkg.list', 'pkg.search', 'pkg.preview',
+        'pkg.list', 'pkg.search', 'pkg.preview', 'games.catalog', 'game.list', 'game.status', 'game.logs', 'game.backups',
     ];
 
     /** @param  array<string, mixed>  $params */

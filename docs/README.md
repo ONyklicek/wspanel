@@ -12,6 +12,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | založit web a dostat ho na internet | [Weby](weby.md) |
 | nahrát obyčejný PHP web (třeba WordPress) | [Weby → Čisté PHP](weby.md#čisté-php-wordpress-vlastní-skripty) |
 | hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |
+| provozovat server Minecraftu nebo Factoria | [Herní servery](herni-servery.md) |
 | nasazovat aplikaci z Gitu | [Deploy](deploy.md) |
 | nasazovat přes GitHub Releases / Actions | [Deploy → Release a CI](deploy.md#nasazení-releasů-a-z-ci-github-actions) |
 | napojit repozitář z GitHubu jedním kliknutím (jako Zerops) | [GitHub → Návod krok za krokem](github.md#návod-první-deploy-z-githubu-krok-za-krokem) |
@@ -49,6 +50,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Hosting → Weby** | seznam webů; klik na web otevře detail se stavem, procesy, logy a akcemi, záložky Deploy, Soubory a Zálohy |
 | **Hosting → Databáze** | databáze, zálohy, phpMyAdmin / Adminer |
 | **Hosting → Databáze → Servery** | heslo root / postgres, přístup k databázím z internetu, phpMyAdmin / Adminer přes všechny databáze |
+| **Hosting → Herní servery** | servery Minecraftu a Factoria: konzole, hráči, zálohy, aktualizace (volitelný modul) |
 | **Hosting → Naplánované úlohy** | cron úlohy webů |
 | **Pošta → Domény a schránky** | poštovní domény, schránky, aliasy, přesměrování, webmail, antispam, doručitelnost; limity odesílání a ochrana pošty (greylisting, antivir) |
 | **Pošta → Odesílání z webů** | odesílání vs. zachytávání (Mailpit), DKIM, SPF/DMARC, relay, fronta, log |
@@ -62,7 +64,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Balíčky** | hledání a instalace balíčků Debianu, podržení verze, odebrání (ne toho, co potřebuje systém nebo panel) |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané; noční šifrovaná záloha serveru a pošty, klíč pro obnovu (obnova po havárii: `install --restore`) |
-| **Server → Moduly** | doinstalování klientů, pošty, XHProf, Pythonu; politika dvoufázového přihlášení |
+| **Server → Moduly** | doinstalování klientů, pošty, XHProf, Pythonu, herních serverů; politika dvoufázového přihlášení |
 | **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
 | **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |
 | **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru (hned, v určený čas, automaticky po aktualizacích) |

@@ -139,8 +139,15 @@ func serverPaths(env *Env) []string {
 }
 
 // skipped in a server backup: spools and what other backups already hold
-// (the mail is in the mail backups, the sites' files in theirs).
+// (the mail is in the mail backups, the sites' files in theirs). Game servers
+// are left out whole (their state and units without their users and worlds
+// would restore as broken units); they have backups of their own.
 func skipServerPath(env *Env, path string) bool {
+	base := filepath.Base(path)
+	if path == gameStateDir(env) || strings.HasPrefix(path, gameStateDir(env)+"/") ||
+		filepath.Dir(path) == env.Cfg.SystemdDir && (strings.HasPrefix(base, "wspanel-game-") || strings.HasPrefix(base, "wspanel-games-")) {
+		return true
+	}
 	for _, dir := range []string{"/storage/app/dmarc-incoming", env.Cfg.VmailRoot, env.Cfg.SitesRoot, env.Cfg.BackupDir} {
 		if dir == "" {
 			continue

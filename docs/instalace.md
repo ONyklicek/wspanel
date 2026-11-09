@@ -134,6 +134,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--panel-domain=` | (povinné bez `--panel-port`) | doména panelu |
 | `--panel-port=` | `443` | port panelu (např. `8443`); viz Adresa panelu níže |
 | `--clients=` | `no` | `yes` = klienti a balíčky (hostování pro víc klientů); později Server → Moduly |
+| `--games=` | `no` | `yes` = herní servery (Minecraft, Factorio) v menu; Java a hry se stáhnou až s prvním serverem; později Server → Moduly |
 | `--mail-hosting=` | `no` | `yes` = schránky, webmail a antispam (pošta pro domény); později Server → Moduly |
 | `--xhprof=` | `no` | `yes` = XHProf + XHGui, profilování zapínané u každého webu; později Server → Moduly |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |

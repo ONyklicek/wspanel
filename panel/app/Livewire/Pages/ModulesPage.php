@@ -8,6 +8,7 @@ use App\Actions\Sites\ManageXhprof;
 use App\Http\Middleware\EnsureTwoFactor;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Client;
+use App\Models\GameServer;
 use App\Models\Setting;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -47,6 +48,16 @@ class ModulesPage extends Page
     public function clientsEnabled(): bool
     {
         return Features::clients();
+    }
+
+    public function gamesEnabled(): bool
+    {
+        return Features::games();
+    }
+
+    public function gameCount(): int
+    {
+        return GameServer::acrossClients()->count();
     }
 
     public function clientCount(): int
@@ -193,6 +204,34 @@ class ModulesPage extends Page
                 ->action(function (array $data) {
                     Setting::put(EnsureTwoFactor::SETTING, $data['policy']);
                     Toast::success(__('Uloženo'));
+                }),
+            Action::make('enableGames')
+                ->label(__('Zapnout herní servery'))
+                ->icon('outline:puzzle-piece')
+                ->color('gray')
+                ->visible(fn () => ! Features::games())
+                ->requiresConfirmation()
+                ->modalDescription(__('V menu Hosting přibudou Herní servery (Minecraft, Factorio). Na server se zatím nic neinstaluje: Java a server hry se stáhnou až s prvním herním serverem.'))
+                ->action(function () {
+                    Features::setGames(true);
+                    Toast::success(__('Herní servery zapnuty'));
+                    $this->redirect(self::url());
+                }),
+            Action::make('disableGames')
+                ->label(__('Vypnout herní servery'))
+                ->icon('outline:puzzle-piece')
+                ->color('gray')
+                ->visible(fn () => Features::games())
+                ->requiresConfirmation()
+                ->action(function () {
+                    if (GameServer::acrossClients()->exists()) {
+                        Toast::error(__('Nejde vypnout'), __('Nejdřív smažte všechny herní servery (Hosting → Herní servery).'));
+
+                        return;
+                    }
+                    Features::setGames(false);
+                    Toast::success(__('Herní servery vypnuty'));
+                    $this->redirect(self::url());
                 }),
             Action::make('enableClients')
                 ->label(__('Zapnout klienty a balíčky'))

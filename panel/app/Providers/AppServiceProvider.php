@@ -64,6 +64,9 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
         // The clients module: administrators, and only while it is switched on.
         Gate::define('clients', fn (User $user): bool => $user->isAdmin() && Features::clients());
+        // Game servers: while the module is on, for administrators and clients
+        // (who see their own, narrowed by the OwnedByClient scope).
+        Gate::define('games', fn (User $user): bool => Features::games());
         foreach ((array) config('wire-module-users.permissions') as $abilities) {
             foreach ((array) $abilities as $ability) {
                 Gate::define((string) $ability, fn (User $user): bool => $user->isAdmin());

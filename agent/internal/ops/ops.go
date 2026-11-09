@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -196,6 +196,21 @@ func Registry() map[string]Op {
 		{"pkg.install", true, pkgInstall},
 		{"pkg.remove", true, pkgRemove},
 		{"pkg.hold", true, pkgHold},
+		{"panel.upgrade", true, panelUpgrade},
+		{"panel.upgrade_status", false, panelUpgradeStatus},
+		{"games.catalog", false, gameCatalog},
+		{"game.list", false, gameList},
+		{"game.status", false, gameStatus},
+		{"game.logs", false, gameLogs},
+		{"game.backups", false, gameBackups},
+		{"game.create", true, gameCreate},
+		{"game.action", true, gameAction},
+		{"game.command", true, gameCommand},
+		{"game.settings", true, gameSettings},
+		{"game.update", true, gameUpdate},
+		{"game.backup", true, gameBackup},
+		{"game.restore", true, gameRestore},
+		{"game.delete", true, gameDelete},
 		{"fail2ban.status", false, fail2banStatus},
 		{"fail2ban.unban", true, fail2banUnban},
 		{"mail.spam.set", true, mailSpamSet},

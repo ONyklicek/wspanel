@@ -20,4 +20,15 @@ final class Features
     {
         Setting::put('feature.clients', $on);
     }
+
+    /** Game servers (Minecraft, Factorio): off unless chosen. */
+    public static function games(): bool
+    {
+        return (bool) Setting::get('feature.games', (bool) config('panel.games'));
+    }
+
+    public static function setGames(bool $on): void
+    {
+        Setting::put('feature.games', $on);
+    }
 }

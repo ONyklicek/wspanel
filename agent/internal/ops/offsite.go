@@ -460,6 +460,7 @@ func testOffsite(ctx context.Context, env *Env, c offsiteConfig) error {
 }
 
 type offsiteParams struct {
+	Game       int    `json:"game,omitempty"` // a game server's backups
 	Domain     string `json:"domain,omitempty"`
 	Engine     string `json:"engine,omitempty"`
 	Name       string `json:"name,omitempty"`
@@ -467,8 +468,19 @@ type offsiteParams struct {
 	Unverified bool   `json:"unverified,omitempty"` // fetch: accept a copy without a valid signature
 }
 
+// resolve: the backups the params name (a game server, a site, a database).
+func (p offsiteParams) resolve(env *Env) (offsiteTarget, error) {
+	if p.Game > 0 {
+		if _, err := loadGame(env, p.Game); err != nil {
+			return offsiteTarget{}, err
+		}
+		return gameTarget(env, p.Game), nil
+	}
+	return targetFor(env, p.Domain, p.Engine, p.Name)
+}
+
 func (p offsiteParams) target(ctx context.Context, env *Env) (offsiteTarget, offsiteConfig, offsiteStore, error) {
-	t, err := targetFor(env, p.Domain, p.Engine, p.Name)
+	t, err := p.resolve(env)
 	if err != nil {
 		return t, offsiteConfig{}, nil, err
 	}
@@ -516,7 +528,7 @@ func offsiteUpload(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	t, err := targetFor(env, p.Domain, p.Engine, p.Name)
+	t, err := p.resolve(env)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +567,13 @@ func offsiteFetch(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	// The local folder with the right owner (sites/<domain> or <engine>/<name>).
 	var owner fsx.Owner
-	if p.Domain != "" {
+	if p.Game > 0 {
+		// Game servers' backups are root's (read and written as the game's user).
+		owner = fsx.Root
+		if err = env.FS.MkdirAll(t.local, 0o700, fsx.Root); err != nil {
+			return nil, err
+		}
+	} else if p.Domain != "" {
 		_, owner, err = backupDir(env, "sites", p.Domain)
 	} else {
 		_, owner, err = backupDir(env, p.Engine, p.Name)

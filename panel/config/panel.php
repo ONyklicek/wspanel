@@ -22,6 +22,9 @@ return [
     // switched later on Server → Moduly).
     'clients' => (bool) env('PANEL_CLIENTS', false),
 
+    // Game servers (optional, install.sh --games=yes; switched later on Server → Moduly).
+    'games' => (bool) env('PANEL_GAMES', false),
+
     // The panel's own HTTPS port (443 = it has its domain to itself) and the
     // port browsers reach the sites on (as published; 8443 in the dev container).
     'port' => (int) env('PANEL_PORT', 443),

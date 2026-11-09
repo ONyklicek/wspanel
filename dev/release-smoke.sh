@@ -184,6 +184,31 @@ out=$(tinker 'echo json_encode(app(App\Actions\Server\ManagePython::class)->upgr
 [[ ${slots[0]} != "${slots[1]}" && ${slots[1]} =~ ^wspanel-web_dj_localhost-appb?\.service$ ]] || fail "the deploys did not alternate the slots: ${slots[*]}"
 on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "the Django project was not found in manage.py"
 
+log "Game server: Minecraft (Paper, the newest version, its Java from Debian)"
+game_call() { tinker '$m = app(App\Actions\Games\ManageGameServers::class); $g = App\Models\GameServer::query()->first(); '"$1"; }
+out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::Minecraft, "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); echo $s->status, " ", $v;')
+[[ $out == active* ]] || fail "game.create: $out"
+echo "  Paper ${out#active }"
+for _ in $(seq 90); do on 'journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' && break; sleep 2; done
+on 'journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' \
+  || { on 'journalctl -u wspanel-game-1 -n 30 --no-pager' >&2 || true; fail "the Minecraft server did not start"; }
+out=$(game_call 'echo $m->command($g, "list");')
+[[ $out == *"players online"* ]] || fail "the console (RCON) does not answer: $out"
+out=$(game_call 'echo json_encode($m->status($g)["players"] ?? null);')
+[[ $out == *'"online":0'* ]] || fail "game.status players: $out"
+on 'ufw status | grep -q "25565/tcp.*ALLOW.*wspanel game 1"' || fail "the game port is not open in the firewall"
+rcon=$(on 'grep -o "\"rcon_port\": *[0-9]*" /var/lib/panel-agent/games/1.json | grep -o "[0-9]*$"')
+[[ $rcon =~ ^[0-9]+$ ]] || fail "no RCON port in the game state"
+on "su -s /bin/bash -c 'timeout 3 bash -c \"echo > /dev/tcp/127.0.0.1/$rcon\"' nobody 2>/dev/null" \
+  && fail "a user other than root reached the RCON port"
+[[ "$(on 'stat -c %a /etc/systemd/system/wspanel-game-1.service')" == 600 ]] || fail "the game unit (RCON password) is readable by others"
+out=$(game_call 'echo json_encode($m->backup($g));')
+[[ $out == *'"file":"game-1-'* ]] || fail "game.backup: $out"
+on 'test "$(tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -c "^data/world/level.dat$")" = 1' || fail "the backup has no world"
+on '! tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -q "^data/libraries/"' || fail "the backup holds Paper's libraries"
+game_call '$m->delete($g); echo "ok";' >/dev/null
+on '! id wsg_1 >/dev/null 2>&1 && ! test -e /srv/games/1 && ! ufw status | grep -q "wspanel game 1"' || fail "deleting the game server left its user, files or firewall rule"
+
 log "System: restart, name and time, swap, processes, disk usage, packages, network, disks"
 sys_call() { tinker '$s = app(App\Actions\System\ManageSystem::class); '"$1"; }
 pkg_call() { tinker '$p = app(App\Actions\System\ManagePackages::class); '"$1"; }

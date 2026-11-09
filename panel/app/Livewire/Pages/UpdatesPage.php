@@ -44,6 +44,7 @@ class UpdatesPage extends Page
     public function mount(): void
     {
         $this->load();
+        $this->loadUpgrade();
     }
 
     public function load(bool $refresh = false): void
@@ -60,6 +61,36 @@ class UpdatesPage extends Page
     {
         $this->load(true);
         Toast::success(__('Seznam balíčků obnoven'));
+    }
+
+    /** @var array<string, mixed>|null the panel's own upgrade (agent's panel.upgrade_status) */
+    public ?array $upgrade = null;
+
+    /** Upgrades WSPanel to the newer release (the agent runs it as its own unit). */
+    public function upgradePanel(): void
+    {
+        $release = PanelRelease::available();
+        if ($release === null) {
+            Toast::warning(__('Není na co aktualizovat'), __('Tento server má nejnovější verzi.'));
+
+            return;
+        }
+        try {
+            app(ManageUpdates::class)->upgradePanel($release['version']);
+            Toast::success(__('Aktualizace na :version začala', ['version' => $release['version']]), __('Panel bude pár minut nedostupný, stránka se po aktualizaci obnoví sama.'));
+        } catch (AgentException $e) {
+            Toast::error(__('Aktualizaci se nepodařilo spustit'), $e->getMessage());
+        }
+        $this->loadUpgrade();
+    }
+
+    public function loadUpgrade(): void
+    {
+        try {
+            $this->upgrade = app(ManageUpdates::class)->panelUpgradeStatus();
+        } catch (AgentException) {
+            $this->upgrade = null;
+        }
     }
 
     /** Asks GitHub for the newest WSPanel now (otherwise daily). */

@@ -2,6 +2,7 @@
 
 use App\Actions\Clients\Impersonation;
 use App\Actions\Sites\ManageTls;
+use App\Actions\System\ManageUpdates;
 use App\Http\Controllers\AppleMailProfileController;
 use App\Http\Controllers\DownloadBackupController;
 use App\Http\Controllers\DownloadSiteBackupController;
@@ -15,12 +16,19 @@ use App\Http\Controllers\XhguiAuthController;
 use App\Http\Middleware\SetLocale;
 use App\Livewire\Pages\HelpPage;
 use App\Models\Site;
+use App\Support\PanelRelease;
 use Illuminate\Support\Facades\Route;
 
 // Edge forward_auth for Mailpit (outside the panel group: answers 204 or redirects).
 Route::get('/auth/check', ForwardAuthController::class)->name('auth.check');
 
 Route::middleware(['web', 'auth'])->group(function () {
+    // The panel upgrade's state, polled by Zabezpečení → Aktualizace while the
+    // panel restarts (a plain request: Livewire would show its error dialog).
+    Route::get('/updates/upgrade-status', fn (ManageUpdates $updates) => response()->json(
+        rescue(fn () => array_intersect_key($updates->panelUpgradeStatus(), array_flip(['state', 'version'])), ['state' => 'unknown'], report: false)
+        + ['current' => PanelRelease::current()],
+    ))->middleware('can:admin')->name('updates.upgrade-status');
     Route::get('/backups/{backup}/download', DownloadBackupController::class)->name('backups.download');
     Route::get('/sites/{site}/backups/{file}', DownloadSiteBackupController::class)
         ->where('file', '[A-Za-z0-9._-]+\\.tar\\.gz')

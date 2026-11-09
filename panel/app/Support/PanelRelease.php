@@ -10,8 +10,9 @@ use Throwable;
 /**
  * Which WSPanel this server runs and whether a newer one is out: the newest
  * release of the repository it came from (GitHub's "latest" = the newest
- * one that is not a pre-release), checked daily. The upgrade is the one
- * command the release notes give; the panel never runs it itself.
+ * one that is not a pre-release; for a server on a release candidate, the
+ * newest candidate as well), checked daily. Zabezpečení → Aktualizace
+ * upgrades with one button (the agent's panel.upgrade).
  */
 final class PanelRelease
 {
@@ -57,18 +58,21 @@ final class PanelRelease
             if (filled(config('panel.release_token'))) {
                 $request = $request->withToken((string) config('panel.release_token'));
             }
-            $response = $request->get('https://api.github.com/repos/'.self::repo().'/releases/latest');
-            if ($response->status() === 404) {
+            // A release candidate follows newer candidates too ("latest" skips them).
+            $pre = str_contains((string) self::current(), '-');
+            $response = $request->get('https://api.github.com/repos/'.self::repo().'/releases'.($pre ? '?per_page=20' : '/latest'));
+            $release = $pre ? self::newest((array) $response->json()) : (array) $response->json();
+            if ($response->status() === 404 || ($response->successful() && $release === [])) {
                 $out['error'] = __('V repozitáři :repo zatím není žádné vydání (nebo je soukromý).', ['repo' => self::repo()]);
             } elseif (! $response->successful()) {
                 $out['error'] = 'GitHub: HTTP '.$response->status();
             } else {
-                $version = ltrim((string) $response->json('tag_name'), 'v');
-                $url = (string) $response->json('html_url');
+                $version = ltrim((string) ($release['tag_name'] ?? ''), 'v');
+                $url = (string) ($release['html_url'] ?? '');
                 if (preg_match(self::VERSION_RE, $version)) {
                     $out['version'] = $version;
                     $out['url'] = str_starts_with($url, 'https://github.com/') ? $url : 'https://github.com/'.self::repo().'/releases';
-                    $out['published_at'] = $response->json('published_at');
+                    $out['published_at'] = $release['published_at'] ?? null;
                 } else {
                     $out['error'] = __('Nejnovější vydání nemá číslo verze.');
                 }
@@ -79,6 +83,25 @@ final class PanelRelease
         Setting::put(self::SETTING, $out);
 
         return $out;
+    }
+
+    /**
+     * The newest published release of a list (drafts left out), by version.
+     *
+     * @param  array<int, mixed>  $releases
+     * @return array<string, mixed>
+     */
+    private static function newest(array $releases): array
+    {
+        $best = [];
+        foreach ($releases as $r) {
+            $v = is_array($r) && ! ($r['draft'] ?? false) ? ltrim((string) ($r['tag_name'] ?? ''), 'v') : '';
+            if (preg_match(self::VERSION_RE, $v) && ($best === [] || version_compare($v, ltrim((string) $best['tag_name'], 'v'), '>'))) {
+                $best = $r;
+            }
+        }
+
+        return $best;
     }
 
     /** @return array{version: ?string, url: ?string, published_at: ?string, checked_at: string, error: ?string}|null */

@@ -41,4 +41,27 @@ class ManageUpdates
     {
         $this->agent->call('sys.auto_updates', ['enabled' => $enabled]);
     }
+
+    /**
+     * Upgrades WSPanel itself to $version: the agent starts it as a unit of
+     * its own, which the panel's restart does not stop.
+     *
+     * @throws AgentException
+     */
+    public function upgradePanel(string $version): void
+    {
+        $this->agent->call('panel.upgrade', ['version' => $version]);
+    }
+
+    /**
+     * The panel upgrade: none, running, done or failed, with its log.
+     *
+     * @return array{state: string, version?: string, started_at?: string, finished_at?: string, log: list<string>}
+     *
+     * @throws AgentException
+     */
+    public function panelUpgradeStatus(): array
+    {
+        return $this->agent->call('panel.upgrade_status');
+    }
 }

@@ -19,23 +19,56 @@
 
     @php($release = \App\Support\PanelRelease::available())
     @php($lastCheck = \App\Support\PanelRelease::last())
-    <x-wire::section heading="WSPanel" :description="__('Panel, agent a jejich služby. Aktualizace se spouští na serveru jedním příkazem, nastavení zůstane.')">
+    @php($upState = $upgrade['state'] ?? 'none')
+    <x-wire::section heading="WSPanel" :description="__('Panel, agent a jejich služby. Aktualizace ponechá nastavení, účty, weby i data; panel je při ní pár minut nedostupný, weby jen na několik sekund.')">
+        @if ($upState === 'running')
+            {{-- Polled with plain requests: during the upgrade the panel restarts. --}}
+            <div x-data="{ down: false }" x-init="setInterval(async () => {
+                    try {
+                        const r = await fetch(@js(route('updates.upgrade-status')), { cache: 'no-store', headers: { Accept: 'application/json' } });
+                        if (! r.ok) { down = true; return; }
+                        const s = await r.json();
+                        if (s.state !== 'running') { window.location.reload(); }
+                    } catch (e) { down = true; }
+                }, 5000)">
+                <x-wire::callout color="info" :heading="__('Probíhá aktualizace na :version', ['version' => $upgrade['version'] ?? '…'])">
+                    <p x-show="! down">{{ __('Stahuje se a instaluje nové vydání. Stránka se po dokončení obnoví sama.') }}</p>
+                    <p x-show="down" x-cloak>{{ __('Panel se právě restartuje, chvíli nebude odpovídat. Stránka se obnoví sama.') }}</p>
+                    @if (($upgrade['log'] ?? []) !== [])
+                        <pre class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-950 p-2 text-xs text-gray-100">{{ implode("\n", array_slice($upgrade['log'], -12)) }}</pre>
+                    @endif
+                </x-wire::callout>
+            </div>
+        @elseif ($upState === 'failed')
+            <x-wire::callout color="danger" :heading="__('Aktualizace na :version se nepodařila', ['version' => $upgrade['version'] ?? '?'])">
+                <p>{{ __('Panel běží dál na předchozí verzi, nebo se vraťte příkazem na serveru: sudo wspanel-rollback') }}</p>
+                @if (($upgrade['log'] ?? []) !== [])
+                    <pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-gray-950 p-2 text-xs text-gray-100">{{ implode("\n", array_slice($upgrade['log'], -30)) }}</pre>
+                @endif
+            </x-wire::callout>
+        @elseif ($upState === 'done' && ($upgrade['version'] ?? null) === \App\Support\PanelRelease::current())
+            <x-wire::callout color="success" :heading="__('Aktualizováno na :version', ['version' => $upgrade['version']])" />
+        @endif
+
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <span>{{ __('Tento server:') }} <strong class="font-mono">{{ \App\Support\PanelRelease::current() ?? __('sestaveno ze zdrojáků') }}</strong></span>
             @if (\App\Support\PanelRelease::checkable())
-                <span>{{ __('Nejnovější vydání:') }}
-                    @if ($lastCheck['version'] ?? null)
-                        <a href="{{ $lastCheck['url'] }}" target="_blank" rel="noopener" class="font-mono font-semibold text-primary-600 hover:underline dark:text-primary-400">{{ $lastCheck['version'] }}</a>
-                    @else
-                        <span class="text-gray-500">{{ __('zatím nezjištěno') }}</span>
-                    @endif
-                </span>
                 @if ($release)
-                    <x-wire::badge color="info">{{ __('k dispozici nová verze') }}</x-wire::badge>
-                @elseif ($lastCheck['version'] ?? null)
-                    <x-wire::badge color="success">{{ __('aktuální') }}</x-wire::badge>
+                    <span>{{ __('Nové vydání:') }}
+                        <a href="{{ $release['url'] }}" target="_blank" rel="noopener" class="font-mono font-semibold text-primary-600 hover:underline dark:text-primary-400">{{ $release['version'] }}</a>
+                    </span>
+                    @if ($upState !== 'running')
+                        <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="upgradePanel"
+                            wire:confirm="{{ __('Aktualizovat WSPanel na :version? Panel bude pár minut nedostupný, weby jen několik sekund. Nastavení, účty i data zůstanou; před aktualizací se uloží stav pro návrat (wspanel-rollback).', ['version' => $release['version']]) }}">{{ __('Aktualizovat na :version', ['version' => $release['version']]) }}</x-wire::button>
+                    @endif
+                @else
+                    @if ($lastCheck['version'] ?? null)
+                        <x-wire::badge color="success">{{ __('aktuální') }}</x-wire::badge>
+                    @else
+                        <span class="text-gray-500">{{ __('nové vydání zatím nezjištěno') }}</span>
+                    @endif
+                    <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkRelease">{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
                 @endif
-                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkRelease">{{ __('Zkontrolovat') }}</x-wire::button>
             @endif
         </div>
         @if (\App\Support\PanelRelease::checkable())
@@ -43,11 +76,10 @@
                 {{ __('Kontroluje se jednou denně v :repo', ['repo' => \App\Support\PanelRelease::repo()]) }}@if ($lastCheck['checked_at'] ?? null){{ __(', naposledy :when', ['when' => \Illuminate\Support\Carbon::parse($lastCheck['checked_at'])->diffForHumans()]) }}@endif.
                 @if ($lastCheck['error'] ?? null)<span class="text-red-600">{{ $lastCheck['error'] }}</span>@endif
             </p>
-            <div class="mt-3">
-                <p class="mb-1 text-sm">{{ $release ? __('Aktualizace na :version: na serveru jako root spusťte', ['version' => $release['version']]) : __('Aktualizace (až vyjde nová verze): na serveru jako root spusťte') }}</p>
-                <pre class="overflow-x-auto rounded-lg bg-gray-950 px-3 py-2 font-mono text-xs text-gray-100">{{ \App\Support\PanelRelease::upgradeCommand() }}</pre>
-                <p class="mt-1 text-xs text-gray-500">{{ __('Instalátor nabídne aktualizaci se stávajícím nastavením. Panel je pár minut nedostupný, weby jen na několik sekund (restart proxy a PHP).') }}</p>
-            </div>
+            <details class="mt-2 text-xs text-gray-500">
+                <summary class="cursor-pointer">{{ __('Aktualizace z příkazové řádky') }}</summary>
+                <pre class="mt-1 overflow-x-auto rounded-lg bg-gray-950 px-3 py-2 font-mono text-xs text-gray-100">{{ \App\Support\PanelRelease::upgradeCommand() }}</pre>
+            </details>
         @else
             <p class="mt-2 text-xs text-gray-500">{{ __('Tento server nebyl nainstalován z vydání (chybí verze nebo repozitář v PANEL_VERSION a PANEL_RELEASE_REPO), nové verze se proto nekontrolují.') }}</p>
         @endif

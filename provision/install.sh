@@ -4,7 +4,7 @@
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
 #              [--node=22,24] [--python=3.13] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
-#              [--panel-port=8443] [--clients=yes] [--mail-hosting=yes]
+#              [--panel-port=8443] [--clients=yes] [--mail-hosting=yes] [--games=yes]
 #
 # Panel address:
 #   --panel-domain=panel.example.com             own hostname, port 443, Let's Encrypt
@@ -55,6 +55,7 @@ PYTHON_VERSIONS="none"
 PANEL_DOMAIN=""
 PANEL_PORT=443
 CLIENTS=no
+GAMES=no
 MAIL_HOSTING=no
 XHPROF=no
 ACME_EMAIL=""
@@ -101,6 +102,7 @@ for arg in "$@"; do
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
+    --games=*) GAMES="${arg#*=}" ;; # yes: game servers in the menu (Java and the games come with the first server)
     --xhprof=*) XHPROF="${arg#*=}" ;; # yes: XHProf + XHGui, switchable per site (Server → Moduly later)
     --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
@@ -127,6 +129,7 @@ done
 . /etc/os-release
 [[ "${ID:-}" == "debian" && "${VERSION_CODENAME:-}" == "trixie" ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
 [[ "$CLIENTS" == yes || "$CLIENTS" == no ]] || die "--clients must be yes or no"
+[[ "$GAMES" == yes || "$GAMES" == no ]] || die "--games must be yes or no"
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
@@ -474,6 +477,7 @@ install -m 0755 "$HERE/files/dmarc-receive" /usr/lib/wspanel/files/dmarc-receive
 install -m 0755 "$HERE/clamav.sh" /usr/lib/wspanel/clamav.sh
 # XHProf + XHGui (optional): the script the agent also runs when added later.
 install -m 0755 "$HERE/xhprof.sh" /usr/lib/wspanel/xhprof.sh
+install -m 0755 "$HERE/panel-upgrade.sh" /usr/lib/wspanel/panel-upgrade.sh
 install -d -m 0755 /usr/lib/wspanel/files/xhgui /usr/lib/wspanel/files/xhgui/xhgui /usr/lib/wspanel/files/xhgui/collector
 install -m 0644 "$HERE"/files/xhgui/*.php /usr/lib/wspanel/files/xhgui/
 install -m 0644 "$HERE"/files/xhgui/xhgui/composer.* /usr/lib/wspanel/files/xhgui/xhgui/
@@ -690,6 +694,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env APP_URL "$PANEL_URL"
   set_panel_env PANEL_PORT "$PANEL_PORT"
   set_panel_env PANEL_CLIENTS "$([[ $CLIENTS == yes ]] && echo true || echo false)"
+  set_panel_env PANEL_GAMES "$([[ $GAMES == yes ]] && echo true || echo false)"
   set_panel_env PANEL_MAIL_HOST "$MAIL_NAME"
   set_panel_env PANEL_SITES_HTTPS_PORT "$PUBLIC_HTTPS_PORT"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"

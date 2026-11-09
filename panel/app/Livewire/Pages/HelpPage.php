@@ -35,6 +35,7 @@ class HelpPage extends Page
         'instalace' => 'Instalace',
         'klienti' => 'Klienti a balíčky',
         'weby' => 'Weby',
+        'herni-servery' => 'Herní servery',
         'deploy' => 'Deploy',
         'github' => 'GitHub',
         'nasazeni-projektu' => 'Nasazení existujícího projektu',

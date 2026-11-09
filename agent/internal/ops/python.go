@@ -4,11 +4,13 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"net/http"
@@ -813,7 +815,11 @@ func downloadOnce(ctx context.Context, url, sum string, limit int64) (string, er
 	if err != nil {
 		return "", err
 	}
-	h := sha256.New()
+	var h hash.Hash = sha256.New()
+	want := sum
+	if hex1, ok := strings.CutPrefix(sum, "sha1:"); ok { // Mojang publishes SHA-1 only
+		h, want = sha1.New(), hex1
+	}
 	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(res.Body, limit+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr
@@ -825,7 +831,7 @@ func downloadOnce(ctx context.Context, url, sum string, limit int64) (string, er
 		os.Remove(f.Name())
 		return "", err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != sum {
+	if got := hex.EncodeToString(h.Sum(nil)); want == "" || got != want {
 		os.Remove(f.Name())
 		return "", checksumError{got}
 	}

@@ -59,6 +59,26 @@ final class AgentMessages
         $cs = fn (string $s) => self::cs($s);
 
         return [
+            // Game servers
+            '/^eula: .*$/' => 'Server Minecraftu se bez souhlasu s EULA nespustí.',
+            '/^version: Minecraft before 1\.20\.5 .*$/' => 'Minecraft starší než 1.20.5 potřebuje Javu 17, kterou Debian 13 nemá.',
+            '/^version: a world cannot go back to an older Minecraft$/' => 'Svět nejde vrátit na starší verzi Minecraftu.',
+            '/^version: Minecraft (\S+) does not exist$/' => 'Minecraft $1 neexistuje.',
+            '/^game: (.+) has no server for this processor \((\S+)\)$/' => 'Hra $1 nemá server pro tento procesor ($2).',
+            '/^port (\d+) is used by game server (\d+)$/' => 'Port $1 už používá jiný herní server.',
+            '/^port (\d+)\/(tcp|udp) is in use$/' => 'Port $1/$2 už na serveru něco používá.',
+            '/^port: (\d+) is the panel\'s$/' => 'Port $1 používá panel, zvolte jiný.',
+            '/^port: 1025 to 65535$/' => 'Port musí být 1025 až 65535.',
+            '/^game server (\d+) does not exist$/' => 'Herní server na serveru neexistuje.',
+            '/^game server (\d+) already exists$/' => 'Herní server už na serveru existuje.',
+            '/^installing Java (\d+) failed: .*$/s' => 'Instalace Javy $1 se nepodařila.',
+            '/^downloading (.+) failed: .*checksum mismatch.*$/s' => 'Stažení $1 se nepodařilo: soubor neodpovídá otisku, který zveřejnil vydavatel. Nic se neinstalovalo.',
+            '/^downloading (.+) failed: (.+)$/s' => 'Stažení $1 se nepodařilo: $2',
+            '/^factorio (\S+): no published checksum$/' => 'Factorio $1 zatím nemá zveřejněný otisk, zkuste to později.',
+            '/^the server does not answer on its console.*$/s' => 'Server na konzoli neodpovídá. Běží?',
+            '/^command: one line.*$/' => 'Příkaz musí být jeden řádek, nejvýš 1000 znaků.',
+            '/^memory_mb: (\d+) to 262144$/' => 'Paměť musí být $1 až 262144 MB.',
+
             // Server → Systém, Procesy, Balíčky
             '/^pid: the process has already ended$/' => 'Proces už neběží.',
             '/^pid: this process cannot be ended from the panel$/' => 'Tento proces z panelu ukončit nejde.',

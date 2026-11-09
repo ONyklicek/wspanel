@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Mockery;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 class PanelReleaseTest extends TestCase
@@ -24,9 +25,9 @@ class PanelReleaseTest extends TestCase
     {
         parent::setUp();
         config(['panel.version' => '1.2.0', 'panel.release_repo' => 'acme/wspanel']);
-        $agent = Mockery::mock(AgentClient::class);
-        $agent->shouldReceive('call')->andReturn([])->byDefault();
-        $this->app->instance(AgentClient::class, $agent);
+        $this->agent = Mockery::mock(AgentClient::class);
+        $this->agent->shouldReceive('call')->andReturn([])->byDefault();
+        $this->app->instance(AgentClient::class, $this->agent);
         $this->app->instance(Alerts::class, new class extends Alerts
         {
             public function current(): array
@@ -37,6 +38,8 @@ class PanelReleaseTest extends TestCase
     }
 
     private string $tag = '';
+
+    private MockInterface $agent;
 
     /** GitHub answers $tag as the newest release (Http::fake keeps its first stub, so it reads a property). */
     private function github(string $tag): void
@@ -61,7 +64,7 @@ class PanelReleaseTest extends TestCase
         $this->assertStringContainsString('WSPanel 1.3.0', $item['title']);
         $this->assertStringContainsString('curl -fsSL https://github.com/acme/wspanel/releases/latest/download/get.sh | sudo bash', $item['detail']);
 
-        Livewire::test(UpdatesPage::class)->assertSee('k dispozici nová verze')->assertSee('releases/latest/download/get.sh');
+        Livewire::test(UpdatesPage::class)->assertSee('Aktualizovat na 1.3.0')->assertSee('releases/latest/download/get.sh');
     }
 
     public function test_a_server_installed_through_apt_is_told_the_apt_command(): void
@@ -131,5 +134,51 @@ class PanelReleaseTest extends TestCase
         $this->assertStringContainsString('acme/wspanel', $out['error']);
         $this->actingAs(User::factory()->create());
         Livewire::test(UpdatesPage::class)->assertSee('není žádné vydání');
+    }
+
+    public function test_the_upgrade_runs_from_the_button_and_is_followed(): void
+    {
+        $this->github('v1.3.0');
+        PanelRelease::check();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()->with('panel.upgrade', ['version' => '1.3.0'])->andReturn(['started' => true]);
+
+        Livewire::test(UpdatesPage::class)->assertSee('Aktualizovat na 1.3.0')->assertDontSee('Zkontrolovat aktualizace')
+            ->call('upgradePanel')->assertNotified();
+
+        $this->agent->shouldReceive('call')->with('panel.upgrade_status')->andReturn(['state' => 'running', 'version' => '1.3.0', 'log' => ['==> Panel']]);
+        Livewire::test(UpdatesPage::class)->assertSee('Probíhá aktualizace na 1.3.0')->assertDontSee('Aktualizovat na 1.3.0');
+        $this->getJson('/updates/upgrade-status')->assertOk()->assertJson(['state' => 'running', 'version' => '1.3.0', 'current' => '1.2.0']);
+    }
+
+    public function test_an_up_to_date_server_offers_a_check_and_no_upgrade(): void
+    {
+        $this->github('v1.2.0');
+        PanelRelease::check();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldNotReceive('call')->with('panel.upgrade', Mockery::any());
+
+        Livewire::test(UpdatesPage::class)->assertSee('aktuální')->assertSee('Zkontrolovat aktualizace')->assertDontSee('Aktualizovat na')
+            ->call('upgradePanel');
+    }
+
+    public function test_a_release_candidate_follows_newer_candidates(): void
+    {
+        config(['panel.version' => '1.2.0-rc9']);
+        Http::fake(['api.github.com/repos/acme/wspanel/releases*' => Http::response([
+            ['tag_name' => 'v1.2.0-rc10', 'html_url' => 'https://github.com/acme/wspanel/releases/tag/v1.2.0-rc10', 'draft' => false],
+            ['tag_name' => 'v1.3.0-rc1', 'html_url' => 'https://github.com/acme/wspanel/releases/tag/v1.3.0-rc1', 'draft' => true],
+            ['tag_name' => 'v1.2.0-rc9', 'html_url' => 'https://github.com/acme/wspanel/releases/tag/v1.2.0-rc9', 'draft' => false],
+        ])]);
+
+        PanelRelease::check();
+
+        $this->assertSame('1.2.0-rc10', PanelRelease::available()['version']);
+    }
+
+    public function test_only_an_administrator_reads_the_upgrade_state(): void
+    {
+        $this->actingAs(User::factory()->forClient(Client::factory()->create())->create());
+        $this->getJson('/updates/upgrade-status')->assertForbidden();
     }
 }

@@ -103,10 +103,14 @@ type Config struct {
 	SwapFile     string `json:"swap_file"`      // the swap file the panel manages
 	SysctlDir    string `json:"sysctl_dir"`     // vm.swappiness
 	CloudCfgDir  string `json:"cloud_cfg_dir"`  // cloud-init: keep a hostname set in the panel
-	ProxyCertDir string `json:"proxy_cert_dir"` // uploaded certificates (custom TLS)
-	DeployLogDir string `json:"deploy_log_dir"`
-	PanelDomain  string `json:"panel_domain"`
-	PanelPort    int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
+
+	GamesRoot     string `json:"games_root"`      // game servers' homes (/srv/games/<id>)
+	GameBackupDir string `json:"game_backup_dir"` // their backups, root's
+	JavaDir       string `json:"java_dir"`        // Debian's OpenJDKs (/usr/lib/jvm)
+	ProxyCertDir  string `json:"proxy_cert_dir"`  // uploaded certificates (custom TLS)
+	DeployLogDir  string `json:"deploy_log_dir"`
+	PanelDomain   string `json:"panel_domain"`
+	PanelPort     int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
 
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
@@ -232,6 +236,9 @@ func Defaults() Config {
 		SwapFile:          "/swapfile",
 		SysctlDir:         "/etc/sysctl.d",
 		CloudCfgDir:       "/etc/cloud/cloud.cfg.d",
+		GamesRoot:         "/srv/games",
+		GameBackupDir:     "/var/backups/wspanel-games",
+		JavaDir:           "/usr/lib/jvm",
 		ProxyCertDir:      "/etc/panel-proxy/certs",
 		DeployLogDir:      "/var/log/panel-agent/deploys",
 		SystemdDir:        "/etc/systemd/system",

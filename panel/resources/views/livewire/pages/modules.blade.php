@@ -12,6 +12,19 @@
             <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --clients=yes</span>{{ __('. Vypnout jde, jen když nejsou žádní klienti.') }}</p>
         </div>
     </x-wire::section>
+    <x-wire::section :heading="__('Herní servery')">
+        <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+            <p>{{ __('Minecraft Java (Paper nebo Vanilla) a Factorio: každý server jako vlastní uživatel a služba s pamětí a CPU podle balíčku, port otevřený ve firewallu, konzole a hráči v panelu, zálohy a aktualizace jedním tlačítkem. Java a server hry se stáhnou až s prvním serverem (od vydavatele, s kontrolou otisku).') }}</p>
+            <p>
+                {{ __('Stav:') }}
+                <x-wire::badge :color="$this->gamesEnabled() ? 'success' : 'gray'">{{ $this->gamesEnabled() ? __('zapnuto') : __('vypnuto') }}</x-wire::badge>
+                @if ($this->gamesEnabled())
+                    {{ __('· serverů:') }} {{ $this->gameCount() }}
+                @endif
+            </p>
+            <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --games=yes</span>{{ __('. Vypnout jde, jen když nejsou žádné herní servery.') }}</p>
+        </div>
+    </x-wire::section>
     <x-wire::section :heading="__('Pošta: schránky (IMAP, POP3, antispam)')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <p>{{ __('Příjem pošty pro domény webů, schránky s kvótou, aliasy, přeposílání a automatické odpovědi; odesílání z poštovních programů přes 587/465; Rspamd přesouvá spam do složky Junk. Odesílání pošty z webů funguje i bez toho.') }}</p>

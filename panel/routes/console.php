@@ -2,6 +2,7 @@
 
 use App\Actions\Firewall\ManageGeoblock;
 use App\Services\Notify\Heartbeat;
+use App\Support\Features;
 use App\Support\PanelRelease;
 use Illuminate\Support\Facades\Schedule;
 
@@ -21,6 +22,10 @@ Schedule::command('panel:traffic')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('panel:server-backup')
     ->dailyAt(sprintf('%02d:%02d', 1 + crc32((string) config('app.key')) % 4, crc32((string) config('app.url')) % 60))
     ->withoutOverlapping();
+// Game servers' data, nightly (between 04:00 and 04:59), off-site too when set up.
+Schedule::command('panel:game-backups')
+    ->dailyAt(sprintf('04:%02d', crc32((string) config('app.key')) % 60))
+    ->when(fn () => Features::games())->withoutOverlapping();
 // DMARC aggregate reports for the hosted mail domains (from Postfix's spool).
 Schedule::command('panel:dmarc')->everyFiveMinutes()->withoutOverlapping();
 // Blocking by country: the address ranges change, download them again weekly.
