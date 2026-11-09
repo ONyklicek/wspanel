@@ -50,19 +50,19 @@ Description: privileged agent and command line tool of the WSPanel hosting panel
 
 Package: wspanel-agent
 Architecture: arm64
-Version: 1.2.0~rc7
+Version: 1.2.0~rc12
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 15448
+Installed-Size: 15832
 Depends: init-system-helpers (>= 1.54~)
 Recommends: wspanel-archive-keyring
-Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc7_arm64.deb
-Size: 4021616
-MD5sum: 94453fd65de413ed85532fb95268b903
-SHA1: 48678d3736249e9ef70e63adfabbda998a73d78c
-SHA256: 2eba97c2d65cf19babaed11982b39910642dfd66bbf248ac8c35e6bbfa80047b
-SHA512: 869894d4a83198edcec07e08c2e9f88f3609ebc8f62d04cdad2d11c035131255e3e492590adb90d0c81e7841e9039ec10a24df7cabf6d9bbe4460daaa090589c
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc12_arm64.deb
+Size: 4159724
+MD5sum: dd19661a577326b6ec28ab51db5aa6ab
+SHA1: 69379077384912a212ee7c727a9b422015772a23
+SHA256: 65748125b3608148bc9e1c039d329e587102e8a67e8e7c07f091df57307ea4a7
+SHA512: 9c1bc7753c2de9ff51e282a1f8e7307a448abe2619cdd92b01f8b6908a221ab063af0f4c974192f7453a020c0268a70d0ee732ac253db8aa589c4ccd0a235c6f
 Homepage: https://github.com/ONyklicek/wspanel
 Description: privileged agent and command line tool of the WSPanel hosting panel
  The agent (panel-agent) is the only part of the WSPanel hosting panel that
@@ -171,17 +171,17 @@ Description: apt repository of the WSPanel hosting panel and its key
 
 Package: wspanel-archive-keyring
 Architecture: all
-Version: 1.2.0~rc7
+Version: 1.2.0~rc12
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
 Installed-Size: 52
-Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc7_all.deb
-Size: 3484
-MD5sum: 8b673ee1cfe88256ce5eabc739e83e1c
-SHA1: e0d2cf35ccb59250b027e4aa348cf53f2e22a3f2
-SHA256: be5fe9534d1554ae20a8173618ce18d46c8fef69ca688244569fc6e090a2e509
-SHA512: 7b3fcf612cc374dacbe894f702770994527a06e8a05fff80d955964d4cf3c8eb880cb11181ce63f818436a70b0943a500beddf85dc2be9322e429c2238193e75
+Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc12_all.deb
+Size: 3448
+MD5sum: dc6b7bf3a33ba347a2eba44d72adea66
+SHA1: 715157da75ee0ac5616ca97d9a52ace7fb999b48
+SHA256: 838155729fd68c938551e04a0653e678619a3ad6098497829135c84e1ffd3246
+SHA512: 901af18088c7fcf5afc12cbf36c8c020f7b2f643ce981f11069b911a2d034148f31c18fa1644fd79b9fe19fd821432fd3e654bd5bf1da3c579b4fc3da9da4bf0
 Homepage: https://github.com/ONyklicek/wspanel
 Description: apt repository of the WSPanel hosting panel and its key
  Sets apt up for the WSPanel repository: the key its indexes are signed
@@ -288,18 +288,18 @@ Description: hosting panel for one Debian server (installer and panel)
 
 Package: wspanel
 Architecture: all
-Version: 1.2.0~rc7
+Version: 1.2.0~rc12
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 7468
-Depends: wspanel-agent (= 1.2.0~rc7), wspanel-archive-keyring, ca-certificates, curl
-Filename: pool/main/w/wspanel/wspanel_1.2.0~rc7_all.deb
-Size: 1125516
-MD5sum: 6aeb83f002795b398011e96d81e9d202
-SHA1: 6f59324f4c1ff7bd568ccc0d5599273e210f9c42
-SHA256: d15985afd415d301e04b549b593c866487af8b4c2c80a1702675e622e2b48b58
-SHA512: f282b0d04d91b244310e912c1bbd0be89e6af3e7dfce6b065a2077d1481134b85237358b423235e72a2efb35bf7182298b68cfcc1b649067bb8493e8450e824d
+Installed-Size: 7800
+Depends: wspanel-agent (= 1.2.0~rc12), wspanel-archive-keyring, ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.2.0~rc12_all.deb
+Size: 1162888
+MD5sum: 8fdaf9d70fccd2e1a7b7e3b4dc08a0be
+SHA1: f5b9ea206e69aa0cb798ec22b61bee05307fab2f
+SHA256: c33ccfd618c2c26e15a0a459e33e20bd1b8c054dada29a7ef6e7aa15021c99e5
+SHA512: ff473951e4d9cc9d6bff6787a4bdde7dc3f7e5bede24d221c47d8f6f27b8645f4004b62b05cb1c8a83b7597f718aa32529c76d7a0dbc69e78e1641a299b6f2ac
 Homepage: https://github.com/ONyklicek/wspanel
 Description: hosting panel for one Debian server (installer and panel)
  WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
