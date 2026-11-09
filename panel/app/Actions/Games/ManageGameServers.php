@@ -283,6 +283,50 @@ class ManageGameServers
         return (string) ($this->agent->call('game.player_action', array_filter(['id' => $server->id, 'action' => $action, 'name' => $name, 'reason' => $reason], fn ($v) => $v !== ''))['output'] ?? '');
     }
 
+    /**
+     * Plugins found in a catalogue (modrinth|hangar) for the server's version.
+     *
+     * @return list<array{source: string, project: string, name: string, description: string, author: string, downloads: int, icon?: string, url: string}>
+     *
+     * @throws AgentException
+     */
+    public function searchPlugins(GameServer $server, string $source, string $query): array
+    {
+        return $this->agent->call('game.plugin_search', ['id' => $server->id, 'source' => $source, 'query' => $query])['results'] ?? [];
+    }
+
+    /**
+     * The jars in plugins/ (with source and version for the panel's own; $check: newer versions too).
+     *
+     * @return list<array{file: string, size?: int, source?: string, project?: string, name?: string, version?: string, update?: string}>
+     *
+     * @throws AgentException
+     */
+    public function plugins(GameServer $server, bool $check = false): array
+    {
+        return $this->agent->call('game.plugins', ['id' => $server->id] + ($check ? ['check' => true] : []))['plugins'] ?? [];
+    }
+
+    /**
+     * Installs (or updates) a plugin and what it requires; null while running.
+     *
+     * @return array{installed: list<array{name: string, version: string, file: string}>, needs: list<string>}|null
+     *
+     * @throws AgentException
+     */
+    public function installPlugin(GameServer $server, string $source, string $project): ?array
+    {
+        $job = $this->agent->call('game.plugin_install', ['id' => $server->id, 'source' => $source, 'project' => $project]);
+
+        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
+    }
+
+    /** @throws AgentException */
+    public function removePlugin(GameServer $server, string $file): void
+    {
+        $this->agent->call('game.plugin_remove', ['id' => $server->id, 'file' => $file]);
+    }
+
     /** @throws AgentException */
     public function delete(GameServer $server): void
     {

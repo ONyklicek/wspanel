@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -216,6 +216,10 @@ func Registry() map[string]Op {
 		{"game.set_properties", true, gameSetProperties},
 		{"game.player_lists", false, gamePlayerLists},
 		{"game.player_action", true, gamePlayerAction},
+		{"game.plugin_search", false, gamePluginSearch},
+		{"game.plugins", false, gamePlugins},
+		{"game.plugin_install", true, gamePluginInstall},
+		{"game.plugin_remove", true, gamePluginRemove},
 		{"fail2ban.status", false, fail2banStatus},
 		{"fail2ban.unban", true, fail2banUnban},
 		{"mail.spam.set", true, mailSpamSet},

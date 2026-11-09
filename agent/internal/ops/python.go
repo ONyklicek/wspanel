@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -819,6 +820,8 @@ func downloadOnce(ctx context.Context, url, sum string, limit int64) (string, er
 	want := sum
 	if hex1, ok := strings.CutPrefix(sum, "sha1:"); ok { // Mojang publishes SHA-1 only
 		h, want = sha1.New(), hex1
+	} else if hex512, ok := strings.CutPrefix(sum, "sha512:"); ok { // Modrinth
+		h, want = sha512.New(), hex512
 	}
 	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(res.Body, limit+1))
 	if cerr := f.Close(); err == nil {

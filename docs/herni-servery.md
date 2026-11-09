@@ -47,6 +47,16 @@ a port; výchozí port Minecraftu se nepíše).
 - **Hráči** (Minecraft): whitelist (zapnout, přidat, odebrat), operátoři,
   bany hráčů i IP adres, vyhození. Změny jdou do konzole běžícího serveru
   a platí hned; seznamy jsou vidět i u zastaveného serveru.
+- **Pluginy** (Paper): hledání v katalozích **Modrinth** a **Hangar**
+  (PaperMC), jen verze pro Minecraft serveru, instalace jedním tlačítkem,
+  seznam nainstalovaných (se zdrojem a verzí), *Zkontrolovat aktualizace*,
+  aktualizace a odebrání. Soubor se stahuje jen z úložiště katalogu
+  (`cdn.modrinth.com`, `hangarcdn.papermc.io`) a ověřuje otiskem, který
+  katalog zveřejňuje (SHA-512, SHA-256); plugin, který katalog jen odkazuje
+  jinam (bez otisku), panel neinstaluje, nahrát ho jde ručně v Souborech.
+  Povinné závislosti z Modrinthu se nainstalují s pluginem, u Hangaru je
+  panel vypíše. Přednost má stabilní verze před vývojovou. Pluginy se
+  načtou po restartu serveru (tlačítko *Restartovat teď*).
 - **Soubory:** záložka se správcem souborů nad složkou serveru, jako
   u webů: úpravy konfigurací (`server.properties`, `bukkit.yml`,
   `config/paper-*.yml`, nastavení pluginů a módů), nahrávání pluginů a
@@ -101,6 +111,5 @@ má klientův server vždy kvótu (**Hosting → Klienti → Balíčky**).
   znovu a svět přeneste ručně: záloha je archiv `.tar.gz` se složkou `data`
   (v úložišti mimo server pod `games/<id>/`).
 - Další hry (Terraria, Valheim, hry přes steamcmd), Forge a Fabric pro
-  Minecraft, instalace pluginů a módů z katalogů (Modrinth, Hangar, mod
-  portál Factoria), formulář pro nastavení Factoria, SFTP do složky
+  Minecraft, módy z mod portálu Factoria, formulář pro nastavení Factoria, SFTP do složky
   serveru.

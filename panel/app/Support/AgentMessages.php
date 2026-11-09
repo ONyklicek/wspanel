@@ -83,6 +83,12 @@ final class AgentMessages
             '/^name: a Minecraft player name.*$/' => 'Jméno hráče: 3 až 16 písmen, číslic nebo _.',
             '/^name: an IP address$/' => 'Zadejte IP adresu.',
             '/^id: a Minecraft server$/' => 'Jen u serveru Minecraftu.',
+            '/^id: plugins need a Paper server.*$/' => 'Pluginy načítá jen Paper, Vanilla žádné.',
+            '/^project: (.+) has no version for Minecraft (\S+) on Paper$/' => 'Plugin $1 nemá verzi pro Minecraft $2 (Paper).',
+            '/^project: (.+) is downloaded from outside Hangar.*$/' => 'Plugin $1 se stahuje mimo Hangar a bez otisku, panel ho neinstaluje. Nahrát ho můžete ručně v Souborech.',
+            '/^project: (.+) comes from (\S+), not the catalogue.*$/' => 'Plugin $1 se stahuje z $2, ne z úložiště katalogu: panel ho neinstaluje.',
+            '/^downloading (.+) failed: .*checksum mismatch.*$/s' => 'Stažení $1 se nepodařilo: soubor neodpovídá otisku z katalogu. Nic se neinstalovalo.',
+            '/^(Modrinth|Hangar): (.+)$/s' => 'Katalog $1 neodpovídá: $2',
             '/^memory_mb: (\d+) to 262144$/' => 'Paměť musí být $1 až 262144 MB.',
 
             // Server → Systém, Procesy, Balíčky

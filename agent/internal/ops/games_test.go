@@ -391,3 +391,24 @@ func TestGamePortsStayInTheirRangeAndAnAdminsRuleStays(t *testing.T) {
 		}
 	}
 }
+
+func TestARuleOfAServerFromBeforeOwnershipIsRemovedByItsComment(t *testing.T) {
+	env, dr := gameTestEnv(t)
+	saveGame(env, gameState{ID: 3, Name: "old", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 2048})
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.String() == "ufw status" {
+			return executor.Result{Stdout: "Status: active\n\nTo                         Action      From\n--                         ------      ----\n25565/tcp                  ALLOW       Anywhere                   # wspanel game 3\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	if _, err := call(t, env, gameDelete, map[string]any{"id": 3}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range dr.Calls() {
+		found = found || c.String() == "ufw delete allow 25565/tcp"
+	}
+	if !found {
+		t.Error("the panel's rule of an older server must go with it")
+	}
+}

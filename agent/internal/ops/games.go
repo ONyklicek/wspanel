@@ -519,6 +519,21 @@ func ufwAllows(ctx context.Context, env *Env, port int, proto string) bool {
 	return false
 }
 
+// ufwHasGameRule: a rule for the server's port with the panel's comment for it.
+func ufwHasGameRule(ctx context.Context, env *Env, g gameState) bool {
+	res, err := env.Exec.Run(ctx, "ufw", "status")
+	if err != nil {
+		return false
+	}
+	_, rules := parseUFWStatus(res.Stdout)
+	for _, r := range rules {
+		if r.Port == g.Port && r.Comment == "wspanel game "+strconv.Itoa(g.ID) {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------- install
 
 // ensureJava installs Debian's OpenJDK of that major, headless (on demand:
@@ -1344,7 +1359,9 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	}
 	_, _ = env.Exec.Run(ctx, "systemctl", "daemon-reload")
 	_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", g.unit())
-	if g.OwnsFirewall {
+	// Servers from before OwnsFirewall (1.2.0-rc10): the rule is the panel's
+	// when it carries the panel's comment for this server.
+	if g.OwnsFirewall || ufwHasGameRule(ctx, env, g) {
 		_, _ = env.Exec.Run(ctx, "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
 	}
 	if !env.Cfg.DryRun {

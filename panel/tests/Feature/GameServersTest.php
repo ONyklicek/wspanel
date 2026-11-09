@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Livewire\Games\GamePlayers;
+use App\Livewire\Games\GamePlugins;
 use App\Livewire\Games\GameServerSettings;
 use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
@@ -243,5 +244,34 @@ class GameServersTest extends TestCase
             ->set('name', 'Griefer')->set('reason', 'spam')->call('act', 'ban')
             ->call('act', 'whitelist_remove', 'Notch')
             ->call('act', 'stop');
+    }
+
+    public function test_plugins_are_searched_installed_updated_and_removed(): void
+    {
+        $server = $this->minecraft();
+        $this->agent->shouldReceive('call')->with('game.plugins', ['id' => $server->id])->andReturn(['plugins' => [['file' => 'LuckPerms.jar', 'source' => 'modrinth', 'project' => 'Vebnzrzj', 'name' => 'LuckPerms', 'version' => '5.5.70'], ['file' => 'Own.jar']]]);
+        $this->agent->shouldReceive('call')->with('game.plugins', ['id' => $server->id, 'check' => true])->andReturn(['plugins' => [['file' => 'LuckPerms.jar', 'source' => 'modrinth', 'project' => 'Vebnzrzj', 'name' => 'LuckPerms', 'version' => '5.5.70', 'update' => '5.5.71']]]);
+        $this->agent->shouldReceive('call')->once()->with('game.plugin_search', ['id' => $server->id, 'source' => 'hangar', 'query' => 'via'])
+            ->andReturn(['results' => [['source' => 'hangar', 'project' => 'ViaVersion', 'name' => 'ViaVersion', 'description' => 'versions', 'author' => 'ViaVersion', 'downloads' => 500000, 'url' => 'https://hangar.papermc.io/ViaVersion/ViaVersion']]]);
+        $this->agent->shouldReceive('call')->once()->with('game.plugin_install', ['id' => $server->id, 'source' => 'hangar', 'project' => 'ViaVersion'])
+            ->andReturn(['installed' => [['name' => 'ViaVersion', 'version' => '5.12.2', 'file' => 'ViaVersion-5.12.2.jar']], 'needs' => []]);
+        $this->agent->shouldReceive('call')->once()->with('game.plugin_remove', ['id' => $server->id, 'file' => 'Own.jar'])->andReturn([]);
+
+        Livewire::test(GamePlugins::class, ['record' => $server->id])
+            ->assertSee('LuckPerms')->assertSee('nahráno ručně')
+            ->call('checkUpdates')->assertSee('nová verze 5.5.71')
+            ->set('source', 'hangar')->set('query', 'via')->call('findPlugins')->assertSee('ViaVersion')
+            ->call('install', 'hangar', 'ViaVersion')->assertNotified()->assertSee('Změny se projeví po restartu serveru')
+            ->call('install', 'spigot', 'x')
+            ->call('remove', 'Own.jar');
+    }
+
+    public function test_a_vanilla_server_has_no_plugins(): void
+    {
+        Features::setGames(true);
+        $server = GameServer::create(['name' => 'V', 'game' => 'minecraft', 'flavor' => 'vanilla', 'version' => '26.3', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
+        $this->agent->shouldNotReceive('call')->with('game.plugins', Mockery::any());
+
+        Livewire::test(GamePlugins::class, ['record' => $server->id])->assertSee('Pluginy jen pro Paper');
     }
 }
