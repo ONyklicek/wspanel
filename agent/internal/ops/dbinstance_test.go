@@ -81,7 +81,7 @@ func TestDedicatedMariaDBIsTheSitesAlone(t *testing.T) {
 			t.Errorf("unit lacks %q", want)
 		}
 	}
-	if i := callsOf(dr, "mariadb-install-db"); len(i) != 1 || !strings.Contains(i[0], "--auth-root-authentication-method=socket") {
+	if i := callsOf(dr, "mariadb-install-db"); len(i) != 1 || !strings.Contains(i[0], "--auth-root-authentication-method=socket") || !strings.Contains(i[0], "--skip-auth-anonymous-user") {
 		t.Fatalf("install-db: %v", i)
 	}
 	if _, err := call(t, env, dbInstanceCreate, map[string]any{"domain": "shop.example.com", "engine": "mariadb", "memory_mb": 512}); code(err) != protocol.CodeConflict {
@@ -147,8 +147,17 @@ func TestDedicatedMariaDBIsTheSitesAlone(t *testing.T) {
 	if _, err := call(t, env, dbInstanceDelete, map[string]any{"id": 1, "confirm": "shop.example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := callsOf(dr, "userdel", mark); len(u) != 1 || u[0] != "wsd_1" {
+	// The account stays (locked): its group's GID is never reused.
+	if u := callsOf(dr, "userdel", mark); len(u) != 0 {
 		t.Fatalf("userdel: %v", u)
+	}
+	if u := callsOf(dr, "usermod", mark); len(u) != 1 || u[0] != "--lock --expiredate 1 wsd_1" {
+		t.Fatalf("usermod: %v", u)
+	}
+	// Nor is the id: the next instance is wsd_2.
+	out, err = call(t, env, dbInstanceCreate, map[string]any{"domain": "shop.example.com", "engine": "mariadb", "memory_mb": 512})
+	if err != nil || out.(map[string]any)["id"] != 2 {
+		t.Fatalf("next instance: %v %v", out, err)
 	}
 	if g := callsOf(dr, "gpasswd", mark); len(g) != 1 || g[0] != "--delete web_shop_example_com wsd_1" {
 		t.Fatalf("gpasswd: %v", g)

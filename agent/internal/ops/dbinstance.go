@@ -210,12 +210,14 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 	if err != nil {
 		return nil, err
 	}
-	next := 1
 	for _, i := range allDBInstances(env) {
 		if i.Domain == p.Domain && i.Engine == p.Engine {
 			return nil, protocol.Conflict(fmt.Sprintf("%s already has a dedicated %s server (%d)", p.Domain, p.Engine, i.ID))
 		}
-		next = max(next, i.ID+1)
+	}
+	next, err := nextDBInstanceID(env)
+	if err != nil {
+		return nil, err
 	}
 	inst := dbInstance{ID: next, Engine: p.Engine, Domain: p.Domain, SiteUser: l.User, MemoryMB: p.MemoryMB,
 		CPUPercent: p.CPUPercent, Databases: []string{}, Created: time.Now().UTC().Format(time.RFC3339)}
@@ -231,7 +233,7 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 			rollback.run()
 		}
 	}()
-	rollback.add(func() { teardownDBInstance(context.WithoutCancel(ctx), env, inst) })
+	rollback.add(func() { teardownDBInstance(context.WithoutCancel(ctx), env, inst, false) })
 	if _, err = env.Exec.Run(ctx, "useradd", "--system", "--user-group", "--no-create-home", "--home-dir", inst.home(env),
 		"--shell", "/usr/sbin/nologin", "--comment", "WSPanel database server of "+p.Domain, inst.user()); err != nil {
 		return nil, err
@@ -271,6 +273,11 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 	}
 	if err = waitDBInstance(ctx, env, inst); err != nil {
 		return nil, err
+	}
+	if inst.Engine == "mariadb" { // no anonymous account, whatever the installer's defaults
+		if _, err = (mariadb{socket: filepath.Join(inst.runDir(env), "mysqld.sock")}).sql(ctx, env, "DROP USER IF EXISTS ''@'localhost';"); err != nil {
+			return nil, err
+		}
 	}
 	if err = saveDBInstance(env, inst); err != nil {
 		return nil, err
@@ -345,7 +352,7 @@ func createMariaDBInstance(ctx context.Context, env *Env, i dbInstance) error {
 	}
 	// root reaches it over the socket (unix_socket auth): no admin password exists.
 	if _, err := env.Exec.RunIO(ctx, nil, nil, "mariadb-install-db", "--defaults-file="+i.mariadbConf(env), "--user="+i.user(),
-		"--auth-root-authentication-method=socket", "--skip-test-db"); err != nil {
+		"--auth-root-authentication-method=socket", "--skip-auth-anonymous-user", "--skip-test-db"); err != nil {
 		return err
 	}
 	if err := writeMariaDBInstanceUnit(ctx, env, i); err != nil {
@@ -449,9 +456,30 @@ func reloadSiteProcesses(ctx context.Context, env *Env, l siteLayout) {
 	}
 }
 
+// nextDBInstanceID: ids (and so wsd_<id> and its group) are never handed out
+// twice, even after a delete.
+func nextDBInstanceID(env *Env) (int, error) {
+	next := 1
+	counter := filepath.Join(dbInstanceDir(env), "next-id")
+	if b, err := os.ReadFile(counter); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil {
+			next = max(next, n)
+		}
+	}
+	for _, i := range allDBInstances(env) {
+		next = max(next, i.ID+1)
+	}
+	if err := env.FS.MkdirAll(dbInstanceDir(env), 0o700, fsx.Root); err != nil {
+		return 0, err
+	}
+	return next, env.FS.WriteFile(counter, []byte(strconv.Itoa(next+1)), 0o600, fsx.Root)
+}
+
 // teardownDBInstance removes everything of an instance (best effort: also
-// the rollback of a half-created one).
-func teardownDBInstance(ctx context.Context, env *Env, i dbInstance) {
+// the rollback of a half-created one). keepAccount leaves wsd_<id> (locked,
+// no home) in place: its group's GID then never goes to a new group while a
+// process of the site may still carry it (an SSH session started before).
+func teardownDBInstance(ctx context.Context, env *Env, i dbInstance, keepAccount bool) {
 	_, _ = env.Exec.Run(ctx, "systemctl", "disable", "--now", i.unit())
 	if i.Engine == "postgresql" && i.PGVersion != "" {
 		_, _ = env.Exec.RunIO(ctx, nil, nil, "pg_dropcluster", "--stop", i.PGVersion, i.cluster())
@@ -470,7 +498,11 @@ func teardownDBInstance(ctx context.Context, env *Env, i dbInstance) {
 	if i.SiteUser != "" {
 		_, _ = env.Exec.Run(ctx, "gpasswd", "--delete", i.SiteUser, i.user())
 	}
-	_, _ = env.Exec.Run(ctx, "userdel", i.user())
+	if keepAccount {
+		_, _ = env.Exec.Run(ctx, "usermod", "--lock", "--expiredate", "1", i.user())
+	} else {
+		_, _ = env.Exec.Run(ctx, "userdel", i.user())
+	}
 	_ = os.Remove(dbInstancePath(env, i.ID))
 }
 
@@ -583,7 +615,7 @@ func dbInstanceDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 	if len(i.Databases) > 0 {
 		return nil, protocol.Conflict(fmt.Sprintf("the dedicated server still holds databases (%s): drop them first", strings.Join(i.Databases, ", ")))
 	}
-	teardownDBInstance(ctx, env, i)
+	teardownDBInstance(ctx, env, i, true)
 	if _, l, err := loadSite(env, i.Domain); err == nil {
 		reloadSiteProcesses(ctx, env, l)
 	}
