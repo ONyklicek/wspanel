@@ -63,7 +63,7 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
             'view' => RoutePage::make(ViewGameServer::class)->permission('games')->label(__('Přehled'))->icon('outline:squares-2x2')->sort(10),
             'settings' => RoutePage::make(GameServerSettings::class)->uri('{record}/settings')->permission('games')->label(__('Nastavení'))->icon('outline:adjustments-horizontal')->sort(20),
             'players' => RoutePage::make(GamePlayers::class)->uri('{record}/players')->permission('games')->label(__('Hráči'))->icon('outline:user-group')->sort(25),
-            'plugins' => RoutePage::make(GamePlugins::class)->uri('{record}/plugins')->permission('games')->label(__('Pluginy'))->icon('outline:puzzle-piece')->sort(27),
+            'plugins' => RoutePage::make(GamePlugins::class)->uri('{record}/plugins')->permission('games')->label(__('Pluginy a módy'))->icon('outline:puzzle-piece')->sort(27),
             'files' => RoutePage::make(GameServerFiles::class)->uri('{record}/files')->permission('games')->label(__('Soubory'))->icon('outline:folder')->sort(30),
         ];
     }

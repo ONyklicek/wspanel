@@ -274,4 +274,46 @@ class GameServersTest extends TestCase
 
         Livewire::test(GamePlugins::class, ['record' => $server->id])->assertSee('Pluginy jen pro Paper');
     }
+
+    private function factorio(): GameServer
+    {
+        Features::setGames(true);
+
+        return GameServer::create(['name' => 'F', 'game' => 'factorio', 'flavor' => 'stable', 'version' => '2.1.24', 'port' => 34197, 'memory_mb' => 2048, 'status' => 'active']);
+    }
+
+    public function test_factorios_settings_are_typed_and_secrets_never_shown(): void
+    {
+        $server = $this->factorio();
+        $this->agent->shouldReceive('call')->with('game.factorio_settings', ['id' => $server->id])->andReturn([
+            'values' => ['name' => 'F', 'max_players' => 0, 'visibility.public' => false, 'visibility.lan' => true, 'tags' => ['a'], 'allow_commands' => 'admins-only'],
+            'secrets' => ['token' => true, 'game_password' => false],
+        ]);
+        $this->agent->shouldReceive('call')->once()->with('game.factorio_set_settings', Mockery::on(fn ($p) => $p['values'] === ['tags' => ['a', 'b'], 'max_players' => 8, 'visibility.public' => true]
+            && $p['secrets'] === ['game_password' => 'heslo'] && ($p['restart'] ?? false) === true))->andReturn([]);
+
+        $page = Livewire::test(GameServerSettings::class, ['record' => $server->id])
+            ->assertSee('Ve veřejném seznamu serverů')->assertSee('nastaveno');
+        $page->set('factorio.max_players', 'lots')->call('saveFactorio')->assertHasErrors('factorio.max_players')
+            ->set('factorio.max_players', '8')->set('factorio.visibility__public', true)->set('factorio.tags', 'a, b')->set('newGamePassword', 'heslo')
+            ->call('saveFactorio', true)->assertHasNoErrors()->assertNotified();
+    }
+
+    public function test_factorio_mods_need_the_account_and_come_from_the_portal(): void
+    {
+        $server = $this->factorio();
+        $this->agent->shouldReceive('call')->with('game.mods', ['id' => $server->id])->andReturn(['mods' => [['file' => 'flib_0.16.5.zip', 'name' => 'flib', 'version' => '0.16.5']], 'account' => false]);
+        $this->agent->shouldReceive('call')->once()->with('game.mod_search', ['id' => $server->id, 'query' => 'even'])
+            ->andReturn(['results' => [['name' => 'even-distribution', 'title' => 'Even Distribution', 'owner' => 'Xorimuth', 'summary' => 'items', 'downloads_count' => 1000]]]);
+        $this->agent->shouldReceive('call')->once()->with('game.mod_install', ['id' => $server->id, 'name' => 'even-distribution'])->andReturn(['installed' => [['name' => 'even-distribution', 'version' => '2.1.0', 'file' => 'even-distribution_2.1.0.zip']]]);
+        $this->agent->shouldReceive('call')->once()->with('game.mod_remove', ['id' => $server->id, 'file' => 'flib_0.16.5.zip'])->andReturn([]);
+        $this->agent->shouldNotReceive('call')->with('game.plugin_search', Mockery::any());
+
+        Livewire::test(GamePlugins::class, ['record' => $server->id])
+            ->assertSee('flib')->assertSee('jen s účtem factorio.com')
+            ->set('query', 'even')->call('findPlugins')->assertSee('Even Distribution')
+            ->call('install', 'factorio', 'even-distribution')->assertNotified()
+            ->call('install', 'modrinth', 'luckperms')
+            ->call('remove', 'flib_0.16.5.zip');
+    }
 }

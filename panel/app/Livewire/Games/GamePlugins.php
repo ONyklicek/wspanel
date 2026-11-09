@@ -10,7 +10,7 @@ use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
 
-/** A Paper server's plugins: from Modrinth and Hangar, checked by checksum. */
+/** A Paper server's plugins (Modrinth, Hangar) or a Factorio server's mods (the mod portal). */
 class GamePlugins extends ViewPage
 {
     use IsGameTab;
@@ -33,6 +33,9 @@ class GamePlugins extends ViewPage
 
     public ?string $error = null;
 
+    /** Factorio: whether server-settings.json has the factorio.com account. */
+    public bool $account = false;
+
     public function mount(mixed $record = null): void
     {
         parent::mount($record);
@@ -41,7 +44,12 @@ class GamePlugins extends ViewPage
 
     protected function tabLabel(): string
     {
-        return __('Pluginy');
+        return $this->factorio() ? __('Módy') : __('Pluginy');
+    }
+
+    public function factorio(): bool
+    {
+        return $this->server()->game->value === 'factorio';
     }
 
     public function paper(): bool
@@ -51,11 +59,16 @@ class GamePlugins extends ViewPage
 
     public function load(bool $check = false): void
     {
-        if (! $this->paper()) {
+        if (! $this->paper() && ! $this->factorio()) {
             return;
         }
         try {
-            $this->installed = app(ManageGameServers::class)->plugins($this->server(), $check);
+            if ($this->factorio()) {
+                $out = app(ManageGameServers::class)->mods($this->server(), $check);
+                [$this->installed, $this->account] = [$out['mods'] ?? [], (bool) ($out['account'] ?? false)];
+            } else {
+                $this->installed = app(ManageGameServers::class)->plugins($this->server(), $check);
+            }
             $this->checked = $check;
             $this->error = null;
         } catch (AgentException $e) {
@@ -73,11 +86,15 @@ class GamePlugins extends ViewPage
     public function findPlugins(): void
     {
         $this->validate([
-            'source' => ['required', 'in:modrinth,hangar'],
+            'source' => ['required', 'in:modrinth,hangar,factorio'],
             'query' => ['nullable', 'string', 'max:100', 'not_regex:/[\r\n]/'],
         ]);
         try {
-            $this->results = app(ManageGameServers::class)->searchPlugins($this->server(), $this->source, trim($this->query));
+            $this->results = $this->factorio()
+                ? array_map(fn ($m) => ['source' => 'factorio', 'project' => $m['name'], 'name' => $m['title'] ?: $m['name'], 'description' => $m['summary'] ?? '',
+                    'author' => $m['owner'] ?? '', 'downloads' => $m['downloads_count'] ?? 0, 'url' => 'https://mods.factorio.com/mod/'.rawurlencode($m['name'])],
+                    app(ManageGameServers::class)->searchMods($this->server(), trim($this->query)))
+                : app(ManageGameServers::class)->searchPlugins($this->server(), $this->source, trim($this->query));
         } catch (AgentException $e) {
             Toast::error(__('Hledání selhalo'), $e->getMessage());
         }
@@ -85,17 +102,20 @@ class GamePlugins extends ViewPage
 
     public function install(string $source, string $project): void
     {
-        if (! in_array($source, ['modrinth', 'hangar'], true) || ! preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $project)) {
+        $factorio = $this->factorio();
+        if (! in_array($source, $factorio ? ['factorio'] : ['modrinth', 'hangar'], true) || ! preg_match($factorio ? '/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,99}$/' : '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $project)) {
             return;
         }
         try {
-            $out = app(ManageGameServers::class)->installPlugin($this->server(), $source, $project);
+            $out = $factorio
+                ? app(ManageGameServers::class)->installMod($this->server(), $project)
+                : app(ManageGameServers::class)->installPlugin($this->server(), $source, $project);
             if ($out === null) {
                 Toast::warning(__('Instalace ještě běží'), __('Obnovte stránku za chvíli.'));
             } else {
                 $names = collect($out['installed'])->map(fn ($p) => $p['name'].' '.$p['version'])->implode(', ');
                 Toast::success(__('Nainstalováno: :names', ['names' => $names]),
-                    $out['needs'] !== [] ? __('Plugin potřebuje i: :needs (nainstalujte je zvlášť).', ['needs' => implode(', ', $out['needs'])]) : __('Projeví se po restartu serveru.'));
+                    ($out['needs'] ?? []) !== [] ? __('Plugin potřebuje i: :needs (nainstalujte je zvlášť).', ['needs' => implode(', ', $out['needs'])]) : __('Projeví se po restartu serveru.'));
                 $this->changed = true;
             }
         } catch (AgentException $e) {
@@ -107,7 +127,9 @@ class GamePlugins extends ViewPage
     public function remove(string $file): void
     {
         try {
-            app(ManageGameServers::class)->removePlugin($this->server(), $file);
+            $this->factorio()
+                ? app(ManageGameServers::class)->removeMod($this->server(), $file)
+                : app(ManageGameServers::class)->removePlugin($this->server(), $file);
             Toast::success(__(':file odebrán', ['file' => $file]), __('Jeho nastavení (složka v plugins) zůstalo. Projeví se po restartu serveru.'));
             $this->changed = true;
         } catch (AgentException $e) {

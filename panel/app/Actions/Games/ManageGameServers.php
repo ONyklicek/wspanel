@@ -327,6 +327,72 @@ class ManageGameServers
         $this->agent->call('game.plugin_remove', ['id' => $server->id, 'file' => $file]);
     }
 
+    /**
+     * Factorio's server-settings.json: the values the form changes, and which secrets are set.
+     *
+     * @return array{values: array<string, mixed>, secrets: array<string, bool>}
+     *
+     * @throws AgentException
+     */
+    public function factorioSettings(GameServer $server): array
+    {
+        return $this->agent->call('game.factorio_settings', ['id' => $server->id]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @param  array<string, string>  $secrets  set when given (token, game_password)
+     * @param  list<string>  $clear  secrets to empty
+     *
+     * @throws AgentException
+     */
+    public function setFactorioSettings(GameServer $server, array $values, array $secrets = [], array $clear = [], bool $restart = false): void
+    {
+        $this->agent->call('game.factorio_set_settings', array_filter([
+            'id' => $server->id, 'values' => $values, 'secrets' => $secrets, 'clear' => $clear, 'restart' => $restart,
+        ], fn ($v) => $v !== [] && $v !== false));
+    }
+
+    /**
+     * Mods of the portal for the server's Factorio, by name, title or summary.
+     *
+     * @return list<array{name: string, title: string, owner: string, summary: string, downloads_count: int}>
+     *
+     * @throws AgentException
+     */
+    public function searchMods(GameServer $server, string $query): array
+    {
+        return $this->agent->call('game.mod_search', ['id' => $server->id, 'query' => $query])['results'] ?? [];
+    }
+
+    /**
+     * @return array{mods: list<array{file: string, name: string, version: string, size?: int, update?: string}>, account: bool}
+     *
+     * @throws AgentException
+     */
+    public function mods(GameServer $server, bool $check = false): array
+    {
+        return $this->agent->call('game.mods', ['id' => $server->id] + ($check ? ['check' => true] : []));
+    }
+
+    /**
+     * @return array{installed: list<array{name: string, version: string, file: string}>}|null
+     *
+     * @throws AgentException
+     */
+    public function installMod(GameServer $server, string $name): ?array
+    {
+        $job = $this->agent->call('game.mod_install', ['id' => $server->id, 'name' => $name]);
+
+        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
+    }
+
+    /** @throws AgentException */
+    public function removeMod(GameServer $server, string $file): void
+    {
+        $this->agent->call('game.mod_remove', ['id' => $server->id, 'file' => $file]);
+    }
+
     /** @throws AgentException */
     public function delete(GameServer $server): void
     {

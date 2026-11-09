@@ -6,22 +6,26 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    @unless ($this->paper())
-        <x-wire::callout color="info" :heading="__('Pluginy jen pro Paper')">
-            {{ $server->game->value === 'minecraft' ? __('Oficiální server (Vanilla) pluginy nenačítá. Pro pluginy založte server ve variantě Paper.') : __('Módy Factoria přibudou v dalším kroku. Zatím je nahrajte v záložce Soubory do data/mods.') }}
-        </x-wire::callout>
+    @php($factorio = $this->factorio())
+    @if (! $this->paper() && ! $factorio)
+        <x-wire::callout color="info" :heading="__('Pluginy jen pro Paper')">{{ __('Oficiální server (Vanilla) pluginy nenačítá. Pro pluginy založte server ve variantě Paper.') }}</x-wire::callout>
     @else
+        @if ($factorio && ! $account)
+            <x-wire::callout color="warning" :heading="__('Módy stahuje mod portál jen s účtem factorio.com')">
+                {{ __('Zadejte jméno a token účtu v záložce Nastavení (Účet factorio.com). Hledat jde i bez nich.') }}
+            </x-wire::callout>
+        @endif
         @if ($changed)
             <x-wire::callout color="warning" :heading="__('Změny se projeví po restartu serveru')">
                 <x-wire::button size="sm" icon="outline:arrow-path" wire:click="restart" wire:confirm="{{ __('Restartovat server? Hráči se na chvíli odpojí.') }}">{{ __('Restartovat teď') }}</x-wire::button>
             </x-wire::callout>
         @endif
 
-        <x-wire::section :heading="__('Nainstalované')" :description="__('Soubory .jar ve složce data/plugins. U pluginů z panelu je vidět zdroj a verze; ostatní jste nahráli sami (Soubory).')">
+        <x-wire::section :heading="__('Nainstalované')" :description="$factorio ? __('Módy ve složce data/mods. Factorio nový mód zapne sám; vypnout ho jde ve hře nebo v data/mods/mod-list.json.') : __('Soubory .jar ve složce data/plugins. U pluginů z panelu je vidět zdroj a verze; ostatní jste nahráli sami (Soubory).')">
             <div class="mb-3"><x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkUpdates">{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
                 <span wire:loading wire:target="checkUpdates" class="text-sm text-gray-500">{{ __('Ptám se katalogů…') }}</span></div>
             @if ($installed === [])
-                <p class="text-sm text-gray-500">{{ __('Zatím žádné pluginy.') }}</p>
+                <p class="text-sm text-gray-500">{{ $factorio ? __('Zatím žádné módy.') : __('Zatím žádné pluginy.') }}</p>
             @else
                 <table class="w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -30,13 +34,13 @@
                                 <td class="py-1.5 pe-3"><span class="font-medium">{{ $p['name'] ?? $p['file'] }}</span>
                                     @isset($p['name'])<br><span class="font-mono text-xs text-gray-500">{{ $p['file'] }}</span>@endisset</td>
                                 <td class="py-1.5 pe-3 text-xs">
-                                    @isset($p['version']){{ $p['version'] }} · {{ $p['source'] === 'hangar' ? 'Hangar' : 'Modrinth' }}@else<span class="text-gray-500">{{ __('nahráno ručně') }}</span>@endisset
+                                    @if ($factorio){{ $p['version'] }}@elseif (isset($p['version'])){{ $p['version'] }} · {{ $p['source'] === 'hangar' ? 'Hangar' : 'Modrinth' }}@else<span class="text-gray-500">{{ __('nahráno ručně') }}</span>@endif
                                     @isset($p['update'])<br><x-wire::badge color="info">{{ __('nová verze :v', ['v' => $p['update']]) }}</x-wire::badge>@endisset
                                 </td>
                                 <td class="py-1.5 pe-3 text-xs text-gray-500">{{ isset($p['size']) ? $size($p['size']) : '' }}</td>
                                 <td class="whitespace-nowrap py-1.5 text-right">
                                     @isset($p['update'])
-                                        <x-wire::button size="xs" wire:click="install(@js($p['source']), @js($p['project']))">{{ __('Aktualizovat') }}</x-wire::button>
+                                        <x-wire::button size="xs" wire:click="install(@js($factorio ? 'factorio' : $p['source']), @js($factorio ? $p['name'] : $p['project']))" :disabled="$factorio && ! $account">{{ __('Aktualizovat') }}</x-wire::button>
                                     @endisset
                                     <x-wire::button size="xs" color="danger" outlined wire:click="remove(@js($p['file']))" wire:confirm="{{ __('Odebrat :file?', ['file' => $p['file']]) }}">{{ __('Odebrat') }}</x-wire::button>
                                 </td>
@@ -47,13 +51,17 @@
             @endif
         </x-wire::section>
 
-        <x-wire::section :heading="__('Přidat plugin')" :description="__('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version])">
+        <x-wire::section :heading="$factorio ? __('Přidat mód') : __('Přidat plugin')" :description="$factorio
+            ? __('Z mod portálu Factoria, jen verze pro Factorio :v. Soubor se ověří otiskem (SHA-1) z portálu; povinné závislosti se nainstalují s ním.', ['v' => implode('.', array_slice(explode('.', $server->version), 0, 2))])
+            : __('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version])">
             <form wire:submit="findPlugins" class="flex flex-wrap items-center gap-2">
-                <select wire:model="source" class="rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
-                    <option value="modrinth">Modrinth</option>
-                    <option value="hangar">Hangar (PaperMC)</option>
-                </select>
-                <input type="search" wire:model="query" maxlength="100" placeholder="{{ __('Hledat plugin (prázdné = nejoblíbenější)') }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+                @unless ($factorio)
+                    <select wire:model="source" class="rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+                        <option value="modrinth">Modrinth</option>
+                        <option value="hangar">Hangar (PaperMC)</option>
+                    </select>
+                @endunless
+                <input type="search" wire:model="query" maxlength="100" placeholder="{{ $factorio ? __('Hledat mód (prázdné = nejstahovanější)') : __('Hledat plugin (prázdné = nejoblíbenější)') }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
                 <x-wire::button type="submit" size="sm" icon="outline:magnifying-glass">{{ __('Hledat') }}</x-wire::button>
                 <span wire:loading wire:target="findPlugins,install" class="text-sm text-gray-500">{{ __('Probíhá…') }}</span>
             </form>
@@ -61,7 +69,7 @@
                 @if ($results === [])
                     <p class="mt-3 text-sm text-gray-500">{{ __('Nic pro tuto verzi nenalezeno.') }}</p>
                 @else
-                    @php($have = collect($installed)->pluck('project')->filter()->all())
+                    @php($have = collect($installed)->pluck($factorio ? 'name' : 'project')->filter()->all())
                     <ul class="mt-3 divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($results as $r)
                             <li wire:key="res-{{ $r['source'] }}-{{ $r['project'] }}" class="flex items-start gap-3 py-2">
@@ -74,7 +82,7 @@
                                 @if (in_array($r['project'], $have, true))
                                     <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                                 @else
-                                    <x-wire::button size="xs" wire:click="install(@js($r['source']), @js($r['project']))">{{ __('Nainstalovat') }}</x-wire::button>
+                                    <x-wire::button size="xs" wire:click="install(@js($r['source']), @js($r['project']))" :disabled="$factorio && ! $account">{{ __('Nainstalovat') }}</x-wire::button>
                                 @endif
                             </li>
                         @endforeach
@@ -82,7 +90,7 @@
                 @endif
             @endif
         </x-wire::section>
-    @endunless
+    @endif
 
     @include('wire-panels::pages.partials.action-modals')
 </div>
