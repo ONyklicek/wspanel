@@ -299,7 +299,16 @@ SRC
   apt_update
 fi
 systemctl mask frankenphp.service >/dev/null 2>&1 || true
-apt-get install -y -q --no-install-recommends frankenphp "${FRANKENPHP_EXTENSIONS[@]/#/php-zts-}"
+# FrankenPHP's repository sits behind a CDN that answers 5xx (522) for one
+# file or another for minutes at a time: apt's own retries are too quick for
+# that, so the whole install is tried again after a pause.
+for attempt in 1 2 3 4; do
+  apt-get install -y -q --no-install-recommends frankenphp "${FRANKENPHP_EXTENSIONS[@]/#/php-zts-}" && break
+  ((attempt < 4)) || die "FrankenPHP's packages could not be downloaded (pkg.henderkes.com); try the installation again later"
+  log "FrankenPHP's repository did not serve every package; trying again in a minute ($attempt/3)"
+  sleep 60
+  apt_update || true
+done
 systemctl mask frankenphp.service >/dev/null 2>&1 || true
 # Where WSPanel's units and timers (also those written before) run it from.
 ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
