@@ -1,18 +1,18 @@
 Package: wspanel-agent
 Architecture: amd64
-Version: 1.2.0~rc15
+Version: 1.2.0~rc16
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 17172
+Installed-Size: 17248
 Depends: init-system-helpers (>= 1.54~)
 Recommends: wspanel-archive-keyring
-Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc15_amd64.deb
-Size: 4973164
-MD5sum: 2f5dad07b15c526250287bfa428b1d20
-SHA1: a8a91f161fe6f08a8ec775570a83021c670c61c2
-SHA256: 7be042743c07b825a6f8979a00afb4a90a7fcae7acaacea5da5d187115a06a51
-SHA512: 2f7e08b12309c1b4352915f9dd68973cef80b398de49c44e9ee36d60ff3294c63e814d93eb29de2ae077fa87d82f898f8a791e6c264401764f7752439958f386
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.2.0~rc16_amd64.deb
+Size: 4995884
+MD5sum: ceb83fc34e80de7a4126be0b113b87e4
+SHA1: 9638c2325462c234e96b51288664c5ecf62dd9a5
+SHA256: 1361de0d925180c4047c5e8a4a27f6dff56670d6cfc3569cad8cfeb2ab55ad57
+SHA512: c9d5e3bd378d25c1f1ed7554856a25bf75b3636be238c1a08d28c872023e4f02bbb02e602735ccb5893ae96bc9505426bf06ef1023fa8663d38e27e9cf1b9351
 Homepage: https://github.com/ONyklicek/wspanel
 Description: privileged agent and command line tool of the WSPanel hosting panel
  The agent (panel-agent) is the only part of the WSPanel hosting panel that
@@ -25,17 +25,17 @@ Description: privileged agent and command line tool of the WSPanel hosting panel
 
 Package: wspanel-archive-keyring
 Architecture: all
-Version: 1.2.0~rc15
+Version: 1.2.0~rc16
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
 Installed-Size: 52
-Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc15_all.deb
-Size: 3680
-MD5sum: 0f70a09f2714f28c2f49a30c57e6bf65
-SHA1: 1cc9413b2894db290a7f8e845c4c6eec94f29966
-SHA256: 75f3ddeacd160b824cad62332e4e74e3b702bad43ba3a268246a5d3c5c646d78
-SHA512: 2bc18b5e9bcd52567a9101a5dbd690a3bb2f1c202ffc64c8aa59d2279265f9761248bcaa4efd79adf6115dd18a99abbf8245b813800265343bc7ea21f791e8af
+Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.2.0~rc16_all.deb
+Size: 3440
+MD5sum: 4979a8ae4c560170d268feba1e822d57
+SHA1: b663db1c10024e1e0d44fc487c426657c62639e0
+SHA256: 0ecc8c55b7ec6f8ea49509a0665ae54f2795fb3fa0eb2b4c97e60a7a74d092f8
+SHA512: 4c1f3842095d388ae713d66a0c099924f5cb4bb1baa3b6ef5490431bb5ac904761e5eb652e50bfdfb242d17e1a49c7ea5869ee80fb7d03799bba82e037326f0e
 Homepage: https://github.com/ONyklicek/wspanel
 Description: apt repository of the WSPanel hosting panel and its key
  Sets apt up for the WSPanel repository: the key its indexes are signed
@@ -48,18 +48,18 @@ Description: apt repository of the WSPanel hosting panel and its key
 
 Package: wspanel
 Architecture: all
-Version: 1.2.0~rc15
+Version: 1.2.0~rc16
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 7964
-Depends: wspanel-agent (= 1.2.0~rc15), wspanel-archive-keyring, ca-certificates, curl
-Filename: pool/main/w/wspanel/wspanel_1.2.0~rc15_all.deb
-Size: 1183880
-MD5sum: 066d6dbc8277fa5ca7617d526e8b9cd4
-SHA1: d276fb5d89b8f04bba53c1874fedbf7751ae92db
-SHA256: 6d2bb1cfb0a194c74244cb42ea3d8874bd9aa80d84e7e19e8c31894812eeed7d
-SHA512: b61c5fda5ded9067a44259af374b2851192c08a093b87c3dc7f67ca277512d5d0b0c3ed0ee0c3be8a0f92adacc3ca89a2c91f735d94b4b0dc0666b2b42d2c765
+Installed-Size: 8004
+Depends: wspanel-agent (= 1.2.0~rc16), wspanel-archive-keyring, ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.2.0~rc16_all.deb
+Size: 1187736
+MD5sum: 94099b814d194fb766a26ee5413373cc
+SHA1: edb5eaa21d3862b3540c13815068c0b266d1113f
+SHA256: 105e19695d1f5e9bd073b191254cb7e3340ec6e9b73e215ab1b2bb0dcb70484a
+SHA512: d589dc77afca3ca0b1ed819d222fceb768ee7b2b40a3ab39e76dca06872ce4ec13b192691f1b8bd3d318d9573f92fbad2935875e7cb92dbb3b49c02f2555a767
 Homepage: https://github.com/ONyklicek/wspanel
 Description: hosting panel for one Debian server (installer and panel)
  WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
