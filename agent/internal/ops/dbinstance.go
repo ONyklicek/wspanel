@@ -233,7 +233,10 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 			rollback.run()
 		}
 	}()
-	rollback.add(func() { teardownDBInstance(context.WithoutCancel(ctx), env, inst, false) })
+	// Once the site's user was given the group, a process of the site may
+	// carry its GID: the account (and so the GID) is then kept, locked.
+	granted := false
+	rollback.add(func() { teardownDBInstance(context.WithoutCancel(ctx), env, inst, granted) })
 	if _, err = env.Exec.Run(ctx, "useradd", "--system", "--user-group", "--no-create-home", "--home-dir", inst.home(env),
 		"--shell", "/usr/sbin/nologin", "--comment", "WSPanel database server of "+p.Domain, inst.user()); err != nil {
 		return nil, err
@@ -260,6 +263,7 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 	if _, err = env.Exec.Run(ctx, "systemd-tmpfiles", "--create", inst.tmpfiles(env)); err != nil {
 		return nil, err
 	}
+	granted = true // also when usermod fails halfway
 	if _, err = env.Exec.Run(ctx, "usermod", "--append", "--groups", inst.user(), l.User); err != nil {
 		return nil, err
 	}

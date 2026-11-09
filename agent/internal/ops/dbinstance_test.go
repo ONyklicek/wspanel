@@ -237,3 +237,26 @@ func TestInstanceConnections(t *testing.T) {
 		t.Fatalf("shared: %+v", c)
 	}
 }
+
+func TestFailedInstanceKeepsAGrantedGroup(t *testing.T) {
+	env, dr, _ := instanceSite(t)
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.Name == "mariadb-install-db" {
+			return executor.Result{ExitCode: 1}, os.ErrPermission
+		}
+		return frankenVersion(c)
+	}
+	mark := len(dr.Calls())
+	if _, err := call(t, env, dbInstanceCreate, map[string]any{"domain": "shop.example.com", "engine": "mariadb", "memory_mb": 512}); err == nil {
+		t.Fatal("expected the install to fail")
+	}
+	if u := callsOf(dr, "userdel", mark); len(u) != 0 {
+		t.Fatalf("account deleted after its group was granted: %v", u)
+	}
+	if u := callsOf(dr, "usermod", mark); len(u) != 2 || u[1] != "--lock --expiredate 1 wsd_1" {
+		t.Fatalf("usermod: %v", u)
+	}
+	if _, err := os.Stat(dbInstancePath(env, 1)); err == nil {
+		t.Fatal("state left behind")
+	}
+}
