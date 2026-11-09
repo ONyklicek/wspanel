@@ -115,15 +115,29 @@ CI je v `.github/workflows/`:
   balíčky, `SHA256SUMS`, záznam o původu buildu (build provenance) a seznam
   změn od předchozího tagu.
 
-  Po vydání job **Apt repository** přidá balíček agenta `wspanel-agent`
-  (`provision/build-deb.sh`) do apt repozitáře na GitHub Pages (větev
+  Před vydáním projdou všechny tři balíčky kontrolou `lintian`
+  (`--fail-on error`): `wspanel-agent` (`provision/build-deb.sh`, agent,
+  CLI, služba v `/usr/lib/systemd/system`), `wspanel`
+  (`provision/build-installer-deb.sh`) a `wspanel-archive-keyring`
+  (`provision/build-keyring-deb.sh`, klíč, zdroj apt, automatické
+  aktualizace). Společné věci (copyright DEP-5 s MIT, changelog z commitů od
+  předchozího tagu, manuálové stránky z `provision/files/man/`, md5sums,
+  výjimky lintianu) jsou v `provision/deb-common.sh`.
+
+  Po vydání job **Apt repository** přidá balíčky
+  do apt repozitáře na GitHub Pages (větev
   `gh-pages`, složka `apt/`, `provision/apt-repo.sh`): kanál pro každou
   řadu verzí, nejnovějších 5 verzí v kanálu, indexy podepsané klíčem
   z tajné proměnné `APT_SIGNING_KEY`. Servery mu věří podle veřejného klíče
   `provision/files/wspanel-archive-keyring.asc` (otisk
   `51525652EBC466696C479E9DEECED19A06101F1F`); výměna klíče = nový pár,
-  nový veřejný klíč v repozitáři i tajná proměnná, servery ho dostanou
-  s instalátorem další verze.
+  nový veřejný klíč v repozitáři i tajná proměnná. Bez výpadku: nejdřív
+  vydat verzi, kde `wspanel-archive-keyring.asc` obsahuje **oba** klíče
+  (starý první, jím se dál podepisuje), servery ho dostanou přes apt
+  (`wspanel-archive-keyring`); v další verzi nový klíč první a jako
+  `APT_SIGNING_KEY`, starý pryč. Nejnovější `wspanel-archive-keyring.deb`
+  je i na pevné adrese `…/apt/wspanel-archive-keyring.deb` (první krok
+  instalace přes apt).
 
   Ručním spuštěním (Actions → Release → Run workflow, s číslem verze) se
   balíčky sestaví a otestují bez vydání.

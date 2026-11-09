@@ -1,0 +1,32 @@
+.TH WSPANEL-UPDATE 8 "" "WSPanel" "System Administration"
+.SH NAME
+wspanel-update \- upgrade WSPanel to the newest release through apt
+.SH SYNOPSIS
+.B wspanel-update
+.RB [ \-\-pre | \-\-stable ]
+.RB [ \-\-yes ]
+.SH DESCRIPTION
+apt follows the channel of the installed line (for example \fB1.2\fR), so
+.B apt upgrade
+brings fixes of that line only.
+.B wspanel-update
+points apt at the newest release (channel \fBstable\fR, or \fBpre\fR for
+release candidates), installs the packages and runs
+.BR wspanel-install (8),
+which keeps the settings and sets the channel of the new line.
+.SH OPTIONS
+.TP
+.B \-\-pre
+The newest release candidate.
+.TP
+.B \-\-stable
+The newest release (the default, unless a release candidate is installed).
+.TP
+.B \-\-yes
+No questions (the installer keeps the saved settings).
+.SH FILES
+.TP
+.I /etc/apt/sources.list.d/wspanel.sources
+The WSPanel apt repository and its channel.
+.SH SEE ALSO
+.BR wspanel-install (8)

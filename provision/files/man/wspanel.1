@@ -1,0 +1,27 @@
+.TH WSPANEL 1 "" "WSPanel" "User Commands"
+.SH NAME
+wspanel \- command line client of the WSPanel REST API
+.SH SYNOPSIS
+.B wspanel
+.I command
+.RI [ arguments ]
+.SH DESCRIPTION
+.B wspanel
+talks to a WSPanel panel over its REST API with an API token (created in the
+panel under API tokeny): lists sites, starts deploys, reads their state.
+.B wspanel login
+.I url token
+keeps the address and the token in \fI~/.config/wspanel\fR; run
+.B wspanel help
+for the commands.
+.SH ENVIRONMENT
+Instead of
+.BR "wspanel login" :
+.TP
+.B WSPANEL_URL
+The panel's address.
+.TP
+.B WSPANEL_TOKEN
+The API token.
+.SH SEE ALSO
+.BR panel-agent (8)

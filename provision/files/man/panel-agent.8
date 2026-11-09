@@ -1,0 +1,35 @@
+.TH PANEL-AGENT 8 "" "WSPanel" "System Administration"
+.SH NAME
+panel-agent \- privileged agent of the WSPanel hosting panel
+.SH SYNOPSIS
+.B panel-agent
+.RB [ \-config
+.IR file ]
+.RB [ \-version ]
+.SH DESCRIPTION
+.B panel-agent
+is the only part of WSPanel that runs as root. It listens on a Unix socket
+(\fI/run/panel-agent.sock\fR) and performs a fixed list of operations the
+panel asks for (sites, databases, mail, DNS, firewall, backups), each logged
+to an audit log. It is started by
+.BR panel-agent.service (8)
+and configured by the WSPanel installer.
+.SH OPTIONS
+.TP
+.BI \-config " file"
+The configuration (default \fI/etc/panel-agent/agent.json\fR).
+.TP
+.B \-version
+Print the version and exit.
+.PP
+Other options are internal (used by the agent's own systemd units).
+.SH FILES
+.TP
+.I /etc/panel-agent/agent.json
+Configuration, written by the installer.
+.TP
+.I /var/log/panel-agent/audit.log
+Every operation the agent performed.
+.SH SEE ALSO
+.BR wspanel-install (8),
+.BR wspanel (1)

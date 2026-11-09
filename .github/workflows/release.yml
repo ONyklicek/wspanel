@@ -38,6 +38,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the packages' changelog: commits since the previous tag
       - id: version
         name: Version
         env:
@@ -63,6 +65,15 @@ jobs:
       - name: The wspanel package
         if: matrix.arch == 'amd64'
         run: provision/build-installer-deb.sh dist/wspanel-*-linux-amd64.tar.gz dist/deb
+      # Debian's own checks of all three packages: errors stop the release.
+      - name: Lintian
+        run: |
+          sudo apt-get install -y -q --no-install-recommends lintian >/dev/null
+          mkdir -p dist/lint
+          tar -xzf dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz -C dist/lint --strip-components=2 --wildcards 'wspanel/bin/*.deb'
+          debs=(dist/lint/*.deb)
+          [[ "${{ matrix.arch }}" == amd64 ]] && debs+=(dist/deb/*.deb)
+          lintian --fail-on error --tag-display-limit 0 "${debs[@]}"
       - uses: actions/upload-artifact@v4
         if: matrix.arch == 'amd64'
         with:
@@ -135,17 +146,18 @@ jobs:
           path: dist
       - name: One-command installer
         run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
-      - name: Agent packages (.deb) from the bundles
+      - name: Agent and keyring packages (.deb) from the bundles
         run: for b in dist/wspanel-*.tar.gz; do tar -xzf "$b" -C dist --strip-components=2 --wildcards 'wspanel/bin/*.deb'; done; ls dist/*.deb
       - name: Checksums
         working-directory: dist
-        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb get.sh | tee SHA256SUMS
+        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
             dist/wspanel-agent_*.deb
             dist/wspanel_*_all.deb
+            dist/wspanel-archive-keyring_*.deb
             dist/get.sh
       - name: Release notes
         run: |
@@ -173,11 +185,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/get.sh dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
 
   apt:
-    # The agent's packages into the apt repository (apt.yml).
+    # The packages into the apt repository (apt.yml).
     if: github.ref_type == 'tag'
     needs: publish
     permissions:

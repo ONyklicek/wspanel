@@ -11,6 +11,8 @@
 #   provision/build-installer-deb.sh <release bundle .tar.gz> <out dir>
 set -euo pipefail
 BUNDLE=${1:?release bundle} OUT=${2:?out dir}
+DEB_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DEB_COMMON_DIR/deb-common.sh"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -18,12 +20,16 @@ tar -xzf "$BUNDLE" -C "$WORK"
 B="$WORK/wspanel"
 VERSION="$(cat "$B/VERSION")"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "the bundle has no release version" >&2; exit 1; }
-DEBVER="${VERSION/-/\~}"
+DEBVER="$(deb_version "$VERSION")"
 
 ROOT="$WORK/root"
-install -d -m 0755 "$ROOT" "$ROOT/usr/share" "$ROOT/usr/sbin" "$ROOT/DEBIAN" "$ROOT/usr/share/doc/wspanel"
-# The bundle without its binaries (the agent comes with wspanel-agent).
-rm -rf "$B/bin"
+install -d -m 0755 "$ROOT" "$ROOT/usr/share" "$ROOT/usr/sbin" "$ROOT/DEBIAN"
+# The bundle without its binaries (the agent comes with wspanel-agent) and
+# without what only a git checkout needs.
+rm -rf "${B:?}/bin"
+find "$B" \( -name .gitignore -o -name .gitattributes -o -name .gitkeep \) -delete
+chmod 0755 "$B/provision/get.sh"
+rm -f "$B/LICENSE" # in /usr/share/doc/wspanel/copyright
 mv "$B" "$ROOT/usr/share/wspanel"
 install -m 0755 "$ROOT/usr/share/wspanel/provision/files/wspanel-update" "$ROOT/usr/sbin/wspanel-update"
 cat > "$ROOT/usr/sbin/wspanel-install" <<'SH'
@@ -33,26 +39,34 @@ cat > "$ROOT/usr/sbin/wspanel-install" <<'SH'
 exec env WSPANEL_AGENT_BIN=/usr/sbin/panel-agent WSPANEL_VIA_APT=1 /usr/share/wspanel/install "$@"
 SH
 chmod 0755 "$ROOT/usr/sbin/wspanel-install"
-cat > "$ROOT/usr/share/doc/wspanel/copyright" <<'TXT'
-WSPanel: the installer, provisioning and the panel's source of a release.
-Bundled third-party files keep their own licences (the panel's font:
-SIL Open Font License 1.1, panel/resources/fonts/instrument-sans/OFL.txt).
-TXT
+MAN="$ROOT/usr/share/wspanel/provision/files/man"
+deb_man "$ROOT" 8 "$MAN/wspanel-install.8" "$MAN/wspanel-update.8"
+deb_doc wspanel "$ROOT" "$ROOT/usr/share/wspanel/CHANGES" "$DEBVER" "Files: usr/share/wspanel/panel/resources/fonts/instrument-sans/*
+Copyright: 2022 The Instrument Sans Project Authors
+License: OFL-1.1
+ The full text is in usr/share/wspanel/panel/resources/fonts/instrument-sans/OFL.txt."
+deb_overrides wspanel "$ROOT" \
+  "# PHP comes with the installer (wspanel-install), from its own repository." \
+  "wspanel: php-script-but-no-php-cli-dep php * [usr/share/wspanel/panel/artisan]"
 
 cat > "$ROOT/DEBIAN/control" <<CONTROL
 Package: wspanel
 Version: $DEBVER
 Architecture: all
-Maintainer: WSPanel <noreply@github.com>
-Depends: wspanel-agent (= $DEBVER), ca-certificates, curl
+Maintainer: $DEB_MAINTAINER
+Depends: wspanel-agent (= $DEBVER), wspanel-archive-keyring, ca-certificates, curl
 Section: admin
 Priority: optional
+Homepage: https://github.com/ONyklicek/wspanel
 Installed-Size: $(du -sk "$ROOT/usr" | cut -f1)
-Description: WSPanel hosting panel (installer)
- Hosting panel for one Debian 13 server: sites (PHP, Laravel, Symfony,
- Node), databases, mail, DNS, backups. This package brings the installer
- and the panel; run "wspanel-install" to set the server up (or upgrade
- it), and "wspanel-update" later for a newer version.
+Description: hosting panel for one Debian server (installer and panel)
+ WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
+ TLS certificates and backups of one Debian 13 server, with clients and
+ their packages.
+ .
+ This package brings the installer and the panel; run "wspanel-install" to
+ set the server up (or to apply an upgrade), and "wspanel-update" for a
+ newer release.
 CONTROL
 
 # Nothing is set up by the package itself: the installer asks first.
@@ -70,5 +84,6 @@ SH
 chmod 0755 "$ROOT/DEBIAN/postinst"
 
 mkdir -p "$OUT"
+deb_md5sums "$ROOT"
 dpkg-deb --root-owner-group --build -Zxz "$ROOT" "$OUT/wspanel_${DEBVER}_all.deb" >/dev/null
 echo "$OUT/wspanel_${DEBVER}_all.deb"

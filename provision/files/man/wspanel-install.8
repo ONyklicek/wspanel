@@ -1,0 +1,36 @@
+.TH WSPANEL-INSTALL 8 "" "WSPanel" "System Administration"
+.SH NAME
+wspanel-install \- set up or upgrade WSPanel on this server
+.SH SYNOPSIS
+.B wspanel-install
+.RB [ \-\-yes ]
+.RI [ installer-options ]
+.SH DESCRIPTION
+Sets the server up from the installed
+.B wspanel
+package: PHP, databases, the web server and TLS proxy, mail, DNS, the panel
+and its first administrator. Without options it asks (a guide in the
+terminal); on a server that has WSPanel already it offers to upgrade with
+the current settings, kept in \fI/etc/wspanel/install.flags\fR.
+.SH OPTIONS
+.TP
+.B \-\-yes
+No questions: the options given, or the saved ones on an installed server.
+.TP
+.BI \-\-panel\-domain= domain
+The panel's address (or \fB\-\-panel\-port=\fIport\fR for an IP address).
+.TP
+.BI \-\-admin\-email= email
+The first administrator (the password is generated and printed).
+.PP
+All installer options are listed in the WSPanel documentation
+(docs/instalace.md).
+.SH EXAMPLES
+.nf
+sudo wspanel-install
+sudo wspanel-install \-\-yes \-\-panel\-domain=panel.example.com \e
+  \-\-acme\-email=admin@example.com \-\-db=mariadb \-\-admin\-email=admin@example.com
+.fi
+.SH SEE ALSO
+.BR wspanel-update (8),
+.BR panel-agent (8)

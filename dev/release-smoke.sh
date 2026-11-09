@@ -8,7 +8,8 @@
 #
 # --apt installs the way the README's "Instalace přes apt" does: from an apt
 # repository built in the container out of those packages (signed with a
-# throwaway key), then upgrades with wspanel-update.
+# throwaway key, so with a wspanel-archive-keyring package of that key),
+# then upgrades with wspanel-update.
 #
 # Needs Docker with privileged containers (systemd as PID 1, cgroup v2).
 set -euo pipefail
@@ -39,23 +40,27 @@ if [[ $MODE == bundle ]]; then
   on "cd /root/wspanel && ./install $FLAGS > /root/install.log 2>&1" || fail "install failed"
 else
   log "An apt repository of these packages (throwaway key) on 127.0.0.1:8099"
-  docker exec "$NAME" mkdir -p /root/debs /root/tools
+  docker exec "$NAME" mkdir -p /root/debs /root/tools/provision
   docker cp "$BUNDLE/." "$NAME:/root/debs/"
-  docker cp "$HERE/../provision/apt-repo.sh" "$NAME:/root/tools/apt-repo.sh"
+  for f in apt-repo.sh build-keyring-deb.sh deb-common.sh; do docker cp "$HERE/../provision/$f" "$NAME:/root/tools/provision/$f"; done
+  docker cp "$HERE/../LICENSE" "$NAME:/root/tools/LICENSE"
   on 'apt-get update -q >/dev/null && apt-get install -y -q --no-install-recommends gnupg apt-utils dpkg-dev python3 >/dev/null' || fail "tools"
+  # The release's keyring package carries the real key: this one the test key.
   on 'export GNUPGHOME=/root/gnupg; mkdir -m 700 -p $GNUPGHOME
       gpg --batch --quiet --passphrase "" --quick-generate-key "smoke <smoke@test>" ed25519 sign never
       gpg --armor --export > /root/test-key.asc
-      /root/tools/apt-repo.sh /srv/apt-test/apt /root/test-key.asc /root/debs/*.deb >/dev/null' || fail "building the repository"
+      rm -f /root/debs/wspanel-archive-keyring_*.deb
+      v=$(dpkg-deb -f /root/debs/wspanel_*_all.deb Version)
+      /root/tools/provision/build-keyring-deb.sh "${v/\~/-}" ONyklicek/wspanel /root/test-key.asc /root/debs >/dev/null
+      /root/tools/provision/apt-repo.sh /srv/apt-test/apt /root/test-key.asc /root/debs/*.deb >/dev/null' || fail "building the repository"
   on 'cd /srv/apt-test && setsid nohup python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 < /dev/null &'
   sleep 1
   channel=$(ls "$BUNDLE"/wspanel_*.deb | head -1 | grep -q "~" && echo pre || echo stable)
   log "Install through apt (channel $channel), unattended"
   # Word for word the README, but this repository's address.
-  on "install -d -m 0755 /etc/apt/keyrings
-      curl -fsSL http://127.0.0.1:8099/apt/wspanel-archive-keyring.asc -o /etc/apt/keyrings/wspanel.asc
-      printf 'Types: deb\nURIs: http://127.0.0.1:8099/apt\nSuites: $channel\nComponents: main\nSigned-By: /etc/apt/keyrings/wspanel.asc\n' > /etc/apt/sources.list.d/wspanel.sources
-      apt-get update -q > /root/apt.log 2>&1 && apt-get install -y -q wspanel >> /root/apt.log 2>&1" || fail "apt install wspanel (see /root/apt.log)"
+  on "cd /root && curl -fsSLO http://127.0.0.1:8099/apt/wspanel-archive-keyring.deb
+      WSPANEL_APT_URI=http://127.0.0.1:8099/apt WSPANEL_CHANNEL=$channel apt-get install -y -q ./wspanel-archive-keyring.deb > /root/apt.log 2>&1
+      apt-get update -q >> /root/apt.log 2>&1 && apt-get install -y -q wspanel >> /root/apt.log 2>&1" || fail "apt install wspanel (see /root/apt.log)"
   on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-install $FLAGS > /root/install.log 2>&1" || fail "wspanel-install failed"
   log "The server follows its line's channel"
   line=$(on "dpkg-query -W -f='\${Version}' wspanel" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
@@ -75,7 +80,10 @@ if [[ $MODE == apt ]] || tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.de
   log "The agent as a package, apt set up"
   on 'dpkg-query -W -f="\${Status}" wspanel-agent | grep -q "install ok installed"' || fail "wspanel-agent is not installed as a package"
   [[ "$(on 'readlink /usr/local/sbin/panel-agent')" == /usr/sbin/panel-agent ]] || fail "the old agent path does not lead to the package's"
-  on 'test -s /etc/apt/sources.list.d/wspanel.sources -a -s /etc/apt/keyrings/wspanel.asc' || fail "no WSPanel apt source"
+  on 'dpkg-query -W -f="\${Status}" wspanel-archive-keyring | grep -q "install ok installed"' || fail "wspanel-archive-keyring is not installed"
+  on 'grep -qx "Signed-By: /usr/share/keyrings/wspanel-archive-keyring.asc" /etc/apt/sources.list.d/wspanel.sources' || fail "no WSPanel apt source with the packaged key"
+  on 'test -s /etc/apt/apt.conf.d/52wspanel-unattended' || fail "no unattended upgrades of WSPanel"
+  on 'test -f /usr/lib/systemd/system/panel-agent.service -a ! -e /etc/systemd/system/panel-agent.service' || fail "the agent unit is not the package's"
 fi
 
 log "Panel"

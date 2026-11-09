@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The WSPanel apt repository (served by GitHub Pages from the gh-pages branch,
-# under apt/): adds packages (wspanel, wspanel-agent), keeps the newest few,
+# under apt/): adds packages (wspanel, wspanel-agent, wspanel-archive-keyring),
+# keeps the newest few,
 # rebuilds the indexes and signs them. Run by the release workflow.
 #
 #   provision/apt-repo.sh <repository dir> <public key .asc> <package.deb>...
@@ -20,7 +21,7 @@ REPO=${1:?repository dir} PUBKEY=${2:?public key}
 shift 2
 PUBKEY="$(cd "$(dirname "$PUBKEY")" && pwd)/$(basename "$PUBKEY")" # used after cd "$REPO"
 KEEP=${APT_KEEP:-5}
-PACKAGES=(wspanel wspanel-agent)
+PACKAGES=(wspanel wspanel-agent wspanel-archive-keyring)
 
 for deb in "$@"; do
   pkg="$(dpkg-deb -f "$deb" Package)"
@@ -90,10 +91,15 @@ for list in "$tmp"/suite-*; do
 done
 
 cp "$PUBKEY" wspanel-archive-keyring.asc
+# The newest keyring package at a fixed address: what sets apt up on a server
+# (curl -fLO …/wspanel-archive-keyring.deb && apt install ./wspanel-archive-keyring.deb).
+newest="$(awk '$1 == "wspanel-archive-keyring" { print $6; exit }' "$tmp/manifest")"
+if [[ -n "$newest" ]]; then cp "$newest" wspanel-archive-keyring.deb; fi
 cat > index.html <<HTML
 <!doctype html><meta charset="utf-8"><title>WSPanel apt</title>
-<p>Apt repository of WSPanel (packages wspanel, wspanel-agent); how to use it:
-<a href="https://github.com/ONyklicek/wspanel#instalace-přes-apt">README</a>.
-Channels: ${suites[*]}. Key: <a href="wspanel-archive-keyring.asc">wspanel-archive-keyring.asc</a>.
+<p>Apt repository of WSPanel (packages wspanel, wspanel-agent, wspanel-archive-keyring);
+how to use it: <a href="https://github.com/ONyklicek/wspanel#instalace-přes-apt">README</a>.
+Channels: ${suites[*]}. Setup: <a href="wspanel-archive-keyring.deb">wspanel-archive-keyring.deb</a>;
+key: <a href="wspanel-archive-keyring.asc">wspanel-archive-keyring.asc</a>.
 HTML
 echo "channels: ${suites[*]}"

@@ -1,5 +1,5 @@
 # The apt repository of the agent (GitHub Pages, branch gh-pages, apt/): the
-# wspanel-agent packages of a published release added to their channel.
+# packages of a published release added to their channel.
 # Called by the release workflow; run by hand to (re)publish a release's
 # packages (Actions → Apt repository → Run workflow, with its tag).
 name: Apt repository
@@ -39,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a release tag: $TAG"; exit 1; }
-          gh release download "$TAG" --pattern 'wspanel-agent_*.deb' --pattern 'wspanel_*_all.deb' --dir dist
+          gh release download "$TAG" --pattern 'wspanel-agent_*.deb' --pattern 'wspanel_*_all.deb' --pattern 'wspanel-archive-keyring_*.deb' --dir dist
           ls -l dist
       - name: Signing key
         env:

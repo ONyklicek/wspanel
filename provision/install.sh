@@ -463,29 +463,22 @@ ln -sfn /usr/sbin/panel-agent /usr/local/sbin/panel-agent
 # repository): one channel per minor version (1.2, or 1.2-pre for release
 # candidates), so apt brings fixes of this line only; the next line comes
 # with the installer, together with its panel. Picked up by unattended
-# upgrades as well. WSPANEL_APT_URI: a mirror (or a test repository).
-APT_KEY="$HERE/files/wspanel-archive-keyring.asc"
-bundle_repo="$(cat "$HERE/../REPO" 2>/dev/null || true)"
+# upgrades as well. The wspanel-archive-keyring package sets apt up (key,
+# source, unattended upgrades) and brings a new key when there is one.
+# WSPANEL_APT_URI: a mirror (or a test repository).
+KEYRING_DEB="$(ls "$(dirname "$AGENT_BIN")"/wspanel-archive-keyring_*_all.deb 2>/dev/null | head -1 || true)"
+keyring_packaged() { dpkg-query -W -f='${Status}' wspanel-archive-keyring 2>/dev/null | grep -q 'ok installed'; }
 bundle_version="$(cat "$HERE/../VERSION" 2>/dev/null || true)"
-if agent_packaged && [[ -s "$APT_KEY" && "$bundle_repo" =~ ^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ \
-      && "$bundle_version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-.+)?$ ]]; then
-  owner="${bundle_repo%%/*}"; name="${bundle_repo#*/}"
+if agent_packaged && [[ "$bundle_version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-.+)?$ ]]; then
   suite="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"; [[ -n "${BASH_REMATCH[3]}" ]] && suite+="-pre"
-  install -d -m 0755 /etc/apt/keyrings
-  install -m 0644 "$APT_KEY" /etc/apt/keyrings/wspanel.asc
-  cat > /etc/apt/sources.list.d/wspanel.sources <<SRC
-# Managed by the WSPanel installer: fixes of the agent (wspanel-agent).
-Types: deb
-URIs: ${WSPANEL_APT_URI:-https://${owner,,}.github.io/$name/apt}
-Suites: $suite
-Components: main
-Signed-By: /etc/apt/keyrings/wspanel.asc
-SRC
-  cat > /etc/apt/apt.conf.d/52wspanel-unattended <<'CONF'
-// Managed by the WSPanel installer: fixes of the agent come with the daily
-// unattended upgrades (when those are on, Zabezpečení → Aktualizace).
-Unattended-Upgrade::Origins-Pattern { "origin=WSPanel"; };
-CONF
+  if [[ -n "$KEYRING_DEB" ]]; then
+    WSPANEL_CHANNEL="$suite" dpkg -i "$KEYRING_DEB" >/dev/null
+  fi
+  SRC=/etc/apt/sources.list.d/wspanel.sources
+  if keyring_packaged && [[ -f $SRC ]]; then
+    sed -i -E "s/^Suites: .*/Suites: $suite/" "$SRC"
+    [[ -n "${WSPANEL_APT_URI:-}" ]] && sed -i -E "s|^URIs: .*|URIs: $WSPANEL_APT_URI|" "$SRC"
+  fi
 fi
 json_list() { local out="" x; for x in "$@"; do out+="${out:+,}\"$x\""; done; printf '[%s]' "$out"; }
 cat > /etc/panel-agent/agent.json <<JSON
@@ -517,7 +510,15 @@ mariadb_socket=/run/mysqld/mysqld.sock
 postgres_os_user=postgres
 CONF
 chmod 0600 /etc/panel-agent/db.conf
-install -m 0644 "$HERE/files/panel-agent.service" /etc/systemd/system/panel-agent.service
+# The unit: wspanel-agent's (/usr/lib/systemd/system; changes with
+# systemctl edit panel-agent), or for an agent from source one in /etc.
+if agent_packaged; then
+  if grep -qs '^Description=WSPanel privileged agent' /etc/systemd/system/panel-agent.service; then
+    rm -f /etc/systemd/system/panel-agent.service # an older installer's copy
+  fi
+else
+  install -m 0644 "$HERE/files/panel-agent.service" /etc/systemd/system/panel-agent.service
+fi
 
 # ---------------------------------------------------------------- proxy
 log "Reverse proxy"

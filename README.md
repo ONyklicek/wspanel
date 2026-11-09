@@ -103,40 +103,52 @@ sudo apt update
 sudo apt install -y curl gnupg ca-certificates
 ```
 
-**2. Klíč repozitáře** (stáhnout a ověřit otisk):
+**2. Repozitář** (balíček `wspanel-archive-keyring`: klíč, zdroj apt
+a automatické aktualizace v jednom):
 
 ```sh
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://onyklicek.github.io/wspanel/apt/wspanel-archive-keyring.asc \
-  | sudo tee /etc/apt/keyrings/wspanel.asc > /dev/null
-gpg --show-keys /etc/apt/keyrings/wspanel.asc
+cd "$(mktemp -d)"
+curl -fLO https://onyklicek.github.io/wspanel/apt/wspanel-archive-keyring.deb
+sudo env WSPANEL_CHANNEL=stable apt install ./wspanel-archive-keyring.deb   # pre = předběžné verze
+gpg --show-keys /usr/share/keyrings/wspanel-archive-keyring.asc
 ```
 
 Výpis musí obsahovat otisk `51525652EBC466696C479E9DEECED19A06101F1F`.
-Jiný otisk = klíč nepatří WSPanelu, dál nepokračujte.
+Jiný otisk = klíč nepatří WSPanelu: `sudo apt purge wspanel-archive-keyring`
+a dál nepokračujte.
 
-**3. Repozitář:**
+**3. Kontrola repozitáře:**
 
 ```sh
-CHANNEL=stable   # nejnovější ostrá verze; pre = nejnovější předběžná
-printf '%s\n' \
-  'Types: deb' \
-  'URIs: https://onyklicek.github.io/wspanel/apt' \
-  "Suites: $CHANNEL" \
-  'Components: main' \
-  'Signed-By: /etc/apt/keyrings/wspanel.asc' \
-  | sudo tee /etc/apt/sources.list.d/wspanel.sources > /dev/null
 sudo apt update
 apt policy wspanel             # "Candidate:" ukazuje verzi, která se nainstaluje
 ```
 
 > Dokud nevyjde první ostrá verze (1.2.0), je v repozitáři jen kanál `pre`:
-> použijte `CHANNEL=pre`.
+> v kroku 2 použijte `WSPANEL_CHANNEL=pre` (nebo později
+> `sudo sed -i 's/^Suites: .*/Suites: pre/' /etc/apt/sources.list.d/wspanel.sources`).
+
+<details>
+<summary>Ručně, bez balíčku (klíč a zdroj apt vlastními příkazy)</summary>
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://onyklicek.github.io/wspanel/apt/wspanel-archive-keyring.asc \
+  | sudo tee /etc/apt/keyrings/wspanel.asc > /dev/null
+gpg --show-keys /etc/apt/keyrings/wspanel.asc      # otisk viz výše
+printf '%s\n' 'Types: deb' 'URIs: https://onyklicek.github.io/wspanel/apt' \
+  'Suites: stable' 'Components: main' 'Signed-By: /etc/apt/keyrings/wspanel.asc' \
+  | sudo tee /etc/apt/sources.list.d/wspanel.sources > /dev/null
+```
+
+Balíček `wspanel-archive-keyring` se pak stejně nainstaluje (`wspanel` na něm
+závisí) a zdroj přepne na svůj klíč.
+</details>
 
 **4. Instalace:**
 
 ```sh
-sudo apt install wspanel      # balíčky wspanel a wspanel-agent
+sudo apt install wspanel      # balíčky wspanel, wspanel-agent (a wspanel-archive-keyring)
 sudo wspanel-install          # průvodce: adresa panelu, moduly, správce…
 ```
 
@@ -150,7 +162,7 @@ sudo wspanel-install --yes --panel-domain=panel.example.com --acme-email=admin@e
 **5. Kontrola:**
 
 ```sh
-dpkg-query -W wspanel wspanel-agent              # nainstalované verze
+dpkg-query -W 'wspanel*'                         # nainstalované verze
 grep '^Suites' /etc/apt/sources.list.d/wspanel.sources   # kanál řady, např. 1.2
 systemctl status panel-agent --no-pager | head -3
 ```
@@ -163,27 +175,29 @@ Pages nevidí). Soubory jsou u každého vydání na
 názvech nahrazuje `~` tečkou.
 
 ```sh
-V=1.2.0-rc3                      # verze z Releases (balíček wspanel je od 1.2.0-rc3)
+V=1.2.0-rc4                      # verze z Releases (wspanel-archive-keyring je od 1.2.0-rc4)
 ARCH=$(dpkg --print-architecture) # amd64 nebo arm64
 BASE=https://github.com/ONyklicek/wspanel/releases/download/v$V
 cd "$(mktemp -d)"
 curl -fLO "$BASE/wspanel_${V/-/.}_all.deb"
 curl -fLO "$BASE/wspanel-agent_${V/-/.}_$ARCH.deb"
+curl -fLO "$BASE/wspanel-archive-keyring_${V/-/.}_all.deb"
 curl -fLO "$BASE/SHA256SUMS"
-sha256sum -c SHA256SUMS --ignore-missing          # oba soubory: OK
-sudo apt install ./wspanel_${V/-/.}_all.deb ./wspanel-agent_${V/-/.}_$ARCH.deb
+sha256sum -c SHA256SUMS --ignore-missing          # všechny tři soubory: OK
+sudo apt install ./wspanel_${V/-/.}_all.deb ./wspanel-agent_${V/-/.}_$ARCH.deb \
+  ./wspanel-archive-keyring_${V/-/.}_all.deb
 sudo wspanel-install
 ```
 
-`apt install ./soubor.deb` doinstaluje i závislosti z Debianu. Instalátor pak
-apt repozitář WSPanelu přidá sám (kvůli opravám agenta); kdo ho nechce, viz
-[Repozitář nepoužívat](#repozitář-nepoužívat).
+`apt install ./soubor.deb` doinstaluje i závislosti z Debianu.
+`wspanel-archive-keyring` přitom přidá apt repozitář WSPanelu (kvůli opravám);
+kdo ho nechce, viz [Repozitář nepoužívat](#repozitář-nepoužívat).
 
 #### Jak to funguje
 
-- `apt install wspanel` nainstaluje dva balíčky: **`wspanel`** (instalátor
-  a panel, `/usr/share/wspanel`) a **`wspanel-agent`** (agent). Na systému zatím
-  nic nenastaví.
+- `apt install wspanel` nainstaluje balíčky **`wspanel`** (instalátor
+  a panel, `/usr/share/wspanel`) a **`wspanel-agent`** (agent); repozitář má na
+  starosti **`wspanel-archive-keyring`**. Na systému zatím nic nenastaví.
 - `wspanel-install` je tentýž průvodce jako u instalace jedním příkazem (na co
   se ptá, je popsané výše). Bez otázek: `wspanel-install --yes --panel-domain=…`
   se stejnými volbami jako [instalace bez otázek](#instalace-bez-otázek).
@@ -239,7 +253,7 @@ Kdo nechce spouštět skript přímo z internetu, stáhne vydání ze stránky
 instalátor sám:
 
 ```sh
-V=1.2.0-rc2 ARCH=$(dpkg --print-architecture)
+V=1.2.0-rc4 ARCH=$(dpkg --print-architecture)
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/wspanel-$V-linux-$ARCH.tar.gz
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing          # musí vypsat: OK
@@ -284,14 +298,20 @@ příkazem; správcům pošle jednu notifikaci. Sám nic neinstaluje.
 | Balíček | Obsah | Architektura |
 |---|---|---|
 | **`wspanel`** | instalátor, provisioning a zdroják panelu (`/usr/share/wspanel`), příkazy `wspanel-install` a `wspanel-update` | `all` |
-| **`wspanel-agent`** | agent `/usr/sbin/panel-agent` (jediná část s právy roota) a nástroj `/usr/bin/wspanel` (klient REST API) | `amd64`, `arm64` |
+| **`wspanel-agent`** | agent `/usr/sbin/panel-agent` (jediná část s právy roota), jeho služba `panel-agent.service` a nástroj `/usr/bin/wspanel` (klient REST API) | `amd64`, `arm64` |
+| **`wspanel-archive-keyring`** | klíč repozitáře (`/usr/share/keyrings/wspanel-archive-keyring.asc`), zdroj apt `/etc/apt/sources.list.d/wspanel.sources` a `/etc/apt/apt.conf.d/52wspanel-unattended` (opravy i v automatických aktualizacích) | `all` |
 
-`wspanel` závisí na `wspanel-agent` stejné verze. Samotná instalace balíčků
+`wspanel` závisí na `wspanel-agent` stejné verze a na `wspanel-archive-keyring`.
+Nový klíč repozitáře (výměna) přijde jako aktualizace `wspanel-archive-keyring`,
+bez ručního zásahu. Všechny balíčky mají manuálové stránky (`man panel-agent`,
+`man wspanel`, `man wspanel-install`, `man wspanel-update`), licenci
+v `/usr/share/doc/<balíček>/copyright` (MIT) a projdou kontrolou `lintian`. Samotná instalace balíčků
 na systému nic nenastaví: databáze, webserver, poštu a konfiguraci zakládá
 `wspanel-install` (nebo `./install` z vydání).
 
 Instalace jedním příkazem nebo z vydání (`get.sh`, `./install`) dá na server
-jen `wspanel-agent`, aby opravy agenta chodily přes apt. Kdo chce celý WSPanel
+jen `wspanel-agent` a `wspanel-archive-keyring`, aby opravy agenta chodily
+přes apt. Kdo chce celý WSPanel
 spravovat přes apt, doinstaluje `wspanel` (viz [Instalace přes apt](#instalace-přes-apt)).
 
 #### Jak se dostane na server
@@ -299,22 +319,17 @@ spravovat přes apt, doinstaluje `wspanel` (viz [Instalace přes apt](#instalace
 Instalace z vydání ho udělá sama:
 
 1. nainstaluje `wspanel-agent` z balíčku vydání (nic nestahuje),
-2. přidá apt repozitář WSPanelu:
-
-   | Soubor | Obsah |
-   |---|---|
-   | `/etc/apt/sources.list.d/wspanel.sources` | repozitář `https://onyklicek.github.io/wspanel/apt`, kanál podle verze |
-   | `/etc/apt/keyrings/wspanel.asc` | klíč, kterým jsou indexy repozitáře podepsané |
-   | `/etc/apt/apt.conf.d/52wspanel-unattended` | opravy agenta i v automatických aktualizacích |
-
+2. nainstaluje `wspanel-archive-keyring` z balíčku vydání: apt repozitář
+   `https://onyklicek.github.io/wspanel/apt` s kanálem podle verze, jeho klíč
+   a opravy v automatických aktualizacích (soubory viz tabulka výše),
 3. staré cesty `/usr/local/sbin/panel-agent` a `/usr/local/bin/wspanel` nechá
    jako odkazy na nové (používají je služby a časovače založené dřív).
 
 Že je vše na místě:
 
 ```sh
-dpkg-query -W wspanel-agent          # wspanel-agent  1.2.0~rc2
-panel-agent -version                 # 1.2.0-rc2
+dpkg-query -W 'wspanel*'             # wspanel-agent  1.2.0~rc4, wspanel-archive-keyring …
+panel-agent -version                 # 1.2.0-rc4
 apt-cache policy wspanel-agent       # odkud se aktualizuje (kanál)
 ```
 
@@ -342,6 +357,10 @@ aktualizacemi Debianu.
 Balíček po aktualizaci agenta sám restartuje (`panel-agent.service`). Panel je
 pár sekund bez agenta, weby běží dál.
 
+Služba agenta je balíčku (`/usr/lib/systemd/system/panel-agent.service`);
+vlastní úpravy (limity, prostředí) patří do `sudo systemctl edit panel-agent`,
+aktualizace je nepřepíše.
+
 #### Odložení oprav
 
 ```sh
@@ -357,7 +376,7 @@ agenta. Soubory jsou přiložené ke každému vydání na
 (`wspanel-agent_<verze>_<arch>.deb`; GitHub v názvu nahrazuje `~` tečkou):
 
 ```sh
-V=1.2.0-rc2 ARCH=$(dpkg --print-architecture)
+V=1.2.0-rc4 ARCH=$(dpkg --print-architecture)
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/wspanel-agent_${V/-/.}_$ARCH.deb
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing                 # musí vypsat: OK
@@ -371,17 +390,24 @@ jako je panel (u panelu 1.2.x agent 1.2.x).
 #### Repozitář nepoužívat
 
 ```sh
-sudo rm /etc/apt/sources.list.d/wspanel.sources /etc/apt/apt.conf.d/52wspanel-unattended
+sudo apt-mark hold 'wspanel*'    # apt nic z WSPanelu neaktualizuje
 ```
 
-Agent se pak aktualizuje jen s instalátorem (a další spuštění instalátoru
-repozitář zase přidá). Balíček `wspanel-agent` **neodinstalovávejte**:
-`apt remove wspanel-agent` odebere agenta a panel přestane fungovat.
+Agent se pak aktualizuje jen s instalátorem (`sudo apt-mark unhold 'wspanel*'`
+to vrátí). Repozitář úplně pryč: `sudo apt purge wspanel-archive-keyring`
+(server s balíčkem `wspanel` ho ale potřebuje; další spuštění instalátoru
+z vydání ho zase přidá).
+
+**Odinstalace:** `apt remove wspanel-agent` agenta zastaví a panel přestane
+fungovat (apt na to upozorní); konfigurace v `/etc/panel-agent` zůstane a
+po `apt install wspanel-agent` agent zase naběhne. `apt remove` balíčku
+`wspanel-archive-keyring` zdroj apt jen odloží (`wspanel.sources.disabled`,
+opětovná instalace ho vrátí i s kanálem), `apt purge` ho smaže.
 
 #### Ověření klíče repozitáře
 
 ```sh
-gpg --show-keys /etc/apt/keyrings/wspanel.asc
+gpg --show-keys /usr/share/keyrings/wspanel-archive-keyring.asc
 ```
 
 musí ukázat otisk `51525652EBC466696C479E9DEECED19A06101F1F`. Apt přijme jen
@@ -400,7 +426,7 @@ sudo env WSPANEL_TOKEN=github_pat_… bash get.sh
 
 Server si token nikam neukládá. Panel vidí nové verze soukromého repozitáře jen
 s tokenem v `PANEL_RELEASE_TOKEN` v `/srv/panel/shared/.env`. Apt repozitář
-na GitHub Pages je i u soukromého repozitáře veřejný (obsahuje jen agenta).
+na GitHub Pages je i u soukromého repozitáře veřejný (obsahuje balíčky).
 
 ### Ze zdrojáků (vývoj)
 
