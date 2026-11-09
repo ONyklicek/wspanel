@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"wspanel/agent/internal/config"
@@ -652,11 +653,27 @@ func afterPythonUpgrade(ctx context.Context, env *Env, minor, old string) (resta
 func pythonPatchInUse(cfg config.Config, patch string) bool {
 	cfgs, _ := filepath.Glob(filepath.Join(cfg.SitesRoot, "*", "releases", "*", ".venv", "pyvenv.cfg"))
 	for _, c := range cfgs {
-		if b, err := os.ReadFile(c); err == nil && strings.Contains(string(b), "/"+patch+"/") {
-			return true
+		b, err := readVenvCfg(c)
+		if err != nil || strings.Contains(string(b), "/"+patch+"/") {
+			return true // unreadable: keep the build rather than break a site
 		}
 	}
 	return false
+}
+
+// readVenvCfg reads a site's pyvenv.cfg as root without trusting it: no
+// symlink (O_NOFOLLOW), no FIFO or device (O_NONBLOCK, regular files only),
+// and at most 64 KiB.
+func readVenvCfg(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file", path)
+	}
+	return io.ReadAll(io.LimitReader(f, 64<<10))
 }
 
 // worldReadable: site users run these interpreters (the agent's umask is 077).
