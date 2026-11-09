@@ -84,6 +84,9 @@ func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := validate.OneOf("scope", p.Scope, []string{"", "all"}); err != nil {
 		return nil, err
 	}
+	if p.Engine == "mongodb" {
+		return nil, protocol.Conflict("the database tools (phpMyAdmin, Adminer) do not manage MongoDB")
+	}
 	var e dbEngine
 	var err error
 	if p.Scope == "all" {

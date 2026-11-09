@@ -20,7 +20,7 @@ import (
 	"wspanel/agent/internal/protocol"
 )
 
-var backupNameRe = regexp.MustCompile(`^([a-z][a-z0-9_]{1,47})-(\d{8}T\d{6}Z)(-pre-restore)?(\.sql\.gz|\.pgdump)$`)
+var backupNameRe = regexp.MustCompile(`^([a-z][a-z0-9_]{1,47})-(\d{8}T\d{6}Z)(-pre-restore)?(\.sql\.gz|\.pgdump|\.archive\.gz)$`)
 
 // backupDir is <BackupDir>/<engine>/<name>: root:<panel> 0750, files 0640, so
 // the panel can offer downloads (it can ask for a dump anyway).

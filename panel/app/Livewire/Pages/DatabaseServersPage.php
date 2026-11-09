@@ -158,7 +158,8 @@ class DatabaseServersPage extends Page
 
     protected function headerActions(): array
     {
-        $engines = collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()]);
+        $engines = collect(app(SystemInfo::class)->dbEngines())->filter(fn (DatabaseEngine $e) => $e->supportsDedicated())
+            ->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()]);
 
         return [
             Action::make('createInstance')

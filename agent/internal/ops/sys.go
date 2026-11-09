@@ -20,6 +20,9 @@ func managedUnits(cfg config.Config) []string {
 		units = append(units, config.ForVersion(cfg.FPMUnit, v))
 	}
 	for _, e := range cfg.DBEngines {
+		if e == "mongodb" {
+			e = "mongod" // MongoDB's own unit name
+		}
 		units = append(units, e+".service")
 	}
 	return append(units, allWorkerUnits(cfg)...)

@@ -65,6 +65,7 @@ class SyncServices
             $name === 'panel-web' => ['type' => ServiceType::Web->value, 'instance' => null, 'worker' => null],
             $name === 'mariadb' => ['type' => ServiceType::MariaDb->value, 'instance' => null, 'worker' => null],
             $name === 'postgresql' => ['type' => ServiceType::PostgreSql->value, 'instance' => null, 'worker' => null],
+            $name === 'mongod' => ['type' => ServiceType::MongoDb->value, 'instance' => null, 'worker' => null],
             $name === 'valkey-server' => ['type' => ServiceType::Valkey->value, 'instance' => null, 'worker' => null],
             (bool) preg_match('/^php(\d\.\d)-fpm$/', $name, $m) => ['type' => ServiceType::PhpFpm->value, 'instance' => $m[1], 'worker' => null],
             (bool) preg_match('/^wspanel-(web_[a-z0-9_-]+)-([a-z]+)(?:@[A-Za-z0-9._-]+)?$/', $name, $m) => self::workerFields($m[1], $m[2]),

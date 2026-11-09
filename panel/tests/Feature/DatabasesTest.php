@@ -11,6 +11,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Wire\RelationManagers\DatabaseBackups;
+use App\Wire\Resources\DatabaseResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -58,6 +59,25 @@ class DatabasesTest extends TestCase
             ->assertNotified('Databáze shop_example_com vytvořena');
 
         $this->assertTrue(Database::sole()->site->is($site));
+    }
+
+    public function test_a_mongodb_database_for_a_site_gets_its_uri_and_no_sql_tools(): void
+    {
+        $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb', 'mongodb'], 'db_tools' => ['phpmyadmin', 'adminer']]);
+        $site = Site::create(['domain' => 'shop.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active']);
+        $this->agent->shouldReceive('call')->once()
+            ->with('db.create', ['engine' => 'mongodb', 'name' => 'catalog', 'domain' => 'shop.example.com'])
+            ->andReturn(['name' => 'catalog', 'env_file' => '/srv/sites/shop.example.com/shared/.env']);
+
+        $list = $this->headerTableAction(Livewire::test(ListDatabases::class), 'createDatabase', ['engine' => 'mongodb', 'site_id' => $site->id, 'name' => 'catalog'])
+            ->assertHasNoErrors()
+            ->assertNotified('Databáze catalog vytvořena');
+
+        $db = Database::sole();
+        $this->assertSame('127.0.0.1:27017', DatabaseResource::connection($db));
+        $this->assertFalse($this->tableActionVisible($list, 'open', $db));
+        $this->assertFalse($this->tableActionVisible($list, 'adminer', $db));
+        $this->get(route('dbtools.open', [$db, 'adminer']))->assertNotFound();
     }
 
     public function test_standalone_database_shows_the_password_once(): void

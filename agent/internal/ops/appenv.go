@@ -138,7 +138,7 @@ func randomToken(n int) string {
 // Keys the panel writes and keeps when they are in the site's env file:
 // what the servers it runs need (database, mail, Valkey, Reverb).
 var panelEnvKeys = []string{
-	"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_SOCKET", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DATABASE_URL",
+	"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_SOCKET", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DATABASE_URL", "MONGODB_URI", "MONGODB_DATABASE",
 	"MAIL_MAILER", "MAIL_HOST", "MAIL_PORT", "MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM_ADDRESS", "MAILER_DSN",
 	"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS",
 	"REDIS_CLIENT", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_URL", "REDIS_SOCKET",

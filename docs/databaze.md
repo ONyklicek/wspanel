@@ -4,7 +4,7 @@
 
 **Databáze → Nová databáze** (nebo na detailu webu → Další → Nová databáze):
 
-- **Engine:** MariaDB nebo PostgreSQL (jen ty, které jsou nainstalované; další
+- **Engine:** MariaDB, PostgreSQL nebo MongoDB (jen ty, které jsou nainstalované; další
   doinstalujete v Databáze → Servery → Doinstalovat engine).
 - **Název:** stejný název má i uživatel databáze.
 - **Web:** když databázi přiřadíte webu, panel zapíše přístupové údaje přímo do
@@ -84,6 +84,30 @@ nesmí):
 ssh -L 3306:127.0.0.1:3306 root@server
 ```
 a v klientovi server `127.0.0.1`. Superuživatel pak potřebuje heslo (viz výše).
+
+## MongoDB
+
+MongoDB je volitelný engine: **Databáze → Servery → Doinstalovat engine →
+MongoDB**. Instalace běží na pozadí.
+
+- Panel ji bere z oficiálního repozitáře MongoDB (verze 8.0), aktualizace
+  chodí přes apt jako u ostatních balíčků. Přidá i PHP rozšíření `mongodb`
+  pro všechny verze PHP.
+- Server poslouchá jen na `127.0.0.1:27017` a vyžaduje přihlášení. Správce
+  panelu (`wspanel`) má heslo, které zná jen agent.
+- Každá databáze má vlastníka se stejným jménem a náhodným heslem (role
+  `dbOwner` jen na své databázi). S připojeným webem se do jeho `.env`
+  zapíše `MONGODB_URI` a `MONGODB_DATABASE`. Hlavní databáze aplikace
+  (`DB_CONNECTION`) zůstane, jak je. Laravel s balíčkem `mongodb/laravel-mongodb`
+  i Doctrine ODM tyhle proměnné čtou.
+- Databáze se v MongoDB objeví, až do ní aplikace něco zapíše. Do té doby má
+  v panelu velikost 0.
+- Zálohy (`mongodump`, archiv `.archive.gz`), obnova, kopie do stagingu
+  a záloha celého serveru (i s uživateli) fungují jako u ostatních enginů.
+- phpMyAdmin ani Adminer MongoDB nespravují. Pro prohlížení použijte např.
+  MongoDB Compass přes SSH tunel (`ssh -L 27017:127.0.0.1:27017 …`)
+  a `MONGODB_URI` z `.env` webu.
+- Vyhrazený server pro jeden web MongoDB zatím nemá.
 
 ## Vyhrazený server pro jeden web
 

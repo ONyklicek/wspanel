@@ -76,6 +76,8 @@ final class AgentMessages
             '/^(\S+) has a dedicated database server \((\S+)\): delete it first$/' => 'Web $1 má vyhrazený databázový server; smažte nejdřív ten (Databáze → Servery).',
             '/^the dedicated server still holds databases \((.+)\): drop them first$/' => 'Ve vyhrazeném serveru jsou ještě databáze ($1); smažte nejdřív je.',
             '/^dedicated database server (\d+) does not exist$/' => 'Vyhrazený databázový server neexistuje.',
+            '/^the database tools \(phpMyAdmin, Adminer\) do not manage MongoDB$/' => 'phpMyAdmin ani Adminer MongoDB nespravují; připojte se přes MONGODB_URI (např. MongoDB Compass přes SSH tunel).',
+            '/^the panel\'s MongoDB administrator is not set up.*$/' => 'MongoDB nemá nastaveného správce panelu; doinstalujte engine znovu (Databáze → Servery).',
             '/^(\S+) is on the site\'s dedicated server: the database tools cannot reach it$/' => 'Databáze $1 je na vyhrazeném serveru webu; nástroje (phpMyAdmin, Adminer) se k ní nedostanou.',
             '/^the dedicated server does not answer: .*$/' => 'Vyhrazený databázový server neodpovídá (podrobnosti v journalu jeho služby).',
             '/^memory_mb: 256 to 262144$/' => 'Paměť: 256 až 262144 MB.',

@@ -18,7 +18,7 @@ import (
 )
 
 // Services the agent may touch. Anything else is unknown.
-var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "worker", "app", "task", "site-valkey"}
+var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", "mongodb", "worker", "app", "task", "site-valkey"}
 
 // siteServices take a domain; "worker" also a worker type, "task" a task id.
 var siteServices = []string{"worker", "app", "task", "site-valkey"}
@@ -112,9 +112,12 @@ func (p serviceParams) unit(cfg config.Config) (string, error) {
 		return cfg.ProxyUnit, nil
 	case "web":
 		return cfg.WebUnit, nil
-	case "mariadb", "postgresql":
+	case "mariadb", "postgresql", "mongodb":
 		if !slices.Contains(cfg.DBEngines, p.Service) {
 			return "", protocol.NotFound(p.Service + " is not installed on this server")
+		}
+		if p.Service == "mongodb" {
+			return "mongod.service", nil
 		}
 		return p.Service + ".service", nil
 	}

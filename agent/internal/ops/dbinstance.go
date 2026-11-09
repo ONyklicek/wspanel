@@ -200,6 +200,9 @@ func dbInstanceCreate(ctx context.Context, env *Env, raw json.RawMessage) (resul
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
+	if err := validate.OneOf("engine", p.Engine, []string{"mariadb", "postgresql"}); err != nil {
+		return nil, err
+	}
 	if _, err := engineFor(env, p.Engine); err != nil {
 		return nil, err
 	}

@@ -94,6 +94,9 @@ func dbServerStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 	st := loadDBServer(env)
 	engines := map[string]any{}
 	for _, name := range env.Cfg.DBEngines {
+		if name == "mongodb" { // localhost only, no superuser of the operator's: nothing to set here
+			continue
+		}
 		e, err := engineFor(env, name)
 		if err != nil {
 			continue

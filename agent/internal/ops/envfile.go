@@ -94,6 +94,17 @@ func writeDBEnv(ctx context.Context, env *Env, l siteLayout, engine string, e db
 	port := strconv.Itoa(c.Port)
 	var keys []string
 	values := map[string]string{}
+	if engine == "mongodb" {
+		// Laravel (mongodb/laravel-mongodb), Symfony (Doctrine ODM) and the
+		// rest read the URI; the app's main database stays what it is.
+		keys = []string{"MONGODB_URI", "MONGODB_DATABASE"}
+		values = map[string]string{"MONGODB_URI": mongoURI(name, pw), "MONGODB_DATABASE": name}
+		old, err := readSiteFile(ctx, env, l, path)
+		if err != nil {
+			return err
+		}
+		return writeSiteFile(ctx, env, l, path, mergeEnv(old, keys, values))
+	}
 	switch l.Framework {
 	case "laravel", "php":
 		conn := "mariadb"

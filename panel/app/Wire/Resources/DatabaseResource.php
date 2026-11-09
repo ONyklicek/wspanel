@@ -132,7 +132,11 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             return $i === null ? __('vyhrazený server webu') : ($i['socket'] ?? null ?: $i['host'].':'.$i['port']);
         }
 
-        return '127.0.0.1:'.($record->engine === DatabaseEngine::MariaDb ? 3306 : 5432);
+        return '127.0.0.1:'.match ($record->engine) {
+            DatabaseEngine::MariaDb => 3306,
+            DatabaseEngine::MongoDb => 27017,
+            default => 5432,
+        };
     }
 
     public function relationManagers(): array
@@ -148,7 +152,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
 
         return Action::make('open')->label(__('Otevřít'))->icon('outline:arrow-top-right-on-square')->color('gray')
             ->tooltip(fn (Database $record) => $tool($record) === 'phpmyadmin' ? 'V phpMyAdminu' : 'V Admineru')
-            ->visible(fn (Database $record) => ! $record->isDedicated() && in_array($tool($record), $tools, true))
+            ->visible(fn (Database $record) => $record->engine->hasTools() && ! $record->isDedicated() && in_array($tool($record), $tools, true))
             ->url(fn (Database $record) => route('dbtools.open', [$record, $tool($record)]), true);
     }
 
@@ -162,7 +166,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                 ->visible(fn (Database $record) => ! $record->isDedicated() && in_array('phpmyadmin', $tools, true) && $record->engine === DatabaseEngine::MariaDb)
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'phpmyadmin']), true),
             Action::make('adminer')->label(__('Adminer'))->icon('outline:table-cells')->color('gray')
-                ->visible(fn (Database $record) => ! $record->isDedicated() && in_array('adminer', $tools, true))
+                ->visible(fn (Database $record) => $record->engine->hasTools() && ! $record->isDedicated() && in_array('adminer', $tools, true))
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'adminer']), true),
         ];
     }

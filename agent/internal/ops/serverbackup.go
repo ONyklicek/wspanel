@@ -332,6 +332,13 @@ func makeServerBackup(ctx context.Context, env *Env) (backupInfo, error) {
 		}
 		extra["db/postgres-roles.sql"] = p
 	}
+	if slices.Contains(env.Cfg.DBEngines, "mongodb") {
+		p := filepath.Join(work, "mongodb-users.archive")
+		if err := dumpTo(p, func(w io.Writer) error { return mongoUsersDump(ctx, env, w) }); err != nil {
+			return backupInfo{}, fmt.Errorf("the MongoDB users: %w", err)
+		}
+		extra["db/mongodb-users.archive"] = p
+	}
 
 	plain := filepath.Join(work, "plain.tar.gz")
 	if err := writeServerArchive(env, plain, &man, serverPaths(env), extra, now); err != nil {

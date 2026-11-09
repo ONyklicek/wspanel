@@ -24,11 +24,14 @@ func engineInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := validate.OneOf("engine", p.Engine, []string{"mariadb", "postgresql"}); err != nil {
+	if err := validate.OneOf("engine", p.Engine, []string{"mariadb", "postgresql", "mongodb"}); err != nil {
 		return nil, err
 	}
 	if slices.Contains(env.Cfg.DBEngines, p.Engine) {
 		return map[string]any{"engine": p.Engine, "installed": true, "changed": false}, nil
+	}
+	if p.Engine == "mongodb" {
+		return installMongo(ctx, env)
 	}
 	pkgs := []string{"mariadb-server"}
 	ext := "mysql"

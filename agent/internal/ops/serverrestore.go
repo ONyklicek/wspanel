@@ -130,7 +130,7 @@ func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey 
 			return false, restoreEntry(tr, hdr, target, uids, gids)
 		}
 		switch hdr.Name {
-		case "panel/database.sqlite", "pdns/pdns.sqlite3", "db/mariadb-users.sql", "db/postgres-roles.sql":
+		case "panel/database.sqlite", "pdns/pdns.sqlite3", "db/mariadb-users.sql", "db/postgres-roles.sql", "db/mongodb-users.archive":
 			p := filepath.Join(work, filepath.Base(hdr.Name))
 			if err := dumpTo(p, func(w io.Writer) error { _, err := io.Copy(w, tr); return err }); err != nil {
 				return true, err
@@ -170,6 +170,21 @@ func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey 
 			rep.problem("MariaDB accounts: %v", err)
 		} else {
 			rep.ok("MariaDB accounts")
+		}
+	}
+	if p, ok := extra["db/mongodb-users.archive"]; ok {
+		if !slices.Contains(env.Cfg.DBEngines, "mongodb") {
+			rep.problem("MongoDB users: MongoDB is not installed here (Databáze → Servery → Doinstalovat engine, then restore again)")
+		} else if f, err := os.Open(p); err != nil {
+			rep.problem("MongoDB users: %v", err)
+		} else {
+			err := mongoUsersRestore(ctx, env, f)
+			f.Close()
+			if err != nil {
+				rep.problem("MongoDB users: %v", err)
+			} else {
+				rep.ok("MongoDB users")
+			}
 		}
 	}
 	if p, ok := extra["db/postgres-roles.sql"]; ok {
@@ -611,6 +626,8 @@ func ensureDatabase(ctx context.Context, env *Env, d dbRef) error {
 		return err
 	}
 	switch d.Engine {
+	case "mongodb": // a database exists once it holds data; its owner comes with the users
+		return nil
 	case "mariadb":
 		_, err := (mariadb{}).sql(ctx, env, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", d.Name))
 		return err

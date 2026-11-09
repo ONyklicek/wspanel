@@ -11,6 +11,7 @@ enum ServiceType: string implements HasLabel
     case Web = 'web';
     case MariaDb = 'mariadb';
     case PostgreSql = 'postgresql';
+    case MongoDb = 'mongodb';
     case Valkey = 'valkey';
     case Worker = 'worker';
     case App = 'app';
@@ -23,6 +24,7 @@ enum ServiceType: string implements HasLabel
             self::Web => 'Web (statika + FastCGI)',
             self::MariaDb => 'MariaDB',
             self::PostgreSql => 'PostgreSQL',
+            self::MongoDb => 'MongoDB',
             self::Valkey => 'Valkey',
             self::Worker => 'Worker',
             self::App => __('Aplikace (worker / Node)'),

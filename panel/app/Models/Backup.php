@@ -32,7 +32,7 @@ class Backup extends Model
     /** Absolute path of the dump; the file name is re-validated before use. */
     public function path(): ?string
     {
-        if (! preg_match('/^[a-z][a-z0-9_]{1,47}-\d{8}T\d{6}Z(-pre-restore)?\.(sql\.gz|pgdump)$/', $this->file)
+        if (! preg_match('/^[a-z][a-z0-9_]{1,47}-\d{8}T\d{6}Z(-pre-restore)?\.(sql\.gz|pgdump|archive\.gz)$/', $this->file)
             || ! str_starts_with($this->file, $this->database->name.'-')) {
             return null;
         }

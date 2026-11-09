@@ -45,14 +45,17 @@ type dbInfo struct {
 }
 
 func engineFor(env *Env, name string) (dbEngine, error) {
-	if err := validate.OneOf("engine", name, []string{"mariadb", "postgresql"}); err != nil {
+	if err := validate.OneOf("engine", name, []string{"mariadb", "postgresql", "mongodb"}); err != nil {
 		return nil, err
 	}
 	if !slices.Contains(env.Cfg.DBEngines, name) {
 		return nil, protocol.NotFound(name + " is not installed on this server")
 	}
-	if name == "mariadb" {
+	switch name {
+	case "mariadb":
 		return mariadb{}, nil
+	case "mongodb":
+		return mongo{}, nil
 	}
 	return postgres{}, nil
 }

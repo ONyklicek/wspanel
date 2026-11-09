@@ -19,6 +19,7 @@ class OpenDatabaseToolController
         abort_unless(in_array($tool, ['phpmyadmin', 'adminer'], true), 404);
         // A site's dedicated server has no network: the tools cannot reach it.
         abort_if($database->isDedicated(), 409);
+        abort_unless($database->engine->hasTools(), 404);
 
         try {
             $access = $agent->call('db.access', $database->agentParams() + ['tool' => $tool]);

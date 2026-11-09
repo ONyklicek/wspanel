@@ -227,7 +227,7 @@ func TestSSRHintsReadTheApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"config/inertia.php": "'url' => 'http://127.0.0.1:13714',",
+		"config/inertia.php":   "'url' => 'http://127.0.0.1:13714',",
 		"resources/js/ssr.tsx": "createServer((page) => createInertiaApp({ page }))",
 	}
 	dr.Responder = func(c executor.Call) (executor.Result, error) {
