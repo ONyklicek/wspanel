@@ -13,10 +13,10 @@
         <div class="flex flex-wrap gap-2">
             @foreach ($commands as $c)
                 @if (str_contains($c['id'], 'migrate'))
-                    <x-wire::button size="sm" color="gray" outlined wire:click="quick(@js($c['id']))" :disabled="! $done" wire:key="q-{{ $c['id'] }}"
+                    <x-wire::button size="sm" color="gray" outlined wire:click="quick({{ \Illuminate\Support\Js::from($c['id']) }})" :disabled="! $done" wire:key="q-{{ $c['id'] }}"
                         wire:confirm="{{ __('Spustit :c? Změní databázi webu.', ['c' => $c['label']]) }}"><span class="font-mono text-xs">{{ $c['label'] }}</span></x-wire::button>
                 @else
-                    <x-wire::button size="sm" color="gray" outlined wire:click="quick(@js($c['id']))" :disabled="! $done" wire:key="q-{{ $c['id'] }}"><span class="font-mono text-xs">{{ $c['label'] }}</span></x-wire::button>
+                    <x-wire::button size="sm" color="gray" outlined wire:click="quick({{ \Illuminate\Support\Js::from($c['id']) }})" :disabled="! $done" wire:key="q-{{ $c['id'] }}"><span class="font-mono text-xs">{{ $c['label'] }}</span></x-wire::button>
                 @endif
             @endforeach
         </div>
@@ -58,7 +58,7 @@
                             <td class="max-w-md truncate py-1 pe-3 font-mono text-xs">{{ $r['command'] }}</td>
                             <td class="py-1 pe-3 text-xs text-gray-500">{{ \Illuminate\Support\Carbon::parse($r['started'])->setTimezone(config('app.timezone'))->isoFormat('D. M. HH:mm') }}</td>
                             <td class="py-1 pe-3 text-xs">@if (! isset($r['exit']))<x-wire::badge color="warning">{{ __('běží') }}</x-wire::badge>@elseif ($r['exit'] === 0)<x-wire::badge color="success">OK</x-wire::badge>@else<x-wire::badge color="danger">{{ $r['exit'] }}</x-wire::badge>@endif</td>
-                            <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="show(@js($r['id']))">{{ __('Výstup') }}</x-wire::button></td>
+                            <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="show({{ \Illuminate\Support\Js::from($r['id']) }})">{{ __('Výstup') }}</x-wire::button></td>
                         </tr>
                     @endforeach
                 </tbody>

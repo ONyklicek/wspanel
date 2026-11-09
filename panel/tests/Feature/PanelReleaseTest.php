@@ -151,6 +151,18 @@ class PanelReleaseTest extends TestCase
         $this->getJson('/updates/upgrade-status')->assertOk()->assertJson(['state' => 'running', 'version' => '1.3.0', 'current' => '1.2.0']);
     }
 
+    public function test_a_failed_upgrade_is_shown_until_the_server_has_that_version(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('panel.upgrade_status')->andReturn(
+            ['state' => 'failed', 'version' => '1.3.0', 'log' => ['==> get.sh', '#=#=#', '  12.5%', 'checksum mismatch']],
+            ['state' => 'failed', 'version' => '1.1.0', 'log' => []],
+        );
+
+        Livewire::test(UpdatesPage::class)->assertSee('Aktualizace na 1.3.0 se nepodařila')->assertSee('checksum mismatch')->assertDontSee('12.5%');
+        Livewire::test(UpdatesPage::class)->assertDontSee('se nepodařila'); // 1.2.0 runs now
+    }
+
     public function test_an_up_to_date_server_offers_a_check_and_no_upgrade(): void
     {
         $this->github('v1.2.0');

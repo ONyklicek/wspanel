@@ -1,4 +1,5 @@
 <div class="space-y-6">
+    @include('partials.background-jobs')
     <x-wire::section :heading="__('Klienti a balíčky')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <p>{{ __('Hostování pro víc klientů: každý klient se přihlásí do panelu jen ke svým webům, databázím a DNS, s limity podle balíčku a kvótou disku. Bez modulu je panel pro jednoho správce.') }}</p>

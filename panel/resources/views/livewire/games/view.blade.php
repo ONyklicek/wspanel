@@ -95,7 +95,7 @@
                             <tr wire:key="b-{{ $b['file'] }}">
                                 <td class="py-1 pe-3">{{ \Illuminate\Support\Carbon::parse($b['created_at'])->setTimezone(config('app.timezone'))->isoFormat('D. M. YYYY HH:mm') }}</td>
                                 <td class="py-1 pe-3 text-xs text-gray-500">{{ $size($b['size']) }}</td>
-                                <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="restore(@js($b['file']))" wire:confirm="{{ __('Obnovit data serveru ze zálohy? Současný stav se přepíše.') }}">{{ __('Obnovit') }}</x-wire::button></td>
+                                <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="restore({{ \Illuminate\Support\Js::from($b['file']) }})" wire:confirm="{{ __('Obnovit data serveru ze zálohy? Současný stav se přepíše.') }}">{{ __('Obnovit') }}</x-wire::button></td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -111,7 +111,7 @@
                             <tr wire:key="o-{{ $o['file'] }}">
                                 <td class="py-1 pe-3 font-mono text-xs">{{ $o['file'] }}</td>
                                 <td class="py-1 pe-3 text-xs text-gray-500">{{ $size($o['size']) }}</td>
-                                <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="fetchOffsite(@js($o['file']))">{{ __('Stáhnout zpět') }}</x-wire::button></td>
+                                <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="fetchOffsite({{ \Illuminate\Support\Js::from($o['file']) }})">{{ __('Stáhnout zpět') }}</x-wire::button></td>
                             </tr>
                         @endforeach
                     </tbody>

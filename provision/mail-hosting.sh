@@ -11,6 +11,10 @@
 # it to Dovecot over LMTP. Mailboxes live in /etc/dovecot/wspanel/users (the
 # agent writes it; passwords arrive hashed from the panel).
 set -euo pipefail
+# The agent runs this with umask 077: configs the daemons read as their own
+# users (Valkey as _rspamd, Roundcube…) would be root-only. Secrets get their
+# modes explicitly below.
+umask 022
 MAIL_HOST=${1:?mail host name}
 PHP=${2:-8.4}
 [[ "$PHP" =~ ^[0-9]\.[0-9]$ ]] || { echo "invalid PHP version" >&2; exit 2; }
@@ -70,6 +74,9 @@ if string "${mailbox}" "Trash" {
 }
 pipe :copy "wspanel-learn" ["ham"];
 SIEVE
+# Modes set explicitly: a file left by a run under umask 077 keeps its mode.
+chown root:vmail "$LEARN"/learn-spam.sieve "$LEARN"/learn-ham.sieve
+chmod 0640 "$LEARN"/learn-spam.sieve "$LEARN"/learn-ham.sieve
 
 # ---------------------------------------------------------------- TLS
 # The agent keeps these in step with the edge's certificate for the mail host
@@ -282,11 +289,15 @@ enable_password = "$RSPAMD_HASH";
 secure_ip = [];
 static_dir = "\${WWWDIR}";
 RSPAMD
+chown root:_rspamd /etc/rspamd/override.d/worker-controller.inc && chmod 0640 /etc/rspamd/override.d/worker-controller.inc
 # Spam learning from Dovecot (runs as vmail) reads it as a header.
 rm -f /etc/dovecot/wspanel/rspamd-learn.header
 install -o root -g vmail -m 0640 /dev/null /var/mail/vmail/.wspanel-learn/rspamd.header
 printf 'Password: %s\n' "$(cat /etc/wspanel/mail/rspamd-controller.pw)" > /var/mail/vmail/.wspanel-learn/rspamd.header
+chmod 0644 /etc/rspamd/local.d/*
 rspamadm configtest >/dev/null
+# configtest (as root) may leave compiled caches Rspamd itself must open.
+chown -R _rspamd:_rspamd /var/lib/rspamd
 
 # Rspamd keeps its statistics (Bayes, learned spam/ham), reply tracking and
 # rate limits in Valkey: its own instance on a socket only Rspamd can open.
@@ -303,6 +314,7 @@ maxmemory-policy volatile-ttl
 save 900 1
 appendonly no
 VALKEY
+chown root:_rspamd /etc/rspamd/valkey.conf && chmod 0640 /etc/rspamd/valkey.conf
 cat >/etc/systemd/system/rspamd-valkey.service <<'UNIT'
 # Managed by WSPanel (mail-hosting.sh).
 [Unit]
@@ -322,6 +334,7 @@ PrivateTmp=yes
 [Install]
 WantedBy=multi-user.target rspamd.service
 UNIT
+chmod 0644 /etc/systemd/system/rspamd-valkey.service
 systemctl daemon-reload
 systemctl enable --now rspamd-valkey >/dev/null 2>&1
 cat >/etc/rspamd/local.d/redis.conf <<'RSPAMD'
@@ -338,6 +351,7 @@ RSPAMD
 cat >/etc/rspamd/local.d/dkim_signing.conf <<'RSPAMD'
 enabled = false;
 RSPAMD
+chmod 0644 /etc/rspamd/local.d/*
 
 # ---------------------------------------------------------------- Postfix
 for f in wspanel_vdomains wspanel_vmailboxes wspanel_valiases wspanel_mailbox_senders; do

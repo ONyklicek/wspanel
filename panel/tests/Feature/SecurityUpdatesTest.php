@@ -67,6 +67,29 @@ class SecurityUpdatesTest extends TestCase
             ->assertSee('libssl3t64')->assertSee('bezpečnostní')->assertSee('Server potřebuje restart')->assertDontSee('fail2ban');
     }
 
+    public function test_chosen_packages_update_in_the_background(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('sys.updates', Mockery::any())->andReturn([
+            'packages' => [
+                ['name' => 'curl', 'from' => '8.14.1-2', 'to' => '8.14.1-2+deb13u2', 'security' => false],
+                ['name' => 'libssl3t64', 'from' => '3.5.1-1', 'to' => '3.5.1-1+deb13u1', 'security' => true],
+            ],
+            'reboot_required' => false, 'auto_security' => false,
+        ]);
+        // Only names from the list of updates reach the agent.
+        $this->agent->shouldReceive('call')->once()->with('sys.upgrade', ['packages' => ['curl']])->andReturn(['job_id' => 'j1']);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'j1'])->andReturn(['status' => 'running'], ['status' => 'done']);
+
+        $page = Livewire::test(UpdatesPage::class)
+            ->set('selected', ['curl', 'nginx; rm'])->call('upgradeSelected')
+            ->assertSee('běží na pozadí')
+            ->call('upgradeOne', 'libssl3t64')->assertNotified(); // one upgrade at a time
+
+        $page->call('pollBackgroundJobs')->assertSee('běží na pozadí')
+            ->call('pollBackgroundJobs')->assertDontSee('běží na pozadí')->assertSet('selected', []);
+    }
+
     public function test_the_fail2ban_page_lists_and_unbans_an_address(): void
     {
         $this->actingAs(User::factory()->create());

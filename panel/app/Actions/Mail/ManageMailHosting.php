@@ -82,13 +82,19 @@ class ManageMailHosting
         return (bool) (rescue(fn () => $this->status(), [], report: false)['installed'] ?? false);
     }
 
-    /** @throws AgentException */
-    public function install(): bool
+    /**
+     * Starts installing mail hosting (an agent job, it takes minutes).
+     *
+     * @return array<string, mixed> the job (job_id)
+     *
+     * @throws AgentException
+     */
+    public function install(): array
     {
         $job = $this->agent->call('mail.install');
         Cache::forget('mail.hosting.status');
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 600) !== null : true;
+        return $job;
     }
 
     /** The host name mail clients and MX records use. */

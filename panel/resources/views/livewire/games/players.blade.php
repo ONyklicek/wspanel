@@ -38,7 +38,7 @@
         <x-wire::section :heading="__('Whitelist')">
             <div class="mb-3 flex items-center gap-3 text-sm">
                 <x-wire::badge :color="($lists['whitelist_on'] ?? false) ? 'success' : 'gray'">{{ ($lists['whitelist_on'] ?? false) ? __('zapnutý: hrát smí jen hráči ze seznamu') : __('vypnutý: hrát smí kdokoli') }}</x-wire::badge>
-                <x-wire::button size="xs" color="gray" outlined wire:click="act(@js(($lists['whitelist_on'] ?? false) ? 'whitelist_off' : 'whitelist_on'))" :disabled="! $running">{{ ($lists['whitelist_on'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
+                <x-wire::button size="xs" color="gray" outlined wire:click="act({{ \Illuminate\Support\Js::from(($lists['whitelist_on'] ?? false) ? 'whitelist_off' : 'whitelist_on') }})" :disabled="! $running">{{ ($lists['whitelist_on'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
             </div>
             @include('livewire.games.partials.player-list', ['rows' => $lists['whitelist'] ?? [], 'remove' => 'whitelist_remove', 'label' => __('Odebrat'), 'empty' => __('Seznam je prázdný.')])
         </x-wire::section>

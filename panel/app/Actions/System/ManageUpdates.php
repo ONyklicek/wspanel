@@ -4,14 +4,12 @@ namespace App\Actions\System;
 
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
 
 /** System updates (apt), through the agent. */
 class ManageUpdates
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -25,15 +23,21 @@ class ManageUpdates
     }
 
     /**
-     * Installs the updates; true when done, false while still running.
+     * Starts installing updates: all, the security ones, or only the named
+     * packages. An agent job; the caller follows it.
+     *
+     * @param  list<string>  $packages
+     * @return array<string, mixed> the job (job_id)
      *
      * @throws AgentException
      */
-    public function upgrade(bool $securityOnly): bool
+    public function upgrade(bool $securityOnly = false, array $packages = []): array
     {
-        $job = $this->agent->call('sys.upgrade', $securityOnly ? ['security_only' => true] : []);
-
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 900) !== null : true;
+        return $this->agent->call('sys.upgrade', match (true) {
+            $packages !== [] => ['packages' => array_values($packages)],
+            $securityOnly => ['security_only' => true],
+            default => [],
+        });
     }
 
     /** @throws AgentException */

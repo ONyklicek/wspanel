@@ -52,7 +52,7 @@
                                     @if ($p['version'])
                                         <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                                     @else
-                                        <x-wire::button size="xs" wire:click="ask('install', @js($p['name']))">{{ __('Nainstalovat') }}</x-wire::button>
+                                        <x-wire::button size="xs" wire:click="ask('install', {{ \Illuminate\Support\Js::from($p['name']) }})">{{ __('Nainstalovat') }}</x-wire::button>
                                     @endif
                                 </td>
                             </tr>
@@ -82,9 +82,9 @@
                             <td class="py-1 pe-3 text-xs tabular-nums">{{ $size($p['size']) }}</td>
                             <td class="max-w-md truncate py-1 pe-3 text-xs text-gray-500" title="{{ $p['summary'] }}">{{ $p['summary'] }}</td>
                             <td class="whitespace-nowrap py-1 text-right">
-                                <x-wire::button size="xs" color="gray" outlined wire:click="hold(@js($p['name']), {{ $p['held'] ? 'false' : 'true' }})">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
+                                <x-wire::button size="xs" color="gray" outlined wire:click="hold({{ \Illuminate\Support\Js::from($p['name']) }}, {{ $p['held'] ? 'false' : 'true' }})" title="{{ $p['held'] ? __('Aktualizace systému ho zase budou aktualizovat.') : __('apt-mark hold: aktualizace systému balíček přeskočí a zůstane v současné verzi.') }}">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
                                 @unless ($p['protected'])
-                                    <x-wire::button size="xs" color="danger" outlined wire:click="ask('remove', @js($p['name']))">{{ __('Odebrat') }}</x-wire::button>
+                                    <x-wire::button size="xs" color="danger" outlined wire:click="ask('remove', {{ \Illuminate\Support\Js::from($p['name']) }})">{{ __('Odebrat') }}</x-wire::button>
                                 @endunless
                             </td>
                         </tr>

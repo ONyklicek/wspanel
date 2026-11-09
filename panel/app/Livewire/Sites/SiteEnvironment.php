@@ -40,6 +40,12 @@ class SiteEnvironment extends ViewPage
     /** The key being edited (null = a new one). */
     public ?string $editing = null;
 
+    /** The variable/secret modal is open. */
+    public bool $formOpen = false;
+
+    /** The Composer modal is open. */
+    public bool $composerOpen = false;
+
     /** @var list<array<string, string>>|null Composer's auth.json (PHP sites) */
     public ?array $composer = null;
 
@@ -82,16 +88,29 @@ class SiteEnvironment extends ViewPage
         }
     }
 
+    /** Opens the modal for a new variable (or a new secret). */
+    public function add(bool $secret): void
+    {
+        $this->cancel();
+        [$this->secret, $this->formOpen] = [$secret, true];
+    }
+
     public function edit(string $key, bool $secret): void
     {
-        [$this->editing, $this->key, $this->secret] = [$key, $key, $secret];
+        [$this->editing, $this->key, $this->secret, $this->formOpen] = [$key, $key, $secret, true];
         $this->value = $secret ? '' : ($this->vars[$key] ?? '');
         $this->resetErrorBag();
     }
 
     public function cancel(): void
     {
-        [$this->editing, $this->key, $this->value, $this->secret] = [null, '', '', false];
+        [$this->editing, $this->key, $this->value, $this->secret, $this->formOpen] = [null, '', '', false, false];
+        $this->resetErrorBag();
+    }
+
+    public function addComposer(): void
+    {
+        [$this->cType, $this->cHost, $this->cUser, $this->cSecret, $this->composerOpen] = ['http-basic', '', '', '', true];
         $this->resetErrorBag();
     }
 
@@ -138,7 +157,7 @@ class SiteEnvironment extends ViewPage
         try {
             app(ManageEnvironment::class)->setComposerAuth($this->site(), $this->cType, $this->cHost, $this->cSecret, $this->cType === 'http-basic' ? $this->cUser : null);
             Toast::success(__('Přístup pro :host uložen', ['host' => $this->cHost]), __('Composer ho použije při dalším deployi i v SSH.'));
-            [$this->cHost, $this->cUser, $this->cSecret] = ['', '', ''];
+            [$this->cHost, $this->cUser, $this->cSecret, $this->composerOpen] = ['', '', '', false];
         } catch (AgentException $e) {
             Toast::error(__('Uložení selhalo'), $e->getMessage());
         }

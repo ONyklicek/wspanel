@@ -10,7 +10,7 @@
                         @isset($r['level']){{ __('úroveň :n', ['n' => $r['level']]) }}@endisset
                         {{ $r['reason'] ?? '' }}
                     </td>
-                    <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="act(@js($remove), @js($r['name'] ?? ''))" :disabled="! $running">{{ $label }}</x-wire::button></td>
+                    <td class="py-1 text-right"><x-wire::button size="xs" color="gray" outlined wire:click="act({{ \Illuminate\Support\Js::from($remove) }}, {{ \Illuminate\Support\Js::from($r['name'] ?? '') }})" :disabled="! $running">{{ $label }}</x-wire::button></td>
                 </tr>
             @endforeach
         </tbody>

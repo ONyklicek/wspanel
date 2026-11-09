@@ -5,7 +5,9 @@ namespace App\Livewire\Pages;
 use App\Actions\System\ManageSystem;
 use App\Actions\System\ManageUpdates;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
+use App\Support\Lang;
 use App\Support\PanelRelease;
 use App\Support\Toast;
 use Illuminate\Support\Carbon;
@@ -19,6 +21,7 @@ use NyonCode\WirePanels\Pages\Page;
 class UpdatesPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.updates';
 
@@ -41,6 +44,12 @@ class UpdatesPage extends Page
 
     public ?string $error = null;
 
+    /** @var list<string> the packages ticked in the list */
+    public array $selected = [];
+
+    /** Show only security updates in the list. */
+    public bool $securityOnly = false;
+
     public function mount(): void
     {
         $this->load();
@@ -55,6 +64,87 @@ class UpdatesPage extends Page
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
         }
+    }
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['sys-upgrade'];
+    }
+
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->selected = [];
+        $this->load(true);
+    }
+
+    /** Whether an upgrade runs now (the buttons wait for it). */
+    public function upgrading(): bool
+    {
+        return isset($this->backgroundJobs['sys-upgrade']);
+    }
+
+    /** @return list<string> names of the packages that have an update */
+    private function upgradableNames(): array
+    {
+        return array_values(array_map(fn (array $p) => (string) $p['name'], $this->updates['packages'] ?? []));
+    }
+
+    /**
+     * Starts an upgrade in the background: 'all', 'security' or the given
+     * packages (only those in the list of updates are taken).
+     *
+     * @param  list<string>  $packages
+     */
+    public function upgradeNow(string $what = 'packages', array $packages = []): void
+    {
+        if ($this->upgrading()) {
+            Toast::warning(__('Aktualizace už běží'), __('Počkejte, až doběhne.'));
+
+            return;
+        }
+        $packages = array_values(array_intersect($this->upgradableNames(), $packages));
+        if ($what === 'packages' && $packages === []) {
+            Toast::warning(__('Nic nevybráno'), __('Zaškrtněte balíčky, které se mají aktualizovat.'));
+
+            return;
+        }
+        $title = match ($what) {
+            'all' => __('Instalace všech aktualizací'),
+            'security' => __('Instalace bezpečnostních aktualizací'),
+            default => count($packages) === 1 ? __('Aktualizace :name', ['name' => $packages[0]])
+                : Lang::count(count($packages), 'Aktualizace :count balíčku', 'Aktualizace :count balíčků', 'Aktualizace :count balíčků'),
+        };
+        try {
+            $job = app(ManageUpdates::class)->upgrade($what === 'security', $what === 'packages' ? $packages : []);
+            $this->startBackgroundJob('sys-upgrade', $job, ['title' => $title, 'done' => __('Aktualizace nainstalovány'), 'body' => null]);
+        } catch (AgentException $e) {
+            Toast::error(__('Aktualizace selhala'), $e->getMessage());
+        }
+    }
+
+    public function upgradeOne(string $name): void
+    {
+        $this->upgradeNow('packages', [$name]);
+    }
+
+    public function upgradeSelected(): void
+    {
+        $this->upgradeNow('packages', $this->selected);
+    }
+
+    /** Ticks every shown package, or none when all are ticked. */
+    public function toggleAll(): void
+    {
+        $shown = array_column($this->shownPackages(), 'name');
+        $this->selected = array_diff($shown, $this->selected) === [] ? [] : $shown;
+    }
+
+    /** @return list<array{name: string, from: string, to: string, security: bool}> security ones first */
+    public function shownPackages(): array
+    {
+        return collect($this->updates['packages'] ?? [])
+            ->when($this->securityOnly, fn ($c) => $c->where('security', true))
+            ->sortBy([['security', 'desc'], ['name', 'asc']])->values()->all();
     }
 
     public function refresh(): void
@@ -91,6 +181,35 @@ class UpdatesPage extends Page
         } catch (AgentException) {
             $this->upgrade = null;
         }
+        // A failed upgrade to a version this server already has (or passed,
+        // e.g. upgraded from the command line since) is history, not news.
+        $current = PanelRelease::current();
+        if (($this->upgrade['state'] ?? null) === 'failed' && $current !== null && version_compare($current, (string) ($this->upgrade['version'] ?? ''), '>=')) {
+            $this->upgrade = null;
+        }
+        if (isset($this->upgrade['log'])) {
+            $this->upgrade['log'] = self::readableLog($this->upgrade['log']);
+        }
+    }
+
+    /**
+     * The upgrade's log without terminal colours and download progress bars.
+     *
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    public static function readableLog(array $lines): array
+    {
+        $out = [];
+        foreach ($lines as $line) {
+            $line = (string) preg_replace('/\e\[[0-9;]*[A-Za-z]/', '', $line);
+            if (trim($line) === '' || preg_match('/^[\s#=O.\-]*(\d{1,3}\.\d%)?\s*$/', $line)) {
+                continue;
+            }
+            $out[] = $line;
+        }
+
+        return $out;
     }
 
     /** Asks GitHub for the newest WSPanel now (otherwise daily). */
@@ -135,17 +254,6 @@ class UpdatesPage extends Page
 
     protected function headerActions(): array
     {
-        $upgrade = fn (bool $security) => function () use ($security) {
-            try {
-                app(ManageUpdates::class)->upgrade($security)
-                    ? Toast::success(__('Aktualizace nainstalovány'))
-                    : Toast::warning(__('Instalace ještě běží'), __('Obnovte stránku za chvíli.'));
-            } catch (AgentException $e) {
-                Toast::error(__('Aktualizace selhala'), $e->getMessage());
-            }
-            $this->load();
-        };
-
         $time = fn (string $name) => TextInput::make($name)->label(__('Čas (čas serveru)'))->placeholder('04:00')
             ->rules(['required', 'regex:/^([01][0-9]|2[0-3]):[0-5][0-9]$/'])->maxLength(5);
 
@@ -183,13 +291,13 @@ class UpdatesPage extends Page
                     $this->load();
                 }),
             Action::make('upgradeSecurity')->label(__('Nainstalovat bezpečnostní'))->icon('outline:shield-check')
-                ->visible(fn () => collect($this->updates['packages'] ?? [])->contains('security', true))
+                ->visible(fn () => ! $this->upgrading() && collect($this->updates['packages'] ?? [])->contains('security', true))
                 ->requiresConfirmation()->modalDescription(__('Nainstaluje jen bezpečnostní aktualizace (unattended-upgrades). Služby se po aktualizaci samy restartují.'))
-                ->action($upgrade(true)),
+                ->action(fn () => $this->upgradeNow('security')),
             Action::make('upgradeAll')->label(__('Nainstalovat vše'))->icon('outline:arrow-down-tray')->color('gray')
-                ->visible(fn () => ! empty($this->updates['packages']))
+                ->visible(fn () => ! $this->upgrading() && ! empty($this->updates['packages']))
                 ->requiresConfirmation()->modalDescription(__('Nainstaluje všechny aktualizace. Konfigurační soubory, které panel upravil, zůstanou (nové výchozí se nepoužijí).'))
-                ->action($upgrade(false)),
+                ->action(fn () => $this->upgradeNow('all')),
         ];
     }
 }

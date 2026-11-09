@@ -7,6 +7,7 @@ use App\Actions\Server\ManagePython;
 use App\Actions\Sites\ManageXhprof;
 use App\Http\Middleware\EnsureTwoFactor;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Models\Client;
 use App\Models\GameServer;
 use App\Models\Setting;
@@ -27,6 +28,7 @@ use NyonCode\WirePanels\Pages\Page;
 class ModulesPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.modules';
 
@@ -107,24 +109,38 @@ class ModulesPage extends Page
         return app(ManageMailHosting::class)->installed();
     }
 
+    protected function backgroundJobKeys(): array
+    {
+        return ['mail-install'];
+    }
+
+    /** The menu gains Pošta: a fresh page load shows it. */
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        if ($ok) {
+            $this->redirect(self::url());
+        }
+    }
+
     protected function headerActions(): array
     {
         return [
             Action::make('installMail')
                 ->label(__('Nainstalovat poštu (schránky)'))
                 ->icon('outline:inbox-stack')
-                ->visible(fn () => ! app(ManageMailHosting::class)->installed())
+                ->visible(fn () => ! isset($this->backgroundJobs['mail-install']) && ! app(ManageMailHosting::class)->installed())
                 ->requiresConfirmation()
                 ->modalDescription(__('Doinstaluje Dovecot (IMAP, POP3, Sieve) a Rspamd (antispam), otevře porty 25, 465, 587, 993, 995 a 4190 a Postfix začne přijímat poštu pro přidané domény. Trvá pár minut.'))
                 ->action(function () {
                     try {
-                        app(ManageMailHosting::class)->install()
-                            ? Toast::success(__('Pošta nainstalována'), __('Přidejte domény v Pošta → Domény a schránky.'))
-                            : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
+                        $this->startBackgroundJob('mail-install', app(ManageMailHosting::class)->install(), [
+                            'title' => __('Instalace pošty (schránky)'),
+                            'done' => __('Pošta nainstalována'),
+                            'body' => __('Přidejte domény v Pošta → Domény a schránky.'),
+                        ]);
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
-                    $this->redirect(self::url());
                 }),
             Action::make('installPython')
                 ->label(fn () => $this->pythonVersions() === [] ? __('Nainstalovat Python') : __('Přidat verzi Pythonu'))

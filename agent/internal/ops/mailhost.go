@@ -677,10 +677,13 @@ func mailInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		return nil, err
 	}
 	st, err := loadMail(env)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		err = saveMail(ctx, env, st)
 	}
-	if err := saveMail(ctx, env, st); err != nil {
+	if err != nil {
+		// The script marked it installed; a setup that does not run is not,
+		// and the panel offers the install again.
+		_ = os.Remove(filepath.Join(env.Cfg.MailDir, "hosting"))
 		return nil, err
 	}
 	_ = syncMailCert(ctx, env)

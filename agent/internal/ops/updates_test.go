@@ -64,3 +64,28 @@ func TestFail2banListsBansAndUnbansOnlyAnAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUpgradeTakesChosenPackagesOnly(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, sysUpgrade, map[string]any{"packages": []string{"curl", "libssl3t64:amd64"}}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range dr.Calls() {
+		if c.Name == "apt-get" && strings.Contains(strings.Join(c.Args, " "), "install -y -q --only-upgrade") && strings.HasSuffix(strings.Join(c.Args, " "), "-- curl libssl3t64:amd64") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("calls: %+v", dr.Calls())
+	}
+	for _, bad := range []map[string]any{
+		{"packages": []string{"-oAPT::x=1"}},
+		{"packages": []string{"curl; rm"}},
+		{"packages": []string{"curl"}, "security_only": true},
+	} {
+		if _, err := call(t, env, sysUpgrade, bad); code(err) != "invalid_params" {
+			t.Errorf("%v: %v", bad, err)
+		}
+	}
+}

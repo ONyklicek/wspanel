@@ -40,9 +40,9 @@
                                 <td class="py-1.5 pe-3 text-xs text-gray-500">{{ isset($p['size']) ? $size($p['size']) : '' }}</td>
                                 <td class="whitespace-nowrap py-1.5 text-right">
                                     @isset($p['update'])
-                                        <x-wire::button size="xs" wire:click="install(@js($factorio ? 'factorio' : $p['source']), @js($factorio ? $p['name'] : $p['project']))" :disabled="$factorio && ! $account">{{ __('Aktualizovat') }}</x-wire::button>
+                                        <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($factorio ? 'factorio' : $p['source']) }}, {{ \Illuminate\Support\Js::from($factorio ? $p['name'] : $p['project']) }})" :disabled="$factorio && ! $account">{{ __('Aktualizovat') }}</x-wire::button>
                                     @endisset
-                                    <x-wire::button size="xs" color="danger" outlined wire:click="remove(@js($p['file']))" wire:confirm="{{ __('Odebrat :file?', ['file' => $p['file']]) }}">{{ __('Odebrat') }}</x-wire::button>
+                                    <x-wire::button size="xs" color="danger" outlined wire:click="remove({{ \Illuminate\Support\Js::from($p['file']) }})" wire:confirm="{{ __('Odebrat :file?', ['file' => $p['file']]) }}">{{ __('Odebrat') }}</x-wire::button>
                                 </td>
                             </tr>
                         @endforeach
@@ -82,7 +82,7 @@
                                 @if (in_array($r['project'], $have, true))
                                     <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                                 @else
-                                    <x-wire::button size="xs" wire:click="install(@js($r['source']), @js($r['project']))" :disabled="$factorio && ! $account">{{ __('Nainstalovat') }}</x-wire::button>
+                                    <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($r['source']) }}, {{ \Illuminate\Support\Js::from($r['project']) }})" :disabled="$factorio && ! $account">{{ __('Nainstalovat') }}</x-wire::button>
                                 @endif
                             </li>
                         @endforeach

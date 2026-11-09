@@ -10,6 +10,8 @@
 # from Composer with the versions locked in files/xhgui (checked: no known
 # advisories), owned by root and read-only for the sites.
 set -euo pipefail
+# Run by the agent (umask 077): what it installs is read by other users.
+umask 022
 (($# > 0)) || { echo "usage: xhprof.sh <php version>..." >&2; exit 2; }
 XHGUI_VERSION=0.23.7
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

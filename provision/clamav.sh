@@ -8,6 +8,8 @@
 # clamd keeps its signatures in memory (about 1 GB); disable stops it and
 # its updater but keeps the packages, so switching it back on is quick.
 set -euo pipefail
+# Run by the agent (umask 077): what it installs is read by other users.
+umask 022
 export DEBIAN_FRONTEND=noninteractive
 case "${1:-}" in
   enable)

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"regexp"
@@ -23,6 +24,9 @@ type upgradable struct {
 }
 
 // "Inst libssl3 [3.0.15-1] (3.0.16-1 Debian-Security:13/stable-security [amd64])"
+// upgradeNameRe: a package as apt lists it for an upgrade (name, optionally :arch).
+var upgradeNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.+-]{0,99}(:[a-z0-9-]{1,20})?$`)
+
 var aptInstRe = regexp.MustCompile(`^Inst (\S+) (?:\[(\S+)\] )?\((\S+) ([^\[]*)`)
 
 func sysUpdates(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -67,16 +71,33 @@ func autoSecurityOn(env *Env) bool {
 // sysUpgrade installs the updates (async): all of them, or only security ones.
 func sysUpgrade(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
-		SecurityOnly bool `json:"security_only,omitempty"`
+		SecurityOnly bool     `json:"security_only,omitempty"`
+		Packages     []string `json:"packages,omitempty"` // only these (already installed) packages
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
+	}
+	if len(p.Packages) > 0 && p.SecurityOnly {
+		return nil, protocol.Invalid("packages or security_only")
+	}
+	if len(p.Packages) > 2000 {
+		return nil, protocol.Invalid("packages: at most 2000")
+	}
+	for _, n := range p.Packages {
+		if !upgradeNameRe.MatchString(n) {
+			return nil, protocol.Invalid(fmt.Sprintf("packages: %q is not a package name", n))
+		}
 	}
 	var (
 		res executor.Result
 		err error
 	)
-	if p.SecurityOnly {
+	keepConf := []string{"-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"}
+	if len(p.Packages) > 0 {
+		// --only-upgrade: a name that is not installed is skipped, never installed.
+		args := append([]string{"install", "-y", "-q", "--only-upgrade", "--no-install-recommends"}, keepConf...)
+		res, err = env.Exec.Run(ctx, "apt-get", append(append(args, "--"), p.Packages...)...)
+	} else if p.SecurityOnly {
 		if !env.Cfg.DryRun {
 			if _, err := env.Exec.Run(ctx, "apt-get", "install", "-y", "-q", "--no-install-recommends", "unattended-upgrades"); err != nil {
 				return nil, err
@@ -85,7 +106,7 @@ func sysUpgrade(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		res, err = env.Exec.Run(ctx, "unattended-upgrade", "-v")
 	} else {
 		// Keep changed config files (a package's new default never overwrites ours).
-		res, err = env.Exec.Run(ctx, "apt-get", "-y", "-q", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "dist-upgrade")
+		res, err = env.Exec.Run(ctx, "apt-get", append(append([]string{"-y", "-q"}, keepConf...), "dist-upgrade")...)
 	}
 	if err != nil {
 		return nil, err
