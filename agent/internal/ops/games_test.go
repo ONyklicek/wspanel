@@ -412,3 +412,53 @@ func TestARuleOfAServerFromBeforeOwnershipIsRemovedByItsComment(t *testing.T) {
 		t.Error("the panel's rule of an older server must go with it")
 	}
 }
+
+func TestGameSFTPIsSFTPOnlyWithRootOwnedKeys(t *testing.T) {
+	env, dr := gameTestEnv(t)
+	saveGame(env, gameState{ID: 3, Name: "S", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 2048})
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl me@pc"
+	for _, bad := range []map[string]any{
+		{"enabled": true}, // nothing to log in with
+		{"enabled": true, "keys": []string{`command="x" ` + key}},
+		{"enabled": true, "password_mode": "set", "password": "short"},
+	} {
+		bad["id"] = 3
+		if _, err := call(t, env, gameSFTP, bad); code(err) != "invalid_params" {
+			t.Errorf("%v must be refused: %v", bad, err)
+		}
+	}
+	out, err := call(t, env, gameSFTP, map[string]any{"id": 3, "enabled": true, "keys": []string{key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := out.(map[string]any); m["sftp"] != true || m["user"] != "wsg_3" || m["password"] != false {
+		t.Errorf("out: %v", m)
+	}
+	if got := read2(t, filepath.Join(env.Cfg.AuthorizedKeysDir, "wsg_3")); !strings.Contains(got, "restrict "+key) || strings.Contains(got, "pty") {
+		t.Errorf("keys file:\n%s", got)
+	}
+	all := []string{}
+	for _, c := range dr.Calls() {
+		all = append(all, c.String())
+	}
+	if !strings.Contains(strings.Join(all, "\n"), "usermod --groups "+env.Cfg.SFTPGroup+" --shell /usr/sbin/nologin wsg_3") {
+		t.Errorf("calls: %v", all)
+	}
+	if g, _ := loadGame(env, 3); !g.SFTP {
+		t.Error("state")
+	}
+	if _, err := call(t, env, gameSFTP, map[string]any{"id": 3, "enabled": false}); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(env.Cfg.AuthorizedKeysDir, "wsg_3")) {
+		t.Error("keys removed when off")
+	}
+}
+
+func TestEndingSFTPSessionsSparesTheGameServer(t *testing.T) {
+	env, _ := gameTestEnv(t)
+	m := managedCgroups(env.Cfg, "", "wsg_3")
+	if !m["/system.slice/wspanel-game-3.service"] {
+		t.Error("the game's own unit is the user's managed one")
+	}
+}

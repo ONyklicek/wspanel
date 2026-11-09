@@ -63,6 +63,8 @@ type gameState struct {
 	// The firewall rule is the panel's (a rule the admin had for the port
 	// before stays, and stays on delete).
 	OwnsFirewall bool `json:"owns_firewall,omitempty"`
+	SFTP         bool `json:"sftp,omitempty"`          // SFTP into its home
+	SFTPPassword bool `json:"sftp_password,omitempty"` // with a password (else keys only)
 }
 
 func (g gameState) user() string       { return "wsg_" + strconv.Itoa(g.ID) }
@@ -1370,6 +1372,7 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if _, err := env.Exec.Run(ctx, "userdel", g.user()); err != nil && !env.Cfg.DryRun {
 		return nil, err
 	}
+	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, g.user()))
 	if err := os.RemoveAll(gameHome(env, g.ID)); err != nil {
 		return nil, err
 	}
@@ -1383,4 +1386,59 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	return map[string]any{"deleted": g.ID}, nil
+}
+
+// gameSFTP: SFTP into the server's home as its user (never a shell), with
+// keys and/or a password, as sites have it.
+func gameSFTP(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	var p struct {
+		ID           int      `json:"id"`
+		Enabled      bool     `json:"enabled"`
+		Keys         []string `json:"keys"`
+		PasswordMode string   `json:"password_mode,omitempty"` // keep | set | remove
+		Password     string   `json:"password,omitempty"`
+	}
+	g, err := decodeGame(env, raw, &p, &p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p.PasswordMode == "" {
+		p.PasswordMode = "keep"
+	}
+	if err := validate.OneOf("password_mode", p.PasswordMode, []string{"keep", "set", "remove"}); err != nil {
+		return nil, err
+	}
+	if p.PasswordMode == "set" && !sshPasswordRe.MatchString(p.Password) {
+		return nil, protocol.Invalid("password: 12–128 printable ASCII characters, no colon")
+	}
+	if p.PasswordMode != "set" && p.Password != "" {
+		return nil, protocol.Invalid("password: only with password_mode set")
+	}
+	if len(p.Keys) > 20 {
+		return nil, protocol.Invalid("keys: at most 20 keys")
+	}
+	keys := make([]string, 0, len(p.Keys))
+	for _, k := range p.Keys {
+		parsed, err := parsePublicKey(k)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, parsed)
+	}
+	hasPassword := p.Enabled && (g.SFTPPassword && p.PasswordMode == "keep" || p.PasswordMode == "set")
+	if p.Enabled && len(keys) == 0 && !hasPassword {
+		return nil, protocol.Invalid("keys: at least one public key or a password is required")
+	}
+	access := "off"
+	if p.Enabled {
+		access = "sftp"
+	}
+	if err := applySSHAccess(ctx, env, g.user(), access, keys, hasPassword, p.PasswordMode, p.Password); err != nil {
+		return nil, err
+	}
+	g.SFTP, g.SFTPPassword = p.Enabled, hasPassword
+	if err := saveGame(env, g); err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": g.ID, "user": g.user(), "sftp": g.SFTP, "keys": len(keys), "password": hasPassword, "home": gameHome(env, g.ID)}, nil
 }

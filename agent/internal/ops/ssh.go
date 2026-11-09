@@ -125,54 +125,8 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		return nil, protocol.Invalid("keys: at least one public key or a password is required")
 	}
 
-	keyFile := filepath.Join(env.Cfg.AuthorizedKeysDir, l.User)
-	shell, group := "/usr/sbin/nologin", ""
-	switch p.Access {
-	case "shell":
-		shell, group = "/bin/bash", env.Cfg.SSHGroup
-	case "sftp":
-		group = env.Cfg.SFTPGroup
-	}
-
-	if p.Access == "off" || len(keys) == 0 {
-		if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-	} else {
-		opts := "restrict"
-		if p.Access == "shell" {
-			opts = "restrict,pty"
-		}
-		var b strings.Builder
-		b.WriteString("# Managed by WSPanel agent. Edit SSH keys in the panel.\n")
-		for _, k := range keys {
-			b.WriteString(opts + " " + k + "\n")
-		}
-		if err := env.FS.MkdirAll(env.Cfg.AuthorizedKeysDir, 0o755, fsx.Root); err != nil {
-			return nil, err
-		}
-		if err := env.FS.WriteFile(keyFile, []byte(b.String()), 0o644, fsx.Root); err != nil {
-			return nil, err
-		}
-	}
-	// Supplementary groups are exactly the SSH group (or none); site users have no others.
-	if _, err := env.Exec.Run(ctx, "usermod", "--groups", group, "--shell", shell, l.User); err != nil {
+	if err := applySSHAccess(ctx, env, l.User, p.Access, keys, hasPassword, p.PasswordMode, p.Password); err != nil {
 		return nil, err
-	}
-	// Password: set through chpasswd's stdin (never argv), or locked.
-	if hasPassword && p.PasswordMode == "set" {
-		if _, err := env.Exec.RunIO(ctx, strings.NewReader(l.User+":"+p.Password+"\n"), nil, "chpasswd"); err != nil {
-			return nil, err
-		}
-	} else if !hasPassword {
-		if _, err := env.Exec.Run(ctx, "usermod", "--lock", l.User); err != nil {
-			return nil, err
-		}
-	}
-	// Any change ends existing sessions and everything started from them, so
-	// revoked access cannot linger in a nohup/screen process.
-	if err := killSessionProcesses(ctx, env, l.User); err != nil {
-		return nil, fmt.Errorf("access set, but ending existing sessions failed: %w", err)
 	}
 	st.SSHAccess = p.Access
 	st.SSHPassword = hasPassword
@@ -183,4 +137,60 @@ func sshSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("access set, but updating tool links failed: %w", err)
 	}
 	return map[string]any{"domain": p.Domain, "user": l.User, "access": p.Access, "keys": len(keys), "password": hasPassword, "home": l.Home}, nil
+}
+
+// applySSHAccess writes a user's keys (root-owned, the user cannot add any),
+// its group (shell or SFTP), its password (set through chpasswd's stdin, or
+// locked), and ends its open sessions. Shared by sites and game servers.
+func applySSHAccess(ctx context.Context, env *Env, user, access string, keys []string, hasPassword bool, passwordMode, password string) error {
+	keyFile := filepath.Join(env.Cfg.AuthorizedKeysDir, user)
+	shell, group := "/usr/sbin/nologin", ""
+	switch access {
+	case "shell":
+		shell, group = "/bin/bash", env.Cfg.SSHGroup
+	case "sftp":
+		group = env.Cfg.SFTPGroup
+	}
+
+	if access == "off" || len(keys) == 0 {
+		if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	} else {
+		opts := "restrict"
+		if access == "shell" {
+			opts = "restrict,pty"
+		}
+		var b strings.Builder
+		b.WriteString("# Managed by WSPanel agent. Edit SSH keys in the panel.\n")
+		for _, k := range keys {
+			b.WriteString(opts + " " + k + "\n")
+		}
+		if err := env.FS.MkdirAll(env.Cfg.AuthorizedKeysDir, 0o755, fsx.Root); err != nil {
+			return err
+		}
+		if err := env.FS.WriteFile(keyFile, []byte(b.String()), 0o644, fsx.Root); err != nil {
+			return err
+		}
+	}
+	// Supplementary groups are exactly the SSH group (or none); site users have no others.
+	if _, err := env.Exec.Run(ctx, "usermod", "--groups", group, "--shell", shell, user); err != nil {
+		return err
+	}
+	// Password: set through chpasswd's stdin (never argv), or locked.
+	if hasPassword && passwordMode == "set" {
+		if _, err := env.Exec.RunIO(ctx, strings.NewReader(user+":"+password+"\n"), nil, "chpasswd"); err != nil {
+			return err
+		}
+	} else if !hasPassword {
+		if _, err := env.Exec.Run(ctx, "usermod", "--lock", user); err != nil {
+			return err
+		}
+	}
+	// Any change ends existing sessions and everything started from them, so
+	// revoked access cannot linger in a nohup/screen process.
+	if err := killSessionProcesses(ctx, env, user); err != nil {
+		return fmt.Errorf("access set, but ending existing sessions failed: %w", err)
+	}
+	return nil
 }

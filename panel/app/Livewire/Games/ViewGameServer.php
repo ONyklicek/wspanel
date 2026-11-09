@@ -3,6 +3,7 @@
 namespace App\Livewire\Games;
 
 use App\Actions\Games\ManageGameServers;
+use App\Actions\Sites\ManageSsh;
 use App\Enums\Game;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\GameServer;
@@ -13,8 +14,11 @@ use Illuminate\Contracts\View\View;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Infolists\Infolist;
+use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
+use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
+use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
 
 /** One game server: state and players, console, log, backups. */
@@ -193,6 +197,49 @@ class ViewGameServer extends ViewPage
                         Toast::error(__('Nastavení se nepodařilo uložit'), $e->getMessage());
                     }
                     $this->refreshStatus();
+                }),
+            Action::make('sftp')->label('SFTP')->icon('outline:folder-arrow-down')->color('gray')
+                ->modalHeading(fn () => __('SFTP pro :name', ['name' => $server()->name]))
+                ->modalDescription(fn () => __('Přihlášení jako :user (port :port) do složky serveru; jen přenos souborů, žádný shell. Opakovaně chybná přihlášení zablokuje fail2ban.', ['user' => $server()->systemUser(), 'port' => config('panel.ssh_port')]))
+                ->modalWidth('2xl')
+                ->fillFormUsing(fn () => ['enabled' => $server()->sftp, 'keys' => (string) $server()->sftp_keys, 'password_mode' => 'keep'])
+                ->form(fn () => [
+                    Toggle::make('enabled')->label(__('Povolit SFTP'))->live(),
+                    Radio::make('password_mode')->label(__('Heslo'))->required()->live()
+                        ->options($server()->sftp_password
+                            ? ['keep' => __('Ponechat současné'), 'generate' => __('Vygenerovat nové'), 'set' => __('Zadat vlastní'), 'remove' => __('Zrušit (jen klíče)')]
+                            : ['keep' => __('Bez hesla (jen klíče)'), 'generate' => __('Vygenerovat heslo'), 'set' => __('Zadat vlastní')])
+                        ->rules(['in:keep,generate,set,remove'])
+                        ->visible(fn ($get) => (bool) $get('enabled')),
+                    TextInput::make('password')->label(__('Nové heslo'))->password()->revealable()->minLength(12)->maxLength(128)
+                        ->rules(['min:12', 'max:128', 'regex:/^[\x20-\x39\x3b-\x7e]+$/'])
+                        ->validationMessages(['regex' => __('Jen tisknutelné ASCII znaky bez dvojtečky.')])
+                        ->visible(fn ($get) => $get('enabled') && $get('password_mode') === 'set')->requiredIf('password_mode', 'set'),
+                    Textarea::make('keys')->label(__('Veřejné klíče'))->rows(4)->placeholder(__('ssh-ed25519 AAAA… jmeno@pocitac'))
+                        ->helperText(__('Jeden na řádek. Klíč je bezpečnější než heslo.'))
+                        ->visible(fn ($get) => (bool) $get('enabled'))
+                        ->required(fn ($get) => $get('enabled') && ! in_array($get('password_mode') ?? 'keep', ['generate', 'set'], true)
+                            && ! ($server()->sftp_password && ($get('password_mode') ?? 'keep') === 'keep'))
+                        ->rules([function (string $attribute, mixed $value, \Closure $fail) {
+                            if (trim((string) $value) !== '' && ManageSsh::parseKeys((string) $value) === []) {
+                                $fail(__('Nenašel jsem žádný platný klíč.'));
+                            }
+                        }])
+                        ->validationMessages(['required' => __('Zadejte veřejný klíč, nebo nastavte heslo.')]),
+                ])
+                ->action(function (array $data) use ($server) {
+                    try {
+                        $generated = app(ManageGameServers::class)->setSftp($server(), (bool) $data['enabled'], (string) ($data['keys'] ?? ''), (string) ($data['password_mode'] ?? 'keep'), $data['password'] ?? null);
+                        $login = 'sftp -P '.config('panel.ssh_port').' '.$server()->sftpTarget();
+                        match (true) {
+                            ! $data['enabled'] => Toast::success(__('SFTP vypnuto')),
+                            $generated !== null => Toast::secret(__('SFTP zapnuto'), __(':login
+Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $generated])),
+                            default => Toast::success(__('SFTP zapnuto'), $login),
+                        };
+                    } catch (AgentException $e) {
+                        Toast::error(__('Nastavení SFTP selhalo'), $e->getMessage());
+                    }
                 }),
             Action::make('upgrade')->label(__('Aktualizovat'))->icon('outline:arrow-path')->color('gray')
                 ->modalDescription(fn () => $server()->game === Game::Minecraft

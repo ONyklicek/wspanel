@@ -212,6 +212,7 @@ func Registry() map[string]Op {
 		{"game.restore", true, gameRestore},
 		{"game.delete", true, gameDelete},
 		{"game.files", true, gameFiles},
+		{"game.sftp", true, gameSFTP},
 		{"game.properties", false, gameProperties},
 		{"game.set_properties", true, gameSetProperties},
 		{"game.player_lists", false, gamePlayerLists},

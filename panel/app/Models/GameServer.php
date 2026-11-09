@@ -22,16 +22,19 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $cpu_percent
  * @property string $status installing | active | failed
  * @property ?string $error
+ * @property bool $sftp
+ * @property ?string $sftp_keys
+ * @property bool $sftp_password
  */
 class GameServer extends Model
 {
     use OwnedByClient;
 
-    protected $fillable = ['name', 'game', 'flavor', 'version', 'build', 'port', 'memory_mb', 'cpu_percent', 'status', 'error'];
+    protected $fillable = ['name', 'game', 'flavor', 'version', 'build', 'port', 'memory_mb', 'cpu_percent', 'status', 'error', 'sftp', 'sftp_keys', 'sftp_password'];
 
     protected function casts(): array
     {
-        return ['game' => Game::class, 'port' => 'integer', 'memory_mb' => 'integer', 'cpu_percent' => 'integer'];
+        return ['game' => Game::class, 'port' => 'integer', 'memory_mb' => 'integer', 'cpu_percent' => 'integer', 'sftp' => 'boolean', 'sftp_password' => 'boolean'];
     }
 
     public function flavorLabel(): string
@@ -52,5 +55,17 @@ class GameServer extends Model
         $host = (string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'server');
 
         return $this->game->connectHint($host, $this->port);
+    }
+
+    /** The server's own user: its files, its SFTP login. */
+    public function systemUser(): string
+    {
+        return 'wsg_'.$this->id;
+    }
+
+    /** "wsg_7@panel.example.com" for an SFTP client. */
+    public function sftpTarget(): string
+    {
+        return $this->systemUser().'@'.(config('panel.ssh_host') ?: parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'server');
     }
 }

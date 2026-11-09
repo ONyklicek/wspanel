@@ -316,4 +316,36 @@ class GameServersTest extends TestCase
             ->call('install', 'modrinth', 'luckperms')
             ->call('remove', 'flib_0.16.5.zip');
     }
+
+    public function test_sftp_into_the_server_with_a_generated_password(): void
+    {
+        $server = $this->minecraft();
+        $key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl me@pc';
+        $this->agent->shouldReceive('call')->once()->with('game.sftp', Mockery::on(fn ($p) => $p['enabled'] === true && $p['keys'] === [$key]
+            && $p['password_mode'] === 'set' && strlen($p['password']) === 20))->andReturn(['sftp' => true, 'password' => true]);
+        $this->agent->shouldReceive('call')->once()->with('game.sftp', Mockery::on(fn ($p) => $p['enabled'] === false))->andReturn(['sftp' => false, 'password' => false]);
+
+        $this->pageAction(Livewire::test(ViewGameServer::class, ['record' => $server->id]), 'sftp', ['enabled' => true, 'password_mode' => 'keep', 'keys' => ''])->assertHasErrors();
+        $this->pageAction(Livewire::test(ViewGameServer::class, ['record' => $server->id]), 'sftp', ['enabled' => true, 'password_mode' => 'generate', 'keys' => $key])->assertHasNoErrors();
+        $this->assertTrue($server->fresh()->sftp);
+        $this->assertTrue($server->fresh()->sftp_password);
+        Livewire::test(ViewGameServer::class, ['record' => $server->id])->assertSee('wsg_'.$server->id.'@');
+        $this->pageAction(Livewire::test(ViewGameServer::class, ['record' => $server->id]), 'sftp', ['enabled' => false]);
+        $this->assertFalse($server->fresh()->sftp);
+    }
+
+    public function test_a_client_without_sftp_in_the_package_is_refused(): void
+    {
+        Features::setClients(true);
+        Features::setGames(true);
+        $package = Package::create(['name' => 'Bez SSH', 'ssh' => 'off']);
+        $client = Client::factory()->create(['package_id' => $package->id, 'linux_group' => 'wsc_5']);
+        $server = GameServer::create(['name' => 'S', 'game' => 'factorio', 'flavor' => 'stable', 'version' => '2.1.24', 'port' => 34197, 'memory_mb' => 2048, 'status' => 'active']);
+        $server->forceFill(['client_id' => $client->id])->save();
+        $this->actingAs(User::factory()->forClient($client)->create());
+        $this->agent->shouldNotReceive('call')->with('game.sftp', Mockery::any());
+
+        $this->pageAction(Livewire::test(ViewGameServer::class, ['record' => $server->id]), 'sftp', ['enabled' => true, 'password_mode' => 'generate'])->assertNotified();
+        $this->assertFalse($server->fresh()->sftp);
+    }
 }

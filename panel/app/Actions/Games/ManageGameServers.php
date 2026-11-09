@@ -3,7 +3,9 @@
 namespace App\Actions\Games;
 
 use App\Actions\Clients\ManageClients;
+use App\Actions\Sites\ManageSsh;
 use App\Enums\Game;
+use App\Enums\SshAccess;
 use App\Exceptions\LimitReachedException;
 use App\Models\Client;
 use App\Models\GameServer;
@@ -13,6 +15,7 @@ use App\Services\Agent\AgentJobs;
 use App\Support\CurrentClient;
 use App\Support\Limits;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 /** Game servers, through the agent (games.go). */
 class ManageGameServers
@@ -391,6 +394,39 @@ class ManageGameServers
     public function removeMod(GameServer $server, string $file): void
     {
         $this->agent->call('game.mod_remove', ['id' => $server->id, 'file' => $file]);
+    }
+
+    /**
+     * SFTP into the server's home (never a shell), with keys and/or a
+     * password; a generated password is returned once, the panel keeps none.
+     *
+     * @throws AgentException
+     * @throws LimitReachedException
+     */
+    public function setSftp(GameServer $server, bool $enabled, string $keys, string $passwordMode = 'keep', ?string $password = null): ?string
+    {
+        if ($enabled) {
+            $this->limits->assertSsh($server->client, SshAccess::Sftp);
+        }
+        $lines = ManageSsh::parseKeys($keys);
+        $params = ['id' => $server->id, 'enabled' => $enabled, 'keys' => $lines];
+        $generated = null;
+        if ($passwordMode === 'generate') {
+            $generated = $password = Str::password(20, symbols: false);
+            $passwordMode = 'set';
+        }
+        if (in_array($passwordMode, ['set', 'remove'], true)) {
+            $params['password_mode'] = $passwordMode;
+        }
+        if ($passwordMode === 'set') {
+            $params['password'] = (string) $password;
+        }
+        $out = $this->agent->call('game.sftp', $params);
+        // Switched off, the keys stay in the panel for switching it on again.
+        $server->update(['sftp' => $enabled, 'sftp_password' => (bool) ($out['password'] ?? false)]
+            + ($enabled ? ['sftp_keys' => $lines === [] ? null : implode("\n", $lines)] : []));
+
+        return $enabled ? $generated : null;
     }
 
     /** @throws AgentException */

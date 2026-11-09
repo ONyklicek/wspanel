@@ -34,6 +34,10 @@ func managedCgroups(cfg config.Config, root, username string) map[string]bool {
 	for _, t := range WorkerTypes {
 		m[root+"/system.slice/"+legacyWorkerUnit(username, t)] = true
 	}
+	// A game server's user: its server keeps running when its SFTP sessions end.
+	if id, ok := strings.CutPrefix(username, "wsg_"); ok {
+		m[root+"/system.slice/wspanel-game-"+id+".service"] = true
+	}
 	for _, id := range siteCronIDs(cfg, username) {
 		m[root+"/system.slice/"+cronUnitBase(username, id)+".service"] = true
 	}

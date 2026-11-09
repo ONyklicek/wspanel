@@ -2545,5 +2545,11 @@
     "nikdo": "nobody",
     "všichni": "everyone",
     "Účet factorio.com: jméno": "factorio.com account: username",
-    "Štítky (oddělené čárkou)": "Tags (comma-separated)"
+    "Štítky (oddělené čárkou)": "Tags (comma-separated)",
+    "SFTP pro :name": "SFTP for :name",
+    "Přihlášení jako :user (port :port) do složky serveru; jen přenos souborů, žádný shell. Opakovaně chybná přihlášení zablokuje fail2ban.": "Sign in as :user (port :port) to the server's folder; file transfer only, no shell. Repeated failed sign-ins are blocked by fail2ban.",
+    "Povolit SFTP": "Allow SFTP",
+    "SFTP vypnuto": "SFTP off",
+    "SFTP zapnuto": "SFTP on",
+    "Nastavení SFTP selhalo": "Setting up SFTP failed"
 }

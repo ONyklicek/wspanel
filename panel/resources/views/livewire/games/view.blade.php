@@ -36,6 +36,9 @@
                     </dd></div>
                 <div><dt class="text-xs text-gray-500">{{ __('Paměť') }}</dt>
                     <dd>{{ isset($status['memory_bytes']) ? $size($status['memory_bytes']) : '—' }} <span class="text-xs text-gray-500">/ {{ $size($server->memory_mb * 1048576) }}</span></dd></div>
+                @if ($server->sftp)
+                    <div class="sm:col-span-4 text-xs text-gray-500">SFTP: <span class="font-mono">sftp -P {{ config('panel.ssh_port') }} {{ $server->sftpTarget() }}</span></div>
+                @endif
                 <div class="sm:col-span-4 text-xs text-gray-500">{{ $server->game->label() }} · {{ $server->versionLabel() }} · {{ __('port') }} {{ $server->port }}/{{ $server->game->proto() }}@if ($server->cpu_percent) · {{ __('CPU :n %', ['n' => $server->cpu_percent]) }}@endif</div>
             </dl>
             <div class="flex gap-2">

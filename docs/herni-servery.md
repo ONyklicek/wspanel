@@ -76,6 +76,12 @@ a port; výchozí port Minecraftu se nepíše).
   `config/paper-*.yml`, nastavení pluginů a módů), nahrávání pluginů a
   módů, stahování, rozbalování archivů. Pracuje jako uživatel serveru,
   jen v jeho složce. Změny platí po restartu serveru.
+- **SFTP** (tlačítko v záhlaví stránky serveru): přenos souborů do složky
+  serveru jako jeho uživatel `wsg_<id>`, jen SFTP, nikdy shell. Klíče
+  (bezpečnější) a/nebo heslo; vygenerované heslo se ukáže jen jednou,
+  panel hesla neukládá. Přihlášení: `sftp -P <port SSH> wsg_<id>@<server>`
+  (stránka ho ukáže). Změna přístupu ukončí otevřené SFTP relace, běžící
+  server hry ne. U klienta platí limit SSH/SFTP z jeho balíčku.
 - **Konzole:** příkazy serveru, např. `list`, `say Ahoj`, `op Jméno`,
   `whitelist add Jméno` u Minecraftu, `/players` nebo `/promote Jméno`
   u Factoria. Panel je posílá přes RCON.
@@ -125,5 +131,4 @@ má klientův server vždy kvótu (**Hosting → Klienti → Balíčky**).
   znovu a svět přeneste ručně: záloha je archiv `.tar.gz` se složkou `data`
   (v úložišti mimo server pod `games/<id>/`).
 - Další hry (Terraria, Valheim, hry přes steamcmd), Forge a Fabric pro
-  Minecraft, SFTP do složky
-  serveru.
+  Minecraft.
