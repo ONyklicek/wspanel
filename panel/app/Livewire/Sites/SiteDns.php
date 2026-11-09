@@ -121,6 +121,7 @@ class SiteDns extends ViewPage
             'subNavigation' => $this->subNavigation($this->site()),
             'site' => $this->site(),
             'zone' => $status['zone'],
+            'domain' => $status['domain'],
             'records' => $status['records'],
             'zoneError' => $status['error'],
             'nameservers' => DnsAdvisor::defaultNameservers(),

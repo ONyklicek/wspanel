@@ -8,6 +8,7 @@ use App\Enums\DnsProvider;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\SiteDns;
 use App\Models\DnsZone;
+use App\Models\MailDomain;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -54,7 +55,15 @@ class SiteDnsTest extends TestCase
         {
             public function records(string $name, int $type, string $field): array
             {
-                return $type === DNS_A ? (['shop.example.com' => ['203.0.113.10'], 'blog.example.com' => ['198.51.100.1']][$name] ?? []) : [];
+                return [
+                    'shop.example.com|'.DNS_A => ['203.0.113.10'],
+                    'blog.example.com|'.DNS_A => ['198.51.100.1'],
+                    // firma.cz: its DNS is elsewhere; SPF set, another MX, no DMARC yet.
+                    'firma.cz|'.DNS_SOA => ['ns.registrar.example'],
+                    'www.firma.cz|'.DNS_A => ['203.0.113.10'],
+                    'www.firma.cz|'.DNS_TXT => ['v=spf1 ip4:203.0.113.10 ~all'],
+                    'www.firma.cz|'.DNS_MX => ['mx.elsewhere.example'],
+                ][$name.'|'.$type] ?? [];
             }
         });
         $this->actingAs(User::factory()->create());
@@ -104,9 +113,9 @@ class SiteDnsTest extends TestCase
         $status = app(ManageSiteDns::class)->status($site);
         $byName = collect($status['records'])->keyBy(fn ($r) => $r['name'].' '.$r['type']);
         $this->assertSame('missing', $byName['shop.example.com A']['in_zone']);
-        $this->assertTrue($byName['shop.example.com A']['public']);
+        $this->assertSame('ok', $byName['shop.example.com A']['public']);
         $this->assertSame('differs', $byName['blog.example.com A']['in_zone']);
-        $this->assertFalse($byName['blog.example.com A']['public']);
+        $this->assertSame('differs', $byName['blog.example.com A']['public']);
 
         Livewire::test(SiteDns::class, ['record' => $site->id])
             ->assertSee('Doplnit chybějící')->assertSee('jiná hodnota')
@@ -125,6 +134,30 @@ class SiteDnsTest extends TestCase
 
         $dkim = collect(app(ManageSiteDns::class)->status($site)['records'])->first(fn ($r) => str_starts_with($r['name'], 'wspanel._domainkey'));
         $this->assertSame('ok', $dkim['in_zone']);
+    }
+
+    public function test_dns_kept_elsewhere_is_shown_as_the_registrars_forms_ask_for_it(): void
+    {
+        config(['panel.mail_host' => 'mail.hosting.cz']);
+        $site = Site::create(['domain' => 'www.firma.cz', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        MailDomain::create(['domain' => 'firma.cz']);
+
+        $status = app(ManageSiteDns::class)->status(Site::where('domain', 'www.firma.cz')->first());
+        $this->assertNull($status['zone']);
+        $this->assertSame('firma.cz', $status['domain']); // found by its SOA
+        $rows = collect($status['records'])->keyBy(fn ($r) => $r['name'].' '.$r['type']);
+
+        $this->assertSame('@', $rows['firma.cz MX']['relative']);
+        $this->assertSame(['priority' => '10', 'value' => 'mail.hosting.cz'], $rows['firma.cz MX']['fields'][0]);
+        $this->assertSame('_dmarc', $rows['_dmarc.firma.cz TXT']['relative']);
+        $this->assertSame(['priority' => '0', 'weight' => '1', 'port' => '993', 'value' => 'mail.hosting.cz'], $rows['_imaps._tcp.firma.cz SRV']['fields'][0]);
+        $this->assertStringNotContainsString('"', $rows['_dmarc.firma.cz TXT']['fields'][0]['value']);
+        $this->assertSame('missing', $rows['_dmarc.firma.cz TXT']['public']);
+        $this->assertSame('missing', $rows['firma.cz MX']['public']);
+
+        Livewire::test(SiteDns::class, ['record' => $site->id])
+            ->assertSee('Jak nastavit DNS u registrátora')->assertSee('Co nastavit v DNS domény firma.cz')
+            ->assertDontSee('Doplnit chybějící');
     }
 
     public function test_a_site_without_a_zone_gets_one_from_its_tab(): void

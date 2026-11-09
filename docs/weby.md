@@ -65,6 +65,19 @@ serveru (nebo připojí Cloudflare) a záznamy rovnou doplní.
 Nově přidaná další doména webu (Nastavení → Domény) se do zóny spravované
 panelem zapíše sama (A/AAAA na tento server).
 
+**DNS u registrátora nebo jiného poskytovatele** (DNS spravuji jinde):
+záložka ukáže návod a tabulku tak, jak ji chtějí formuláře registrátorů:
+- **Název** vůči doméně (`@` je doména sama, `_dmarc`, `www`…), pod ním celý
+  název pro formuláře, které chtějí ten. Doménu u registrátora panel pozná
+  podle veřejného DNS (pro `www.firma.cz` je to `firma.cz`).
+- **Priorita** u MX a SRV zvlášť, u SRV i váha a port.
+- **Hodnota** bez uvozovek (TXT), cíle jako celé názvy. Každou hodnotu
+  i název jde zkopírovat.
+- **Stav** podle veřejného DNS u všech záznamů (A/AAAA, MX, TXT, CNAME,
+  SRV, CAA): je / chybí / jiná hodnota (u adres míří jinam).
+
+Domény vnitřní sítě (`.test`, `.lan`…) se veřejně neověřují.
+
 Co se při založení stane:
 - vytvoří se systémový uživatel `web_<doména>` bez přihlášení,
 - vznikne `/srv/sites/<doména>` (struktura níže),

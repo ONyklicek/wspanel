@@ -102,7 +102,7 @@ class ManageSiteDns
      * Each expected record: in the zone (managed zones), and seen by the
      * world (the names that must point here).
      *
-     * @return array{zone: ?DnsZone, records: list<array{name: string, type: string, records: list<string>, note: string, in_zone: ?string, public: ?bool}>, error: ?string}
+     * @return array{zone: ?DnsZone, domain: string, records: list<array{name: string, relative: string, type: string, ttl: int, records: list<string>, fields: list<array<string, string>>, note: string, in_zone: ?string, public: ?string}>, error: ?string}
      */
     public function status(Site $site): array
     {
@@ -129,10 +129,16 @@ class ManageSiteDns
                     default => 'differs',
                 };
             }
-            $rows[] = $r + ['in_zone' => $inZone, 'public' => $this->publicOk($r)];
+            $rows[] = $r + ['in_zone' => $inZone, 'public' => $this->publicState($r)];
         }
+        $domain = $zone?->domain ?? $this->registrarDomain($site->domain);
+        foreach ($rows as &$row) {
+            $row['relative'] = self::relativeName($row['name'], $domain);
+            $row['fields'] = array_map(fn (string $v) => self::fields($row['type'], $v), $row['records']);
+        }
+        unset($row);
 
-        return ['zone' => $zone, 'records' => $rows, 'error' => $error];
+        return ['zone' => $zone, 'domain' => $domain, 'records' => $rows, 'error' => $error];
     }
 
     private static function inZone(string $name, DnsZone $zone): bool
@@ -151,15 +157,91 @@ class ManageSiteDns
         return $norm($a) === $norm($b);
     }
 
-    /** Whether the world sees an address record pointing here (null: not checked). */
-    private function publicOk(array $r): ?bool
+    /**
+     * What public DNS says for an expected record: ok (it has our values),
+     * differs (the name has other values), missing; null when it cannot be
+     * asked (a name of a local network, no public address configured).
+     */
+    private function publicState(array $r): ?string
     {
-        if (! in_array($r['type'], ['A', 'AAAA'], true) || ! PublicAddress::host($r['name']) || Domains::isInternal($r['name'])) {
+        if (Domains::isInternal($r['name']) || (in_array($r['type'], ['A', 'AAAA'], true) && ! PublicAddress::host($r['name']))) {
             return null;
         }
-        $ips = $r['type'] === 'A' ? $this->resolver->records($r['name'], DNS_A, 'ip') : $this->resolver->records($r['name'], DNS_AAAA, 'ipv6');
+        $have = match ($r['type']) {
+            'A' => $this->resolver->records($r['name'], DNS_A, 'ip'),
+            'AAAA' => $this->resolver->records($r['name'], DNS_AAAA, 'ipv6'),
+            'CNAME' => $this->resolver->records($r['name'], DNS_CNAME, 'target'),
+            'MX' => $this->resolver->records($r['name'], DNS_MX, 'target'),
+            'TXT' => $this->resolver->records($r['name'], DNS_TXT, 'txt'),
+            'SRV' => $this->resolver->records($r['name'], DNS_SRV, 'target'),
+            'CAA' => $this->resolver->records($r['name'], DNS_CAA, 'value'),
+            default => null,
+        };
+        if ($have === null) {
+            return null;
+        }
+        if ($have === []) {
+            return 'missing';
+        }
+        $want = array_map(fn (array $f) => $f['value'], array_map(fn (string $v) => self::fields($r['type'], $v), $r['records']));
+        $norm = fn (array $l) => array_map(fn ($v) => strtolower(rtrim(trim((string) $v, '" '), '.')), $l);
 
-        return array_intersect($ips, $r['records']) !== [];
+        return array_diff($norm($want), $norm($have)) === [] ? 'ok' : 'differs';
+    }
+
+    /**
+     * One record value split as registrars' forms ask for it: the priority
+     * (MX, SRV) and the SRV's weight and port in fields of their own, the
+     * value without quotes.
+     *
+     * @return array{value: string, priority?: string, weight?: string, port?: string}
+     */
+    public static function fields(string $type, string $value): array
+    {
+        $value = trim($value);
+        if ($type === 'MX' && preg_match('/^(\d+)\s+(\S+)$/', $value, $m)) {
+            return ['priority' => $m[1], 'value' => rtrim($m[2], '.')];
+        }
+        if ($type === 'SRV' && preg_match('/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)$/', $value, $m)) {
+            return ['priority' => $m[1], 'weight' => $m[2], 'port' => $m[3], 'value' => rtrim($m[4], '.')];
+        }
+        if ($type === 'TXT') {
+            return ['value' => (string) preg_replace('/"\s+"/', '', trim($value, '"'))];
+        }
+        if ($type === 'CNAME') {
+            return ['value' => rtrim($value, '.')];
+        }
+
+        return ['value' => $value];
+    }
+
+    /**
+     * The domain as the registrar has it (the zone the world asks): found by
+     * its SOA, else the last two labels (shop.example.com → example.com).
+     */
+    public function registrarDomain(string $host): string
+    {
+        $labels = explode('.', strtolower(rtrim($host, '.')));
+        for ($i = 0; $i < count($labels) - 1; $i++) {
+            $candidate = implode('.', array_slice($labels, $i));
+            if (! Domains::isInternal($candidate) && $this->resolver->records($candidate, DNS_SOA, 'mname') !== []) {
+                return $candidate;
+            }
+        }
+
+        return implode('.', array_slice($labels, -2));
+    }
+
+    /** A name as registrars' forms take it: relative to the domain, @ for the domain itself. */
+    public static function relativeName(string $name, string $domain): string
+    {
+        $name = strtolower(rtrim($name, '.'));
+
+        return match (true) {
+            $name === $domain => '@',
+            str_ends_with($name, '.'.$domain) => substr($name, 0, -strlen($domain) - 1),
+            default => $name,
+        };
     }
 
     /**

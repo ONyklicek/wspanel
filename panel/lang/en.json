@@ -2753,5 +2753,21 @@
     "jiná hodnota": "different value",
     "mimo zónu": "outside the zone",
     "míří sem": "points here",
-    "„Nemíří sem“: veřejné DNS zatím vrací jinou adresu. Změny se šíří podle TTL, obvykle minuty až hodiny.": "\"Does not point here\": public DNS still returns another address. Changes spread by TTL, usually minutes to hours."
+    "„Nemíří sem“: veřejné DNS zatím vrací jinou adresu. Změny se šíří podle TTL, obvykle minuty až hodiny.": "\"Does not point here\": public DNS still returns another address. Changes spread by TTL, usually minutes to hours.",
+    "Zkopírováno": "Copied",
+    "míří jinam": "points elsewhere",
+    "Jak nastavit DNS u registrátora nebo DNS poskytovatele": "How to set DNS at the registrar or DNS provider",
+    "V administraci domény <strong>:domain</strong> otevřete správu DNS záznamů. Doména musí používat DNS servery toho, u koho záznamy nastavujete (jinak se změny neprojeví).": "In the administration of <strong>:domain</strong>, open its DNS records. The domain must use the DNS servers of whoever you set the records with (otherwise the changes take no effect).",
+    "Každý řádek tabulky přidejte jako nový záznam: Název, Typ, Hodnota, u MX a SRV i Priorita (u SRV i Váha a Port) do jejich vlastních polí. TTL ponechte výchozí.": "Add each row of the table as a new record: Name, Type, Value, for MX and SRV also the Priority (for SRV also Weight and Port) in their own fields. Leave the TTL at its default.",
+    "Název je vůči doméně: „@“ znamená doménu samotnou; když formulář chce prázdné pole nebo celý název, zadejte to tak (celý název je ve druhém řádku buňky).": "The name is relative to the domain: \"@\" means the domain itself; when the form wants an empty field or the full name, enter that (the full name is on the second line of the cell).",
+    "Hodnotu TXT vložte bez uvozovek. Cíl u MX, CNAME a SRV je celý název; některé formuláře chtějí tečku na konci, jiné ne.": "Paste TXT values without quotes. The target of MX, CNAME and SRV is a full name; some forms want a dot at the end, others do not.",
+    "Když už stejný název a typ existuje (třeba A záznam parkovací stránky nebo jiné SPF), upravte ho, nepřidávejte druhý. SPF smí být jen jedno: má-li doména jiné odesílatele, sloučte je do jednoho záznamu.": "When the same name and type exists already (a parking page's A record, another SPF), edit it instead of adding a second one. There may be one SPF only: with other senders, merge them into one record.",
+    "Pak klikněte na Zkontrolovat znovu. Změny se šíří podle TTL, obvykle minuty až hodiny.": "Then click Check again. Changes spread by TTL, usually minutes to hours.",
+    "Co nastavit v DNS domény :domain": "What to set in the DNS of :domain",
+    "Sloupec Stav ukazuje, co už veřejné DNS vrací.": "The Status column shows what public DNS returns already.",
+    "Všechno je nastavené.": "Everything is set.",
+    "Priorita": "Priority",
+    "váha :w, port :p": "weight :w, port :p",
+    "Stav podle veřejného DNS: „jiná hodnota“ u TXT často znamená, že záznam existuje, ale s jiným obsahem (např. SPF s dalšími odesílateli). Změny se šíří podle TTL, obvykle minuty až hodiny.": "Status by public DNS: \"different value\" for TXT often means the record exists with other content (an SPF with more senders, say). Changes spread by TTL, usually minutes to hours.",
+    "Doména vnitřní sítě (nebo server bez veřejné adresy): veřejné DNS se neověřuje.": "A local network domain (or a server without a public address): public DNS is not checked."
 }
