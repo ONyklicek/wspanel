@@ -10,7 +10,9 @@ use App\Exceptions\LimitReachedException;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\ListSites;
 use App\Livewire\Sites\SiteBackups;
+use App\Livewire\Sites\SiteConsole;
 use App\Livewire\Sites\SiteDeploy;
+use App\Livewire\Sites\SiteEnvironment;
 use App\Livewire\Sites\SiteFiles;
 use App\Livewire\Sites\SiteMail;
 use App\Livewire\Sites\SiteSettings;
@@ -76,6 +78,8 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             'files' => RoutePage::make(SiteFiles::class)->uri('{record}/files')->label(__('Soubory'))->icon('outline:folder')->sort(30),
             'backups' => RoutePage::make(SiteBackups::class)->uri('{record}/backups')->label(__('Zálohy'))->icon('outline:archive-box')->sort(40),
             'mail' => RoutePage::make(SiteMail::class)->uri('{record}/mail')->label(__('Pošta'))->icon('outline:envelope')->sort(45),
+            'console' => RoutePage::make(SiteConsole::class)->uri('{record}/console')->label(__('Konzole'))->icon('outline:command-line')->sort(27),
+            'environment' => RoutePage::make(SiteEnvironment::class)->uri('{record}/environment')->label(__('Prostředí'))->icon('outline:variable')->sort(25),
             'traffic' => RoutePage::make(SiteTrafficPage::class)->uri('{record}/traffic')->label(__('Návštěvnost'))->icon('outline:chart-bar-square')->sort(50),
             'settings' => RoutePage::make(SiteSettings::class)->uri('{record}/settings')->label(__('Nastavení'))->icon('outline:cog-6-tooth')->sort(90),
         ];

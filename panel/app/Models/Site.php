@@ -43,7 +43,7 @@ class Site extends Model
         'system_user', 'home', 'doc_root', 'status', 'enabled', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
         'webhook_id', 'webhook_secret', 'webhook_enabled', 'webhook_via_site', 'deploy_trigger', 'deploy_requested_at', 'deploy_requested_ref', 'deploy_polled_ref', 'deploy_polled_at', 'deploy_poll_error', 'php_settings', 'edge_settings', 'ci_id', 'ci_token_hash', 'valkey', 'web_rules', 'xhprof', 'staging_of',
-        'github_connection_id', 'github_repo', 'github_hook_id', 'github_key_id', 'github_environment', 'github_linked_at',
+        'github_connection_id', 'github_repo', 'github_hook_id', 'github_key_id', 'github_environment', 'github_linked_at', 'env_secrets',
     ];
 
     protected $hidden = ['webhook_secret', 'ci_token_hash'];
@@ -103,6 +103,7 @@ class Site extends Model
             'port' => 'integer',
             'enabled' => 'boolean',
             'ssh_password' => 'boolean',
+            'env_secrets' => 'array',
             'health_ok' => 'boolean',
             'health_status' => 'integer',
             'health_checked_at' => 'datetime',

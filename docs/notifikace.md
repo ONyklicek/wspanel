@@ -45,3 +45,17 @@ Panel pak každých pět minut pošle signál, že běží. Při vážném probl
 `/fail` se seznamem problémů. Když signály přestanou chodit, ozve se
 Healthchecks.io. Stav posledního signálu je vidět na stránce Notifikace.
 Panel posílá jen na `hc-ping.com`, nikam jinam.
+
+## Odesílání e-mailů (externí SMTP)
+
+E-maily panelu (notifikace e-mailem, obnova hesla) odchází poštou tohoto
+serveru. Když server ven poštu neposílá (poskytovatel blokuje port 25,
+chybí reverzní záznam PTR), nastavte v **Účet → Notifikace → Odesílání
+e-mailů** externí SMTP server (Gmail, Microsoft 365, SendGrid, Mailgun,
+Amazon SES, Seznam…): server, port, šifrování (STARTTLS na 587, SSL/TLS na
+465), uživatel, heslo a odesílatel, kterého SMTP server dovolí. Heslo se
+uloží šifrovaně klíčem aplikace a už se nezobrazí; při novém uložení bez
+hesla zůstane původní. Po uložení odejde zkušební e-mail na vaši adresu,
+další kdykoli tlačítkem **Zkušební e-mail**. Nastavení je jen pro správce
+a platí pro celý panel; maily webů jdou dál jejich vlastní cestou.
+

@@ -376,6 +376,54 @@ tlačítko, které otevře její úpravu. Každá úprava má i vlastní adresu
   - **worker, Node a Python:** restart procesu aplikace, pár sekund výpadek.
   - Volitelně se restartují i workery. Hodí se po změně `.env`.
 
+## Prostředí (proměnné a tajné hodnoty)
+
+Záložka **Prostředí** webu spravuje jeho `.env` (sdílený, `shared/.env`,
+u Symfony `shared/.env.local`) jako GitHub své *variables* a *secrets*:
+
+- **Proměnné** jsou vidět i s hodnotou, jdou upravit a smazat.
+- **Tajné hodnoty** (hesla, API klíče) jdou jen zapsat: panel je nikdy
+  nezobrazí ani neuloží u sebe, nezapíší se ani do auditu. Změníte je
+  zadáním nové hodnoty.
+- Proměnné, které spravuje panel sám (databáze, Valkey, pošta, workery),
+  jsou jen vyjmenované a tady se nemění.
+- Co nastavíte v Prostředí, **deploy nepřepíše**, ani když repozitář nebo
+  CI přinese vlastní `.env`. Ostatní řádky souboru (komentáře, ručně
+  přidané proměnné) zůstanou, jak jsou.
+- Aplikace hodnoty uvidí po restartu nebo dalším deployi. Laravel s cache
+  konfigurace (deploy ji dělá) potřebuje `php artisan config:cache`
+  (záložka Konzole).
+
+### Composer: soukromé balíčky (auth.json)
+
+U PHP webů je v Prostředí i **přístup k soukromým repozitářům Composeru**:
+HTTP Basic (Private Packagist, Satis: jméno a heslo nebo token), GitHub
+token, GitLab token, Bearer token, vždy pro jednoho hostitele. Agent je
+zapíše do `auth.json`, který Composer čte při deployi (`COMPOSER_HOME`
+webu) i v SSH (`~/.config/composer/auth.json`), jako uživatel webu s právy
+0600. Panel ukáže jen hostitele a jméno, hesla a tokeny už ne.
+
+## Konzole a rychlé příkazy
+
+Záložka **Konzole** spouští příkazy jako uživatel webu ve složce `current`
+(aktuální release), ve stejném omezeném prostředí jako kroky deploye
+(nástroje webu `php`, `composer`, `npm` na PATH, zapisovat smí jen do svého
+webu), nejdéle 30 minut. Výstup se ukazuje průběžně, posledních 30 běhů
+zůstane i s výstupem.
+
+- **Rychlé příkazy** podle typu webu: `composer install --no-dev -o`,
+  `composer dump-autoload -o`, `composer outdated`, `npm ci`,
+  `npm run build`; u Laravelu `artisan migrate --force`, `optimize`,
+  `optimize:clear`, `config:cache`, `queue:restart`, `storage:link`,
+  `about`; u Symfony `cache:clear`, `doctrine:migrations:migrate`; u
+  Djanga `migrate`, `collectstatic`, `check --deploy`. Migrace se před
+  spuštěním potvrzují.
+- **Vlastní příkaz** (příkazová řádka přes `bash -lc`): správce vždy,
+  klient jen s balíčkem, který povoluje SSH se shellem (tentýž přístup by
+  měl přes SSH).
+- Interaktivní programy (čtou z klávesnice, třeba `tinker` bez
+  `--execute`) tu nefungují: na ty je SSH.
+
 ## Procesy a workery
 
 Workery jsou dlouho běžící procesy aplikace. Každý běží jako systemd služba pod

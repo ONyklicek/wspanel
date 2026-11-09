@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Dns\DnsPrerequisites;
 use App\Support\Features;
+use App\Support\PanelMail;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -52,6 +53,9 @@ class AppServiceProvider extends ServiceProvider
             URL::forceRootUrl((string) config('app.url'));
             URL::forceScheme('https');
         }
+
+        // The panel's own mail through an external SMTP server, when one is set.
+        PanelMail::apply();
 
         // The file manager uploads through Livewire: up to the panel's PHP limit (512 MB).
         config(['livewire.temporary_file_upload.rules' => ['required', 'file', 'max:524288'], 'livewire.temporary_file_upload.max_upload_time' => 30]);

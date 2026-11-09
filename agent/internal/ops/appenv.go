@@ -173,6 +173,13 @@ func panelManagedKeys(env *Env, l siteLayout, st siteState, current map[string]s
 			}
 		}
 	}
+	// What the operator set in Prostředí: the panel's to keep, a deploy's
+	// env file does not replace it.
+	for _, k := range st.EnvVars {
+		if _, ok := current[k]; ok {
+			out[k] = true
+		}
+	}
 	has := func(w string) bool { return hasWorker(env, l.User, w) }
 	if has("reverb") {
 		out["BROADCAST_CONNECTION"] = true

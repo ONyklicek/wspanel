@@ -34,6 +34,7 @@ type siteState struct {
 	ReverbPort  int           `json:"reverb_port,omitempty"`  // laravel: Reverb WebSocket server port
 	SSHAccess   string        `json:"ssh_access,omitempty"`   // off | sftp | shell
 	SSHPassword bool          `json:"ssh_password,omitempty"` // password login allowed (besides keys)
+	EnvVars     []string      `json:"env_vars,omitempty"`     // keys set in Prostředí (a deploy keeps them)
 	Deploy      *deployConfig `json:"deploy,omitempty"`
 	// classic: OPcache does not revalidate files (deploys reload FPM)
 	OpcacheProduction bool `json:"opcache_production,omitempty"`
