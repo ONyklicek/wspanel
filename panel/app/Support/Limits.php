@@ -130,6 +130,23 @@ final class Limits
         }
     }
 
+    /**
+     * A game server's CPU: with a package limit, a client's server has a
+     * quota (never "no limit") of at most that much.
+     *
+     * @throws LimitReachedException
+     */
+    public function assertGameCpu(?Client $client, int $percent): void
+    {
+        if ($client === null || ! CurrentClient::restricted()) {
+            return;
+        }
+        $limit = $client->limit('max_game_cpu_percent');
+        if ($limit !== null && ($percent < 1 || $percent > (int) $limit)) {
+            throw LimitReachedException::make(__('Balíček povoluje herním serverům procesor 1 až :limit % jednoho jádra.', ['limit' => $limit]));
+        }
+    }
+
     /** @throws LimitReachedException */
     public function assertSsh(?Client $client, SshAccess $wanted): void
     {

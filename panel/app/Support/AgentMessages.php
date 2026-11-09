@@ -69,6 +69,7 @@ final class AgentMessages
             '/^port (\d+)\/(tcp|udp) is in use$/' => 'Port $1/$2 už na serveru něco používá.',
             '/^port: (\d+) is the panel\'s$/' => 'Port $1 používá panel, zvolte jiný.',
             '/^port: 1025 to 65535$/' => 'Port musí být 1025 až 65535.',
+            '/^port: game servers use (\d+) to (\d+).*$/' => 'Herní servery používají porty $1 až $2 (mimo 27000–27999 pro RCON).',
             '/^game server (\d+) does not exist$/' => 'Herní server na serveru neexistuje.',
             '/^game server (\d+) already exists$/' => 'Herní server už na serveru existuje.',
             '/^installing Java (\d+) failed: .*$/s' => 'Instalace Javy $1 se nepodařila.',
@@ -77,6 +78,11 @@ final class AgentMessages
             '/^factorio (\S+): no published checksum$/' => 'Factorio $1 zatím nemá zveřejněný otisk, zkuste to později.',
             '/^the server does not answer on its console.*$/s' => 'Server na konzoli neodpovídá. Běží?',
             '/^command: one line.*$/' => 'Příkaz musí být jeden řádek, nejvýš 1000 znaků.',
+            '/^values: (\S+) is the panel\'s$/' => 'Nastavení $1 spravuje panel (port, konzole RCON).',
+            '/^values: (\S+) must be one line.*$/' => 'Nastavení $1 musí být jeden řádek, nejvýš 4096 znaků.',
+            '/^name: a Minecraft player name.*$/' => 'Jméno hráče: 3 až 16 písmen, číslic nebo _.',
+            '/^name: an IP address$/' => 'Zadejte IP adresu.',
+            '/^id: a Minecraft server$/' => 'Jen u serveru Minecraftu.',
             '/^memory_mb: (\d+) to 262144$/' => 'Paměť musí být $1 až 262144 MB.',
 
             // Server → Systém, Procesy, Balíčky

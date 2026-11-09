@@ -60,6 +60,9 @@ type gameState struct {
 	MemoryMB     int    `json:"memory_mb"`
 	CPUPercent   int    `json:"cpu_percent,omitempty"` // of one core; 0 = no limit
 	Group        string `json:"group,omitempty"`       // the client's group
+	// The firewall rule is the panel's (a rule the admin had for the port
+	// before stays, and stays on delete).
+	OwnsFirewall bool `json:"owns_firewall,omitempty"`
 }
 
 func (g gameState) user() string       { return "wsg_" + strconv.Itoa(g.ID) }
@@ -450,6 +453,16 @@ func gamePortFree(env *Env, port int, proto string, except int) error {
 	if slices.Contains(env.Cfg.ProtectedPorts, port) || port >= env.Cfg.NodePortMin && port <= env.Cfg.NodePortMax {
 		return protocol.Invalid(fmt.Sprintf("port: %d is the panel's", port))
 	}
+	// A game's port is opened to the world: only in the games' range, never
+	// RCON's (27000-27999) nor one a known service uses within it.
+	if except >= 0 && proto != "rcon" {
+		if port < gamePortMin || port > gamePortMax || port >= 27000 && port <= 27999 || slices.Contains(reservedGamePorts, port) {
+			return protocol.Invalid(fmt.Sprintf("port: game servers use %d to %d (not 27000-27999)", gamePortMin, gamePortMax))
+		}
+	}
+	if proto == "rcon" {
+		proto = "tcp"
+	}
 	for _, g := range allGames(env) {
 		if g.ID != except && (g.Port == port || g.RconPort == port) {
 			return protocol.Conflict(fmt.Sprintf("port %d is used by game server %d", port, g.ID))
@@ -474,14 +487,36 @@ func gamePortFree(env *Env, port int, proto string, except int) error {
 	return nil
 }
 
+// The range game ports are opened in, and services within it that must not be.
+var (
+	gamePortMin, gamePortMax = 20000, 40000
+	reservedGamePorts        = []int{25575, 27017, 27018, 27019, 28017, 33060, 32400}
+)
+
 // freeRconPort: a TCP port for RCON, from 27000 up.
 func freeRconPort(env *Env, except int) (int, error) {
 	for p := 27000; p < 28000; p++ {
-		if gamePortFree(env, p, "tcp", except) == nil {
+		if gamePortFree(env, p, "rcon", except) == nil {
 			return p, nil
 		}
 	}
 	return 0, fmt.Errorf("no free RCON port in 27000-27999")
+}
+
+// ufwAllows: whether the firewall already lets port/proto in (a rule the
+// admin made): the panel then neither adds one nor removes it later.
+func ufwAllows(ctx context.Context, env *Env, port int, proto string) bool {
+	res, err := env.Exec.Run(ctx, "ufw", "status")
+	if err != nil {
+		return false
+	}
+	_, rules := parseUFWStatus(res.Stdout)
+	for _, r := range rules {
+		if r.Port == port && (r.Proto == proto || r.Proto == "") && strings.EqualFold(r.Action, "allow") && (r.From == "" || strings.HasPrefix(r.From, "Anywhere")) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- install
@@ -636,7 +671,7 @@ func configureGame(ctx context.Context, env *Env, g gameState, eula bool) error 
 		if b, err := readGameFile(filepath.Join(data, "server.properties")); err == nil {
 			cur = string(b)
 		} else {
-			props["motd"] = strings.NewReplacer("\n", " ", "\\", "").Replace(g.Name)
+			props["motd"] = escapeProperty(strings.NewReplacer("\n", " ").Replace(g.Name))
 		}
 		return writeAsUser(ctx, env, g, filepath.Join(data, "server.properties"), []byte(setProperties(cur, props)), "0640")
 	case "factorio":
@@ -832,12 +867,18 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		_ = os.Remove(filepath.Join(env.Cfg.SystemdDir, g.unit()))
 		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
 	})
-	if _, err = env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
-		return nil, err
+	if !ufwAllows(ctx, env, g.Port, g.proto()) {
+		if _, err = env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
+			return nil, err
+		}
+		g.OwnsFirewall = true
+		if err = saveGame(env, g); err != nil {
+			return nil, err
+		}
+		rollback.add(func() {
+			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
+		})
 	}
-	rollback.add(func() {
-		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
-	})
 	if _, err = env.Exec.Run(ctx, "systemctl", "enable", "--now", g.unit()); err != nil {
 		return nil, err
 	}
@@ -1303,7 +1344,9 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	}
 	_, _ = env.Exec.Run(ctx, "systemctl", "daemon-reload")
 	_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", g.unit())
-	_, _ = env.Exec.Run(ctx, "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
+	if g.OwnsFirewall {
+		_, _ = env.Exec.Run(ctx, "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
+	}
 	if !env.Cfg.DryRun {
 		_ = killAllProcesses(ctx, env, g.user())
 	}

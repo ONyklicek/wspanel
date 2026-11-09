@@ -55,6 +55,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
         'backups_keep' => 'Uchovávat záloh',
         'max_game_servers' => 'Herní servery',
         'max_game_memory_mb' => 'Paměť herních serverů celkem (MB)',
+        'max_game_cpu_percent' => 'Procesor na herní server (% jádra)',
     ];
 
     public static function modelClass(): ?string

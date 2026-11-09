@@ -5,6 +5,7 @@ use App\Actions\Sites\ManageTls;
 use App\Actions\System\ManageUpdates;
 use App\Http\Controllers\AppleMailProfileController;
 use App\Http\Controllers\DownloadBackupController;
+use App\Http\Controllers\DownloadGameFileController;
 use App\Http\Controllers\DownloadSiteBackupController;
 use App\Http\Controllers\DownloadSiteFileController;
 use App\Http\Controllers\ForwardAuthController;
@@ -34,6 +35,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         ->where('file', '[A-Za-z0-9._-]+\\.tar\\.gz')
         ->name('site-backups.download');
     Route::get('/sites/{site}/files/download', DownloadSiteFileController::class)->middleware('throttle:60,1')->name('site-files.download');
+    Route::get('/games/{server}/files/download', DownloadGameFileController::class)->middleware(['can:games', 'throttle:60,1'])->name('game-files.download');
     Route::get('/db-open/{database}/{tool}', OpenDatabaseToolController::class)
         ->whereIn('tool', ['phpmyadmin', 'adminer'])
         ->middleware('throttle:30,1')

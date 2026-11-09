@@ -17,7 +17,7 @@ class Package extends Model
     protected $fillable = [
         'name', 'description', 'max_sites', 'max_aliases', 'max_databases', 'max_db_size_mb', 'max_mailboxes',
         'max_mail_quota_mb', 'disk_quota_mb', 'max_cron', 'max_workers', 'fpm_children', 'ssh',
-        'allowed_modes', 'allowed_php', 'backups_keep', 'offsite', 'max_valkey_mb', 'max_game_servers', 'max_game_memory_mb',
+        'allowed_modes', 'allowed_php', 'backups_keep', 'offsite', 'max_valkey_mb', 'max_game_servers', 'max_game_memory_mb', 'max_game_cpu_percent',
     ];
 
     protected function casts(): array

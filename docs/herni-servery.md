@@ -20,8 +20,11 @@ paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmín
   není. Javu 21 nebo 25 (podle verze) panel doinstaluje z Debianu sám.
 - **Stažení** se ověřuje otiskem, který zveřejnil vydavatel (SHA-256,
   u oficiálního serveru Mojangu SHA-1). Soubor s jiným otiskem se odmítne.
-- **Port** se otevře ve firewallu a při smazání serveru se zase zavře.
-  Prázdné pole znamená výchozí port hry, nebo další volný.
+- **Port** se otevře ve firewallu a při smazání serveru se zase zavře
+  (pravidlo, které jste pro ten port měli už předtím, panel nechá být).
+  Herní servery používají porty 20000 až 40000, kromě 27000–27999 (RCON)
+  a portů známých služeb. Prázdné pole znamená výchozí port hry, nebo
+  další volný.
 - **Paměť** je u Minecraftu velikost haldy Javy (2048 MB stačí na pár
   hráčů, s pluginy a víc hráči 4096 MB a víc). Proces dostane navíc rezervu
   pro samotnou Javu. Procesor 0 znamená bez omezení, 200 = dvě jádra.
@@ -34,6 +37,21 @@ a port; výchozí port Minecraftu se nepíše).
 
 - **Stav, hráči a paměť** (obnovují se samy), **Spustit / Zastavit /
   Restartovat**. Zastavený server zůstane zastavený i po restartu serveru.
+- **Nastavení** (Minecraft): formulář nad `server.properties`, jak ho
+  zapsal server dané verze, po skupinách (hra, hráči a přístup, svět,
+  výkon a síť, resource pack), s rozsahy hodnot; volby, které panel nezná
+  (novější verze), jako text. Port, RCON, query a management server
+  spravuje panel. PvP, spawnování příšer a podobně jsou od verze 1.21.9
+  herní pravidla: v konzoli např. `gamerule pvp false`. *Uložit a
+  restartovat* změny rovnou uplatní.
+- **Hráči** (Minecraft): whitelist (zapnout, přidat, odebrat), operátoři,
+  bany hráčů i IP adres, vyhození. Změny jdou do konzole běžícího serveru
+  a platí hned; seznamy jsou vidět i u zastaveného serveru.
+- **Soubory:** záložka se správcem souborů nad složkou serveru, jako
+  u webů: úpravy konfigurací (`server.properties`, `bukkit.yml`,
+  `config/paper-*.yml`, nastavení pluginů a módů), nahrávání pluginů a
+  módů, stahování, rozbalování archivů. Pracuje jako uživatel serveru,
+  jen v jeho složce. Změny platí po restartu serveru.
 - **Konzole:** příkazy serveru, např. `list`, `say Ahoj`, `op Jméno`,
   `whitelist add Jméno` u Minecraftu, `/players` nebo `/promote Jméno`
   u Factoria. Panel je posílá přes RCON.
@@ -73,7 +91,8 @@ v nastavení hry spravuje panel, ostatní nastavení zůstává na vás.
 
 Se zapnutým modulem Klienti a balíčky může herní server patřit klientovi.
 Klient pak vidí a ovládá jen své servery. Balíček omezuje počet herních
-serverů a jejich celkovou paměť (**Hosting → Klienti → Balíčky**).
+serverů, jejich celkovou paměť a procesor na server; s limitem procesoru
+má klientův server vždy kvótu (**Hosting → Klienti → Balíčky**).
 
 ## Co zatím neumí
 
@@ -82,4 +101,6 @@ serverů a jejich celkovou paměť (**Hosting → Klienti → Balíčky**).
   znovu a svět přeneste ručně: záloha je archiv `.tar.gz` se složkou `data`
   (v úložišti mimo server pod `games/<id>/`).
 - Další hry (Terraria, Valheim, hry přes steamcmd), Forge a Fabric pro
-  Minecraft, správa módů a pluginů v panelu, SFTP do složky serveru.
+  Minecraft, instalace pluginů a módů z katalogů (Modrinth, Hangar, mod
+  portál Factoria), formulář pro nastavení Factoria, SFTP do složky
+  serveru.

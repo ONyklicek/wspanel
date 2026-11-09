@@ -238,7 +238,7 @@ class ViewGameServer extends ViewPage
             'title' => $this->getTitle(),
             'breadcrumbs' => $this->breadcrumbs(),
             'headerActions' => $this->renderedHeaderActions(),
-            'subNavigation' => [],
+            'subNavigation' => $this->subNavigation($this->nativeRecord()),
             'server' => $this->server(),
         ]);
     }

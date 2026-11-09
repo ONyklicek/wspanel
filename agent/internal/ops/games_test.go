@@ -358,3 +358,36 @@ func TestGameBackupsGoOffsiteAndComeBack(t *testing.T) {
 		t.Errorf("unknown server: %v", err)
 	}
 }
+
+func TestGamePortsStayInTheirRangeAndAnAdminsRuleStays(t *testing.T) {
+	fakePublishers(t)
+	env, dr := gameTestEnv(t)
+	base := map[string]any{"id": 7, "name": "S", "game": "minecraft", "flavor": "paper", "version": "1.21.10", "memory_mb": 2048, "eula": true}
+	for _, port := range []int{3306, 5432, 6379, 8025, 27017, 27500, 19999, 40001} {
+		p := map[string]any{"port": port}
+		for k, v := range base {
+			p[k] = v
+		}
+		if _, err := call(t, env, gameCreate, p); code(err) != "invalid_params" {
+			t.Errorf("port %d must be refused: %v", port, err)
+		}
+	}
+	// The admin opened 25565 themselves: the panel leaves that rule alone.
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		if c.String() == "ufw status" {
+			return executor.Result{Stdout: "Status: active\n\nTo                         Action      From\n--                         ------      ----\n25565/tcp                  ALLOW       Anywhere\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	if _, err := call(t, env, gameCreate, base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, gameDelete, map[string]any{"id": 7}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range dr.Calls() {
+		if c.Name == "ufw" && c.Args[0] != "status" {
+			t.Errorf("the admin's rule was touched: %v", c)
+		}
+	}
+}

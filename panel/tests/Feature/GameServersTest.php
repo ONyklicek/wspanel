@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Games\GamePlayers;
+use App\Livewire\Games\GameServerSettings;
 use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
 use App\Livewire\Pages\ModulesPage;
+use App\Livewire\Sites\FileBrowser;
 use App\Models\Client;
 use App\Models\GameServer;
 use App\Models\Package;
@@ -153,5 +156,92 @@ class GameServersTest extends TestCase
         Livewire::test(ViewGameServer::class, ['record' => $server->id])
             ->call('loadBackups')->assertSee('Jen mimo server')->assertSee('game-1-20261101T040000Z.tar.gz')
             ->call('fetchOffsite', 'game-1-20261101T040000Z.tar.gz')->assertNotified();
+    }
+
+    public function test_the_files_tab_works_as_the_game_user(): void
+    {
+        Features::setGames(true);
+        $server = GameServer::create(['name' => 'S', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
+        $this->agent->shouldReceive('call')->with('game.files', ['game' => $server->id, 'action' => 'list', 'path' => '.'])
+            ->andReturn(['entries' => [['name' => 'data', 'type' => 'dir', 'size' => 0, 'mtime' => 0, 'mode' => '0750'], ['name' => 'server', 'type' => 'dir', 'size' => 0, 'mtime' => 0, 'mode' => '0750']]]);
+        $this->agent->shouldNotReceive('call')->with('site.files', Mockery::any());
+
+        $this->get('/games/'.$server->id.'/files')->assertOk()->assertSee('wsg_'.$server->id);
+        Livewire::test(FileBrowser::class, ['game' => $server->id])->assertSee('data')->assertSee('server')->assertSee('S');
+    }
+
+    public function test_a_client_cannot_download_another_clients_game_files(): void
+    {
+        Features::setClients(true);
+        Features::setGames(true);
+        $other = GameServer::create(['name' => 'Theirs', 'game' => 'factorio', 'flavor' => 'stable', 'version' => '2.1.24', 'port' => 34197, 'memory_mb' => 2048, 'status' => 'active']);
+        $other->forceFill(['client_id' => Client::factory()->create()->id])->save();
+        $this->actingAs(User::factory()->forClient(Client::factory()->create())->create());
+        $this->agent->shouldNotReceive('call')->with('game.files', Mockery::any());
+
+        $this->get('/games/'.$other->id.'/files/download?path=data/server-settings.json')->assertNotFound();
+    }
+
+    public function test_a_clients_server_gets_a_cpu_quota_within_the_package(): void
+    {
+        Features::setClients(true);
+        Features::setGames(true);
+        $package = Package::create(['name' => 'Hry', 'max_game_cpu_percent' => 100]);
+        $client = Client::factory()->create(['package_id' => $package->id, 'linux_group' => 'wsc_5']);
+        $this->actingAs(User::factory()->forClient($client)->create());
+        $this->agent->shouldReceive('call')->once()->with('game.create', Mockery::on(fn ($p) => $p['cpu_percent'] === 100))->andReturn([]);
+
+        $form = ['name' => 'A', 'game' => 'factorio', 'flavor' => 'stable', 'version' => '2.1.24', 'memory_mb' => 2048];
+        foreach ([0, 200] as $cpu) {
+            $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', [...$form, 'cpu_percent' => $cpu])->assertNotified();
+        }
+        $this->assertSame(0, GameServer::count(), 'no limit, or more than the package allows');
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', [...$form, 'cpu_percent' => 100]);
+        $this->assertSame(1, GameServer::count());
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', [...$form, 'cpu_percent' => 100, 'port' => 27500])->assertHasErrors();
+    }
+
+    private function minecraft(): GameServer
+    {
+        Features::setGames(true);
+
+        return GameServer::create(['name' => 'S', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
+    }
+
+    public function test_the_settings_form_sends_only_what_changed_and_checks_it(): void
+    {
+        $server = $this->minecraft();
+        $this->agent->shouldReceive('call')->with('game.properties', ['id' => $server->id])->andReturn(['exists' => true, 'properties' => [
+            ['key' => 'motd', 'value' => 'Hi'], ['key' => 'difficulty', 'value' => 'easy'], ['key' => 'max-players', 'value' => '20'],
+            ['key' => 'server-port', 'value' => '25565', 'panel' => true], ['key' => 'rcon.password', 'value' => '', 'panel' => true],
+            ['key' => 'some-new-key', 'value' => 'x'],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('game.set_properties', ['id' => $server->id, 'values' => ['difficulty' => 'hard', 'some-new-key' => 'y'], 'restart' => true])->andReturn([]);
+
+        $page = Livewire::test(GameServerSettings::class, ['record' => $server->id])
+            ->assertSee('Obtížnost')->assertSee('Další nastavení')->assertSee('some-new-key')->assertSee('server-port')
+            ->assertDontSee('name="values.server-port"', false);
+        $this->assertArrayNotHasKey('server-port', $page->get('values'));
+        $page->set('values.max-players', '5000')->call('save')->assertHasErrors('values.max-players')
+            ->set('values.max-players', '20')->set('values.difficulty', 'brutal')->call('save')->assertHasErrors('values.difficulty')
+            ->set('values.difficulty', 'hard')->set('values.some-new-key', 'y')->call('save', true)->assertHasNoErrors()->assertNotified();
+    }
+
+    public function test_players_are_changed_through_the_console(): void
+    {
+        $server = $this->minecraft();
+        $this->agent->shouldReceive('call')->with('game.player_lists', ['id' => $server->id])->andReturn(['whitelist_on' => true, 'whitelist' => [['name' => 'Notch', 'uuid' => 'x']], 'ops' => [], 'banned' => [], 'banned_ips' => []]);
+        $this->agent->shouldReceive('call')->with('game.status', ['id' => $server->id])->andReturn(['state' => 'active', 'players' => ['online' => 1, 'names' => ['Alice']]]);
+        $this->agent->shouldReceive('call')->once()->with('game.player_action', ['id' => $server->id, 'action' => 'whitelist_add', 'name' => 'Alice'])->andReturn(['output' => 'Added Alice to the whitelist']);
+        $this->agent->shouldReceive('call')->once()->with('game.player_action', ['id' => $server->id, 'action' => 'ban', 'name' => 'Griefer', 'reason' => 'spam'])->andReturn(['output' => '']);
+        $this->agent->shouldReceive('call')->once()->with('game.player_action', ['id' => $server->id, 'action' => 'whitelist_remove', 'name' => 'Notch'])->andReturn(['output' => '']);
+
+        Livewire::test(GamePlayers::class, ['record' => $server->id])
+            ->assertSee('Notch')->assertSee('Alice')->assertSee('zapnutý')
+            ->set('name', 'a; stop')->call('act', 'op')->assertHasErrors('name')
+            ->set('name', 'Alice')->call('act', 'whitelist_add')->assertNotified()
+            ->set('name', 'Griefer')->set('reason', 'spam')->call('act', 'ban')
+            ->call('act', 'whitelist_remove', 'Notch')
+            ->call('act', 'stop');
     }
 }

@@ -61,6 +61,7 @@ class ManageGameServers
         $memory = (int) $data['memory_mb'];
         $this->limits->assertCanAdd($owner, 'games');
         $this->limits->assertCanAdd($owner, 'game_memory', $memory);
+        $this->limits->assertGameCpu($owner, (int) ($data['cpu_percent'] ?? 0));
         $port = (int) ($data['port'] ?? 0) ?: $this->freePort($game);
 
         $server = new GameServer([
@@ -97,13 +98,20 @@ class ManageGameServers
         return $server;
     }
 
-    /** The first free default-ish port: the game's own, then upwards. */
+    /** The game's own port when free, else the next one in the games' range. */
     public function freePort(Game $game): int
     {
         $taken = GameServer::acrossClients()->pluck('port')->all();
-        for ($p = $game->defaultPort(); in_array($p, $taken, true); $p++);
+        for ($p = $game->defaultPort(); in_array($p, $taken, true) || ! self::portAllowed($p); $p++);
 
         return $p;
+    }
+
+    /** The agent's rule: 20000-40000, not RCON's 27000-27999 nor a known service. */
+    public static function portAllowed(int $port): bool
+    {
+        return $port >= 20000 && $port <= 40000 && ($port < 27000 || $port > 27999)
+            && ! in_array($port, [25575, 27017, 27018, 27019, 28017, 33060, 32400], true);
     }
 
     /**
@@ -157,6 +165,7 @@ class ManageGameServers
         if ($memory > $server->memory_mb) {
             $this->limits->assertCanAdd($server->client, 'game_memory', $memory - $server->memory_mb);
         }
+        $this->limits->assertGameCpu($server->client, (int) ($data['cpu_percent'] ?? 0));
         $this->agent->call('game.settings', ['id' => $server->id, 'name' => $data['name'], 'memory_mb' => $memory, 'cpu_percent' => (int) ($data['cpu_percent'] ?? 0)]);
         $server->update(['name' => $data['name'], 'memory_mb' => $memory, 'cpu_percent' => (int) ($data['cpu_percent'] ?? 0)]);
     }
@@ -234,6 +243,44 @@ class ManageGameServers
         $job = $this->agent->call('game.restore', ['id' => $server->id, 'file' => $file]);
 
         return ! isset($job['job_id']) || $this->jobs->await($job['job_id'], 600) !== null;
+    }
+
+    /**
+     * server.properties as the server wrote it (secrets left out).
+     *
+     * @return array{exists: bool, properties: list<array{key: string, value: string, panel?: bool}>}
+     *
+     * @throws AgentException
+     */
+    public function properties(GameServer $server): array
+    {
+        return $this->agent->call('game.properties', ['id' => $server->id]);
+    }
+
+    /**
+     * @param  array<string, string>  $values  only the changed keys
+     *
+     * @throws AgentException
+     */
+    public function setProperties(GameServer $server, array $values, bool $restart = false): void
+    {
+        $this->agent->call('game.set_properties', ['id' => $server->id, 'values' => $values] + ($restart ? ['restart' => true] : []));
+    }
+
+    /**
+     * @return array{whitelist_on: bool, whitelist: list<array<string, mixed>>, ops: list<array<string, mixed>>, banned: list<array<string, mixed>>, banned_ips: list<array<string, mixed>>}
+     *
+     * @throws AgentException
+     */
+    public function playerLists(GameServer $server): array
+    {
+        return $this->agent->call('game.player_lists', ['id' => $server->id]);
+    }
+
+    /** One change through the console (the server runs); its answer. @throws AgentException */
+    public function playerAction(GameServer $server, string $action, string $name = '', string $reason = ''): string
+    {
+        return (string) ($this->agent->call('game.player_action', array_filter(['id' => $server->id, 'action' => $action, 'name' => $name, 'reason' => $reason], fn ($v) => $v !== ''))['output'] ?? '');
     }
 
     /** @throws AgentException */

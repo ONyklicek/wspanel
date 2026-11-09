@@ -32,8 +32,18 @@ var uploadNameRe = regexp.MustCompile(`^up-[0-9a-f]{32}$`)
 const downloadPrefix = "dl-"
 
 func siteFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	return runFiles(ctx, env, raw, false)
+}
+
+// gameFiles: the same file manager over a game server's home, as its user.
+func gameFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	return runFiles(ctx, env, raw, true)
+}
+
+func runFiles(ctx context.Context, env *Env, raw json.RawMessage, game bool) (any, error) {
 	var p struct {
-		Domain string `json:"domain"`
+		Domain string `json:"domain,omitempty"`
+		Game   int    `json:"game,omitempty"`
 		fileop.Request
 		Content *string `json:"content,omitempty"` // write: the new text (≤ the request cap)
 		Upload  string  `json:"upload,omitempty"`  // upload: file the panel put into the artifact dir
@@ -44,12 +54,28 @@ func siteFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	if !slices.Contains(fileActions, p.Action) {
 		return nil, protocol.Invalid("action: one of " + strings.Join(fileActions, ", "))
 	}
-	_, l, err := loadSite(env, p.Domain)
-	if err != nil {
-		return nil, err
+	var user, home string
+	if game {
+		if p.Domain != "" || p.Game < 1 {
+			return nil, protocol.Invalid("game: required")
+		}
+		g, err := loadGame(env, p.Game)
+		if err != nil {
+			return nil, err
+		}
+		user, home = g.user(), gameHome(env, g.ID)
+	} else {
+		if p.Game != 0 {
+			return nil, protocol.Invalid("game: use game.files")
+		}
+		_, l, err := loadSite(env, p.Domain)
+		if err != nil {
+			return nil, err
+		}
+		user, home = l.User, l.Home
 	}
-	if _, err := lookupOwner(env, l.User); err != nil {
-		return nil, protocol.NotFound("system user " + l.User + " does not exist")
+	if _, err := lookupOwner(env, user); err != nil {
+		return nil, protocol.NotFound("system user " + user + " does not exist")
 	}
 
 	req := p.Request
@@ -104,7 +130,7 @@ func siteFiles(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	args := append(userCreds(l.User), env.Cfg.AgentBinary, "-fileop", l.Home)
+	args := append(userCreds(user), env.Cfg.AgentBinary, "-fileop", home)
 	if _, err := env.Exec.RunIO(ctx, stdin, sink, "setpriv", args...); err != nil && len(sink.head) == 0 {
 		cleanupDownload(env, dlName)
 		return nil, fmt.Errorf("file manager failed: %w", err)

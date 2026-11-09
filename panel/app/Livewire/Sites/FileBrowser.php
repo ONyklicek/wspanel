@@ -4,6 +4,7 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\ManageFiles;
 use App\Forms\Components\CodeIde;
+use App\Models\GameServer;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -32,7 +33,11 @@ class FileBrowser extends Component
 {
     use WithTable;
 
-    public int $site;
+    /** The site whose files these are, or (with $game) none. */
+    public ?int $site = null;
+
+    /** A game server's files instead (its home, as its own user). */
+    public ?int $game = null;
 
     /** Folder shown, relative to the site's home ("." = the home). */
     #[Url(as: 'dir')]
@@ -43,9 +48,9 @@ class FileBrowser extends Component
     /** @var list<string> problems of the files in the current upload */
     public array $uploadErrors = [];
 
-    public function getSite(): Site
+    public function getSite(): Site|GameServer
     {
-        return Site::findOrFail($this->site);
+        return $this->game !== null ? GameServer::findOrFail($this->game) : Site::findOrFail($this->site);
     }
 
     private function files(): ManageFiles
@@ -75,7 +80,8 @@ class FileBrowser extends Component
     /** @return list<array{name: string, path: string}> */
     public function breadcrumbs(): array
     {
-        $crumbs = [['name' => $this->getSite()->domain, 'path' => '.']];
+        $target = $this->getSite();
+        $crumbs = [['name' => $target instanceof GameServer ? $target->name : $target->domain, 'path' => '.']];
         $acc = '';
         foreach (array_filter(explode('/', trim($this->path, './'))) as $part) {
             $acc = ManageFiles::join($acc, $part);
@@ -155,7 +161,9 @@ class FileBrowser extends Component
                 $this->editAction(),
                 Action::make('download')->label(__('Stáhnout'))->icon('outline:arrow-down-tray')->color('gray')->onlyIcon()->tooltip(__('Stáhnout'))
                     ->visible(fn ($record) => $record->type === 'file')
-                    ->url(fn ($record) => route('site-files.download', [$this->site, 'path' => $this->full($record->name)]), true),
+                    ->url(fn ($record) => $this->game !== null
+                        ? route('game-files.download', [$this->game, 'path' => $this->full($record->name)])
+                        : route('site-files.download', [$this->site, 'path' => $this->full($record->name)]), true),
                 ActionGroup::make([
                     Action::make('rename')->label(__('Přejmenovat / přesunout'))->icon('outline:pencil')
                         ->fillFormUsing(fn ($record) => ['to' => $this->full($record->name)])
@@ -306,7 +314,12 @@ class FileBrowser extends Component
     /** The site's shared env file (.env, .env.local for Symfony), or null. */
     public function envPath(): ?string
     {
-        return match ($this->getSite()->framework->value) {
+        $site = $this->getSite();
+        if ($site instanceof GameServer) {
+            return null;
+        }
+
+        return match ($site->framework->value) {
             'symfony' => 'shared/.env.local',
             'laravel', 'php', 'node', 'nuxt', 'next', 'django', 'flask', 'fastapi', 'python' => 'shared/.env',
             default => null,

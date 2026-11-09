@@ -4,6 +4,9 @@ namespace App\Wire\Resources;
 
 use App\Actions\Games\ManageGameServers;
 use App\Enums\Game;
+use App\Livewire\Games\GamePlayers;
+use App\Livewire\Games\GameServerFiles;
+use App\Livewire\Games\GameServerSettings;
 use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
 use App\Models\GameServer;
@@ -56,7 +59,10 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
     {
         return [
             'index' => RoutePage::make(ListGameServers::class)->permission('games'),
-            'view' => RoutePage::make(ViewGameServer::class)->permission('games'),
+            'view' => RoutePage::make(ViewGameServer::class)->permission('games')->label(__('Přehled'))->icon('outline:squares-2x2')->sort(10),
+            'settings' => RoutePage::make(GameServerSettings::class)->uri('{record}/settings')->permission('games')->label(__('Nastavení'))->icon('outline:adjustments-horizontal')->sort(20),
+            'players' => RoutePage::make(GamePlayers::class)->uri('{record}/players')->permission('games')->label(__('Hráči'))->icon('outline:user-group')->sort(25),
+            'files' => RoutePage::make(GameServerFiles::class)->uri('{record}/files')->permission('games')->label(__('Soubory'))->icon('outline:folder')->sort(30),
         ];
     }
 
@@ -95,8 +101,12 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
                 ->rules([fn ($get) => Rule::in($versions($get))])
                 ->options(fn ($get) => collect($versions($get))->mapWithKeys(fn ($v) => [$v => $v])->all())
                 ->helperText(__('Seznam je od vydavatele hry. Minecraft starší než 1.20.5 potřebuje Javu 17, kterou Debian 13 nemá.')),
-            TextInput::make('port')->label(__('Port'))->integer()->minValue(1025)->maxValue(65535)
-                ->rules(['nullable', 'integer', 'between:1025,65535'])
+            TextInput::make('port')->label(__('Port'))->integer()->minValue(20000)->maxValue(40000)
+                ->rules(['nullable', 'integer', function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($value !== null && $value !== '' && ! ManageGameServers::portAllowed((int) $value)) {
+                        $fail(__('Herní servery používají porty 20000 až 40000 (mimo 27000–27999 pro RCON).'));
+                    }
+                }])
                 ->helperText(__('Prázdné = výchozí port hry (nebo další volný). Otevře se ve firewallu.')),
             TextInput::make('memory_mb')->label(__('Paměť (MB)'))->integer()->required()->default(2048)
                 ->rules(['required', 'integer', 'between:1024,262144'])

@@ -110,3 +110,29 @@ func TestFilesErrorsMapToCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGameFilesRunAsTheGameUserOverItsHome(t *testing.T) {
+	env, dr := filesEnv(t, `{"ok":true,"path":".","entries":[],"count":0}`+"\n")
+	env.Cfg.GamesRoot = filepath.Join(t.TempDir(), "games")
+	if err := saveGame(env, gameState{ID: 5, Name: "x", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 2048}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, gameFiles, map[string]any{"game": 5, "action": "list", "path": "/"}); err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(fileCall(dr).Args, " ")
+	if !strings.HasPrefix(args, "--reuid=wsg_5 ") || !strings.HasSuffix(args, "-fileop "+filepath.Join(env.Cfg.GamesRoot, "5")) {
+		t.Fatalf("args: %s", args)
+	}
+	for _, bad := range []map[string]any{{"action": "list", "path": "/"}, {"game": 5, "domain": "app.example.com", "action": "list", "path": "/"}} {
+		if _, err := call(t, env, gameFiles, bad); code(err) != protocol.CodeInvalidParams {
+			t.Errorf("%v: %v", bad, err)
+		}
+	}
+	if _, err := call(t, env, siteFiles, map[string]any{"game": 5, "action": "list", "path": "/"}); code(err) != protocol.CodeInvalidParams {
+		t.Errorf("site.files must not open a game's home: %v", err)
+	}
+	if _, err := call(t, env, gameFiles, map[string]any{"game": 9, "action": "list", "path": "/"}); code(err) != protocol.CodeNotFound {
+		t.Errorf("unknown game: %v", err)
+	}
+}

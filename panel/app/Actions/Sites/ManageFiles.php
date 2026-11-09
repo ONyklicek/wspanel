@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sites;
 
+use App\Models\GameServer;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -9,8 +10,9 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * The file manager. The agent does the work as the site user, confined to the
- * site's home; uploads and downloads pass through the agent's artifact dir.
+ * The file manager. The agent does the work as the site's (or the game
+ * server's) own user, confined to its home; uploads and downloads pass
+ * through the agent's artifact dir.
  */
 class ManageFiles
 {
@@ -23,26 +25,28 @@ class ManageFiles
     public function __construct(private readonly AgentClient $agent) {}
 
     /** @return array<string, mixed> @throws AgentException */
-    private function call(Site $site, array $params): array
+    private function call(Site|GameServer $site, array $params): array
     {
-        return $this->agent->call('site.files', ['domain' => $site->domain] + $params);
+        return $site instanceof GameServer
+            ? $this->agent->call('game.files', ['game' => $site->id] + $params)
+            : $this->agent->call('site.files', ['domain' => $site->domain] + $params);
     }
 
     /** @return list<array{name: string, type: string, size: int, mtime: int, mode: string, target?: string}> */
-    public function list(Site $site, string $path): array
+    public function list(Site|GameServer $site, string $path): array
     {
         return $this->call($site, ['action' => 'list', 'path' => $path])['entries'] ?? [];
     }
 
     /** @return array{content: string, mtime: int, size: int} */
-    public function read(Site $site, string $path): array
+    public function read(Site|GameServer $site, string $path): array
     {
         $out = $this->call($site, ['action' => 'read', 'path' => $path]);
 
         return ['content' => (string) ($out['content'] ?? ''), 'mtime' => (int) ($out['mtime'] ?? 0), 'size' => (int) ($out['size'] ?? 0)];
     }
 
-    public function write(Site $site, string $path, string $content, ?int $ifMtime = null): void
+    public function write(Site|GameServer $site, string $path, string $content, ?int $ifMtime = null): void
     {
         if (strlen($content) > self::MAX_SAVE) {
             throw new AgentException('invalid_params', __('Soubor je na uložení z prohlížeče příliš velký (max. 900 kB), použijte SFTP.'), 'site.files');
@@ -50,39 +54,39 @@ class ManageFiles
         $this->call($site, array_filter(['action' => 'write', 'path' => $path, 'content' => $content, 'if_mtime' => $ifMtime], fn ($v) => $v !== null));
     }
 
-    public function mkdir(Site $site, string $path): void
+    public function mkdir(Site|GameServer $site, string $path): void
     {
         $this->call($site, ['action' => 'mkdir', 'path' => $path]);
     }
 
-    public function rename(Site $site, string $path, string $to): void
+    public function rename(Site|GameServer $site, string $path, string $to): void
     {
         $this->call($site, ['action' => 'rename', 'path' => $path, 'to' => $to]);
     }
 
-    public function delete(Site $site, string $path): void
+    public function delete(Site|GameServer $site, string $path): void
     {
         $this->call($site, ['action' => 'delete', 'path' => $path]);
     }
 
-    public function chmod(Site $site, string $path, string $mode): void
+    public function chmod(Site|GameServer $site, string $path, string $mode): void
     {
         $this->call($site, ['action' => 'chmod', 'path' => $path, 'mode' => $mode]);
     }
 
-    public function extract(Site $site, string $path, string $to): int
+    public function extract(Site|GameServer $site, string $path, string $to): int
     {
         return (int) ($this->call($site, ['action' => 'extract', 'path' => $path, 'to' => $to])['count'] ?? 0);
     }
 
     /** @param list<string> $paths */
-    public function compress(Site $site, array $paths, string $to): int
+    public function compress(Site|GameServer $site, array $paths, string $to): int
     {
         return (int) ($this->call($site, ['action' => 'compress', 'paths' => $paths, 'to' => $to])['count'] ?? 0);
     }
 
     /** Moves a local (uploaded) file to the agent and into the site. */
-    public function upload(Site $site, string $localPath, string $path, bool $replace = false): void
+    public function upload(Site|GameServer $site, string $localPath, string $path, bool $replace = false): void
     {
         $name = 'up-'.bin2hex(random_bytes(16));
         $target = $this->artifactDir().'/'.$name;
@@ -98,7 +102,7 @@ class ManageFiles
     }
 
     /** @return string a local file with the content (delete it after sending) */
-    public function download(Site $site, string $path): string
+    public function download(Site|GameServer $site, string $path): string
     {
         $out = $this->call($site, ['action' => 'download', 'path' => $path]);
         $name = (string) ($out['download'] ?? '');
