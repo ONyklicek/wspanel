@@ -17,6 +17,8 @@ class OpenDatabaseToolController
     public function __invoke(AgentClient $agent, Database $database, string $tool): Response
     {
         abort_unless(in_array($tool, ['phpmyadmin', 'adminer'], true), 404);
+        // A site's dedicated server has no network: the tools cannot reach it.
+        abort_if($database->isDedicated(), 409);
 
         try {
             $access = $agent->call('db.access', $database->agentParams() + ['tool' => $tool]);

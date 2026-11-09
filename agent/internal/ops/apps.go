@@ -115,7 +115,9 @@ func wpConfig(db map[string]string) string {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	if port := db["DB_PORT"]; port != "" && port != "3306" {
+	if sock := db["DB_SOCKET"]; sock != "" { // a dedicated instance
+		host = "localhost:" + sock
+	} else if port := db["DB_PORT"]; port != "" && port != "3306" {
 		host += ":" + port
 	}
 	var b strings.Builder

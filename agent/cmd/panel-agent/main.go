@@ -235,6 +235,10 @@ func binaries(cfg config.Config) map[string]string {
 		"useradd":            "/usr/sbin/useradd",
 		"userdel":            "/usr/sbin/userdel",
 		"usermod":            "/usr/sbin/usermod",
+		"gpasswd":            "/usr/bin/gpasswd",
+		"mariadb-install-db": "/usr/bin/mariadb-install-db",
+		"pg_createcluster":   "/usr/bin/pg_createcluster",
+		"pg_dropcluster":     "/usr/bin/pg_dropcluster",
 		"groupadd":           "/usr/sbin/groupadd",
 		"groupdel":           "/usr/sbin/groupdel",
 		"chown":              "/usr/bin/chown",   // a site moving between clients (-h, never follows links)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -89,7 +90,8 @@ func writeDBEnv(ctx context.Context, env *Env, l siteLayout, engine string, e db
 	if path == "" {
 		return fmt.Errorf("site %s has no env file", l.Domain)
 	}
-	port := strconv.Itoa(e.port())
+	c := e.conn()
+	port := strconv.Itoa(c.Port)
 	var keys []string
 	values := map[string]string{}
 	switch l.Framework {
@@ -98,27 +100,42 @@ func writeDBEnv(ctx context.Context, env *Env, l siteLayout, engine string, e db
 		if engine == "postgresql" {
 			conn = "pgsql"
 		}
-		keys = []string{"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD"}
-		values = map[string]string{"DB_CONNECTION": conn, "DB_HOST": "127.0.0.1", "DB_PORT": port, "DB_DATABASE": name, "DB_USERNAME": name, "DB_PASSWORD": pw}
+		// DB_SOCKET: a dedicated instance's socket, emptied again for the shared server.
+		keys = []string{"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_SOCKET", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD"}
+		values = map[string]string{"DB_CONNECTION": conn, "DB_HOST": c.Host, "DB_PORT": port, "DB_SOCKET": c.Socket,
+			"DB_DATABASE": name, "DB_USERNAME": name, "DB_PASSWORD": pw}
 	default:
 		scheme := "mysql"
 		if engine == "postgresql" {
 			scheme = "postgresql"
 		}
-		url := fmt.Sprintf("%s://%s:%s@127.0.0.1:%s/%s", scheme, name, pw, port, name)
+		var u string
+		var query []string
+		switch {
+		case c.Socket != "": // MariaDB instance: Doctrine and Django read unix_socket
+			u = fmt.Sprintf("%s://%s:%s@localhost/%s", scheme, name, pw, name)
+			query = append(query, "unix_socket="+c.Socket)
+		case strings.HasPrefix(c.Host, "/"): // PostgreSQL instance: the socket directory as host
+			u = fmt.Sprintf("%s://%s:%s@%s:%s/%s", scheme, name, pw, url.PathEscape(c.Host), port, name)
+		default:
+			u = fmt.Sprintf("%s://%s:%s@%s:%s/%s", scheme, name, pw, c.Host, port, name)
+		}
 		if l.Framework == "symfony" { // Doctrine wants the server version
 			v, err := e.version(ctx, env)
 			if err != nil {
 				return err
 			}
 			if engine == "mariadb" {
-				url += "?serverVersion=" + v + "-MariaDB&charset=utf8mb4"
+				query = append(query, "serverVersion="+v+"-MariaDB", "charset=utf8mb4")
 			} else {
-				url += "?serverVersion=" + v + "&charset=utf8"
+				query = append(query, "serverVersion="+v, "charset=utf8")
 			}
 		}
+		if len(query) > 0 {
+			u += "?" + strings.Join(query, "&")
+		}
 		keys = []string{"DATABASE_URL"}
-		values["DATABASE_URL"] = url
+		values["DATABASE_URL"] = u
 	}
 	old, err := readSiteFile(ctx, env, l, path)
 	if err != nil {

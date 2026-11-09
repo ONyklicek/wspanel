@@ -31,7 +31,7 @@ class ManageDatabases
      *
      * @throws AgentException
      */
-    public function create(string $engine, string $name, ?Site $site): array
+    public function create(string $engine, string $name, ?Site $site, ?int $instance = null): array
     {
         $owner = $site !== null ? $site->client : Client::find(CurrentClient::id());
         app(Limits::class)->assertCanAdd($owner, 'databases');
@@ -39,9 +39,14 @@ class ManageDatabases
         $params = ['engine' => $engine, 'name' => $name];
         if ($site !== null) {
             $params['domain'] = $site->domain;
+            if ($instance !== null) {
+                $params['instance'] = $instance;
+            }
         }
         $out = $this->agent->call('db.create', $params);
-        $database = Database::acrossClients()->updateOrCreate(['engine' => $engine, 'name' => $name], ['site_id' => $site?->id, 'client_id' => $owner?->id]);
+        $database = Database::acrossClients()->updateOrCreate(['engine' => $engine, 'name' => $name], [
+            'site_id' => $site?->id, 'client_id' => $owner?->id, 'instance' => $site !== null ? $instance : null,
+        ]);
 
         return ['database' => $database, 'password' => $out['password'] ?? null];
     }

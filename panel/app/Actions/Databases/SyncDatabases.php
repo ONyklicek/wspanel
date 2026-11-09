@@ -31,7 +31,7 @@ class SyncDatabases
                 foreach ($this->agent->call('db.list', ['engine' => $engine->value]) as $db) {
                     $record = Database::updateOrCreate(
                         ['engine' => $engine->value, 'name' => $db['name']],
-                        ['size' => $db['size'], 'synced_at' => now()],
+                        ['size' => $db['size'], 'instance' => $db['instance'] ?? null, 'synced_at' => now()],
                     );
                     $seen[] = $record->id;
                     $this->syncBackups($record);

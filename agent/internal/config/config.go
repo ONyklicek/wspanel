@@ -104,13 +104,19 @@ type Config struct {
 	SysctlDir    string `json:"sysctl_dir"`     // vm.swappiness
 	CloudCfgDir  string `json:"cloud_cfg_dir"`  // cloud-init: keep a hostname set in the panel
 
-	GamesRoot     string `json:"games_root"`      // game servers' homes (/srv/games/<id>)
-	GameBackupDir string `json:"game_backup_dir"` // their backups, root's
-	JavaDir       string `json:"java_dir"`        // Debian's OpenJDKs (/usr/lib/jvm)
-	ProxyCertDir  string `json:"proxy_cert_dir"`  // uploaded certificates (custom TLS)
-	DeployLogDir  string `json:"deploy_log_dir"`
-	PanelDomain   string `json:"panel_domain"`
-	PanelPort     int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
+	GamesRoot string `json:"games_root"` // game servers' homes (/srv/games/<id>)
+	// Dedicated database servers of single sites: data (<root>/<id>), the
+	// socket directory each site reaches (<run>/<id>) and their configs.
+	DBInstancesRoot string `json:"db_instances_root"`
+	DBInstancesRun  string `json:"db_instances_run"`
+	DBInstancesConf string `json:"db_instances_conf"`
+	PostgresConfDir string `json:"postgres_conf_dir"` // pg_createcluster's /etc/postgresql
+	GameBackupDir   string `json:"game_backup_dir"`   // their backups, root's
+	JavaDir         string `json:"java_dir"`          // Debian's OpenJDKs (/usr/lib/jvm)
+	ProxyCertDir    string `json:"proxy_cert_dir"`    // uploaded certificates (custom TLS)
+	DeployLogDir    string `json:"deploy_log_dir"`
+	PanelDomain     string `json:"panel_domain"`
+	PanelPort       int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
 
 	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
 	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
@@ -237,6 +243,10 @@ func Defaults() Config {
 		SysctlDir:         "/etc/sysctl.d",
 		CloudCfgDir:       "/etc/cloud/cloud.cfg.d",
 		GamesRoot:         "/srv/games",
+		DBInstancesRoot:   "/var/lib/wspanel-db",
+		DBInstancesRun:    "/run/wspanel-db",
+		DBInstancesConf:   "/etc/wspanel/db",
+		PostgresConfDir:   "/etc/postgresql",
 		GameBackupDir:     "/var/backups/wspanel-games",
 		JavaDir:           "/usr/lib/jvm",
 		ProxyCertDir:      "/etc/panel-proxy/certs",

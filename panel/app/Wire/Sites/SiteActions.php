@@ -36,6 +36,7 @@ use App\Support\Toast;
 use App\Support\WebRules\RulesConverter;
 use App\Wire\Forms\DnsGate;
 use App\Wire\Forms\Options;
+use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use Closure;
 use Illuminate\Support\Carbon;
@@ -261,14 +262,19 @@ final class SiteActions
             ->form(fn (Site $record) => [
                 Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->required()
                     ->options(collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()])->all())
-                    ->default(app(SystemInfo::class)->dbEngines()[0]->value ?? null),
+                    ->default(app(SystemInfo::class)->dbEngines()[0]->value ?? null)->live(),
                 TextInput::make('name')->label(__('Název (i uživatel)'))->required()->maxLength(32)
                     ->default(substr(preg_replace('/[^a-z0-9]+/', '_', $record->domain), 0, 32))
                     ->rules(['max:32', 'regex:/^[a-z][a-z0-9_]{0,31}$/'])
                     ->validationMessages(['regex' => __('Malá písmena, číslice a podtržítko, začíná písmenem.')]),
+                Toggle::make('dedicated')->default(true)
+                    ->label(__('Na vyhrazeném serveru webu'))
+                    ->helperText(__('Web má vlastní databázový server: jiné weby se k němu nedostanou.'))
+                    ->visible(fn ($get) => DatabaseResource::siteInstance($record->id, $get('engine')) !== null),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Databázi se nepodařilo vytvořit'), function () use ($record, $data) {
-                $name = app(ManageDatabases::class)->create($data['engine'], $data['name'], $record)['database']->name;
+                $instance = ($data['dedicated'] ?? false) ? DatabaseResource::siteInstance($record->id, $data['engine'])['id'] ?? null : null;
+                $name = app(ManageDatabases::class)->create($data['engine'], $data['name'], $record, $instance)['database']->name;
                 Toast::success(__('Databáze :name vytvořena', ['name' => $name]), __('Údaje jsou v .env webu.'));
             }));
     }

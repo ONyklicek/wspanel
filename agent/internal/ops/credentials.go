@@ -33,7 +33,7 @@ func siteCredentials(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 	}
 	vals := parseDotenv(content)
 	db := map[string]string{}
-	for _, k := range []string{"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD"} {
+	for _, k := range []string{"DB_CONNECTION", "DB_HOST", "DB_PORT", "DB_SOCKET", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD"} {
 		if v, ok := vals[k]; ok {
 			db[strings.ToLower(strings.TrimPrefix(k, "DB_"))] = v
 		}

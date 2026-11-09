@@ -67,19 +67,22 @@ type sysGroup struct {
 }
 
 type serverManifest struct {
-	Format      int        `json:"format"`
-	Created     time.Time  `json:"created"`
-	Host        string     `json:"host"`
-	Version     string     `json:"version"`
-	Flags       []string   `json:"flags"`
-	Sites       []string   `json:"sites"`
-	MailDomains []string   `json:"mail_domains"`
-	DBEngines   []string   `json:"db_engines"`
-	Databases   []dbRef    `json:"databases"`
-	Users       []sysUser  `json:"users"`
-	Groups      []sysGroup `json:"groups"`
-	Enabled     []string   `json:"enabled_units"`
-	Files       int        `json:"files"`
+	Format      int       `json:"format"`
+	Created     time.Time `json:"created"`
+	Host        string    `json:"host"`
+	Version     string    `json:"version"`
+	Flags       []string  `json:"flags"`
+	Sites       []string  `json:"sites"`
+	MailDomains []string  `json:"mail_domains"`
+	DBEngines   []string  `json:"db_engines"`
+	Databases   []dbRef   `json:"databases"`
+	// engine/name of the databases that lived in a site's dedicated server
+	// (restored into the shared one: the dedicated server is set up again).
+	Dedicated []string   `json:"dedicated_databases,omitempty"`
+	Users     []sysUser  `json:"users"`
+	Groups    []sysGroup `json:"groups"`
+	Enabled   []string   `json:"enabled_units"`
+	Files     int        `json:"files"`
 }
 
 func serverBackupsDir(env *Env) string { return filepath.Join(env.Cfg.BackupDir, "server") }
@@ -282,6 +285,12 @@ func makeServerBackup(ctx context.Context, env *Env) (backupInfo, error) {
 			for _, d := range list {
 				man.Databases = append(man.Databases, dbRef{Engine: engine, Name: d.Name})
 			}
+		}
+	}
+	for _, i := range allDBInstances(env) {
+		for _, n := range i.Databases {
+			man.Databases = append(man.Databases, dbRef{Engine: i.Engine, Name: n})
+			man.Dedicated = append(man.Dedicated, i.Engine+"/"+n)
 		}
 	}
 	man.Enabled = enabledUnits(env)

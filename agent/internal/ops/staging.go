@@ -149,11 +149,16 @@ func dbCopy(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if p.From == p.To {
 		return nil, protocol.Invalid("to: another database")
 	}
-	eng, err := engineFor(env, p.Engine)
+	// Each side where it lives: a site's dedicated server or the shared one.
+	src, err := dbFor(env, p.Engine, p.From)
 	if err != nil {
 		return nil, err
 	}
-	tmp := filepath.Join(env.Cfg.ArtifactDir, "db-"+randomHex(8)+eng.ext())
+	dst, err := dbFor(env, p.Engine, p.To)
+	if err != nil {
+		return nil, err
+	}
+	tmp := filepath.Join(env.Cfg.ArtifactDir, "db-"+randomHex(8)+src.ext())
 	if err := env.FS.MkdirAll(env.Cfg.ArtifactDir, 0o700, fsx.Root); err != nil {
 		return nil, err
 	}
@@ -163,13 +168,13 @@ func dbCopy(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	}
 	defer os.Remove(tmp)
 	defer f.Close()
-	if err := eng.dump(ctx, env, p.From, f); err != nil {
+	if err := src.dump(ctx, env, p.From, f); err != nil {
 		return nil, fmt.Errorf("dump of %s: %w", p.From, err)
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	if err := eng.restore(ctx, env, p.To, f); err != nil {
+	if err := dst.restore(ctx, env, p.To, f); err != nil {
 		return nil, fmt.Errorf("restore into %s: %w", p.To, err)
 	}
 	return map[string]any{"from": p.From, "to": p.To, "copied": true}, nil

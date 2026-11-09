@@ -12,13 +12,14 @@ class Database extends Model
 {
     use OwnedByClient;
 
-    protected $fillable = ['engine', 'name', 'site_id', 'size', 'backup_frequency', 'backup_keep', 'synced_at'];
+    protected $fillable = ['engine', 'name', 'site_id', 'instance', 'size', 'backup_frequency', 'backup_keep', 'synced_at'];
 
     protected function casts(): array
     {
         return [
             'engine' => DatabaseEngine::class,
             'size' => 'integer',
+            'instance' => 'integer',
             'backup_keep' => 'integer',
             'synced_at' => 'datetime',
         ];
@@ -32,6 +33,12 @@ class Database extends Model
     public function backups(): HasMany
     {
         return $this->hasMany(Backup::class)->latest('taken_at');
+    }
+
+    /** On its site's dedicated server (the database tools cannot reach it). */
+    public function isDedicated(): bool
+    {
+        return $this->instance !== null;
     }
 
     /** @return array{engine: string, name: string} */

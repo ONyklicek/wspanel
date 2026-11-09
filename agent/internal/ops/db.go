@@ -27,11 +27,21 @@ type dbEngine interface {
 	restore(ctx context.Context, env *Env, name string, r io.Reader) error
 	port() int
 	ext() string
+	conn() dbConn
+}
+
+// dbConn: how a site reaches the server. The shared servers listen on
+// 127.0.0.1; a dedicated instance only on a socket in its own directory.
+type dbConn struct {
+	Host   string // address, or (PostgreSQL) the socket directory
+	Port   int
+	Socket string // MariaDB's socket file (instances)
 }
 
 type dbInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	Instance int    `json:"instance,omitempty"` // a site's dedicated server
 }
 
 func engineFor(env *Env, name string) (dbEngine, error) {
@@ -60,17 +70,43 @@ func newPassword() string {
 
 // ---------------------------------------------------------------- MariaDB
 
-type mariadb struct{}
+// mariadb: the shared server, or (socket set) a site's dedicated instance.
+type mariadb struct {
+	socket string
+}
 
 func (mariadb) port() int   { return 3306 }
 func (mariadb) ext() string { return ".sql.gz" }
+func (m mariadb) conn() dbConn {
+	if m.socket != "" {
+		return dbConn{Host: "localhost", Port: 3306, Socket: m.socket}
+	}
+	return dbConn{Host: "127.0.0.1", Port: 3306}
+}
+
+// args: the client's connection options (an instance's socket).
+func (m mariadb) args(a ...string) []string {
+	if m.socket != "" {
+		return append([]string{"--socket=" + m.socket}, a...)
+	}
+	return a
+}
+
+// netHosts: the hosts the owner may connect from besides the socket. An
+// instance has no network.
+func (m mariadb) netHosts(env *Env) []string {
+	if m.socket != "" {
+		return nil
+	}
+	return append([]string{"127.0.0.1"}, mariadbNetHosts(loadDBServer(env)["mariadb"])...)
+}
 
 // sql runs statements as root over the local socket (unix_socket auth: no
 // admin password exists). SQL goes in on stdin, never in argv, where any
 // local user could read passwords from /proc/<pid>/cmdline.
-func (mariadb) sql(ctx context.Context, env *Env, q string) (string, error) {
+func (m mariadb) sql(ctx context.Context, env *Env, q string) (string, error) {
 	var out strings.Builder
-	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "mariadb", "--batch", "--skip-column-names")
+	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "mariadb", m.args("--batch", "--skip-column-names")...)
 	return out.String(), err
 }
 
@@ -84,10 +120,13 @@ func grantPattern(db string) string {
 // The owner may connect over TCP (127.0.0.1) and the socket (localhost).
 func (m mariadb) create(ctx context.Context, env *Env, name, pw string) error {
 	q := fmt.Sprintf("CREATE DATABASE `%[1]s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; "+
-		"CREATE USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; CREATE USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s'; "+
-		"GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'localhost', '%[1]s'@'127.0.0.1';", name, pw, grantPattern(name))
-	// Published server: the owner may also connect over the network, TLS only.
-	for _, h := range mariadbNetHosts(loadDBServer(env)["mariadb"]) {
+		"CREATE USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'localhost';", name, pw, grantPattern(name))
+	for i, h := range m.netHosts(env) {
+		if i == 0 { // 127.0.0.1: the shared server's own address
+			q += fmt.Sprintf(" CREATE USER '%[1]s'@'%[4]s' IDENTIFIED BY '%[2]s'; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%[4]s';", name, pw, grantPattern(name), h)
+			continue
+		}
+		// Published server: the owner may also connect over the network, TLS only.
 		q += fmt.Sprintf(" CREATE OR REPLACE USER '%[1]s'@'%[4]s' IDENTIFIED BY '%[2]s' REQUIRE SSL; GRANT ALL PRIVILEGES ON `%[3]s`.* TO '%[1]s'@'%[4]s';",
 			name, pw, grantPattern(name), h)
 	}
@@ -96,7 +135,7 @@ func (m mariadb) create(ctx context.Context, env *Env, name, pw string) error {
 }
 
 func (m mariadb) drop(ctx context.Context, env *Env, name string) error {
-	hosts := append([]string{"localhost", "127.0.0.1", "%"}, mariadbNetHosts(loadDBServer(env)["mariadb"])...)
+	hosts := append([]string{"localhost", "%"}, m.netHosts(env)...)
 	// <db>-def: the account an imported dump's objects belong to (see restoreUntrusted).
 	_, err := m.sql(ctx, env, fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS %s; DROP USER IF EXISTS '%s'@'localhost';",
 		name, mariadbAccounts(name, slices.Compact(hosts)), importDefiner(name)))
@@ -104,8 +143,12 @@ func (m mariadb) drop(ctx context.Context, env *Env, name string) error {
 }
 
 func (m mariadb) setPassword(ctx context.Context, env *Env, name, pw string) error {
-	q := fmt.Sprintf("ALTER USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s'; ALTER USER '%[1]s'@'127.0.0.1' IDENTIFIED BY '%[2]s';", name, pw)
-	for _, h := range mariadbNetHosts(loadDBServer(env)["mariadb"]) {
+	q := fmt.Sprintf("ALTER USER '%[1]s'@'localhost' IDENTIFIED BY '%[2]s';", name, pw)
+	for i, h := range m.netHosts(env) {
+		if i == 0 {
+			q += fmt.Sprintf(" ALTER USER '%s'@'%s' IDENTIFIED BY '%s';", name, h, pw)
+			continue
+		}
 		q += fmt.Sprintf(" ALTER USER IF EXISTS '%s'@'%s' IDENTIFIED BY '%s';", name, h, pw)
 	}
 	_, err := m.sql(ctx, env, q)
@@ -131,33 +174,62 @@ func (m mariadb) version(ctx context.Context, env *Env) (string, error) {
 	return v, err
 }
 
-func (mariadb) dump(ctx context.Context, env *Env, name string, w io.Writer) error {
-	_, err := env.Exec.RunIO(ctx, nil, w, "mariadb-dump", "--single-transaction", "--routines", "--triggers", "--events",
-		"--default-character-set=utf8mb4", name)
+func (m mariadb) dump(ctx context.Context, env *Env, name string, w io.Writer) error {
+	_, err := env.Exec.RunIO(ctx, nil, w, "mariadb-dump", m.args("--single-transaction", "--routines", "--triggers", "--events",
+		"--default-character-set=utf8mb4", name)...)
 	return err
 }
 
 // The dump's content comes from the site's database. --sandbox makes the
 // client refuse its own commands that touch the system (\!, source, ...),
 // --local-infile=0 its reading of local files (LOAD DATA LOCAL).
-func (mariadb) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
-	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", "--sandbox", "--local-infile=0", "--default-character-set=utf8mb4", name)
+func (m mariadb) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
+	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", m.args("--sandbox", "--local-infile=0", "--default-character-set=utf8mb4", name)...)
 	return err
 }
 
 // ---------------------------------------------------------------- PostgreSQL
 
-type postgres struct{}
+// postgres: the shared cluster, or (osUser set) a site's dedicated cluster,
+// reached on its socket directory as the cluster's owner.
+type postgres struct {
+	osUser  string
+	sockDir string
+	sock    int
+}
 
-func (postgres) port() int   { return 5432 }
+func (p postgres) port() int {
+	if p.sock > 0 {
+		return p.sock
+	}
+	return 5432
+}
 func (postgres) ext() string { return ".pgdump" }
+func (p postgres) conn() dbConn {
+	if p.sockDir != "" {
+		return dbConn{Host: p.sockDir, Port: p.port()}
+	}
+	return dbConn{Host: "127.0.0.1", Port: 5432}
+}
 
-// psql as the postgres OS user (peer auth: no admin password exists). SQL on
-// stdin, never in argv (see mariadb.sql).
-func (postgres) psql(ctx context.Context, env *Env, db, q string) (string, error) {
+// as: run a PostgreSQL client as the cluster's owner (peer auth: no admin
+// password exists), pointed at the cluster.
+func (p postgres) as(bin string, a ...string) []string {
+	u := p.osUser
+	if u == "" {
+		u = "postgres"
+	}
+	args := []string{"--reuid=" + u, "--regid=" + u, "--init-groups", "--reset-env", "--", bin}
+	if p.sockDir != "" {
+		args = append(args, "--host="+p.sockDir, "--port="+strconv.Itoa(p.port()))
+	}
+	return append(args, a...)
+}
+
+// psql: SQL on stdin, never in argv (see mariadb.sql).
+func (p postgres) psql(ctx context.Context, env *Env, db, q string) (string, error) {
 	var out strings.Builder
-	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
-		"/usr/bin/psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-d", db, "-f", "-")
+	_, err := env.Exec.RunIO(ctx, strings.NewReader(q), &out, "setpriv", p.as("/usr/bin/psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-d", db, "-f", "-")...)
 	return out.String(), err
 }
 
@@ -204,19 +276,17 @@ func (p postgres) version(ctx context.Context, env *Env) (string, error) {
 	return v[0], err
 }
 
-func (postgres) dump(ctx context.Context, env *Env, name string, w io.Writer) error {
-	_, err := env.Exec.RunIO(ctx, nil, w, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
-		"/usr/bin/pg_dump", "--format=custom", "--dbname="+name)
+func (p postgres) dump(ctx context.Context, env *Env, name string, w io.Writer) error {
+	_, err := env.Exec.RunIO(ctx, nil, w, "setpriv", p.as("/usr/bin/pg_dump", "--format=custom", "--dbname="+name)...)
 	return err
 }
 
 // The dump's content comes from the site's database (functions, index
 // expressions, ...): restore with the owner's rights (SET ROLE), never as
 // superuser, and without replaying ownership or grants.
-func (postgres) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
-	_, err := env.Exec.RunIO(ctx, r, io.Discard, "setpriv", "--reuid=postgres", "--regid=postgres", "--init-groups", "--reset-env", "--",
-		"/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
-		"--role="+name, "--dbname="+name)
+func (p postgres) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
+	_, err := env.Exec.RunIO(ctx, r, io.Discard, "setpriv", p.as("/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
+		"--role="+name, "--dbname="+name)...)
 	return err
 }
 
@@ -243,14 +313,16 @@ type dbParams struct {
 	Name    string `json:"name"`
 	Domain  string `json:"domain,omitempty"`  // db.create / db.password: write credentials into this site's env file
 	Confirm string `json:"confirm,omitempty"` // db.drop / db.restore: must repeat the name
+	// db.create: in the site's dedicated server (its id) instead of the shared one.
+	Instance int `json:"instance,omitempty"`
 }
 
+// resolve: the server holding the database (a dedicated instance, or shared).
 func (p dbParams) resolve(env *Env) (dbEngine, error) {
-	e, err := engineFor(env, p.Engine)
-	if err != nil {
+	if err := validate.DBName("name", p.Name); err != nil {
 		return nil, err
 	}
-	return e, validate.DBName("name", p.Name)
+	return dbFor(env, p.Engine, p.Name)
 }
 
 func dbList(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
@@ -264,7 +336,27 @@ func dbList(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return e.list(ctx, env)
+	list, err := e.list(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	// The sites' dedicated servers: their databases too, marked (what the
+	// agent created there; sizes from the server while it runs).
+	for _, i := range allDBInstances(env) {
+		if i.Engine != p.Engine {
+			continue
+		}
+		sizes := map[string]int64{}
+		if in, err := i.engine(env).list(ctx, env); err == nil {
+			for _, d := range in {
+				sizes[d.Name] = d.Size
+			}
+		}
+		for _, n := range i.Databases {
+			list = append(list, dbInfo{Name: n, Size: sizes[n], Instance: i.ID})
+		}
+	}
+	return list, nil
 }
 
 // dbCreate creates a database and its owner (same name). With a domain, the
@@ -275,8 +367,11 @@ func dbCreate(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	e, err := p.resolve(env)
+	shared, err := engineFor(env, p.Engine)
 	if err != nil {
+		return nil, err
+	}
+	if err := validate.DBName("name", p.Name); err != nil {
 		return nil, err
 	}
 	var site *siteLayout
@@ -287,24 +382,52 @@ func dbCreate(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		}
 		site = &l
 	}
-	existing, err := e.list(ctx, env)
-	if err != nil {
+	if taken, err := dbNameTaken(ctx, env, p.Engine, p.Name, shared); err != nil {
 		return nil, err
-	}
-	if slices.ContainsFunc(existing, func(d dbInfo) bool { return d.Name == p.Name }) {
+	} else if taken {
 		return nil, protocol.Conflict("database " + p.Name + " already exists")
+	}
+	e := shared
+	var inst *dbInstance
+	if p.Instance != 0 {
+		i, err := loadDBInstance(env, p.Instance)
+		if err != nil {
+			return nil, err
+		}
+		if i.Engine != p.Engine || p.Domain == "" || i.Domain != p.Domain {
+			return nil, protocol.Invalid("instance: the dedicated " + p.Engine + " server of the site given in domain")
+		}
+		inst, e = &i, i.engine(env)
 	}
 	pw := newPassword()
 	if err := e.create(ctx, env, p.Name, pw); err != nil {
 		return nil, err
 	}
-	out := map[string]any{"engine": p.Engine, "name": p.Name, "user": p.Name, "host": "127.0.0.1", "port": e.port()}
+	if inst != nil {
+		inst.Databases = append(inst.Databases, p.Name)
+		if err := saveDBInstance(env, *inst); err != nil {
+			_ = e.drop(context.WithoutCancel(ctx), env, p.Name)
+			return nil, err
+		}
+	}
+	c := e.conn()
+	out := map[string]any{"engine": p.Engine, "name": p.Name, "user": p.Name, "host": c.Host, "port": c.Port}
+	if c.Socket != "" {
+		out["socket"] = c.Socket
+	}
+	if inst != nil {
+		out["instance"] = inst.ID
+	}
 	if site == nil {
 		out["password"] = pw
 		return out, nil
 	}
 	if err := writeDBEnv(ctx, env, *site, p.Engine, e, p.Name, pw); err != nil {
 		_ = e.drop(context.WithoutCancel(ctx), env, p.Name)
+		if inst != nil {
+			inst.Databases = slices.DeleteFunc(inst.Databases, func(n string) bool { return n == p.Name })
+			_ = saveDBInstance(env, *inst)
+		}
 		return nil, fmt.Errorf("writing credentials to %s failed, database removed again: %w", p.Domain, err)
 	}
 	out["env_file"] = envFilePath(*site)
@@ -359,6 +482,12 @@ func dbDrop(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	}
 	if err := e.drop(ctx, env, p.Name); err != nil {
 		return nil, err
+	}
+	if i, ok := instanceOf(env, p.Engine, p.Name); ok {
+		i.Databases = slices.DeleteFunc(i.Databases, func(n string) bool { return n == p.Name })
+		if err := saveDBInstance(env, i); err != nil {
+			return nil, err
+		}
 	}
 	return map[string]any{"engine": p.Engine, "name": p.Name, "dropped": true, "backups_kept": true}, nil
 }

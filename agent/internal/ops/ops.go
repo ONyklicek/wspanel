@@ -47,7 +47,7 @@ type Op struct {
 
 // asyncOps are long-running (dumps, restores): they answer with a job id and
 // the panel polls job.status.
-var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "server.backup": true,
+var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "db.instance_create": true, "db.instance_update": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
 	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "game.mod_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
@@ -95,6 +95,11 @@ func Registry() map[string]Op {
 		{"db.schedule", true, dbSchedule},
 		{"db.access", true, dbAccess},
 		{"db.server_status", false, dbServerStatus},
+		{"db.instances", false, dbInstances},
+		{"db.instance_create", true, dbInstanceCreate},
+		{"db.instance_update", true, dbInstanceUpdate},
+		{"db.instance_action", true, dbInstanceAction},
+		{"db.instance_delete", true, dbInstanceDelete},
 		{"site.php", true, sitePHP},
 		{"site.edge", true, siteEdge},
 		{"site.hook", true, siteHook},

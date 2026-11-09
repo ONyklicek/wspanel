@@ -58,7 +58,7 @@ func TestDBCreateMariaDBReturnsPasswordOnce(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"CREATE DATABASE `shop` CHARACTER SET utf8mb4", "CREATE USER 'shop'@'localhost' IDENTIFIED BY '" + pw + "'",
-		"CREATE USER 'shop'@'127.0.0.1'", "GRANT ALL PRIVILEGES ON `shop`.* TO 'shop'@'localhost', 'shop'@'127.0.0.1'"} {
+		"CREATE USER 'shop'@'127.0.0.1'", "GRANT ALL PRIVILEGES ON `shop`.* TO 'shop'@'localhost'", "GRANT ALL PRIVILEGES ON `shop`.* TO 'shop'@'127.0.0.1'"} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("SQL missing %q:\n%s", want, sql)
 		}

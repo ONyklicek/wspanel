@@ -2,10 +2,12 @@
 
 namespace App\Livewire\Pages;
 
+use App\Actions\Databases\ManageDatabaseInstances;
 use App\Actions\Databases\ManageDatabaseServers;
 use App\Enums\DatabaseEngine;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
+use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -54,6 +56,9 @@ class DatabaseServersPage extends Page
 
     public ?string $error = null;
 
+    /** @var list<array<string, mixed>> the sites' dedicated servers */
+    public array $instances = [];
+
     public function mount(): void
     {
         $this->refreshStatus();
@@ -63,6 +68,7 @@ class DatabaseServersPage extends Page
     {
         try {
             $this->servers = app(ManageDatabaseServers::class)->status();
+            $this->instances = app(ManageDatabaseInstances::class)->list(fresh: true);
             $this->error = null;
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
@@ -71,7 +77,7 @@ class DatabaseServersPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['engine-install'];
+        return ['engine-install', 'db-instance'];
     }
 
     /** The new engine shows here, in the create form and in the services. */
@@ -79,6 +85,61 @@ class DatabaseServersPage extends Page
     {
         Cache::forget('agent.sys.versions');
         $this->refreshStatus();
+    }
+
+    /** Start, stop or restart a dedicated server. */
+    public function controlInstance(int $id, string $action): void
+    {
+        if (! in_array($action, ['start', 'stop', 'restart'], true)) {
+            return;
+        }
+        try {
+            app(ManageDatabaseInstances::class)->control($id, $action);
+            Toast::success(['start' => __('Server spuštěn'), 'stop' => __('Server zastaven'), 'restart' => __('Server restartován')][$action]);
+        } catch (AgentException $e) {
+            Toast::error(__('Akce selhala'), $e->getMessage());
+        }
+        $this->refreshStatus();
+    }
+
+    public function deleteInstance(int $id): void
+    {
+        try {
+            app(ManageDatabaseInstances::class)->delete($id);
+            Toast::success(__('Vyhrazený server smazán'));
+        } catch (AgentException $e) {
+            Toast::error(__('Vyhrazený server se nepodařilo smazat'), $e->getMessage());
+        }
+        $this->refreshStatus();
+    }
+
+    public function instanceLimitsAction(int $id): Action
+    {
+        return Action::make('instanceLimits'.$id)
+            ->label(__('Limity'))
+            ->icon('outline:adjustments-horizontal')
+            ->size('sm')
+            ->color('gray')
+            ->modalDescription(__('Server se po změně restartuje (na pár sekund nebude dostupný).'))
+            ->fillFormUsing(function () use ($id) {
+                $i = collect($this->instances)->firstWhere('id', $id) ?? [];
+
+                return ['memory_mb' => $i['memory_mb'] ?? 1024, 'cpu_percent' => $i['cpu_percent'] ?? 0];
+            })
+            ->form([
+                TextInput::make('memory_mb')->label(__('Paměť (MB)'))->numeric()->required()->rules(['integer', 'min:256', 'max:262144']),
+                TextInput::make('cpu_percent')->label(__('CPU (% jednoho jádra)'))->numeric()->required()->rules(['integer', 'min:0', 'max:6400'])
+                    ->helperText(__('0 = bez limitu, 200 = dvě jádra.')),
+            ])
+            ->action(function (array $data) use ($id) {
+                try {
+                    app(ManageDatabaseInstances::class)->update($id, (int) $data['memory_mb'], (int) $data['cpu_percent']);
+                    Toast::success(__('Limity změněny'));
+                } catch (AgentException $e) {
+                    Toast::error(__('Změna selhala'), $e->getMessage());
+                }
+                $this->refreshStatus();
+            });
     }
 
     /** @return array<string, string> engines this server does not have yet, value => label */
@@ -89,14 +150,51 @@ class DatabaseServersPage extends Page
             ->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()])->all();
     }
 
+    /** @return array<int, string> active sites that may still get a dedicated server of some engine */
+    public function instanceSites(): array
+    {
+        return Site::query()->where('status', 'active')->orderBy('domain')->pluck('domain', 'id')->all();
+    }
+
     protected function headerActions(): array
     {
+        $engines = collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()]);
+
         return [
+            Action::make('createInstance')
+                ->label(__('Vyhrazený server pro web'))
+                ->icon('outline:lock-closed')
+                ->color('gray')
+                ->visible(fn () => $engines->isNotEmpty() && ! isset($this->backgroundJobs['db-instance']))
+                ->modalDescription(__('Web dostane vlastní databázový server: běží pod vlastním uživatelem, s vlastními daty a bez sítě. Připojit se k němu může jen tento web (přes socket). Databáze v něm založíte jako obvykle, s volbou Na vyhrazeném serveru webu.'))
+                ->fillFormUsing(fn () => ['engine' => $engines->keys()->first(), 'memory_mb' => 1024, 'cpu_percent' => 100])
+                ->form(fn () => [
+                    Select::make('site_id')->label(__('Web'))->options($this->instanceSites())->required()->rules([Options::rule()]),
+                    Select::make('engine')->label(__('Engine'))->options($engines->all())->required()->rules([Options::rule()]),
+                    TextInput::make('memory_mb')->label(__('Paměť (MB)'))->numeric()->required()->rules(['integer', 'min:256', 'max:262144'])
+                        ->helperText(__('Strop paměti serveru; polovina připadne na cache dat (MariaDB), čtvrtina na shared_buffers (PostgreSQL).')),
+                    TextInput::make('cpu_percent')->label(__('CPU (% jednoho jádra)'))->numeric()->required()->rules(['integer', 'min:0', 'max:6400'])
+                        ->helperText(__('0 = bez limitu, 200 = dvě jádra.')),
+                ])
+                ->action(function (array $data) {
+                    $site = Site::find($data['site_id']);
+                    $label = DatabaseEngine::from($data['engine'])->getLabel();
+                    try {
+                        $this->startBackgroundJob('db-instance', app(ManageDatabaseInstances::class)->create($site, $data['engine'], (int) $data['memory_mb'], (int) $data['cpu_percent']), [
+                            'title' => __('Vyhrazený :engine pro :domain', ['engine' => $label, 'domain' => $site->domain]),
+                            'done' => __('Vyhrazený :engine pro :domain běží', ['engine' => $label, 'domain' => $site->domain]),
+                            'body' => __('Databáze v něm založíte v Databáze → Nová databáze.'),
+                        ]);
+                    } catch (AgentException $e) {
+                        Toast::error(__('Vyhrazený server se nepodařilo založit'), $e->getMessage());
+                    }
+                }),
             Action::make('installEngine')
                 ->label(__('Doinstalovat engine'))
                 ->icon('outline:plus-circle')
                 ->visible(fn () => $this->missingEngines() !== [] && ! isset($this->backgroundJobs['engine-install']))
                 ->modalDescription(__('Nainstaluje databázový server a PHP ovladače pro všechny verze PHP. Engine pak z panelu nejde odebrat (odinstalace by smazala data).'))
+                ->fillFormUsing(fn () => ['engine' => array_key_first($this->missingEngines())])
                 ->form(fn () => [Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->options($this->missingEngines())->required()])
                 ->action(function (array $data) {
                     $label = DatabaseEngine::from($data['engine'])->getLabel();
@@ -163,6 +261,9 @@ class DatabaseServersPage extends Page
         foreach (array_keys($this->servers) as $engine) {
             $actions[] = $this->rootPasswordAction($engine);
             $actions[] = $this->accessAction($engine);
+        }
+        foreach ($this->instances as $i) {
+            $actions[] = $this->instanceLimitsAction((int) $i['id']);
         }
 
         return $actions;

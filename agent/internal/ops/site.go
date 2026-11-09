@@ -627,6 +627,10 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if p.Confirm != p.Domain {
 		return nil, protocol.Invalid("confirm: must equal domain")
 	}
+	// Its dedicated database servers hold data: they go first, deliberately.
+	if insts := siteDBInstances(env, p.Domain); len(insts) > 0 {
+		return nil, protocol.Conflict(fmt.Sprintf("%s has a dedicated database server (%s): delete it first", p.Domain, insts[0].Engine))
+	}
 	release, err := claimSite(p.Domain)
 	if err != nil {
 		return nil, err

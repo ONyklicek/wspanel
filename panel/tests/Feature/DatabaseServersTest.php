@@ -31,6 +31,7 @@ class DatabaseServersTest extends TestCase
         $this->agent = Mockery::mock(AgentClient::class);
         $this->agent->shouldReceive('call')->with('db.server_status')->andReturnUsing(fn () => ['engines' => $this->engines])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb', 'postgresql'], 'db_tools' => ['phpmyadmin', 'adminer']])->byDefault();
+        $this->agent->shouldReceive('call')->with('db.instances')->andReturn(['instances' => []])->byDefault();
         $this->app->instance(AgentClient::class, $this->agent);
         $this->actingAs(User::factory()->create());
     }

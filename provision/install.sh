@@ -188,6 +188,20 @@ for v in "${PHP_LIST[@]}"; do
 done
 [[ " ${PHP_LIST[*]} " == *" $PANEL_PHP "* ]] || PHP_LIST+=("$PANEL_PHP")
 
+# An upgrade keeps what was added from the panel since (Databáze → Servery →
+# Doinstalovat engine, PHP versions): agent.json is rewritten below, and the
+# flags saved at install time do not know about those.
+existing_list() {
+  [[ -f /etc/panel-agent/agent.json ]] || return 0
+  tr -d '\n' < /etc/panel-agent/agent.json | grep -o "\"$1\": *\[[^]]*\]" | grep -o '"[^"]*"' | tail -n +2 | tr -d '"'
+}
+for e in $(existing_list db_engines); do
+  [[ "$e" =~ ^(mariadb|postgresql)$ && " ${DB_ENGINES[*]} " != *" $e "* ]] && DB_ENGINES+=("$e")
+done
+for v in $(existing_list php_versions); do
+  [[ "$v" =~ ^8\.[2-5]$ && " ${PHP_LIST[*]} " != *" $v "* ]] && PHP_LIST+=("$v")
+done
+
 NODE_LIST=()
 if [[ "$NODE_VERSIONS" != "none" ]]; then
   IFS=',' read -r -a NODE_LIST <<< "$NODE_VERSIONS"

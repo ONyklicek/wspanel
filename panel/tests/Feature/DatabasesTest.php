@@ -193,6 +193,7 @@ class DatabasesTest extends TestCase
     {
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb']]);
         $this->agent->shouldReceive('call')->with('db.server_status')->andReturn(['engines' => []]);
+        $this->agent->shouldReceive('call')->with('db.instances')->andReturn(['instances' => []]);
         $this->agent->shouldReceive('call')->once()->with('engine.install', ['engine' => 'postgresql'])->andReturn(['job_id' => 'abcdef0123456789']);
         $this->agent->shouldReceive('call')->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => []]);
 

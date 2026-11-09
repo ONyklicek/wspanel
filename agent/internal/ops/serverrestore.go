@@ -572,6 +572,9 @@ func RestoreServerData(ctx context.Context, env *Env, man serverManifest, src ba
 			continue
 		}
 		logf("database %s from %s", d.Name, file)
+		if slices.Contains(man.Dedicated, d.Engine+"/"+d.Name) {
+			rep.problem("database %s was on its site's dedicated server: restored into the shared %s server (set the dedicated server up again and move it)", d.Name, d.Engine)
+		}
 		if err := restoreDump(ctx, env, e, d.Name, filepath.Join(t.local, file)); err != nil {
 			rep.problem("database %s: %v", d.Name, err)
 			continue

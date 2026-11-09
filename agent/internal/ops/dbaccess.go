@@ -93,6 +93,11 @@ func dbAccess(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		e, err = engineFor(env, p.Engine)
 	} else {
 		e, err = (dbParams{Engine: p.Engine, Name: p.Name}).resolve(env)
+		if _, dedicated := instanceOf(env, p.Engine, p.Name); err == nil && dedicated {
+			// The tools reach the shared servers only; an instance has no network
+			// and its socket admits the site alone.
+			return nil, protocol.Conflict(p.Name + " is on the site's dedicated server: the database tools cannot reach it")
+		}
 	}
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@
 
 namespace App\Wire\Resources;
 
+use App\Actions\Databases\ManageDatabaseInstances;
 use App\Actions\Databases\ManageDatabases;
 use App\Enums\DatabaseEngine;
 use App\Livewire\Databases\ListDatabases;
@@ -29,6 +30,7 @@ use NyonCode\WireCore\Infolists\Contracts\ProvidesResourceInfolist;
 use NyonCode\WireCore\Infolists\Infolist;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
+use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesRelationManagers;
 use NyonCode\WirePanels\Resources\Contracts\ProvidesResourceTable;
 use NyonCode\WireTable\Columns\TextColumn;
@@ -88,7 +90,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             ->query(Database::query()->with('site')->withCount('backups'))
             ->columns([
                 TextColumn::make('name')->label(__('Databáze'))->searchable()->sortable()->fontFamily('mono')->weight('medium')
-                    ->description(fn (Database $record) => $record->engine->getLabel().' · '.($record->site?->domain ?? 'bez webu')),
+                    ->description(fn (Database $record) => $record->engine->getLabel().' · '.($record->site?->domain ?? __('bez webu')).($record->isDedicated() ? ' · '.__('vyhrazený server') : '')),
                 TextColumn::make('size')->label(__('Velikost'))->sortable()->formatStateUsing(fn ($state) => $state === null ? '—' : Number::fileSize((int) $state, 1)),
                 TextColumn::make('backups_count')->label(__('Zálohy'))
                     ->formatStateUsing(fn ($state) => (int) $state === 0 ? __('žádná') : $state.' '.((int) $state === 1 ? __('záloha') : ((int) $state < 5 ? __('zálohy') : __('záloh'))))
@@ -113,12 +115,24 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                     default => 'vypnuto',
                 }),
                 TextEntry::make('connection')->label(__('Připojení'))->copyable()
-                    ->state(fn (Database $record) => '127.0.0.1:'.($record->engine === DatabaseEngine::MariaDb ? 3306 : 5432).__(' · uživatel ').$record->name),
+                    ->state(fn (Database $record) => self::connection($record).__(' · uživatel ').$record->name),
                 TextEntry::make('credentials')->label(__('Údaje'))->state(fn (Database $record) => $record->site
                     ? __('zapsané v .env webu ').$record->site->domain
                     : __('heslo panel nedrží; v případě potřeby vygenerujte nové')),
             ]),
         ]);
+    }
+
+    /** Where the site connects: 127.0.0.1, or its dedicated server's socket. */
+    public static function connection(Database $record): string
+    {
+        if ($record->isDedicated()) {
+            $i = collect(rescue(fn () => app(ManageDatabaseInstances::class)->list(), [], report: false))->firstWhere('id', $record->instance);
+
+            return $i === null ? __('vyhrazený server webu') : ($i['socket'] ?? null ?: $i['host'].':'.$i['port']);
+        }
+
+        return '127.0.0.1:'.($record->engine === DatabaseEngine::MariaDb ? 3306 : 5432);
     }
 
     public function relationManagers(): array
@@ -134,7 +148,7 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
 
         return Action::make('open')->label(__('Otevřít'))->icon('outline:arrow-top-right-on-square')->color('gray')
             ->tooltip(fn (Database $record) => $tool($record) === 'phpmyadmin' ? 'V phpMyAdminu' : 'V Admineru')
-            ->visible(fn (Database $record) => in_array($tool($record), $tools, true))
+            ->visible(fn (Database $record) => ! $record->isDedicated() && in_array($tool($record), $tools, true))
             ->url(fn (Database $record) => route('dbtools.open', [$record, $tool($record)]), true);
     }
 
@@ -145,10 +159,10 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
 
         return [
             Action::make('phpmyadmin')->label('phpMyAdmin')->icon('outline:table-cells')->color('gray')
-                ->visible(fn (Database $record) => in_array('phpmyadmin', $tools, true) && $record->engine === DatabaseEngine::MariaDb)
+                ->visible(fn (Database $record) => ! $record->isDedicated() && in_array('phpmyadmin', $tools, true) && $record->engine === DatabaseEngine::MariaDb)
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'phpmyadmin']), true),
             Action::make('adminer')->label(__('Adminer'))->icon('outline:table-cells')->color('gray')
-                ->visible(fn () => in_array('adminer', $tools, true))
+                ->visible(fn (Database $record) => ! $record->isDedicated() && in_array('adminer', $tools, true))
                 ->url(fn (Database $record) => route('dbtools.open', [$record, 'adminer']), true),
         ];
     }
@@ -198,6 +212,14 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
     }
 
     /** "New database", optionally preselecting a site. */
+    /** The dedicated server of the chosen site and engine, if it has one. */
+    public static function siteInstance(mixed $siteId, mixed $engine): ?array
+    {
+        $site = $siteId ? Site::find($siteId) : null;
+
+        return $site !== null && is_string($engine) ? app(ManageDatabaseInstances::class)->forSite($site, $engine) : null;
+    }
+
     public static function createAction(): Action
     {
         $engines = collect(app(SystemInfo::class)->dbEngines())->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()]);
@@ -207,9 +229,9 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
             ->icon('outline:plus')
             ->visible($engines->isNotEmpty())
             ->modalDescription(__('Vytvoří databázi a jejího vlastníka se stejným názvem a náhodným heslem. S připojeným webem se údaje zapíší rovnou do jeho .env a panel heslo neuvidí.'))
-            ->fillFormUsing(fn () => ['engine' => $engines->keys()->first(), 'site_id' => null, 'name' => null])
+            ->fillFormUsing(fn () => ['engine' => $engines->keys()->first(), 'site_id' => null, 'name' => null, 'dedicated' => true])
             ->form([
-                Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->options($engines->all())->required(),
+                Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->options($engines->all())->required()->live(),
                 Select::make('site_id')->rules([Options::rule()])
                     ->label(__('Web'))
                     ->options(fn () => Site::query()->where('status', 'active')->orderBy('domain')->pluck('domain', 'id')->all())
@@ -226,11 +248,16 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
                     ->rules(['regex:/^[a-z][a-z0-9_]{1,47}$/', 'not_in:'.implode(',', self::RESERVED)])
                     ->validationMessages(['regex' => __('Malá písmena, číslice a podtržítko; začíná písmenem.'), 'not_in' => __('Tento název je rezervovaný.')])
                     ->helperText(__('Malá písmena, číslice a podtržítko; začíná písmenem.')),
+                Toggle::make('dedicated')
+                    ->label(__('Na vyhrazeném serveru webu'))
+                    ->helperText(__('Web má vlastní databázový server: jiné weby se k němu nedostanou.'))
+                    ->visible(fn ($get) => self::siteInstance($get('site_id'), $get('engine')) !== null),
             ])
             ->action(function (array $data) {
                 try {
                     $site = $data['site_id'] ? Site::find($data['site_id']) : null;
-                    $result = app(ManageDatabases::class)->create($data['engine'], $data['name'], $site);
+                    $instance = ($data['dedicated'] ?? false) ? self::siteInstance($data['site_id'], $data['engine'])['id'] ?? null : null;
+                    $result = app(ManageDatabases::class)->create($data['engine'], $data['name'], $site, $instance);
                     $name = $result['database']->name;
                     $result['password']
                         ? Toast::secret(__('Databáze :name vytvořena', ['name' => $name]), __('Uživatel :name, heslo (zobrazeno jen teď): :password', ['name' => $name, 'password' => $result['password']]))

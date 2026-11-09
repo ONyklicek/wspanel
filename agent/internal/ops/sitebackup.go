@@ -117,7 +117,7 @@ func runSiteBackup(ctx context.Context, env *Env, domain string, dbs []dbRef, su
 		}
 	}()
 	for _, ref := range dbs {
-		e, err := engineFor(env, ref.Engine)
+		e, err := dbFor(env, ref.Engine, ref.Name)
 		if err != nil {
 			return backupInfo{}, err
 		}
@@ -573,7 +573,7 @@ func siteRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 			skipped = append(skipped, d.Name)
 			continue
 		}
-		e, _ := engineFor(env, d.Engine)
+		e, _ := dbFor(env, d.Engine, d.Name)
 		if err := restoreDump(ctx, env, e, d.Name, src); err != nil {
 			if unpacked {
 				cleanup()

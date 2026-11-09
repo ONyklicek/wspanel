@@ -85,6 +85,35 @@ ssh -L 3306:127.0.0.1:3306 root@server
 ```
 a v klientovi server `127.0.0.1`. Superuživatel pak potřebuje heslo (viz výše).
 
+## Vyhrazený server pro jeden web
+
+Web, který potřebuje víc oddělení (citlivá data, zákaznický systém), může mít
+vlastní MariaDB nebo PostgreSQL: **Databáze → Servery → Vyhrazený server pro
+web**. Vyberete web, engine, paměť a CPU. Server se založí na pozadí.
+
+- Běží pod vlastním systémovým uživatelem (`wsd_<číslo>`). Data má ve
+  `/var/lib/wspanel-db/<číslo>`, kam nikdo jiný nevidí.
+- Nemá síť. Poslouchá jen na socketu ve `/run/wspanel-db/<číslo>` a do toho
+  adresáře smí jen uživatel daného webu. Ostatní weby se k němu nedostanou
+  vůbec, ani se špatným heslem.
+- Paměť a CPU hlídá systemd (`MemoryMax`, `CPUQuota`). Podle paměti se nastaví
+  i cache serveru. Limity jdou změnit tlačítkem **Limity**, server se pak
+  restartuje.
+- Databázi v něm založíte jako obvykle (Databáze → Nová databáze, nebo u webu).
+  Stačí zapnout **Na vyhrazeném serveru webu**. Do `.env` se zapíše připojení:
+  - Laravel: `DB_SOCKET` (MariaDB), u PostgreSQL adresář socketu v `DB_HOST`;
+  - Symfony a Django: `DATABASE_URL` se socketem;
+  - WordPress: `DB_HOST` ve tvaru `localhost:/cesta/k/socketu`.
+- Zálohy, obnova a kopie do stagingu fungují stejně jako u sdílených serverů.
+- phpMyAdmin ani Adminer se k vyhrazenému serveru nedostanou (je bez sítě).
+  Pracujte s ním přes SSH jako uživatel webu, např.
+  `mariadb --socket=/run/wspanel-db/1/mysqld.sock -u <databáze> -p`.
+- Smazat jde, až v něm nejsou žádné databáze. Web s vyhrazeným serverem nejde
+  smazat, dokud nesmažete server.
+- Záloha celého serveru jeho databáze obsahuje. Při obnově na nový server se
+  vrátí do sdíleného serveru a report na to upozorní. Vyhrazený server pak
+  založte znovu.
+
 ## Zálohy
 
 Detail databáze:

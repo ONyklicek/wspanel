@@ -54,7 +54,7 @@ type backupInfo struct {
 }
 
 func runBackup(ctx context.Context, env *Env, engine, name, suffix string) (backupInfo, error) {
-	e, err := engineFor(env, engine)
+	e, err := dbFor(env, engine, name)
 	if err != nil {
 		return backupInfo{}, err
 	}
@@ -223,7 +223,7 @@ func dbRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	if err != nil {
 		return nil, err
 	}
-	e, _ := engineFor(env, p.Engine)
+	e, _ := dbFor(env, p.Engine, p.Name)
 	snap, err := runBackup(ctx, env, p.Engine, p.Name, "-pre-restore")
 	if err != nil {
 		return nil, fmt.Errorf("pre-restore snapshot failed, nothing restored: %w", err)
