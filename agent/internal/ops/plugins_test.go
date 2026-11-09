@@ -125,3 +125,19 @@ func TestPluginRemoveTakesOnlyAJarName(t *testing.T) {
 		}
 	}
 }
+
+func TestModLoadersTakeModrinthModsOnly(t *testing.T) {
+	fakeCatalogues(t)
+	env, _ := gameTestEnv(t)
+	saveGame(env, gameState{ID: 8, Name: "M", Game: "minecraft", Flavor: "fabric", Version: "1.21.10", Build: "0.20.1", Port: 25567, RconPort: 27003, RconPassword: "p", MemoryMB: 2048})
+	if _, err := call(t, env, gamePluginSearch, map[string]any{"id": 8, "source": "hangar", "query": "via"}); code(err) != "invalid_params" {
+		t.Errorf("Hangar has Paper plugins only: %v", err)
+	}
+	if _, err := call(t, env, gamePluginInstall, map[string]any{"id": 8, "source": "hangar", "project": "ViaVersion"}); code(err) != "invalid_params" {
+		t.Errorf("install from Hangar on Fabric: %v", err)
+	}
+	// The fake catalogue answers searches with categories:paper only: Fabric asks for fabric.
+	if _, err := call(t, env, gamePluginSearch, map[string]any{"id": 8, "source": "modrinth", "query": "x"}); err == nil {
+		t.Error("a Fabric server must search for Fabric mods")
+	}
+}

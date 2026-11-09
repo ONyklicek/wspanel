@@ -142,6 +142,7 @@ log "Python: a placeholder, then a Django site with Celery deployed twice (the s
 on 'test -x /usr/local/bin/uv && ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu >/dev/null' || fail "--python=3.13 did not install uv and Python 3.13"
 out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "py.localhost", "mode" => "python", "framework" => "python", "python_version" => "3.13", "tls" => "internal"]); echo $s->status->value;')
 [[ $out == active ]] || fail "Python site: $out"
+for _ in $(seq 30); do on 'curl -sk --resolve py.localhost:443:127.0.0.1 https://py.localhost/ | grep -q "Python 3.13"' && break; sleep 1; done
 on 'curl -sk --resolve py.localhost:443:127.0.0.1 https://py.localhost/ | grep -q "Python 3.13"' || fail "the Python placeholder does not answer"
 out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "dj.localhost", "mode" => "python", "framework" => "django", "python_version" => "3.13", "tls" => "internal"]); echo $s->status->value;')
 [[ $out == active ]] || fail "Django site: $out"

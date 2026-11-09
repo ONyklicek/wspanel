@@ -6,7 +6,7 @@ a samotný server hry se stáhnou až s prvním herním serverem.
 
 | Hra | Varianty | Port (výchozí) |
 |---|---|---|
-| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server) | 25565/tcp |
+| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric a Forge (módy) | 25565/tcp |
 | Factorio | stabilní vydání (jen procesory x86-64) | 34197/udp |
 
 ## Nový server
@@ -20,6 +20,11 @@ paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmín
   není. Javu 21 nebo 25 (podle verze) panel doinstaluje z Debianu sám.
 - **Stažení** se ověřuje otiskem, který zveřejnil vydavatel (SHA-256,
   u oficiálního serveru Mojangu SHA-1). Soubor s jiným otiskem se odmítne.
+- **Fabric a Forge** se instalují svým oficiálním instalátorem (z maven
+  úložiště Fabricu a Forge, s otiskem SHA-256 zveřejněným vedle něj),
+  spuštěným jako uživatel serveru: Fabric s nejnovějším stabilním loaderem,
+  Forge s doporučeným sestavením pro danou verzi Minecraftu (jinak
+  nejnovějším). Forge si při instalaci stáhne knihovny, trvá to pár minut.
 - **Port** se otevře ve firewallu a při smazání serveru se zase zavře
   (pravidlo, které jste pro ten port měli už předtím, panel nechá být).
   Herní servery používají porty 20000 až 40000, kromě 27000–27999 (RCON)
@@ -53,6 +58,10 @@ a port; výchozí port Minecraftu se nepíše).
 - **Hráči** (Minecraft): whitelist (zapnout, přidat, odebrat), operátoři,
   bany hráčů i IP adres, vyhození. Změny jdou do konzole běžícího serveru
   a platí hned; seznamy jsou vidět i u zastaveného serveru.
+- **Pluginy a módy → Módy** (Fabric, Forge): jako pluginy, ale jen
+  z katalogu Modrinth (Hangar má jen pluginy pro Paper), módy pro daný
+  loader a verzi Minecraftu, do `data/mods`; povinné závislosti (třeba
+  Fabric API) se nainstalují s módem. Hráči potřebují stejné módy u sebe.
 - **Pluginy a módy → Pluginy** (Paper): hledání v katalozích **Modrinth** a **Hangar**
   (PaperMC), jen verze pro Minecraft serveru, instalace jedním tlačítkem,
   seznam nainstalovaných (se zdrojem a verzí), *Zkontrolovat aktualizace*,
@@ -130,5 +139,5 @@ má klientův server vždy kvótu (**Hosting → Klienti → Balíčky**).
   (a `install --restore` na nový server) nepatří. Při přesunu založte server
   znovu a svět přeneste ručně: záloha je archiv `.tar.gz` se složkou `data`
   (v úložišti mimo server pod `games/<id>/`).
-- Další hry (Terraria, Valheim, hry přes steamcmd), Forge a Fabric pro
+- Další hry (Terraria, Valheim, hry přes steamcmd), NeoForge a Quilt pro
   Minecraft.

@@ -20,7 +20,7 @@ enum Game: string
     public function flavors(): array
     {
         return match ($this) {
-            self::Minecraft => ['paper' => __('Paper (pluginy, výkon)'), 'vanilla' => __('Vanilla (oficiální server)')],
+            self::Minecraft => ['paper' => __('Paper (pluginy, výkon)'), 'vanilla' => __('Vanilla (oficiální server)'), 'fabric' => __('Fabric (módy)'), 'forge' => __('Forge (módy)')],
             self::Factorio => ['stable' => __('Stabilní vydání')],
         };
     }

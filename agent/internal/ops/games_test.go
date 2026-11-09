@@ -32,6 +32,14 @@ func fakePublishers(t *testing.T) {
 			fmt.Fprint(w, `{"javaVersion":{"majorVersion":25},"downloads":{"server":{"sha1":"`+strings.Repeat("b", 40)+`","url":"https://example.test/server.jar"}}}`)
 		case "/api/latest-releases":
 			fmt.Fprint(w, `{"stable":{"headless":"2.1.24"}}`)
+		case "/fabric/versions/game":
+			fmt.Fprint(w, `[{"version":"26.3","stable":true},{"version":"26.4-snapshot-7","stable":false},{"version":"1.19.4","stable":true}]`)
+		case "/fabric/versions/installer":
+			fmt.Fprintf(w, `[{"version":"1.1.2","stable":true,"url":"https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.1.2/fabric-installer-1.1.2.jar"}]`)
+		case "/fabric/versions/loader":
+			fmt.Fprint(w, `[{"version":"0.21.0-beta","stable":false},{"version":"0.20.1","stable":true}]`)
+		case "/forge/promotions_slim.json":
+			fmt.Fprint(w, `{"promos":{"1.21.10-latest":"60.1.18","1.21.10-recommended":"60.1.17","1.19.2-recommended":"43.1.1"}}`)
 		case "/download/sha256sums/":
 			fmt.Fprint(w, strings.Repeat("c", 64)+"  factorio-headless_linux_2.1.24.tar.xz\n")
 		default:
@@ -39,10 +47,13 @@ func fakePublishers(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	old := []string{paperAPI, mojangManifest, factorioAPI}
-	paperAPI, mojangManifest, factorioAPI = srv.URL+"/paper", srv.URL+"/mojang", srv.URL
+	old := []string{paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos}
+	paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos = srv.URL+"/paper", srv.URL+"/mojang", srv.URL, srv.URL+"/fabric", srv.URL+"/forge/promotions_slim.json"
 	catalogCache.data = nil
-	t.Cleanup(func() { paperAPI, mojangManifest, factorioAPI = old[0], old[1], old[2]; catalogCache.data = nil })
+	t.Cleanup(func() {
+		paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos = old[0], old[1], old[2], old[3], old[4]
+		catalogCache.data = nil
+	})
 }
 
 func gameTestEnv(t *testing.T) (*Env, *executor.DryRun) {
@@ -110,7 +121,7 @@ func TestGameCreateRefusesBadParams(t *testing.T) {
 		return m
 	}
 	for _, bad := range []map[string]any{
-		with("eula", false), with("version", "1.19.4"), with("version", "1.21; rm"), with("game", "doom"), with("flavor", "forge"),
+		with("eula", false), with("version", "1.19.4"), with("version", "1.21; rm"), with("game", "doom"), with("flavor", "spigot"),
 		with("memory_mb", 256), with("port", 22), with("port", 700), with("port", 80), with("name", "a\"b"), with("cpu_percent", -1), with("group", "root"),
 	} {
 		if _, err := call(t, env, gameCreate, bad); code(err) != "invalid_params" {
@@ -460,5 +471,34 @@ func TestEndingSFTPSessionsSparesTheGameServer(t *testing.T) {
 	m := managedCgroups(env.Cfg, "", "wsg_3")
 	if !m["/system.slice/wspanel-game-3.service"] {
 		t.Error("the game's own unit is the user's managed one")
+	}
+}
+
+func TestFabricAndForgeComeFromTheirInstallers(t *testing.T) {
+	fakePublishers(t)
+	env, _ := gameTestEnv(t)
+	out, err := call(t, env, gameCatalog, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc := out.(map[string]any)["minecraft"].(map[string][]string)
+	if strings.Join(mc["fabric"], ",") != "26.3" || strings.Join(mc["forge"], ",") != "1.21.10" {
+		t.Errorf("catalog: fabric %v forge %v", mc["fabric"], mc["forge"])
+	}
+	// The checksums come from the mavens beside the files (not stubbed here: fetched from fake URLs fails).
+	g := gameState{ID: 7, Game: "minecraft", Flavor: "forge", Version: "1.21.10", Build: "60.1.17", Java: 21, MemoryMB: 2048}
+	if cmd := gameExecStart(env, g); !strings.Contains(cmd, "@libraries/net/minecraftforge/forge/1.21.10-60.1.17/unix_args.txt nogui") || !strings.Contains(cmd, "-Xmx2048M") {
+		t.Errorf("forge: %s", cmd)
+	}
+	g.Flavor = "fabric"
+	if cmd := gameExecStart(env, g); !strings.HasSuffix(cmd, "-jar "+gameHome(env, 7)+"/data/fabric-server-launch.jar nogui") {
+		t.Errorf("fabric: %s", cmd)
+	}
+	if addonLoaders(g)[0] != "fabric" || !strings.HasSuffix(addonDir(env, g), "/data/mods") {
+		t.Error("fabric loads mods from data/mods")
+	}
+	g.Flavor = "vanilla"
+	if addonLoaders(g) != nil {
+		t.Error("vanilla loads nothing")
 	}
 }

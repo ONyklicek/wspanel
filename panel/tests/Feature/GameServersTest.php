@@ -36,7 +36,7 @@ class GameServersTest extends TestCase
         $this->agent = Mockery::mock(AgentClient::class);
         $this->agent->shouldReceive('call')->andReturn([])->byDefault();
         $this->agent->shouldReceive('call')->with('games.catalog')->andReturn([
-            'minecraft' => ['paper' => ['26.3', '1.21.10'], 'vanilla' => ['26.3']],
+            'minecraft' => ['paper' => ['26.3', '1.21.10'], 'vanilla' => ['26.3'], 'fabric' => ['26.3'], 'forge' => ['1.21.10']],
             'factorio' => ['stable' => ['2.1.24']],
             'games' => [],
         ])->byDefault();
@@ -347,5 +347,21 @@ class GameServersTest extends TestCase
 
         $this->pageAction(Livewire::test(ViewGameServer::class, ['record' => $server->id]), 'sftp', ['enabled' => true, 'password_mode' => 'generate'])->assertNotified();
         $this->assertFalse($server->fresh()->sftp);
+    }
+
+    public function test_a_fabric_server_takes_mods_from_modrinth_only(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->once()->with('game.create', Mockery::on(fn ($p) => $p['flavor'] === 'fabric' && $p['version'] === '26.3'))->andReturn(['build' => '0.20.1']);
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', ['name' => 'Mody', 'game' => 'minecraft', 'flavor' => 'fabric', 'version' => '26.3', 'memory_mb' => 3072, 'eula' => true])->assertHasNoErrors();
+        $server = GameServer::sole();
+        $this->assertSame('Fabric 26.3 #0.20.1', $server->versionLabel());
+
+        $this->agent->shouldReceive('call')->with('game.plugins', ['id' => $server->id])->andReturn(['plugins' => []]);
+        $this->agent->shouldReceive('call')->once()->with('game.plugin_search', ['id' => $server->id, 'source' => 'modrinth', 'query' => 'sodium'])->andReturn(['results' => []]);
+        Livewire::test(GamePlugins::class, ['record' => $server->id])
+            ->assertSee('Přidat mód')->assertDontSee('Hangar (PaperMC)')
+            ->set('source', 'hangar')->set('query', 'sodium')->call('findPlugins')
+            ->call('install', 'hangar', 'ViaVersion');
     }
 }

@@ -21,11 +21,11 @@
             </x-wire::callout>
         @endif
 
-        <x-wire::section :heading="__('Nainstalované')" :description="$factorio ? __('Módy ve složce data/mods. Factorio nový mód zapne sám; vypnout ho jde ve hře nebo v data/mods/mod-list.json.') : __('Soubory .jar ve složce data/plugins. U pluginů z panelu je vidět zdroj a verze; ostatní jste nahráli sami (Soubory).')">
+        <x-wire::section :heading="__('Nainstalované')" :description="$factorio ? __('Módy ve složce data/mods. Factorio nový mód zapne sám; vypnout ho jde ve hře nebo v data/mods/mod-list.json.') : ($this->mods() ? __('Soubory .jar ve složce data/mods. U módů z panelu je vidět verze; ostatní jste nahráli sami (Soubory). Hráči potřebují stejné módy u sebe.') : __('Soubory .jar ve složce data/plugins. U pluginů z panelu je vidět zdroj a verze; ostatní jste nahráli sami (Soubory).'))">
             <div class="mb-3"><x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkUpdates">{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
                 <span wire:loading wire:target="checkUpdates" class="text-sm text-gray-500">{{ __('Ptám se katalogů…') }}</span></div>
             @if ($installed === [])
-                <p class="text-sm text-gray-500">{{ $factorio ? __('Zatím žádné módy.') : __('Zatím žádné pluginy.') }}</p>
+                <p class="text-sm text-gray-500">{{ $this->mods() ? __('Zatím žádné módy.') : __('Zatím žádné pluginy.') }}</p>
             @else
                 <table class="w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -51,17 +51,17 @@
             @endif
         </x-wire::section>
 
-        <x-wire::section :heading="$factorio ? __('Přidat mód') : __('Přidat plugin')" :description="$factorio
+        <x-wire::section :heading="$this->mods() ? __('Přidat mód') : __('Přidat plugin')" :description="$factorio
             ? __('Z mod portálu Factoria, jen verze pro Factorio :v. Soubor se ověří otiskem (SHA-1) z portálu; povinné závislosti se nainstalují s ním.', ['v' => implode('.', array_slice(explode('.', $server->version), 0, 2))])
-            : __('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version])">
+            : ($this->mods() ? __('Z katalogu Modrinth, jen módy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem (SHA-512); povinné závislosti (třeba Fabric API) se nainstalují s ním.', ['loader' => ucfirst($server->flavor), 'v' => $server->version]) : __('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version]))">
             <form wire:submit="findPlugins" class="flex flex-wrap items-center gap-2">
-                @unless ($factorio)
+                @if ($this->hangar())
                     <select wire:model="source" class="rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
                         <option value="modrinth">Modrinth</option>
                         <option value="hangar">Hangar (PaperMC)</option>
                     </select>
-                @endunless
-                <input type="search" wire:model="query" maxlength="100" placeholder="{{ $factorio ? __('Hledat mód (prázdné = nejstahovanější)') : __('Hledat plugin (prázdné = nejoblíbenější)') }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+                @endif
+                <input type="search" wire:model="query" maxlength="100" placeholder="{{ $factorio ? __('Hledat mód (prázdné = nejstahovanější)') : ($this->mods() ? __('Hledat mód (prázdné = nejoblíbenější)') : __('Hledat plugin (prázdné = nejoblíbenější)')) }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
                 <x-wire::button type="submit" size="sm" icon="outline:magnifying-glass">{{ __('Hledat') }}</x-wire::button>
                 <span wire:loading wire:target="findPlugins,install" class="text-sm text-gray-500">{{ __('Probíhá…') }}</span>
             </form>

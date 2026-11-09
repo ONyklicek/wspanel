@@ -44,7 +44,7 @@ class GamePlugins extends ViewPage
 
     protected function tabLabel(): string
     {
-        return $this->factorio() ? __('Módy') : __('Pluginy');
+        return $this->mods() ? __('Módy') : __('Pluginy');
     }
 
     public function factorio(): bool
@@ -52,9 +52,22 @@ class GamePlugins extends ViewPage
         return $this->server()->game->value === 'factorio';
     }
 
+    /** Plugins (Paper) or mods (Fabric, Forge) from the Minecraft catalogues. */
     public function paper(): bool
     {
-        return $this->server()->game->value === 'minecraft' && $this->server()->flavor === 'paper';
+        return $this->server()->game->value === 'minecraft' && in_array($this->server()->flavor, ['paper', 'fabric', 'forge'], true);
+    }
+
+    /** Paper's plugins come from Modrinth and Hangar; Fabric's and Forge's mods from Modrinth. */
+    public function hangar(): bool
+    {
+        return $this->server()->flavor === 'paper';
+    }
+
+    /** "Módy" for the mod loaders and Factorio, "Pluginy" for Paper. */
+    public function mods(): bool
+    {
+        return $this->factorio() || in_array($this->server()->flavor, ['fabric', 'forge'], true);
     }
 
     public function load(bool $check = false): void
@@ -85,6 +98,9 @@ class GamePlugins extends ViewPage
 
     public function findPlugins(): void
     {
+        if (! $this->hangar()) {
+            $this->source = 'modrinth';
+        }
         $this->validate([
             'source' => ['required', 'in:modrinth,hangar,factorio'],
             'query' => ['nullable', 'string', 'max:100', 'not_regex:/[\r\n]/'],
@@ -103,7 +119,7 @@ class GamePlugins extends ViewPage
     public function install(string $source, string $project): void
     {
         $factorio = $this->factorio();
-        if (! in_array($source, $factorio ? ['factorio'] : ['modrinth', 'hangar'], true) || ! preg_match($factorio ? '/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,99}$/' : '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $project)) {
+        if (! in_array($source, $factorio ? ['factorio'] : ($this->hangar() ? ['modrinth', 'hangar'] : ['modrinth']), true) || ! preg_match($factorio ? '/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,99}$/' : '/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $project)) {
             return;
         }
         try {

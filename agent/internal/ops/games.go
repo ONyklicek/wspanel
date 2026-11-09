@@ -41,7 +41,7 @@ type gameRecipe struct {
 }
 
 var gameRecipes = map[string]gameRecipe{
-	"minecraft": {Name: "Minecraft Java", Proto: "tcp", DefaultPort: 25565, MinMemoryMB: 1024, Flavors: []string{"paper", "vanilla"}, Arch: []string{"amd64", "arm64"}},
+	"minecraft": {Name: "Minecraft Java", Proto: "tcp", DefaultPort: 25565, MinMemoryMB: 1024, Flavors: []string{"paper", "vanilla", "fabric", "forge"}, Arch: []string{"amd64", "arm64"}},
 	"factorio":  {Name: "Factorio", Proto: "udp", DefaultPort: 34197, MinMemoryMB: 1024, Flavors: []string{"stable"}, Arch: []string{"amd64"}},
 }
 
@@ -118,6 +118,9 @@ var (
 	gameUserAgent = func() string { return "WSPanel/" + Version + " (https://github.com/ONyklicek/wspanel)" }
 	// The publishers' APIs (tests point them at a local server).
 	paperAPI       = "https://fill.papermc.io/v3/projects/paper"
+	fabricMeta     = "https://meta.fabricmc.net/v2"
+	forgeMaven     = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+	forgePromos    = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
 	mojangManifest = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 	factorioAPI    = "https://factorio.com"
 	mcVersionRe    = regexp.MustCompile(`^\d+\.\d+(\.\d+)?$`)
@@ -222,8 +225,29 @@ func gameCatalog(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 			}
 		}
 	}
+	var fabricGames []struct {
+		Version string `json:"version"`
+		Stable  bool   `json:"stable"`
+	}
+	fabric := []string{}
+	if err := fetchJSON(ctx, fabricMeta+"/versions/game", &fabricGames); err == nil {
+		for _, v := range fabricGames {
+			if v.Stable && mcVersionRe.MatchString(v.Version) && mcJava(v.Version) > 0 {
+				fabric = append(fabric, v.Version)
+			}
+		}
+	}
+	forge := []string{}
+	if promos, err := forgePromotions(ctx); err == nil {
+		for k := range promos {
+			mc, _, _ := strings.Cut(k, "-")
+			if mcVersionRe.MatchString(mc) && mcJava(mc) > 0 {
+				forge = append(forge, mc)
+			}
+		}
+	}
 	paperVersions, vanilla = sortVersionsDesc(paperVersions), sortVersionsDesc(vanilla)
-	out["minecraft"] = map[string][]string{"paper": paperVersions, "vanilla": vanilla}
+	out["minecraft"] = map[string][]string{"paper": paperVersions, "vanilla": vanilla, "fabric": sortVersionsDesc(fabric), "forge": sortVersionsDesc(forge)}
 	var fac struct {
 		Stable struct {
 			Headless string `json:"headless"`
@@ -260,6 +284,17 @@ func sortVersionsDesc(v []string) []string {
 	return slices.Compact(v)
 }
 
+// forgePromotions: Forge's recommended and latest build per Minecraft version.
+func forgePromotions(ctx context.Context) (map[string]string, error) {
+	var p struct {
+		Promos map[string]string `json:"promos"`
+	}
+	if err := fetchJSON(ctx, forgePromos, &p); err != nil {
+		return nil, err
+	}
+	return p.Promos, nil
+}
+
 // ---------------------------------------------------------------- downloads
 
 type gameDownload struct {
@@ -290,6 +325,60 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 			return gameDownload{}, fmt.Errorf("paper %s: no server download", version)
 		}
 		return gameDownload{URL: d.URL, Sum: d.Checksums.SHA256, Build: strconv.Itoa(b.ID), Java: mcJava(version), Size: d.Size}, nil
+	case "minecraft/fabric":
+		// The official installer (its SHA-256 from Fabric's maven) sets the
+		// server up as the game's user, with the newest stable loader.
+		var installers, loaders []struct {
+			Version string `json:"version"`
+			URL     string `json:"url"`
+			Stable  bool   `json:"stable"`
+		}
+		if err := fetchJSON(ctx, fabricMeta+"/versions/installer", &installers); err != nil {
+			return gameDownload{}, err
+		}
+		if err := fetchJSON(ctx, fabricMeta+"/versions/loader", &loaders); err != nil {
+			return gameDownload{}, err
+		}
+		inst := slices.IndexFunc(installers, func(v struct {
+			Version string `json:"version"`
+			URL     string `json:"url"`
+			Stable  bool   `json:"stable"`
+		}) bool {
+			return v.Stable && strings.HasPrefix(v.URL, "https://maven.fabricmc.net/")
+		})
+		load := slices.IndexFunc(loaders, func(v struct {
+			Version string `json:"version"`
+			URL     string `json:"url"`
+			Stable  bool   `json:"stable"`
+		}) bool {
+			return v.Stable && mcVersionRe.MatchString(v.Version)
+		})
+		if inst < 0 || load < 0 {
+			return gameDownload{}, fmt.Errorf("fabric: no stable installer or loader")
+		}
+		sum, err := fetchText(ctx, installers[inst].URL+".sha256")
+		if err != nil || len(strings.TrimSpace(sum)) < 64 {
+			return gameDownload{}, fmt.Errorf("fabric installer %s: no published checksum", installers[inst].Version)
+		}
+		return gameDownload{URL: installers[inst].URL, Sum: strings.TrimSpace(sum)[:64], Build: loaders[load].Version, Java: mcJava(version)}, nil
+	case "minecraft/forge":
+		promos, err := forgePromotions(ctx)
+		if err != nil {
+			return gameDownload{}, err
+		}
+		build := promos[version+"-recommended"]
+		if build == "" {
+			build = promos[version+"-latest"]
+		}
+		if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(build) {
+			return gameDownload{}, protocol.Invalid("version: Forge has no build for Minecraft " + version)
+		}
+		u := fmt.Sprintf("%s/%s-%s/forge-%s-%s-installer.jar", forgeMaven, version, build, version, build)
+		sum, err := fetchText(ctx, u+".sha256")
+		if err != nil || len(strings.TrimSpace(sum)) < 64 {
+			return gameDownload{}, fmt.Errorf("forge %s-%s: no published checksum", version, build)
+		}
+		return gameDownload{URL: u, Sum: strings.TrimSpace(sum)[:64], Build: build, Java: mcJava(version)}, nil
 	case "minecraft/vanilla":
 		var m struct {
 			Versions []struct {
@@ -554,13 +643,23 @@ func ensureJava(ctx context.Context, env *Env, major int) (string, error) {
 	return java, nil
 }
 
+func gameJava(env *Env, g gameState) string {
+	return filepath.Join(env.Cfg.JavaDir, fmt.Sprintf("java-%d-openjdk-%s", g.Java, runtime.GOARCH), "bin", "java")
+}
+
 func gameExecStart(env *Env, g gameState) string {
 	home := gameHome(env, g.ID)
 	switch g.Game {
 	case "minecraft":
-		java := filepath.Join(env.Cfg.JavaDir, fmt.Sprintf("java-%d-openjdk-%s", g.Java, runtime.GOARCH), "bin", "java")
-		return fmt.Sprintf("%s -Xms%dM -Xmx%dM -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -jar %s/server/server.jar --nogui",
-			java, g.MemoryMB/2, g.MemoryMB, home)
+		jvm := fmt.Sprintf("%s -Xms%dM -Xmx%dM -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200", gameJava(env, g), g.MemoryMB/2, g.MemoryMB)
+		switch g.Flavor {
+		case "fabric":
+			return jvm + " -jar " + home + "/data/fabric-server-launch.jar nogui"
+		case "forge":
+			// Forge's own argument file (its classpath, relative to data/).
+			return fmt.Sprintf("%s @libraries/net/minecraftforge/forge/%s-%s/unix_args.txt nogui", jvm, g.Version, g.Build)
+		}
+		return jvm + " -jar " + home + "/server/server.jar --nogui"
 	case "factorio":
 		return fmt.Sprintf("%s/server/factorio/bin/x64/factorio --config %s/data/config.ini --start-server-load-latest --server-settings %s/data/server-settings.json --port %d --rcon-bind 127.0.0.1:%d --rcon-password %s",
 			home, home, home, g.Port, g.RconPort, g.RconPassword)
@@ -629,6 +728,25 @@ func placeDownload(ctx context.Context, env *Env, g gameState, d gameDownload) e
 	}
 	switch g.Game {
 	case "minecraft":
+		switch g.Flavor {
+		case "fabric", "forge":
+			// The loader's installer, run as the game's user with its Java.
+			installer := filepath.Join(home, "server", g.Flavor+"-installer.jar")
+			if err := asUser(ctx, env, g.user(), "/usr/bin/install", "-m", "0640", file, installer); err != nil {
+				return err
+			}
+			args := []string{"-jar", installer, "--installServer", filepath.Join(home, "data")}
+			if g.Flavor == "fabric" {
+				args = []string{"-jar", installer, "server", "-dir", filepath.Join(home, "data"), "-mcversion", g.Version, "-loader", g.Build, "-downloadMinecraft"}
+			}
+			ictx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+			defer cancel()
+			full := append(append(userCreds(g.user()), gameJava(env, g), "-Duser.home="+filepath.Join(home, "tmp")), args...)
+			if res, err := env.Exec.RunIO(ictx, nil, nil, "setpriv", full...); err != nil {
+				return fmt.Errorf("the %s installer failed: %s", g.Flavor, tail(res.Stdout, 600))
+			}
+			return nil
+		}
 		return asUser(ctx, env, g.user(), "/usr/bin/install", "-m", "0640", file, filepath.Join(home, "server", "server.jar"))
 	case "factorio":
 		// A new copy beside the old one, then swapped: a failed update keeps it.
@@ -1189,7 +1307,7 @@ func compareVersions(a, b string) int {
 // ---------------------------------------------------------------- backups
 
 var gameBackupExcludes = map[string][]string{
-	"minecraft": {"libraries", "versions", "cache", "logs", "crash-reports"},
+	"minecraft": {"libraries", "versions", "cache", "logs", "crash-reports", ".fabric", "server.jar"},
 	"factorio":  {"temp", "factorio-current.log", "factorio-previous.log"},
 }
 

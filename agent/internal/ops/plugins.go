@@ -62,15 +62,37 @@ func savePlugins(env *Env, id int, list []installedPlugin) error {
 	return env.FS.WriteFile(pluginsPath(env, id), b, 0o600, fsx.Root)
 }
 
+// addonGame: a Minecraft server that loads plugins (Paper) or mods (Fabric, Forge).
 func paperGame(env *Env, raw json.RawMessage, v any, id *int) (gameState, error) {
 	g, err := minecraftGame(env, raw, v, id)
 	if err != nil {
 		return g, err
 	}
-	if g.Flavor != "paper" {
+	if addonLoaders(g) == nil {
 		return g, protocol.Invalid("id: plugins need a Paper server (Vanilla loads none)")
 	}
 	return g, nil
+}
+
+// addonLoaders: what the server loads (Modrinth's loader names).
+func addonLoaders(g gameState) []string {
+	switch g.Flavor {
+	case "paper":
+		return paperLoaders
+	case "fabric":
+		return []string{"fabric"}
+	case "forge":
+		return []string{"forge"}
+	}
+	return nil
+}
+
+// addonDir: plugins/ for Paper, mods/ for the mod loaders.
+func addonDir(env *Env, g gameState) string {
+	if g.Flavor == "paper" {
+		return filepath.Join(gameHome(env, g.ID), "data", "plugins")
+	}
+	return filepath.Join(gameHome(env, g.ID), "data", "mods")
 }
 
 // ---------------------------------------------------------------- search
@@ -106,10 +128,11 @@ func gamePluginSearch(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 	hits := []pluginHit{}
 	switch p.Source {
 	case "modrinth":
-		facets, _ := json.Marshal([][]string{
-			{"categories:paper", "categories:spigot", "categories:bukkit"},
-			{"versions:" + g.Version},
-		})
+		cats := []string{}
+		for _, l := range addonLoaders(g) {
+			cats = append(cats, "categories:"+l)
+		}
+		facets, _ := json.Marshal([][]string{cats, {"versions:" + g.Version}})
 		var r struct {
 			Hits []struct {
 				ProjectID   string `json:"project_id"`
@@ -130,6 +153,9 @@ func gamePluginSearch(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 				Author: h.Author, Downloads: h.Downloads, Icon: h.Icon, URL: "https://modrinth.com/plugin/" + h.Slug})
 		}
 	case "hangar":
+		if g.Flavor != "paper" {
+			return nil, protocol.Invalid("source: Hangar has Paper plugins only; mods come from Modrinth")
+		}
 		var r struct {
 			Result []struct {
 				Name      string `json:"name"`
@@ -171,7 +197,7 @@ func allowedPluginURL(u string) bool {
 
 // resolvePlugin: the newest release of the project for this Minecraft
 // version (a beta only when there is no release).
-func resolvePlugin(ctx context.Context, source, project, mc string) (pluginRelease, error) {
+func resolvePlugin(ctx context.Context, source, project, mc string, loaderList []string) (pluginRelease, error) {
 	if !pluginProjRe.MatchString(project) {
 		return pluginRelease{}, protocol.Invalid("project: not a catalogue's project")
 	}
@@ -184,7 +210,7 @@ func resolvePlugin(ctx context.Context, source, project, mc string) (pluginRelea
 		if err := fetchJSON(ctx, modrinthAPI+"/project/"+url.PathEscape(project), &proj); err != nil {
 			return pluginRelease{}, fmt.Errorf("Modrinth: %w", err)
 		}
-		loaders, _ := json.Marshal(paperLoaders)
+		loaders, _ := json.Marshal(loaderList)
 		versions, _ := json.Marshal([]string{mc})
 		var vs []struct {
 			Number string `json:"version_number"`
@@ -304,8 +330,8 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(pluginSources, p.Source) {
-		return nil, protocol.Invalid("source: modrinth or hangar")
+	if !slices.Contains(pluginSources, p.Source) || p.Source == "hangar" && g.Flavor != "paper" {
+		return nil, protocol.Invalid("source: modrinth or hangar (Hangar for Paper only)")
 	}
 	list := loadPlugins(env, g.ID)
 	installed := []map[string]string{}
@@ -319,7 +345,7 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 			continue
 		}
 		seen[project] = true
-		rel, err := resolvePlugin(ctx, p.Source, project, g.Version)
+		rel, err := resolvePlugin(ctx, p.Source, project, g.Version, addonLoaders(g))
 		if err != nil {
 			if project == p.Project {
 				return nil, err
@@ -341,7 +367,7 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 		entry := installedPlugin{Source: p.Source, Project: rel.Project, Name: rel.Name, Version: rel.Version, File: rel.File}
 		if at >= 0 {
 			if list[at].File != rel.File {
-				_ = asUser(ctx, env, g.user(), "/usr/bin/rm", "-f", "--", filepath.Join(gameHome(env, g.ID), "data", "plugins", list[at].File))
+				_ = asUser(ctx, env, g.user(), "/usr/bin/rm", "-f", "--", filepath.Join(addonDir(env, g), list[at].File))
 			}
 			list[at] = entry
 		} else {
@@ -358,7 +384,7 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 }
 
 func placePlugin(ctx context.Context, env *Env, g gameState, rel pluginRelease) error {
-	dir := filepath.Join(gameHome(env, g.ID), "data", "plugins")
+	dir := addonDir(env, g)
 	if env.Cfg.DryRun {
 		return nil
 	}
@@ -393,7 +419,7 @@ func gamePlugins(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		byFile[ip.File] = ip
 	}
 	out := []map[string]any{}
-	entries, _ := os.ReadDir(filepath.Join(gameHome(env, g.ID), "data", "plugins"))
+	entries, _ := os.ReadDir(addonDir(env, g))
 	present := map[string]bool{}
 	for _, e := range entries {
 		if e.Type().IsRegular() && strings.HasSuffix(strings.ToLower(e.Name()), ".jar") {
@@ -405,7 +431,7 @@ func gamePlugins(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 			if ip, ok := byFile[e.Name()]; ok {
 				row["source"], row["project"], row["name"], row["version"] = ip.Source, ip.Project, ip.Name, ip.Version
 				if p.Check {
-					if rel, err := resolvePlugin(ctx, ip.Source, ip.Project, g.Version); err == nil && rel.Version != ip.Version {
+					if rel, err := resolvePlugin(ctx, ip.Source, ip.Project, g.Version, addonLoaders(g)); err == nil && rel.Version != ip.Version {
 						row["update"] = rel.Version
 					}
 				}
@@ -437,7 +463,7 @@ func gamePluginRemove(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 	if !pluginFileRe.MatchString(p.File) {
 		return nil, protocol.Invalid("file: a plugin's .jar in plugins/")
 	}
-	if err := asUser(ctx, env, g.user(), "/usr/bin/rm", "-f", "--", filepath.Join(gameHome(env, g.ID), "data", "plugins", p.File)); err != nil {
+	if err := asUser(ctx, env, g.user(), "/usr/bin/rm", "-f", "--", filepath.Join(addonDir(env, g), p.File)); err != nil {
 		return nil, err
 	}
 	list := slices.DeleteFunc(loadPlugins(env, g.ID), func(ip installedPlugin) bool { return ip.File == p.File })

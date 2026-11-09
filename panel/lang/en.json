@@ -2551,5 +2551,10 @@
     "Povolit SFTP": "Allow SFTP",
     "SFTP vypnuto": "SFTP off",
     "SFTP zapnuto": "SFTP on",
-    "Nastavení SFTP selhalo": "Setting up SFTP failed"
+    "Nastavení SFTP selhalo": "Setting up SFTP failed",
+    "Fabric (módy)": "Fabric (mods)",
+    "Forge (módy)": "Forge (mods)",
+    "Soubory .jar ve složce data/mods. U módů z panelu je vidět verze; ostatní jste nahráli sami (Soubory). Hráči potřebují stejné módy u sebe.": "The .jar files in data/mods. Mods from the panel show their version; the others you uploaded yourself (Files). Players need the same mods on their side.",
+    "Z katalogu Modrinth, jen módy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem (SHA-512); povinné závislosti (třeba Fabric API) se nainstalují s ním.": "From the Modrinth catalogue, mods for :loader and Minecraft :v only. The file comes from the catalogue and is checked against its checksum (SHA-512); required dependencies (such as Fabric API) are installed with it.",
+    "Hledat mód (prázdné = nejoblíbenější)": "Search mods (empty = most popular)"
 }
