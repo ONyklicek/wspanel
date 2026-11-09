@@ -102,6 +102,9 @@ type procSample struct {
 	ticks uint64
 	rss   int64
 	name  string
+	ppid  int
+	state string
+	start uint64 // clock ticks after boot (identifies the process with its pid)
 }
 
 var pageSize = int64(os.Getpagesize())
@@ -130,7 +133,9 @@ func readProcs() map[int]procSample {
 		ut, _ := strconv.ParseUint(f[11], 10, 64)
 		st, _ := strconv.ParseUint(f[12], 10, 64)
 		rss, _ := strconv.ParseInt(f[21], 10, 64)
-		p := procSample{pid: pid, uid: -1, ticks: ut + st, rss: rss * pageSize, name: s[open+1 : closeIdx]}
+		ppid, _ := strconv.Atoi(f[1])
+		start, _ := strconv.ParseUint(f[19], 10, 64)
+		p := procSample{pid: pid, uid: -1, ticks: ut + st, rss: rss * pageSize, name: s[open+1 : closeIdx], ppid: ppid, state: f[0], start: start}
 		if fi, err := os.Stat("/proc/" + e.Name()); err == nil {
 			if sys, ok := fi.Sys().(*syscall.Stat_t); ok {
 				p.uid = int(sys.Uid)

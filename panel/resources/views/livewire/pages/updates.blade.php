@@ -3,6 +3,14 @@
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
+    @if ($updates['reboot_scheduled'] ?? null)
+        <x-wire::callout color="info" :heading="__('Restart serveru je naplánovaný')">
+            <div class="flex flex-wrap items-center gap-3">
+                <span>{{ __('Server se restartuje :when.', ['when' => \App\Livewire\Pages\UpdatesPage::at($updates['reboot_scheduled'])]) }}</span>
+                <x-wire::button size="xs" color="gray" outlined wire:click="cancelReboot">{{ __('Zrušit restart') }}</x-wire::button>
+            </div>
+        </x-wire::callout>
+    @endif
     @if ($updates['reboot_required'] ?? false)
         <x-wire::callout color="warning" :heading="__('Server potřebuje restart')">
             {{ __('Aktualizace jádra nebo knihoven se projeví až po restartu serveru') }}{{ ! empty($updates['reboot_packages']) ? ' ('.implode(', ', $updates['reboot_packages']).')' : '' }}.
@@ -53,6 +61,13 @@
                 <x-wire::badge :color="($updates['auto_security'] ?? false) ? 'success' : 'gray'">{{ ($updates['auto_security'] ?? false) ? __('zapnuto (denně)') : __('vypnuto') }}</x-wire::badge>
             </span>
             <x-wire::button size="sm" color="gray" outlined wire:click="toggleAuto">{{ ($updates['auto_security'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
+            <span class="text-sm text-gray-600 dark:text-gray-300">
+                {{ __('Automatický restart:') }}
+                <x-wire::badge :color="($updates['auto_reboot'] ?? false) ? 'success' : 'gray'">{{ ($updates['auto_reboot'] ?? false) ? __('v :time, když je potřeba', ['time' => $updates['auto_reboot_time'] ?: '04:00']) : __('vypnuto') }}</x-wire::badge>
+            </span>
+            @if ($updates['booted_at'] ?? null)
+                <span class="text-sm text-gray-500">{{ __('Server běží od :when', ['when' => \App\Livewire\Pages\UpdatesPage::at($updates['booted_at'])]) }}</span>
+            @endif
         </div>
         @if ($packages->isNotEmpty())
             <div class="mt-4 overflow-x-auto">

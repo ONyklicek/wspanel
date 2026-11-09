@@ -37,6 +37,26 @@ tabulka Procesy na detailu webu.
   když dojdou, nejde zapisovat ani při volném místě.
 - **Nejnáročnější procesy:** podle CPU a paměti, včetně uživatele. Podle
   uživatele `web_…` poznáte, kterému webu proces patří.
+- **Server → Procesy:** všechny procesy s hledáním (uživatel, příkaz, web,
+  PID) a řazením podle CPU nebo paměti. *Ukončit* pošle procesu SIGTERM,
+  *Natvrdo* SIGKILL. Proces agenta panelu a vlákna jádra ukončit nejde.
+  Pod tabulkou je **Co zabírá disk**: velikost složek po úrovních, kliknutím
+  o úroveň níž.
+
+## Systém
+
+**Server → Systém** ukazuje a mění:
+
+- **název serveru** (hostname; zapíše i `/etc/hosts` a na cloudových serverech
+  zařídí, aby ho cloud-init po restartu nepřepsal),
+- **časové pásmo** a **synchronizaci času** (NTP; když chybí
+  systemd-timesyncd, doinstaluje ho),
+- **swap**: velikost swapového souboru panelu (0 = žádný) a swappiness;
+  swap, který panel nevytvořil, jen ukáže,
+- **síť**: rozhraní, adresy, brána a DNS servery – jen pro čtení,
+- **zdraví disků (SMART)**: stav, teplota, přemapované sektory, opotřebení
+  SSD. Sledování (smartmontools) se instaluje až tlačítkem; u virtuálních
+  serverů disky SMART obvykle nehlásí.
 
 ## Co dělat při vysokém vytížení
 

@@ -113,7 +113,7 @@ on 'apt-cache policy frankenphp | grep -q pkg.henderkes.com' || fail "frankenphp
 # An update of FrankenPHP (apt) restarts what runs on it (wspanel-agent's trigger).
 before=$(on 'systemctl show -p ExecMainPID --value panel-web')
 on 'cd /tmp && apt-get download -q frankenphp >/dev/null 2>&1 && dpkg -i frankenphp_*.deb >/dev/null 2>&1' || fail "reinstalling frankenphp failed"
-sleep 2
+for _ in $(seq 20); do [[ "$(on 'systemctl show -p ExecMainPID --value panel-web')" != "$before" ]] && break; sleep 1; done
 [[ "$(on 'systemctl show -p ExecMainPID --value panel-web')" != "$before" ]] || fail "an update of FrankenPHP did not restart the panel"
 on 'systemctl is-active --quiet panel-web && systemctl is-active --quiet panel-proxy' || fail "the panel or the proxy did not come back after a FrankenPHP update"
 for ext in pdo_mysql pdo_pgsql redis intl gd zip; do
@@ -182,6 +182,57 @@ out=$(tinker 'echo json_encode(app(App\Actions\Server\ManagePython::class)->upgr
 [[ $out == *'"changed":false'* ]] || fail "python.upgrade: $out"
 [[ ${slots[0]} != "${slots[1]}" && ${slots[1]} =~ ^wspanel-web_dj_localhost-appb?\.service$ ]] || fail "the deploys did not alternate the slots: ${slots[*]}"
 on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "the Django project was not found in manage.py"
+
+log "System: restart, name and time, swap, processes, disk usage, packages, network, disks"
+sys_call() { tinker '$s = app(App\Actions\System\ManageSystem::class); '"$1"; }
+pkg_call() { tinker '$p = app(App\Actions\System\ManagePackages::class); '"$1"; }
+out=$(sys_call 'echo json_encode($s->reboot(600));')
+[[ $out == *T*Z* ]] || fail "sys.reboot: $out"
+out=$(tinker 'echo json_encode(app(App\Actions\System\ManageUpdates::class)->status());')
+[[ $out == *'"reboot_scheduled":"2'* ]] || fail "the scheduled restart is not reported: $out"
+sys_call '$s->cancelReboot(); echo "ok";' >/dev/null
+[[ "$(tinker 'echo app(App\Actions\System\ManageUpdates::class)->status()["reboot_scheduled"] ?: "none";')" == none ]] || fail "the restart was not cancelled"
+sys_call '$s->setAutoReboot(true, "03:30"); echo "ok";' >/dev/null
+on 'grep -q "Automatic-Reboot-Time \"03:30\"" /etc/apt/apt.conf.d/52wspanel-auto-reboot' || fail "the automatic restart is not configured"
+on 'apt-config dump | grep -q "Unattended-Upgrade::Automatic-Reboot \"true\""' || fail "apt does not read the automatic restart"
+sys_call '$s->setTimezone("Europe/Prague"); echo "ok";' >/dev/null
+[[ "$(on 'timedatectl show -p Timezone --value')" == Europe/Prague ]] || fail "the time zone did not change"
+out=$(sys_call 'echo json_encode($s->settings(true));')
+[[ $out == *'"timezone":"Europe\/Prague"'* && $out == *'"Pacific\/Auckland"'* ]] || fail "sys.settings: ${out:0:300}"
+# The name and swap need what a container may not have (its own UTS name, swapon): reported, not required.
+out=$(sys_call '$s->setHostname("smoke-1.example.test"); echo "ok";')
+echo "  hostname in this container: $out ($(on hostname))"
+out=$(sys_call '$s->setSwap(256, 10); echo json_encode($s->settings()["swaps"]);')
+echo "  swap in this container: ${out:0:200}"
+out=$(sys_call 'echo json_encode($s->network());')
+[[ $out == *'"interfaces":[{'* && $out == *'"addresses":["'* ]] || fail "sys.network: $out"
+out=$(sys_call 'echo json_encode($s->disks());')
+[[ $out == *'"installed":false'* ]] || fail "sys.disks without smartmontools: $out"
+on 'systemd-run --unit=smoke-sleep --quiet sleep 4242'
+out=$(sys_call '$p = collect($s->processes())->firstWhere("cmd", "sleep 4242"); $s->kill($p["pid"], $p["start"]); echo collect($s->processes())->contains("pid", 1) ? "pid1" : "ok";')
+sleep 1
+on 'pgrep -x -f "sleep 4242" >/dev/null' && fail "sys.kill did not end the process ($out)"
+out=$(sys_call 'try { $s->kill(1, 1); echo "killed"; } catch (Throwable $e) { echo "refused"; }')
+[[ $out == refused ]] || fail "PID 1 must not be ended from the panel"
+out=$(sys_call 'echo json_encode($s->diskUsage("/var"));')
+[[ $out == *'"\/var\/lib"'* ]] || fail "sys.disk_usage: ${out:0:300}"
+out=$(pkg_call 'echo json_encode($p->search("htop"));')
+[[ $out == *'"name":"htop"'* ]] || fail "pkg.search: ${out:0:300}"
+out=$(pkg_call 'echo json_encode($p->preview("htop", "install"));')
+[[ $out == *'"install":["htop"'* ]] || fail "pkg.preview: $out"
+[[ "$(pkg_call 'echo $p->install("htop") ? "done" : "running";')" == done ]] || fail "pkg.install"
+on 'dpkg -s htop >/dev/null 2>&1' || fail "htop was not installed"
+pkg_call '$p->hold("htop", true); echo "ok";' >/dev/null
+on 'apt-mark showhold | grep -qx htop' || fail "htop is not held"
+out=$(pkg_call 'echo json_encode(collect($p->installed())->firstWhere("name", "htop"));')
+[[ $out == *'"manual":true'* && $out == *'"held":true'* ]] || fail "pkg.list: $out"
+pkg_call '$p->hold("htop", false); echo "ok";' >/dev/null
+out=$(pkg_call 'echo json_encode($p->preview("postfix", "remove"));')
+[[ $out == *'"allowed":false'* ]] || fail "removing postfix must be refused: $out"
+out=$(pkg_call 'try { $p->remove("libsasl2-modules"); echo "removed"; } catch (Throwable $e) { echo "refused"; }')
+on 'dpkg -s postfix >/dev/null 2>&1' || fail "a removal took postfix along ($out)"
+[[ "$(pkg_call 'echo $p->remove("htop") ? "done" : "running";')" == done ]] || fail "pkg.remove"
+on '! dpkg -s htop 2>/dev/null | grep -q "Status: install ok installed"' || fail "htop was not removed"
 
 log "Mail: a mailbox receives"
 out=$(tinker '$h = app(App\Actions\Mail\ManageMailHosting::class); $d = $h->addDomain("app.localhost"); echo $h->saveMailbox($d, "info", "Smoke-heslo-123", 100, true)->address();')

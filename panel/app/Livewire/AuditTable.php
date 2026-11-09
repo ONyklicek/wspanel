@@ -21,7 +21,7 @@ class AuditTable extends Component
     use WithTable;
 
     public const AREAS = [
-        'site.' => 'Weby', 'deploy.' => 'Deploy', 'db.' => 'Databáze', 'service.' => 'Služby', 'worker.' => 'Workery',
+        'site.' => 'Weby', 'deploy.' => 'Deploy', 'db.' => 'Databáze', 'service.' => 'Služby', 'pkg.' => 'Balíčky', 'worker.' => 'Workery',
         'fw.' => 'Firewall', 'ssh.' => 'SSH', 'cron.' => 'Úlohy', 'env.' => '.env', 'ssl.' => 'SSL', 'mail.' => 'Pošta', 'dns.' => 'DNS', 'panel.' => 'Panel',
     ];
 
@@ -36,7 +36,8 @@ class AuditTable extends Component
         'ssl.root_ca', 'sys.resources', 'sys.metrics', 'sys.site_disk', 'cron.list', 'deploy.log', 'deploy.history', 'deploy.remote_ref',
         'audit.tail', 'mail.hosting', 'mail.usage', 'xhprof.status', 'site.import_scan', 'sys.updates', 'fail2ban.status', 'valkey.status',
         'service.status', 'fw.list', 'sys.log', 'config.validate', 'sys.services', 'sys.versions', 'job.status',
-        'mail.certs', 'site.traffic',
+        'mail.certs', 'site.traffic', 'sys.settings', 'sys.disk_usage', 'sys.disks', 'sys.network', 'sys.processes',
+        'pkg.list', 'pkg.search', 'pkg.preview',
     ];
 
     /** @param  array<string, mixed>  $params */

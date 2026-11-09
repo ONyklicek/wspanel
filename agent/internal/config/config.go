@@ -98,6 +98,11 @@ type Config struct {
 	ProxyStorage string `json:"proxy_storage"`  // Caddy data dir of the edge (certificates)
 	AccessLogDir string `json:"access_log_dir"` // the edge's per-site JSON access logs (traffic stats)
 	AutoUpgrades string `json:"auto_upgrades"`  // apt's periodic config (automatic security updates)
+	HostsFile    string `json:"hosts_file"`     // /etc/hosts (the server's own name on 127.0.1.1)
+	Fstab        string `json:"fstab"`          // /etc/fstab (the panel's swap file)
+	SwapFile     string `json:"swap_file"`      // the swap file the panel manages
+	SysctlDir    string `json:"sysctl_dir"`     // vm.swappiness
+	CloudCfgDir  string `json:"cloud_cfg_dir"`  // cloud-init: keep a hostname set in the panel
 	ProxyCertDir string `json:"proxy_cert_dir"` // uploaded certificates (custom TLS)
 	DeployLogDir string `json:"deploy_log_dir"`
 	PanelDomain  string `json:"panel_domain"`
@@ -222,6 +227,11 @@ func Defaults() Config {
 		ProxyStorage:      "/var/lib/panel-proxy/caddy",
 		AccessLogDir:      "/var/log/panel-proxy/access",
 		AutoUpgrades:      "/etc/apt/apt.conf.d/20auto-upgrades",
+		HostsFile:         "/etc/hosts",
+		Fstab:             "/etc/fstab",
+		SwapFile:          "/swapfile",
+		SysctlDir:         "/etc/sysctl.d",
+		CloudCfgDir:       "/etc/cloud/cloud.cfg.d",
 		ProxyCertDir:      "/etc/panel-proxy/certs",
 		DeployLogDir:      "/var/log/panel-agent/deploys",
 		SystemdDir:        "/etc/systemd/system",

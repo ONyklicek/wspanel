@@ -56,13 +56,16 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Síť → SSL** | certifikáty a jejich stav, kořenový certifikát interní CA |
 | **Server → Vytížení** | CPU, RAM, disky, síť živě i v grafech za 30 dní, vytížení podle webů, procesy |
 | **Server → Logy** | záznamy služeb serveru (pošta, proxy a certifikáty, SSH, fail2ban, DNS, agent, varování systému) s filtrem, obdobím a živým sledováním |
+| **Server → Procesy** | všechny procesy s hledáním a ukončením, co zabírá disk po složkách |
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
+| **Server → Systém** | název serveru, časové pásmo, NTP, swap, síť, zdraví disků (SMART) |
+| **Server → Balíčky** | hledání a instalace balíčků Debianu, podržení verze, odebrání (ne toho, co potřebuje systém nebo panel) |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané; noční šifrovaná záloha serveru a pošty, klíč pro obnovu (obnova po havárii: `install --restore`) |
 | **Server → Moduly** | doinstalování klientů, pošty, XHProf, Pythonu; politika dvoufázového přihlášení |
 | **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
 | **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |
-| **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru |
+| **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru (hned, v určený čas, automaticky po aktualizacích) |
 | **Zabezpečení → Audit** | co přesně a kdy agent na serveru udělal |
 | **Účet → Integrace** | propojení s GitHubem (tlačítkem nebo tokenem), připojené účty a organizace |
 | **Účet → API a CLI** | API tokeny pro skripty a příkaz `wspanel` |

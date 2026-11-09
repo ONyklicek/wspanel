@@ -270,6 +270,17 @@ func binaries(cfg config.Config) map[string]string {
 		"journalctl":         "/usr/bin/journalctl",
 		"dpkg-query":         "/usr/bin/dpkg-query",
 		"apt-cache":          "/usr/bin/apt-cache",
+		"apt-mark":           "/usr/bin/apt-mark",    // hold/unhold, showmanual/showhold
+		"hostnamectl":        "/usr/bin/hostnamectl", // set-hostname
+		"timedatectl":        "/usr/bin/timedatectl", // show, list-timezones, set-timezone, set-ntp
+		"fallocate":          "/usr/bin/fallocate",   // the swap file only
+		"dd":                 "/usr/bin/dd",          // the swap file where fallocate cannot
+		"mkswap":             "/usr/sbin/mkswap",
+		"swapon":             "/usr/sbin/swapon",
+		"swapoff":            "/usr/sbin/swapoff",
+		"du":                 "/usr/bin/du",        // disk usage by directory (-x, never follows links)
+		"smartctl":           "/usr/sbin/smartctl", // disk health, read only (-i -H -A)
+		"ip":                 "/usr/sbin/ip",       // -j addr/route show, read only
 		"ufw":                cfg.UFWBinary,
 		"frankenphp":         cfg.FrankenPHPBin,
 	}

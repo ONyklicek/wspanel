@@ -141,6 +141,18 @@ které panel upravil, zůstanou: nová výchozí verze balíčku je nepřepíše
 **Automatické bezpečnostní aktualizace** (unattended-upgrades) je nainstalují
 samy každý den.
 
+**Restart serveru** jde odtud naplánovat za minutu nebo na určený čas (třeba
+na noc); naplánovaný restart ukáže stránka i s tlačítkem *Zrušit restart*.
+**Automatický restart** restartuje server sám v nastavený čas, když automatické
+aktualizace přinesly něco, co se projeví až po restartu (jádro, knihovny).
+
+**Server → Balíčky** hledá a instaluje další balíčky z repozitářů Debianu
+(htop, ncdu…), ukazuje nainstalované a umí balíček *podržet* ve své verzi
+(aktualizace ho přeskočí). Odebrat jde jen balíček, který nepotřebuje server
+ani panel – ani nepřímo: když by apt s balíčkem odebral i něco z jádra
+systému nebo panelu (PHP, databáze, pošta, SSH…), panel odebrání odmítne.
+Před instalací i odebráním ukáže, co přesně apt udělá.
+
 ## Fail2ban
 
 **Zabezpečení → Fail2ban** ukáže adresy, které fail2ban zablokoval po opakovaně

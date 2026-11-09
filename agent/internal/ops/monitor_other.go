@@ -5,6 +5,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"runtime"
 )
 
@@ -31,4 +32,24 @@ func sysMetrics(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 
 func sysSiteDisk(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	return map[string]any{"sizes": map[string]int64{}}, nil
+}
+
+type fsInfo struct {
+	Mount string `json:"mount"`
+	Free  int64  `json:"free"`
+}
+
+func filesystems() []fsInfo { return nil }
+
+func readProcIdentity(pid int) (procIdent, error) {
+	return procIdent{}, errors.New("processes: Linux only")
+}
+
+func sysProcesses(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct {
+		Kernel bool `json:"kernel,omitempty"`
+	}{}); err != nil {
+		return nil, err
+	}
+	return map[string]any{"processes": []any{}, "total": 0, "kernel_threads": 0}, nil
 }

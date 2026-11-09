@@ -45,10 +45,16 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.ProxyCertDir = filepath.Join(root, "etc/panel-proxy/certs")
 	cfg.ProxyStorage = filepath.Join(root, "var/lib/panel-proxy/caddy")
 	cfg.PostfixSASL = filepath.Join(root, "etc/postfix/sasl_passwd")
+	cfg.AutoUpgrades = filepath.Join(root, "etc/apt/apt.conf.d/20auto-upgrades")
+	cfg.HostsFile = filepath.Join(root, "etc/hosts")
+	cfg.Fstab = filepath.Join(root, "etc/fstab")
+	cfg.SwapFile = filepath.Join(root, "swapfile")
+	cfg.SysctlDir = filepath.Join(root, "etc/sysctl.d")
+	cfg.CloudCfgDir = filepath.Join(root, "etc/cloud/cloud.cfg.d")
 	// Ports below 1024 need root on the dev machine; the privileged range is a
 	// production property (checked by checkPrivilegedPorts, skipped in dry-run).
 	cfg.NodePortMin, cfg.NodePortMax = 30600, 30999
-	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir, filepath.Join(root, "etc/postfix"), cfg.DKIMDir} {
+	for _, d := range []string{config.ForVersion(cfg.FPMPoolDir, "8.3"), config.ForVersion(cfg.FPMPoolDir, "8.4"), cfg.ProxySitesDir, cfg.WebSitesDir, cfg.SystemdDir, cfg.TmpfilesDir, filepath.Join(root, "etc/postfix"), cfg.DKIMDir, filepath.Dir(cfg.AutoUpgrades), cfg.SysctlDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}

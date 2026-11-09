@@ -53,6 +53,9 @@ func sysUpdates(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		out["reboot_packages"] = strings.Fields(string(b))
 	}
 	out["auto_security"] = autoSecurityOn(env)
+	out["auto_reboot"], out["auto_reboot_time"] = autoReboot(env)
+	out["reboot_scheduled"] = scheduledReboot()
+	out["booted_at"] = bootedAt()
 	return out, nil
 }
 

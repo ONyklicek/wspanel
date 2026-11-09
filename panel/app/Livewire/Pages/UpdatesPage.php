@@ -2,15 +2,20 @@
 
 namespace App\Livewire\Pages;
 
+use App\Actions\System\ManageSystem;
 use App\Actions\System\ManageUpdates;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\PanelRelease;
 use App\Support\Toast;
+use Illuminate\Support\Carbon;
 use NyonCode\WireCore\Actions\Action;
+use NyonCode\WireForms\Components\Radio;
+use NyonCode\WireForms\Components\TextInput;
+use NyonCode\WireForms\Components\Toggle;
 use NyonCode\WirePanels\Pages\Page;
 
-/** System updates and automatic security updates. */
+/** System updates, automatic security updates and restarting the server. */
 class UpdatesPage extends Page
 {
     use TranslatesPageText;
@@ -80,6 +85,23 @@ class UpdatesPage extends Page
         $this->load();
     }
 
+    public function cancelReboot(): void
+    {
+        try {
+            app(ManageSystem::class)->cancelReboot();
+            Toast::success(__('Restart serveru zrušen'));
+        } catch (AgentException $e) {
+            Toast::error(__('Zrušení selhalo'), $e->getMessage());
+        }
+        $this->load();
+    }
+
+    /** "04:00" style time of a restart, in the panel's time zone. */
+    public static function at(?string $iso): string
+    {
+        return $iso ? Carbon::parse($iso)->setTimezone(config('app.timezone'))->isoFormat('D. M. HH:mm') : '';
+    }
+
     protected function headerActions(): array
     {
         $upgrade = fn (bool $security) => function () use ($security) {
@@ -93,7 +115,42 @@ class UpdatesPage extends Page
             $this->load();
         };
 
+        $time = fn (string $name) => TextInput::make($name)->label(__('Čas (čas serveru)'))->placeholder('04:00')
+            ->rules(['required', 'regex:/^([01][0-9]|2[0-3]):[0-5][0-9]$/'])->maxLength(5);
+
         return [
+            Action::make('reboot')->label(__('Restartovat server'))->icon('outline:power')->color(fn () => ($this->updates['reboot_required'] ?? false) ? 'warning' : 'gray')
+                ->visible(fn () => empty($this->updates['reboot_scheduled']))
+                ->modalDescription(__('Weby, pošta a panel budou během restartu nedostupné, obvykle minutu až dvě. Přihlášení uživatelé (SSH) dostanou upozornění.'))
+                ->form([
+                    Radio::make('when')->label(__('Kdy'))->options(['now' => __('Za minutu'), 'at' => __('V určený čas (např. v noci)')])->default('now')->required()->live(),
+                    $time('at')->visible(fn ($get) => $get('when') === 'at'),
+                ])
+                ->action(function (array $data) {
+                    try {
+                        $when = app(ManageSystem::class)->reboot(1, $data['when'] === 'at' ? (string) $data['at'] : null);
+                        Toast::success(__('Restart serveru naplánován'), __('Server se restartuje :when.', ['when' => self::at($when)]));
+                    } catch (AgentException $e) {
+                        Toast::error(__('Restart se nepodařilo naplánovat'), $e->getMessage());
+                    }
+                    $this->load();
+                }),
+            Action::make('autoReboot')->label(__('Automatický restart'))->icon('outline:clock')->color('gray')
+                ->modalDescription(__('Když automatické bezpečnostní aktualizace přinesou nové jádro nebo knihovny, které se projeví až po restartu, server se restartuje sám v nastavený čas.'))
+                ->fillFormUsing(fn () => ['enabled' => (bool) ($this->updates['auto_reboot'] ?? false), 'time' => ($this->updates['auto_reboot_time'] ?? '') ?: '04:00'])
+                ->form([
+                    Toggle::make('enabled')->label(__('Restartovat automaticky, když je to potřeba'))->live(),
+                    $time('time')->visible(fn ($get) => (bool) $get('enabled')),
+                ])
+                ->action(function (array $data) {
+                    try {
+                        app(ManageSystem::class)->setAutoReboot((bool) $data['enabled'], $data['enabled'] ? (string) $data['time'] : null);
+                        Toast::success($data['enabled'] ? __('Server se po aktualizacích restartuje sám v :time', ['time' => $data['time']]) : __('Automatický restart vypnut'));
+                    } catch (AgentException $e) {
+                        Toast::error(__('Změna selhala'), $e->getMessage());
+                    }
+                    $this->load();
+                }),
             Action::make('upgradeSecurity')->label(__('Nainstalovat bezpečnostní'))->icon('outline:shield-check')
                 ->visible(fn () => collect($this->updates['packages'] ?? [])->contains('security', true))
                 ->requiresConfirmation()->modalDescription(__('Nainstaluje jen bezpečnostní aktualizace (unattended-upgrades). Služby se po aktualizaci samy restartují.'))

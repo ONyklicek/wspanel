@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -178,6 +178,24 @@ func Registry() map[string]Op {
 		{"sys.updates", false, sysUpdates},
 		{"sys.upgrade", true, sysUpgrade},
 		{"sys.auto_updates", true, sysAutoUpdates},
+		{"sys.auto_reboot", true, sysAutoReboot},
+		{"sys.reboot", true, sysReboot},
+		{"sys.settings", false, sysSettings},
+		{"sys.hostname", true, sysHostname},
+		{"sys.timezone", true, sysTimezone},
+		{"sys.ntp", true, sysNTP},
+		{"sys.swap", true, sysSwap},
+		{"sys.disk_usage", false, sysDiskUsage},
+		{"sys.disks", false, sysDisks},
+		{"sys.network", false, sysNetwork},
+		{"sys.processes", false, sysProcesses},
+		{"sys.kill", true, sysKill},
+		{"pkg.list", false, pkgList},
+		{"pkg.search", false, pkgSearch},
+		{"pkg.preview", false, pkgPreview},
+		{"pkg.install", true, pkgInstall},
+		{"pkg.remove", true, pkgRemove},
+		{"pkg.hold", true, pkgHold},
 		{"fail2ban.status", false, fail2banStatus},
 		{"fail2ban.unban", true, fail2banUnban},
 		{"mail.spam.set", true, mailSpamSet},

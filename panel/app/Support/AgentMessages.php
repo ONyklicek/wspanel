@@ -59,6 +59,23 @@ final class AgentMessages
         $cs = fn (string $s) => self::cs($s);
 
         return [
+            // Server → Systém, Procesy, Balíčky
+            '/^pid: the process has already ended$/' => 'Proces už neběží.',
+            '/^pid: this process cannot be ended from the panel$/' => 'Tento proces z panelu ukončit nejde.',
+            '/^pid: a kernel thread$/' => 'Vlákno jádra ukončit nejde.',
+            '/^pid: the agent or a task it runs.*$/' => 'Proces patří agentovi panelu nebo úloze, kterou právě provádí. Úlohu ukončete v panelu.',
+            '/^name: the server or the panel needs (\S+) \(it would be removed too\)$/' => 'Balíček $1 potřebuje server nebo panel a odebral by se také.',
+            '/^name: the server or the panel needs (\S+)$/' => 'Balíček $1 potřebuje server nebo panel, odebrat ho nejde.',
+            '/^name: (\S+) cannot be (?:install|remov)ed \((.*)\)$/s' => 'Balíček $1 v repozitářích serveru není, nebo s ním apt nemůže pracovat.',
+            '/^name: (\S+) is not installed$/' => 'Balíček $1 není nainstalovaný.',
+            '/^size_mb: not enough free disk \(the swap file needs (\d+) MB.*$/' => 'Na disku není dost místa: swap potřebuje $1 MB a 1 GB musí zůstat volný.',
+            '/^swap could not be switched off.*$/s' => 'Swap se nepodařilo vypnout, nejspíš by se jeho obsah nevešel do volné paměti.',
+            '/^swap could not be switched on.*$/s' => 'Swap se nepodařilo zapnout (kontejner nebo souborový systém bez podpory swapových souborů).',
+            '/^timezone: unknown time zone (\S+)$/' => 'Časové pásmo $1 neexistuje.',
+            '/^hostname: invalid part .*$/' => 'Neplatný název serveru: jen malá písmena, číslice, pomlčky a tečky.',
+            '/^path: not a directory$/' => 'Taková složka neexistuje.',
+            '/^path: an absolute, clean path$/' => 'Zadejte celou cestu ke složce, např. /var/log.',
+
             '/^extension (\S+) is needed by (.+); remove those first$/' => 'Rozšíření $1 potřebuje $2. Odeberte nejdřív je (jinak by je apt odebral také).',
 
             '/^(horizon|pulsework) needs the site\'s Valkey.*$/' => 'Worker $1 potřebuje Valkey webu.',
