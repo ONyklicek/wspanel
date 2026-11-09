@@ -82,13 +82,18 @@ Průvodce se postupně zeptá:
 Před instalací ukáže souhrn. Instalace trvá 5–15 minut a na konci vypíše adresu
 panelu a přihlašovací údaje.
 
-> **Předběžné verze** (`-rc`) odkaz `releases/latest` nenajde, tu je potřeba zadat.
-> Dokud nevyjde první ostrá verze (1.2.0), funguje jen tento způsob:
+> **Předběžné verze** (`-rc`) odkaz `releases/latest` nenajde: `get.sh` se vezme
+> z nejnovějšího vydání vůbec a `WSPANEL_VERSION=pre` mu řekne, ať instaluje
+> i předběžnou verzi (dokud nevyjde první ostrá verze, jinak to nejde):
 >
 > ```sh
-> curl -fsSL https://github.com/ONyklicek/wspanel/releases/download/v1.2.0-rc2/get.sh \
->   | sudo env WSPANEL_VERSION=1.2.0-rc2 bash
+> V=$(curl -fsSL 'https://api.github.com/repos/ONyklicek/wspanel/releases?per_page=1' \
+>   | sed -nE 's/.*"tag_name": *"(v[^"]+)".*/\1/p' | head -1)
+> curl -fsSL "https://github.com/ONyklicek/wspanel/releases/download/$V/get.sh" \
+>   | sudo env WSPANEL_VERSION=pre bash
 > ```
+>
+> Konkrétní verze: `… | sudo env WSPANEL_VERSION=1.2.0 bash`.
 
 ### Instalace přes apt
 
@@ -148,7 +153,7 @@ závisí) a zdroj přepne na svůj klíč.
 **4. Instalace:**
 
 ```sh
-sudo apt install wspanel      # balíčky wspanel, wspanel-agent (a wspanel-archive-keyring)
+sudo apt install wspanel      # balíčky wspanel, wspanel-agent, wspanel-frankenphp (a keyring)
 sudo wspanel-install          # průvodce: adresa panelu, moduly, správce…
 ```
 
@@ -175,17 +180,20 @@ Pages nevidí). Soubory jsou u každého vydání na
 názvech nahrazuje `~` tečkou.
 
 ```sh
-V=1.2.0-rc4                      # verze z Releases (wspanel-archive-keyring je od 1.2.0-rc4)
+# Verze: nejnovější vydání (předběžné verze: ?per_page=1 místo /latest; konkrétní: V=1.2.0)
+V=$(curl -fsSL https://api.github.com/repos/ONyklicek/wspanel/releases/latest \
+  | sed -nE 's/.*"tag_name": *"v([^"]+)".*/\1/p' | head -1); echo "verze: $V"
 ARCH=$(dpkg --print-architecture) # amd64 nebo arm64
 BASE=https://github.com/ONyklicek/wspanel/releases/download/v$V
 cd "$(mktemp -d)"
 curl -fLO "$BASE/wspanel_${V/-/.}_all.deb"
 curl -fLO "$BASE/wspanel-agent_${V/-/.}_$ARCH.deb"
+curl -fLO "$BASE/wspanel-frankenphp_${V/-/.}_$ARCH.deb"
 curl -fLO "$BASE/wspanel-archive-keyring_${V/-/.}_all.deb"
 curl -fLO "$BASE/SHA256SUMS"
-sha256sum -c SHA256SUMS --ignore-missing          # všechny tři soubory: OK
+sha256sum -c SHA256SUMS --ignore-missing          # všechny čtyři soubory: OK
 sudo apt install ./wspanel_${V/-/.}_all.deb ./wspanel-agent_${V/-/.}_$ARCH.deb \
-  ./wspanel-archive-keyring_${V/-/.}_all.deb
+  ./wspanel-frankenphp_${V/-/.}_$ARCH.deb ./wspanel-archive-keyring_${V/-/.}_all.deb
 sudo wspanel-install
 ```
 
@@ -253,7 +261,10 @@ Kdo nechce spouštět skript přímo z internetu, stáhne vydání ze stránky
 instalátor sám:
 
 ```sh
-V=1.2.0-rc4 ARCH=$(dpkg --print-architecture)
+# Verze: nejnovější vydání (předběžné verze: ?per_page=1 místo /latest; konkrétní: V=1.2.0)
+V=$(curl -fsSL https://api.github.com/repos/ONyklicek/wspanel/releases/latest \
+  | sed -nE 's/.*"tag_name": *"v([^"]+)".*/\1/p' | head -1); echo "verze: $V"
+ARCH=$(dpkg --print-architecture)
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/wspanel-$V-linux-$ARCH.tar.gz
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing          # musí vypsat: OK
@@ -299,9 +310,13 @@ příkazem; správcům pošle jednu notifikaci. Sám nic neinstaluje.
 |---|---|---|
 | **`wspanel`** | instalátor, provisioning a zdroják panelu (`/usr/share/wspanel`), příkazy `wspanel-install` a `wspanel-update` | `all` |
 | **`wspanel-agent`** | agent `/usr/sbin/panel-agent` (jediná část s právy roota), jeho služba `panel-agent.service` a nástroj `/usr/bin/wspanel` (klient REST API) | `amd64`, `arm64` |
+| **`wspanel-frankenphp`** | FrankenPHP (PHP a Caddy v jednom), na kterém běží panel, proxy a weby v režimu FrankenPHP: přesně ten build, se kterým bylo vydání otestované (`/usr/lib/wspanel/frankenphp`, odkaz `/usr/local/bin/frankenphp`) | `amd64`, `arm64` |
 | **`wspanel-archive-keyring`** | klíč repozitáře (`/usr/share/keyrings/wspanel-archive-keyring.asc`), zdroj apt `/etc/apt/sources.list.d/wspanel.sources` a `/etc/apt/apt.conf.d/52wspanel-unattended` (opravy i v automatických aktualizacích) | `all` |
 
-`wspanel` závisí na `wspanel-agent` stejné verze a na `wspanel-archive-keyring`.
+`wspanel` závisí na `wspanel-agent` a `wspanel-frankenphp` stejné verze a na
+`wspanel-archive-keyring`. FrankenPHP si vydání stáhne jednou při sestavení a
+ověří, že ho sestavil workflow projektu FrankenPHP (GitHub attestation); server
+pak dostane tentýž soubor z balíčku, nic dalšího nestahuje.
 Nový klíč repozitáře (výměna) přijde jako aktualizace `wspanel-archive-keyring`,
 bez ručního zásahu. Všechny balíčky mají manuálové stránky (`man panel-agent`,
 `man wspanel`, `man wspanel-install`, `man wspanel-update`), licenci
@@ -310,15 +325,16 @@ na systému nic nenastaví: databáze, webserver, poštu a konfiguraci zakládá
 `wspanel-install` (nebo `./install` z vydání).
 
 Instalace jedním příkazem nebo z vydání (`get.sh`, `./install`) dá na server
-jen `wspanel-agent` a `wspanel-archive-keyring`, aby opravy agenta chodily
-přes apt. Kdo chce celý WSPanel
+jen `wspanel-agent`, `wspanel-frankenphp` a `wspanel-archive-keyring`, aby
+opravy chodily přes apt. Kdo chce celý WSPanel
 spravovat přes apt, doinstaluje `wspanel` (viz [Instalace přes apt](#instalace-přes-apt)).
 
 #### Jak se dostane na server
 
 Instalace z vydání ho udělá sama:
 
-1. nainstaluje `wspanel-agent` z balíčku vydání (nic nestahuje),
+1. nainstaluje `wspanel-agent` a `wspanel-frankenphp` z balíčků vydání (nic
+   nestahuje),
 2. nainstaluje `wspanel-archive-keyring` z balíčku vydání: apt repozitář
    `https://onyklicek.github.io/wspanel/apt` s kanálem podle verze, jeho klíč
    a opravy v automatických aktualizacích (soubory viz tabulka výše),
@@ -328,8 +344,8 @@ Instalace z vydání ho udělá sama:
 Že je vše na místě:
 
 ```sh
-dpkg-query -W 'wspanel*'             # wspanel-agent  1.2.0~rc4, wspanel-archive-keyring …
-panel-agent -version                 # 1.2.0-rc4
+dpkg-query -W 'wspanel*'             # balíčky a verze (1.2.0~rc1 = 1.2.0-rc1)
+panel-agent -version                 # verze agenta
 apt-cache policy wspanel-agent       # odkud se aktualizuje (kanál)
 ```
 
@@ -376,7 +392,10 @@ agenta. Soubory jsou přiložené ke každému vydání na
 (`wspanel-agent_<verze>_<arch>.deb`; GitHub v názvu nahrazuje `~` tečkou):
 
 ```sh
-V=1.2.0-rc4 ARCH=$(dpkg --print-architecture)
+# Verze: nejnovější vydání (předběžné verze: ?per_page=1 místo /latest; konkrétní: V=1.2.0)
+V=$(curl -fsSL https://api.github.com/repos/ONyklicek/wspanel/releases/latest \
+  | sed -nE 's/.*"tag_name": *"v([^"]+)".*/\1/p' | head -1); echo "verze: $V"
+ARCH=$(dpkg --print-architecture)
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/wspanel-agent_${V/-/.}_$ARCH.deb
 curl -fLO https://github.com/ONyklicek/wspanel/releases/download/v$V/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing                 # musí vypsat: OK

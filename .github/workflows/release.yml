@@ -52,9 +52,16 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
+      # Changes since the previous published release (a tag whose release
+      # failed has none, and its changes belong to this one).
+      - name: Previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "WSPANEL_SINCE=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')" >> "$GITHUB_ENV"
       - name: Build
         env:
           WSPANEL_REPO: ${{ github.repository }} # the panel looks here for newer releases
+          GH_TOKEN: ${{ github.token }} # gh attestation verify of FrankenPHP
         run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
@@ -146,22 +153,26 @@ jobs:
           path: dist
       - name: One-command installer
         run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
-      - name: Agent and keyring packages (.deb) from the bundles
+      - name: Agent, FrankenPHP and keyring packages (.deb) from the bundles
         run: for b in dist/wspanel-*.tar.gz; do tar -xzf "$b" -C dist --strip-components=2 --wildcards 'wspanel/bin/*.deb'; done; ls dist/*.deb
       - name: Checksums
         working-directory: dist
-        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
+        run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-frankenphp_*.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
             dist/wspanel-agent_*.deb
             dist/wspanel_*_all.deb
+            dist/wspanel-frankenphp_*.deb
             dist/wspanel-archive-keyring_*.deb
             dist/get.sh
       - name: Release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          # The previous published release (a tag whose release failed has none).
+          prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
           {
             echo "## Instalace"
             echo
@@ -185,7 +196,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-frankenphp_*.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
 
   apt:

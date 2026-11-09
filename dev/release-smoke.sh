@@ -83,6 +83,8 @@ if [[ $MODE == apt ]] || tar -tzf "$BUNDLE" | grep -q '/bin/wspanel-agent_.*\.de
   on 'dpkg-query -W -f="\${Status}" wspanel-archive-keyring | grep -q "install ok installed"' || fail "wspanel-archive-keyring is not installed"
   on 'grep -qx "Signed-By: /usr/share/keyrings/wspanel-archive-keyring.asc" /etc/apt/sources.list.d/wspanel.sources' || fail "no WSPanel apt source with the packaged key"
   on 'test -s /etc/apt/apt.conf.d/52wspanel-unattended' || fail "no unattended upgrades of WSPanel"
+  on 'dpkg-query -W -f="\${Status}" wspanel-frankenphp | grep -q "install ok installed"' || fail "wspanel-frankenphp is not installed"
+  [[ "$(on 'readlink /usr/local/bin/frankenphp')" == /usr/lib/wspanel/frankenphp ]] || fail "frankenphp is not the package's"
   on 'test -f /usr/lib/systemd/system/panel-agent.service -a ! -e /etc/systemd/system/panel-agent.service' || fail "the agent unit is not the package's"
 fi
 

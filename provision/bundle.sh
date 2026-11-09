@@ -23,8 +23,9 @@ mkdir -p "$B/bin" "$OUT"
 (cd "$ROOT/agent" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags '-s -w' -o "$B/bin/wspanel-linux-$ARCH" ./cmd/wspanel)
 
 # What changed since the previous release (the packages' changelog): the
-# subjects of the commits since the previous tag, where git history is.
-if prev="$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null)"; then
+# subjects of the commits since the previous release (WSPANEL_SINCE: its tag,
+# set by the release workflow; else the previous tag), where git history is.
+if prev="${WSPANEL_SINCE:-$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null)}" && [[ -n "$prev" ]]; then
   git -C "$ROOT" log --no-merges --format='- %s' "$prev..HEAD" > "$B/CHANGES" 2>/dev/null || : > "$B/CHANGES"
 else
   : > "$B/CHANGES"
@@ -35,6 +36,8 @@ fi
 # which then brings its fixes.
 if command -v dpkg-deb >/dev/null; then
   "$ROOT/provision/build-deb.sh" "$VERSION" "$ARCH" "$B/bin/panel-agent-linux-$ARCH" "$B/bin/wspanel-linux-$ARCH" "$B/bin" "$B/CHANGES" >/dev/null
+  # FrankenPHP as tested, verified once here (see build-frankenphp-deb.sh).
+  "$ROOT/provision/build-frankenphp-deb.sh" "$VERSION" "$ARCH" "$B/bin" "$B/CHANGES" >/dev/null
   if [[ -n "${WSPANEL_REPO:-}" ]]; then
     "$ROOT/provision/build-keyring-deb.sh" "$VERSION" "$WSPANEL_REPO" "$ROOT/provision/files/wspanel-archive-keyring.asc" "$B/bin" "$B/CHANGES" >/dev/null
   fi
@@ -42,7 +45,7 @@ fi
 
 rsync -a --exclude='.DS_Store' "$ROOT/provision/" "$B/provision/"
 rm -f "$B/provision/bundle.sh" "$B/provision/build-deb.sh" "$B/provision/build-installer-deb.sh" \
-  "$B/provision/build-keyring-deb.sh" "$B/provision/deb-common.sh" "$B/provision/apt-repo.sh"
+  "$B/provision/build-keyring-deb.sh" "$B/provision/build-frankenphp-deb.sh" "$B/provision/deb-common.sh" "$B/provision/apt-repo.sh"
 install -m 0755 "$ROOT/provision/wspanel-install.sh" "$B/install"
 rm -f "$B/provision/wspanel-install.sh"
 rsync -a "$ROOT/docs/" "$B/docs/"

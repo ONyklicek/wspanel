@@ -16,10 +16,14 @@
 # Safe to re-run: every step is idempotent.
 set -euo pipefail
 
+# FrankenPHP: a release ships it as the wspanel-frankenphp package
+# (build-frankenphp-deb.sh). The checksums are for an installation from
+# source only and change whenever FrankenPHP rebuilds its release (nightly):
+# then update them from a build checked with gh attestation verify.
 FRANKENPHP_VERSION="v1.13.5"
 declare -A FRANKENPHP_SHA256=(
-  [x86_64]="512e61cf72699f7680beb9a1c51da994bed0ee9a0e451b74a74c85eb286b20d9"
-  [aarch64]="dec255cf2c69f127fc47f8f312be0bb600f58738e0e34574f77d58f91c408de0"
+  [x86_64]="cdb85dd2fd6c0468f53079e845c81621563024772ac400e5d1c17d0751324b71"
+  [aarch64]="2a21b7d3b74d9e3292915608f248adc26e98bc9b34ee4128a8c87b0629f9c07f"
 )
 FNM_VERSION="v1.39.0"
 declare -A FNM_ASSET=([x86_64]="fnm-linux.zip" [aarch64]="fnm-arm64.zip")
@@ -65,6 +69,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+# gh_release_get <owner/repo> <tag> <asset> <out>: a release asset from
+# GitHub. github.com/…/releases/download sometimes answers 504 for a while;
+# the same file then still comes through the API (by the asset's id).
+gh_release_get() {
+  local repo=$1 tag=$2 asset=$3 out=$4 api id
+  curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors -o "$out" \
+    "https://github.com/$repo/releases/download/$tag/$asset" && return 0
+  echo "github.com did not serve $asset, trying the API" >&2
+  api="$(curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors "https://api.github.com/repos/$repo/releases/tags/$tag")" || return 1
+  # The asset's API url comes right before its name in each asset object.
+  id="$(grep -oE '"url": *"[^"]*/releases/assets/[0-9]+"|"name": *"[^"]*"' <<<"$api" \
+    | awk -v want="\"$asset\"" '/releases\/assets/ { u = $0; next } { n = $0; sub(/^"name": */, "", n); if (n == want && u != "") { sub(/.*\/assets\//, "", u); sub(/"$/, "", u); print u; exit } }')"
+  [[ -n "$id" ]] || return 1
+  curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -H "Accept: application/octet-stream" -o "$out" \
+    "https://api.github.com/repos/$repo/releases/assets/$id"
+}
 
 for arg in "$@"; do
   case "$arg" in
@@ -184,7 +204,7 @@ apt-get install -y -q --no-install-recommends \
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
 if [[ ! -f /etc/apt/sources.list.d/php.list ]]; then
-  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
+  curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
   dpkg -i /tmp/debsuryorg-archive-keyring.deb
   echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" \
     > /etc/apt/sources.list.d/php.list
@@ -221,10 +241,22 @@ done
 # ---------------------------------------------------------------- FrankenPHP
 # Output captured first: with pipefail, `cmd | grep -q` fails when grep exits early
 # (SIGPIPE to cmd), which re-downloaded installed tools on every run.
-if [[ "$(/usr/local/bin/frankenphp version 2>/dev/null || true)" != *"${FRANKENPHP_VERSION#v}"* ]]; then
+# A release brings it as the wspanel-frankenphp package (verified when the
+# release was built; FrankenPHP rebuilds its release binaries every night, so
+# the checksums below hold only for a while): installed from the bundle, or
+# already there through apt. From source (dev): downloaded and checked here.
+FP_DEB="$(ls "$HERE"/../bin/wspanel-frankenphp_*_"$(dpkg --print-architecture)".deb 2>/dev/null | head -1 || true)"
+fp_packaged() { dpkg-query -W -f='${Status}' wspanel-frankenphp 2>/dev/null | grep -q 'ok installed'; }
+if [[ -n "$FP_DEB" ]]; then
+  log "FrankenPHP (package)"
+  dpkg -i "$FP_DEB" >/dev/null
+fi
+if fp_packaged; then
+  ln -sfn /usr/lib/wspanel/frankenphp /usr/local/bin/frankenphp
+elif [[ "$(/usr/local/bin/frankenphp version 2>/dev/null || true)" != *"${FRANKENPHP_VERSION#v}"* ]]; then
   log "FrankenPHP $FRANKENPHP_VERSION"
   tmp="$(mktemp)"
-  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp" "https://github.com/php/frankenphp/releases/download/${FRANKENPHP_VERSION}/frankenphp-linux-${ARCH}"
+  gh_release_get php/frankenphp "$FRANKENPHP_VERSION" "frankenphp-linux-${ARCH}" "$tmp"
   echo "${FRANKENPHP_SHA256[$ARCH]}  $tmp" | sha256sum -c - || die "FrankenPHP checksum mismatch"
   install -m 0755 "$tmp" /usr/local/bin/frankenphp
   rm -f "$tmp"
@@ -240,7 +272,7 @@ if [[ ${#NODE_LIST[@]} -gt 0 ]]; then
   if [[ "$(/usr/local/bin/fnm --version 2>/dev/null || true)" != *"${FNM_VERSION#v}"* ]]; then
     log "fnm $FNM_VERSION"
     tmp="$(mktemp -d)"
-    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/fnm.zip" "https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/${FNM_ASSET[$ARCH]}"
+    gh_release_get Schniz/fnm "$FNM_VERSION" "${FNM_ASSET[$ARCH]}" "$tmp/fnm.zip"
     echo "${FNM_SHA256[$ARCH]}  $tmp/fnm.zip" | sha256sum -c - || die "fnm checksum mismatch"
     unzip -q -o "$tmp/fnm.zip" -d "$tmp"
     install -m 0755 "$tmp/fnm" /usr/local/bin/fnm
@@ -356,7 +388,7 @@ systemctl restart opendkim postfix
 # `mailpit version` also checks GitHub for updates and its exit code follows that.
 if [[ "$(/usr/local/bin/mailpit version 2>/dev/null || true)" != *"${MAILPIT_VERSION}"* ]]; then
   tmp="$(mktemp -d)"
-  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/mailpit.tgz" "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/${MAILPIT_ASSET[$ARCH]}"
+  gh_release_get axllent/mailpit "$MAILPIT_VERSION" "${MAILPIT_ASSET[$ARCH]}" "$tmp/mailpit.tgz"
   echo "${MAILPIT_SHA256[$ARCH]}  $tmp/mailpit.tgz" | sha256sum -c - >/dev/null || die "mailpit checksum mismatch"
   tar -xzf "$tmp/mailpit.tgz" -C "$tmp" mailpit
   install -m 0755 "$tmp/mailpit" /usr/local/bin/mailpit
@@ -642,7 +674,7 @@ echo "d /run/wspanel-dbtools 0700 dbtools dbtools -" > /etc/tmpfiles.d/wspanel-d
 systemd-tmpfiles --create /etc/tmpfiles.d/wspanel-dbtools.conf
 if [[ "$(cat "$TOOLS/pma/RELEASE-DATE-$PMA_VERSION" 2>/dev/null)" == "" ]]; then
   tmp="$(mktemp -d)"
-  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$tmp/pma.tar.xz" "https://files.phpmyadmin.net/phpMyAdmin/$PMA_VERSION/phpMyAdmin-$PMA_VERSION-all-languages.tar.xz"
+  curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$tmp/pma.tar.xz" "https://files.phpmyadmin.net/phpMyAdmin/$PMA_VERSION/phpMyAdmin-$PMA_VERSION-all-languages.tar.xz"
   echo "$PMA_SHA256  $tmp/pma.tar.xz" | sha256sum -c - || die "phpMyAdmin checksum mismatch"
   tar -xJf "$tmp/pma.tar.xz" -C "$tmp"
   rm -rf "$TOOLS/pma" && mv "$tmp/phpMyAdmin-$PMA_VERSION-all-languages" "$TOOLS/pma"
@@ -654,7 +686,7 @@ fi
 install -m 0644 "$HERE/files/dbtools/pma-signon.php" "$TOOLS/pma/wspanel-signon.php"
 if [[ "$(sha256sum "$TOOLS/adminer/adminer.php" 2>/dev/null || true)" != "$ADMINER_SHA256 "* ]]; then
   install -d -m 0755 "$TOOLS/adminer"
-  curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$TOOLS/adminer/adminer.php.new" "https://github.com/vrana/adminer/releases/download/v$ADMINER_VERSION/adminer-$ADMINER_VERSION.php"
+  gh_release_get vrana/adminer "v$ADMINER_VERSION" "adminer-$ADMINER_VERSION.php" "$TOOLS/adminer/adminer.php.new"
   echo "$ADMINER_SHA256  $TOOLS/adminer/adminer.php.new" | sha256sum -c - || die "Adminer checksum mismatch"
   mv "$TOOLS/adminer/adminer.php.new" "$TOOLS/adminer/adminer.php"
 fi

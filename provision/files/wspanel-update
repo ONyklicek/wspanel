@@ -29,5 +29,5 @@ fi
 
 sed -i -E "s/^Suites: .*/Suites: $channel/" "$SRC"
 apt-get update -q
-apt-get install -y -q wspanel wspanel-agent
+apt-get install -y -q wspanel wspanel-agent wspanel-frankenphp
 exec wspanel-install "${args[@]}"

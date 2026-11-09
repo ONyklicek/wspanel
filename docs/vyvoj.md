@@ -115,7 +115,25 @@ CI je v `.github/workflows/`:
   balíčky, `SHA256SUMS`, záznam o původu buildu (build provenance) a seznam
   změn od předchozího tagu.
 
-  Před vydáním projdou všechny tři balíčky kontrolou `lintian`
+  FrankenPHP jde do balíčku `wspanel-frankenphp`
+  (`provision/build-frankenphp-deb.sh`): verze podle `FRANKENPHP_VERSION`
+  v `install.sh`, stažená při sestavení a ověřená `gh attestation verify`
+  (podepsal ji workflow `static.yaml` v `php/frankenphp`). FrankenPHP své
+  vydání každou noc přestaví pod stejným názvem, takže kontrolní součet
+  napevno by přestal sedět; součty v `install.sh` slouží jen instalaci ze
+  zdrojáků.
+
+  Pravidla pro cizí soubory z GitHubu (platí pro každý nový nástroj):
+  - **Binárka, na které server běží** (jako FrankenPHP): do vlastního balíčku
+    `wspanel-<nástroj>`, stažená a ověřená jednou při sestavení vydání
+    (attestace nebo podpis projektu), ne při instalaci. Vydání projektu se
+    mohou pod stejným názvem změnit.
+  - **Ostatní stahování v instalátoru**: přes `gh_release_get` v `install.sh`
+    (zkusí odkaz `github.com/…/releases/download`, při chybě, např. 504,
+    stejný soubor přes API) a vždy s ověřením kontrolního součtu. Stejnou
+    zálohu přes API má `get.sh`.
+
+  Před vydáním projdou všechny čtyři balíčky kontrolou `lintian`
   (`--fail-on error`): `wspanel-agent` (`provision/build-deb.sh`, agent,
   CLI, služba v `/usr/lib/systemd/system`), `wspanel`
   (`provision/build-installer-deb.sh`) a `wspanel-archive-keyring`
@@ -142,7 +160,7 @@ CI je v `.github/workflows/`:
   Ručním spuštěním (Actions → Release → Run workflow, s číslem verze) se
   balíčky sestaví a otestují bez vydání.
 
-Lokálně totéž: `make release-smoke VERSION=1.2.0-rc1` (Docker, trvá 10–15 minut).
+Lokálně totéž: `make release-smoke VERSION=<verze>` (Docker, trvá 10–15 minut).
 
 Ověření staženého balíčku na serveru:
 

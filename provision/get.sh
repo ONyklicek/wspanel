@@ -14,6 +14,7 @@
 # Through sudo, settings go with env (sudo itself may drop them):
 #
 #   ... | sudo env WSPANEL_VERSION=1.2.0 bash   a given version instead of the newest
+#   ... | sudo env WSPANEL_VERSION=pre bash     the newest release candidate too
 #
 # Releases in a private repository: get this script with gh and give it a
 # token that may read the repository:
@@ -58,6 +59,13 @@ main() {
     auth=(-K "$tmp/auth.curlrc")
   fi
 
+  # The newest release candidate or release: the newest of the list (the API
+  # lists them newest first; drafts only with a token that may see them).
+  if [[ "$version" == pre ]]; then
+    version="$( (curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors "${auth[@]}" "$api/repos/$repo/releases?per_page=10" || true) \
+      | json_lines | sed -nE 's/^ *"tag_name": *"v?([^"]+)".*/\1/p' | head -1)"
+    [[ -n "$version" ]] || die "no release found in $repo"
+  fi
   # The newest release: GitHub's /releases/latest redirects to its tag.
   if [[ -z "$version" ]]; then
     if [[ -n "$token" ]]; then
@@ -96,23 +104,25 @@ main() {
 # (no jq on a fresh Debian). Release names and asset names hold no commas.
 json_lines() { tr ',{}[]' '\n\n\n\n\n'; }
 
-# fetch <asset name> <destination>: from the release of $version.
+# fetch <asset name> <destination>: from the release of $version. A public
+# repository: the download link first; github.com answers it with 504 at
+# times, and the same file then still comes through the API. A private one:
+# through the API only (with the token).
 fetch() {
   local name=$1 out=$2
-  if [[ -n "$token" ]]; then
-    # A private repository: the asset through the API, by its id.
-    local id
-    id="$( (curl -fsSL "${auth[@]}" "$api/repos/$repo/releases/tags/v$version" || true) | json_lines \
-      | awk -v want="$name" '
-          /"url": *".*\/releases\/assets\/[0-9]+"/ { match($0, /assets\/[0-9]+/); url = substr($0, RSTART + 7, RLENGTH - 7) }
-          /"name":/ { n = $0; sub(/^ *"name": *"/, "", n); sub(/".*/, "", n); if (n == want && url != "") { print url; exit } }')"
-    [[ -n "$id" ]] || die "$name is not in release v$version"
-    curl -fSL --retry 3 "${auth[@]}" -H "Accept: application/octet-stream" -o "$out" "$api/repos/$repo/releases/assets/$id" \
-      || die "download of $name failed"
-  else
-    curl -fSL --retry 3 --progress-bar -o "$out" "$base/$repo/releases/download/v$version/$name" \
-      || die "download of $name failed ($base/$repo/releases/download/v$version/$name)"
+  if [[ -z "$token" ]]; then
+    curl -fSL --retry 3 --retry-delay 5 --retry-all-errors --progress-bar -o "$out" "$base/$repo/releases/download/v$version/$name" \
+      && return 0
+    say "github.com did not serve $name, trying the API"
   fi
+  local id
+  id="$( (curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors "${auth[@]}" "$api/repos/$repo/releases/tags/v$version" || true) | json_lines \
+    | awk -v want="$name" '
+        /"url": *".*\/releases\/assets\/[0-9]+"/ { match($0, /assets\/[0-9]+/); url = substr($0, RSTART + 7, RLENGTH - 7) }
+        /"name":/ { n = $0; sub(/^ *"name": *"/, "", n); sub(/".*/, "", n); if (n == want && url != "") { print url; exit } }')"
+  [[ -n "$id" ]] || die "$name is not in release v$version"
+  curl -fSL --retry 8 --retry-delay 10 --retry-all-errors "${auth[@]}" -H "Accept: application/octet-stream" -o "$out" "$api/repos/$repo/releases/assets/$id" \
+    || die "download of $name failed"
 }
 
 main "$@"
