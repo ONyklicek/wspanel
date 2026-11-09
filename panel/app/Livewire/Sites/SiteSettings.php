@@ -89,7 +89,7 @@ class SiteSettings extends ViewPage
         /** @var Site $site */
         $site = $this->nativeRecord();
         $edge = $site->edge_settings ?? [];
-        $php = $site->mode !== SiteMode::Node;
+        $php = ! $site->mode->isApp();
 
         // Side by side where the screen allows: two columns, three on a wide one.
         return Infolist::make()->record($site)->livewireComponent($this)->columns(['default' => 1, 'lg' => 2, '2xl' => 3])->schema([

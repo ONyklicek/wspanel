@@ -62,6 +62,8 @@ type Config struct {
 	TmpfilesDir     string `json:"tmpfiles_dir"`
 	ProxyGroup      string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
 	NodeDir         string `json:"node_dir"`      // fnm node-versions dir
+	PythonDir       string `json:"python_dir"`    // uv-managed Pythons (UV_PYTHON_INSTALL_DIR)
+	UVBin           string `json:"uv_bin"`        // uv, installed with the first Python
 	NodePortMin     int    `json:"node_port_min"` // must stay below net.ipv4.ip_unprivileged_port_start
 	NodePortMax     int    `json:"node_port_max"`
 	// Dev containers only: allow app ports although SocketBindAllow/Deny is not
@@ -195,6 +197,8 @@ func Defaults() Config {
 		TmpfilesDir:     "/etc/tmpfiles.d",
 		ProxyGroup:      "panel-proxy",
 		NodeDir:         "/opt/fnm/node-versions",
+		PythonDir:       "/opt/uv/python",
+		UVBin:           "/usr/local/bin/uv",
 		// Privileged ports: only units granted CAP_NET_BIND_SERVICE (and allowed
 		// exactly their own port via SocketBindAllow) can bind them, so no
 		// other site user can squat a port while its owner restarts.

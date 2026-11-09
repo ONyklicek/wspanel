@@ -20,7 +20,13 @@ type siteState struct {
 	Mode        string `json:"mode"`
 	PHPVersion  string `json:"php_version,omitempty"`  // classic: FPM version; worker: FrankenPHP's PHP (informational)
 	NodeVersion string `json:"node_version,omitempty"` // node: major version
-	Port        int    `json:"port,omitempty"`         // node: 127.0.0.1 port allocated by the agent (slot a)
+	// python: the CPython minor version, and the WSGI/ASGI target (module:object;
+	// empty = the framework's convention, Django's detected on deploy)
+	PythonVersion string `json:"python_version,omitempty"`
+	PythonApp     string `json:"python_app,omitempty"`
+	// python: the Celery app its workers run (-A; empty = Django's project package)
+	PythonCelery string `json:"python_celery,omitempty"`
+	Port         int    `json:"port,omitempty"` // node: 127.0.0.1 port allocated by the agent (slot a)
 	// node: the second slot for zero-downtime deploys (its own port and
 	// unit); Slot "b" = it serves now.
 	PortB       int           `json:"port_b,omitempty"`

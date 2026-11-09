@@ -77,6 +77,38 @@ class SystemInfo
         return collect($majors)->sortDesc()->mapWithKeys(fn (string $v) => [$v => "Node {$v}"])->all();
     }
 
+    /** @return array<string, string> minor => label, newest first */
+    public function pythonVersionOptions(): array
+    {
+        try {
+            $minors = $this->versions()['python'] ?? [];
+        } catch (AgentException) {
+            return [];
+        }
+
+        return collect($minors)->sortDesc(SORT_NATURAL)->mapWithKeys(fn (string $v) => [$v => "Python {$v}"])->all();
+    }
+
+    /** @return array<string, string> installed minor => its exact version ("3.13" => "3.13.18") */
+    public function pythonPatches(): array
+    {
+        try {
+            return (array) ($this->versions()['python_patches'] ?? []);
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
+    /** @return list<string> Python versions the server can install (Server → Moduly) */
+    public function installablePython(): array
+    {
+        try {
+            return array_values($this->versions()['python_installable'] ?? []);
+        } catch (AgentException) {
+            return [];
+        }
+    }
+
     /** @return list<DatabaseEngine> engines installed on the server */
     public function dbEngines(): array
     {

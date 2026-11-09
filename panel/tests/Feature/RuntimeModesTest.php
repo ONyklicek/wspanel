@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Actions\Services\SyncServices;
 use App\Enums\SiteMode;
+use App\Livewire\Pages\ModulesPage;
 use App\Livewire\Sites\CreateSitePage as CreateSite;
 use App\Livewire\Sites\ListSites;
 use App\Models\Service;
@@ -11,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Services\Agent\AgentJobs;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -35,7 +37,10 @@ class RuntimeModesTest extends TestCase
             'php_default' => '8.4',
             'worker_php' => '8.5',
             'node' => ['22', '24'],
-            'workers' => ['laravel' => ['horizon', 'queue', 'scheduler'], 'symfony' => ['messenger', 'scheduler']],
+            'python' => ['3.12', '3.13'],
+            'python_installable' => ['3.12', '3.13', '3.14'],
+            'python_patches' => ['3.12' => '3.12.12', '3.13' => '3.13.5'],
+            'workers' => ['laravel' => ['horizon', 'queue', 'scheduler'], 'symfony' => ['messenger', 'scheduler'], 'django' => ['celery', 'celerybeat'], 'flask' => ['celery', 'celerybeat']],
             'panel_units' => [],
         ])->byDefault();
         $this->agent->shouldReceive('call')->with('sys.services')->andReturn([])->byDefault();
@@ -163,5 +168,105 @@ class RuntimeModesTest extends TestCase
         $app = Service::sole();
         $this->assertSame(['service' => 'app', 'domain' => 'n.example.com'], $app->agentParams());
         $this->assertSame('Node 22 · n.example.com', $app->label());
+    }
+
+    public function test_creating_a_django_site_sends_the_python_version_and_its_app(): void
+    {
+        $this->agent->shouldReceive('call')->once()
+            ->with('site.create', ['domain' => 'dj.example.com', 'mode' => 'python', 'framework' => 'django', 'python_version' => '3.12', 'python_app' => 'shop.wsgi:application', 'tls' => 'auto'])
+            ->andReturn(['mode' => 'python', 'framework' => 'django', 'python_version' => '3.12', 'python_app' => 'shop.wsgi:application', 'port' => 30002, 'system_user' => 'web_dj_example_com']);
+
+        $page = $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'dj.example.com', 'mode' => 'python'])
+            ->assertSet('data.framework', 'django');
+        $this->fillForm($page, ['python_version' => '3.12', 'python_app' => 'shop.wsgi:application'])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $site = Site::sole();
+        $this->assertSame(SiteMode::Python, $site->mode);
+        $this->assertSame('shop.wsgi:application', $site->python_app);
+        $this->assertSame('Python 3.12', $site->runtimeLabel());
+    }
+
+    public function test_a_python_app_must_be_module_and_object(): void
+    {
+        $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
+
+        $page = $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'f.example.com', 'mode' => 'python']);
+        $this->fillForm($page, ['framework' => 'flask', 'python_version' => '3.13', 'python_app' => 'app:create_app()'])
+            ->call('save')
+            ->assertHasErrors(['data.python_app']);
+    }
+
+    public function test_a_python_sites_version_and_app_are_changed_from_its_settings(): void
+    {
+        $site = Site::create(['domain' => 'p.example.com', 'mode' => 'python', 'framework' => 'fastapi', 'python_version' => '3.12', 'port' => 30003, 'status' => 'active']);
+        $this->agent->shouldReceive('call')->once()->with('site.set_version', ['domain' => 'p.example.com', 'version' => '3.13'])
+            ->andReturn(['mode' => 'python', 'framework' => 'fastapi', 'python_version' => '3.13', 'port' => 30003]);
+        $this->agent->shouldReceive('call')->once()->with('site.python_app', ['domain' => 'p.example.com', 'app' => 'api.main:app'])
+            ->andReturn(['domain' => 'p.example.com', 'app' => 'api.main:app', 'started' => true]);
+
+        $this->siteSetting($site, 'setVersion', ['version' => '3.13'])->assertHasNoErrors();
+        $this->siteSetting($site->refresh(), 'pythonApp', ['python_app' => 'api.main:app'])->assertHasNoErrors();
+
+        $site->refresh();
+        $this->assertSame('3.13', $site->python_version);
+        $this->assertSame('api.main:app', $site->python_app);
+        $phpSettings = collect(SiteActions::settings())->first(fn ($a) => $a->getName() === 'phpSettings');
+        $this->assertTrue($phpSettings->isHidden($site));
+    }
+
+    public function test_python_is_installed_from_the_modules_page(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('python.install', ['version' => '3.14'])->andReturn(['job_id' => 'j1']);
+        $jobs = Mockery::mock(AgentJobs::class);
+        $jobs->shouldReceive('await')->once()->with('j1', 120)->andReturn(['version' => '3.14', 'changed' => true]);
+        $this->app->instance(AgentJobs::class, $jobs);
+
+        Livewire::test(ModulesPage::class)
+            ->assertSee('Python 3.13')
+            ->call('mountAction', 'installPython')
+            ->assertSet('mountedActions.0.data.version', '3.14')
+            ->call('callMountedAction')
+            ->assertHasNoErrors();
+    }
+
+    public function test_python_is_upgraded_to_its_newest_patch_from_the_modules_page(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('python.upgrade', ['version' => '3.13'])->andReturn(['job_id' => 'j2']);
+        $jobs = Mockery::mock(AgentJobs::class);
+        $jobs->shouldReceive('await')->once()->with('j2', 120)
+            ->andReturn(['version' => '3.13', 'from' => '3.13.5', 'to' => '3.13.18', 'changed' => true, 'restarted' => ['wspanel-web_a-app.service']]);
+        $this->app->instance(AgentJobs::class, $jobs);
+
+        Livewire::test(ModulesPage::class)
+            ->assertSee('Python 3.13.5')
+            ->call('mountAction', 'upgradePython')
+            ->assertSet('mountedActions.0.data.version', '3.13')
+            ->call('callMountedAction')
+            ->assertHasNoErrors()
+            ->assertNotified();
+    }
+
+    public function test_a_celery_worker_takes_the_sites_celery_app(): void
+    {
+        $flask = Site::create(['domain' => 'f.example.com', 'mode' => 'python', 'framework' => 'flask', 'python_version' => '3.13', 'port' => 30004, 'status' => 'active']);
+        $django = Site::create(['domain' => 'd.example.com', 'mode' => 'python', 'framework' => 'django', 'python_version' => '3.13', 'port' => 30005, 'status' => 'active']);
+        $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'f.example.com', 'worker' => 'celery', 'app' => 'tasks:celery'])
+            ->andReturn(['started' => false, 'app' => 'tasks:celery']);
+        $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'd.example.com', 'worker' => 'celerybeat'])
+            ->andReturn(['started' => true, 'app' => 'shop']);
+
+        // Flask has no convention: the app is required and checked.
+        $this->tableAction(Livewire::test(ListSites::class), $flask, 'addWorker', ['worker' => 'celery'])
+            ->assertHasErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $flask, 'addWorker', ['worker' => 'celery', 'app' => 'tasks; rm -rf /'])
+            ->assertHasErrors();
+        $this->tableAction(Livewire::test(ListSites::class), $flask, 'addWorker', ['worker' => 'celery', 'app' => 'tasks:celery'])
+            ->assertHasNoErrors()
+            ->assertNotified();
+        // Django: the project package, nothing to fill in.
+        $this->tableAction(Livewire::test(ListSites::class), $django, 'addWorker', ['worker' => 'celerybeat'])
+            ->assertHasNoErrors();
     }
 }

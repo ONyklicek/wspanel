@@ -20,9 +20,14 @@
      nejnovější nainstalovaná), protože CLI zabudované ve FrankenPHP neumí signály a
      workery by se při deployi nezastavily čistě.
    - **Node SSR:** Nuxt, Next.js nebo vlastní `server.js` jako stále běžící proces.
-4. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js nebo Node.
+   - **Python:** Django, Flask nebo FastAPI pod gunicornem (uvicornem u FastAPI),
+     případně vlastní `app.py`. Nabízí se, až je na serveru Python
+     (viz [Python weby](#python-weby)).
+4. **Typ aplikace:** Laravel, Symfony, Čisté PHP, Nuxt, Next.js, Node, Django,
+   Flask, FastAPI nebo Python.
    Podle typu panel připraví adresáře, `.env`, workery a postup deploye.
 5. **Workery** (jen Laravel a Symfony): co má běžet od prvního deploye.
+   Celery pro Python weby přidáte u webu po založení.
    Předvybrané jsou fronta a plánovač (Laravel), resp. Messenger a plánovač
    (Symfony); dál Horizon, Reverb a Pulse. Horizon nahrazuje frontu, obojí
    najednou vybrat nejde. Horizon a Pulse ingest zapnou Valkey webu. Další
@@ -318,14 +323,14 @@ Příklad: WordPress
     initial/public/index.php      # úvodní stránka do prvního deploye / nahrání
     20261107T140000Z/              # releasy z deployů
   shared/
-    .env                          # Laravel, Čisté PHP, Node (Symfony: .env.local)
+    .env                          # Laravel, Čisté PHP, Node, Python (Symfony: .env.local)
     storage/                      # Laravel: nahrané soubory, cache, logy
     var/log/                      # Symfony: logy
   logs/php-error.log              # PHP chyby
   tmp/                            # dočasné soubory, sessions
 ```
 
-Kořen webu (document root) je vždy `current/public/` (u Node webů `current/`).
+Kořen webu (document root) je vždy `current/public/` (u Node a Python webů `current/`).
 Soubory mimo `public/` nejsou z webu přístupné. Proxy smí číst jen `public/`.
 
 **Soubory můžete kdykoli upravit** přes SFTP/SSH, panel je nezamyká. Pozor:
@@ -368,7 +373,7 @@ tlačítko, které otevře její úpravu. Každá úprava má i vlastní adresu
 - **Restartovat:**
   - **classic:** PHP-FPM se plynule znovu načte. Rozpracované požadavky doběhnou
     a vyprázdní se OPcache, takže je to bez výpadku.
-  - **worker a Node:** restart procesu aplikace, pár sekund výpadek.
+  - **worker, Node a Python:** restart procesu aplikace, pár sekund výpadek.
   - Volitelně se restartují i workery. Hodí se po změně `.env`.
 
 ## Procesy a workery
@@ -471,7 +476,7 @@ s Redisem): **Nastavení → Výkon a ladění → Valkey**.
   - Laravel / Čisté PHP: `REDIS_CLIENT=phpredis`, `REDIS_HOST=127.0.0.1`,
     `REDIS_PORT`, `REDIS_PASSWORD`,
   - Symfony: `REDIS_URL=redis://:<heslo>@127.0.0.1:<port>`,
-  - Node: `REDIS_URL` a `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
+  - Node a Python: `REDIS_URL` a `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`.
   Ručně je najdete v **Přístupové údaje** webu.
 - Detail webu ukazuje obsazenou paměť a počet klíčů, odtud jde Valkey
   vyprázdnit nebo restartovat.
@@ -590,6 +595,54 @@ požadavků měřit (na produkci jen část, měření požadavek zpomalí).
   jako dřív.
 - **Změnit verzi PHP** (classic): nový FPM pool vedle starého, bez výpadku.
 - **Změnit verzi Node:** restart procesu.
+- **Změnit verzi Pythonu:** platí od příštího deploye, protože virtualenv
+  releasu je postavený pro konkrétní verzi.
+
+## Python weby
+
+Python není v základní instalaci. Doinstalujete ho v **Server → Moduly →
+Nainstalovat Python** (nebo při instalaci `install.sh --python=3.13`). Agent
+stáhne [uv](https://docs.astral.sh/uv/) (správce Pythonu od Astralu, ověřený
+otiskem sha256) a zvolenou verzi CPythonu do `/opt/uv/python`. Další verze
+přidáte stejným tlačítkem; nabízí se 3.12, 3.13 a 3.14.
+
+- **Spuštění:** Django a Flask běží pod gunicornem, FastAPI pod uvicornem,
+  vždy z virtualenvu releasu (`current/.venv`), na portu, který přidělí agent.
+  Typ **Python** spouští `app.py`, který poslouchá na `$HOST:$PORT` sám.
+- **Aplikace (modul:objekt):** co server načte. Prázdné = zvyklost frameworku:
+  u Djanga se projekt zjistí z `manage.py` při prvním deployi
+  (`mysite.wsgi:application`), Flask `app:app`, FastAPI `main:app`. Změníte
+  v Nastavení → **Aplikace Pythonu**.
+- **Deploy:** každý release dostane vlastní `.venv`, závislosti instaluje uv
+  pod uživatelem webu:
+  - `uv.lock`: `uv sync --locked --no-dev`,
+  - jinak `pyproject.toml`: `uv sync --no-dev`,
+  - jinak `requirements.txt`: `uv pip install -r requirements.txt`.
+
+  Chybí-li v závislostech gunicorn (uvicorn), doinstaluje se. Django pak
+  spustí `manage.py migrate` (volba Migrace) a `collectstatic` (volba
+  Statické soubory; potřebuje `STATIC_ROOT`, statiku servíruje aplikace, např.
+  WhiteNoise). U ostatních se s volbou Migrace spustí `alembic upgrade head`,
+  má-li repozitář `alembic.ini`. Přepnutí je bez výpadku: nový release naběhne
+  ve druhém slotu a proxy se přepne, až odpovídá.
+- **Konfigurace:** `shared/.env` se nalinkuje do releasu jako `.env`. Python ho
+  sám nečte: použijte `python-dotenv` nebo `django-environ`.
+- **Úlohy:** u Djanga `python manage.py …`, jinak Python skript webu (cesta
+  relativně k releasu); běží v `.venv` releasu.
+- **SSH:** příkaz `python` je Python z `.venv` běžícího releasu
+  (`python manage.py shell`).
+- **Celery:** Další → **Přidat worker** → *Celery* (úlohy z fronty) a *Celery
+  beat* (plánované úlohy). Běží z `.venv` releasu, jako workery PHP webů: po
+  deployi starý worker dokončí rozdělané úlohy se starým kódem a nové bere už
+  nový. Beat běží vždy jen jeden a jeho stav (`tmp/celerybeat-schedule`) deploy
+  nepřepíše. Aplikace Celery (`-A`) platí pro všechny Celery workery webu:
+  u Djanga je to balíček projektu (jeho `celery.py`), u ostatních ji zadáte
+  (např. `tasks` nebo `tasks:celery`). Broker (Valkey webu nebo jiný) si
+  nastavíte v aplikaci.
+- **Aktualizace Pythonu:** Server → Moduly → **Aktualizovat Python** stáhne
+  nejnovější opravné vydání (např. 3.13.5 → 3.13.18). Virtualenvy zůstanou,
+  protože stojí na odkazu verze (`cpython-3.13-…`), ne na konkrétním vydání.
+  Weby na té verzi se restartují na nový interpret a staré sestavení se smaže.
 
 ## Smazání webu
 

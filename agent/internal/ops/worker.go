@@ -19,7 +19,7 @@ import (
 // workerSpec is a whitelisted long-running command for a framework.
 type workerSpec struct {
 	Entry       string   // file relative to the release that must exist to start
-	Args        []string // arguments after the PHP binary
+	Args        []string // arguments after the PHP binary (Python: after the release's .venv python)
 	StopTimeout int      // seconds to finish the current job on stop
 }
 
@@ -38,20 +38,42 @@ var workerSpecs = map[string]map[string]workerSpec{
 		"messenger": {"bin/console", []string{"bin/console", "messenger:consume", "async", "--time-limit=3600", "--memory-limit=256M"}, 60},
 		"scheduler": {"bin/console", []string{"bin/console", "messenger:consume", "scheduler_default", "--time-limit=3600"}, 30},
 	},
+	"django":  celerySpecs,
+	"flask":   celerySpecs,
+	"fastapi": celerySpecs,
+	"python":  celerySpecs,
 }
 
+// celerySpecs: Celery's worker and its beat scheduler, run by the release's
+// own virtualenv ({celery} = the site's Celery app, see celeryApp). A worker
+// stopped with SIGTERM finishes the tasks it holds (warm shutdown). Beat keeps
+// its schedule state outside the release, so a deploy does not reset it.
+var celerySpecs = map[string]workerSpec{
+	"celery":     {".venv/bin/celery", []string{"-m", "celery", "-A", "{celery}", "worker", "--loglevel=INFO", "--concurrency={concurrency}"}, 60},
+	"celerybeat": {".venv/bin/celery", []string{"-m", "celery", "-A", "{celery}", "beat", "--loglevel=INFO", "--schedule={home}/tmp/celerybeat-schedule"}, 30},
+}
+
+// celeryWorkers need the site's Celery app.
+var celeryWorkers = []string{"celery", "celerybeat"}
+
 // WorkerTypes lists all known worker types (for validation messages / UI).
-var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "messenger"}
+var WorkerTypes = []string{"horizon", "queue", "scheduler", "reverb", "pulse", "pulsework", "messenger", "celery", "celerybeat"}
 
 type workerParams struct {
 	Domain string `json:"domain"`
 	Worker string `json:"worker"`
 	// HTTPS port browsers use for the site (Reverb's client settings); 0 = 443.
 	PublicPort int `json:"public_port,omitempty"`
+	// Celery workers: the Celery app (-A), stored for the site; empty = the
+	// one it has (Django: its project package).
+	App string `json:"app,omitempty"`
 }
 
 // workerUnitData builds the unit for a worker, run by workerPHP.
 func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitData {
+	if l.Mode == "python" {
+		return pythonWorkerUnitData(env, l, typ, spec)
+	}
 	php := workerPHP(env, l)
 	args := strings.Join(spec.Args, " ")
 	extra := noBindExtra
@@ -121,6 +143,14 @@ func workerCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, er
 		}
 	}()
 	out := map[string]any{"worker": p.Worker, "domain": p.Domain}
+	if slices.Contains(celeryWorkers, p.Worker) {
+		if l, err = setCeleryApp(ctx, env, st0, p.App, &rollback); err != nil {
+			return nil, err
+		}
+		out["app"] = celeryApp(l)
+	} else if p.App != "" {
+		return nil, protocol.Invalid("app: only Celery workers take an app")
+	}
 	if p.Worker == "reverb" {
 		// Port + edge route first; the state change is rolled back with the edge.
 		st, _, lerr := loadSite(env, p.Domain)

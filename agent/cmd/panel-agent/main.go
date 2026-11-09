@@ -40,6 +40,7 @@ func main() {
 	backupManifest := flag.String("server-backup-manifest", "", "print what a server backup holds (recovery key in WSPANEL_RECOVERY_KEY) and exit")
 	restoreState := flag.String("server-restore", "", "restore a server backup's state onto this server (wspanel-restore; the agent stopped)")
 	restoreData := flag.String("server-restore-data", "", "after -server-restore: restore the sites, databases and mail of that server backup")
+	pythonInstall := flag.String("python-install", "", "install these CPython versions (comma-separated, e.g. 3.13) with uv and exit (install.sh --python)")
 	backupsDir := flag.String("backups", "", "with -server-restore-data: a copy of the old server's /var/backups/wspanel instead of the off-site storage")
 	flag.Parse()
 	if *mountBind != "" || *mountUnbind != "" {
@@ -61,6 +62,13 @@ func main() {
 	}
 	if *backupManifest != "" || *restoreState != "" || *restoreData != "" {
 		if err := runServerRestore(*cfgPath, *backupManifest, *restoreState, *restoreData, *backupsDir); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *pythonInstall != "" {
+		if err := runPythonInstall(*cfgPath, *pythonInstall); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -223,6 +231,7 @@ func runSiteBackupMode(cfgPath, domain string, log *slog.Logger) error {
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
 		"systemctl":          "/usr/bin/systemctl",
+		"uv":                 cfg.UVBin, // python.install (as root: uv itself, the interpreters into /opt/uv/python)
 		"useradd":            "/usr/sbin/useradd",
 		"userdel":            "/usr/sbin/userdel",
 		"usermod":            "/usr/sbin/usermod",
@@ -300,6 +309,28 @@ func dryResponder(c executor.Call) (executor.Result, error) {
 
 // runServerRestore: the steps of wspanel-restore. The recovery key comes in
 // WSPANEL_RECOVERY_KEY (64 hex digits), never on the command line.
+// runPythonInstall: install.sh's --python, through the same op the panel uses.
+func runPythonInstall(cfgPath, versions string) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	env := &ops.Env{Cfg: cfg, Exec: executor.NewReal(binaries(cfg), []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}), FS: &fsx.FS{DryRun: cfg.DryRun}}
+	for _, v := range strings.Split(versions, ",") {
+		raw, _ := json.Marshal(map[string]string{"version": strings.TrimSpace(v)})
+		out, err := ops.Registry()["python.install"].Handle(context.Background(), env, raw)
+		if err != nil {
+			return fmt.Errorf("Python %s: %w", v, err)
+		}
+		if m, ok := out.(map[string]any); ok && m["changed"] == true {
+			fmt.Println("installed Python " + v)
+		} else {
+			fmt.Println("Python " + v + " is installed already")
+		}
+	}
+	return nil
+}
+
 func runServerRestore(cfgPath, manifestOf, statePath, dataPath, backupsDir string) error {
 	key, err := hex.DecodeString(strings.TrimSpace(os.Getenv("WSPANEL_RECOVERY_KEY")))
 	if err != nil || len(key) != 32 {

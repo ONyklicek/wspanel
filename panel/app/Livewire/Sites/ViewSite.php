@@ -7,7 +7,6 @@ use App\Actions\Sites\ManagePhpSettings;
 use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\Framework;
-use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Models\Database;
 use App\Models\Deployment;
@@ -79,7 +78,7 @@ class ViewSite extends ViewPage
                             .($site->health_error ? ' · '.$site->health_error : ''),
                     }),
                 TextEntry::make('runtime')->label(__('Běží na'))->state(fn () => $site->runtimeLabel()
-                    .($site->mode === SiteMode::Node && $site->port ? " · 127.0.0.1:{$site->port}" : '')),
+                    .($site->mode->isApp() && $site->port ? " · 127.0.0.1:{$site->port}" : '')),
                 TextEntry::make('framework')->label(__('Typ aplikace'))->state(fn () => $site->framework->getLabel())->badge()->color('gray'),
                 TextEntry::make('system_user')->label(__('Systémový uživatel'))->copyable(),
                 TextEntry::make('home')->label(__('Adresář webu'))->copyable(),
@@ -102,7 +101,7 @@ class ViewSite extends ViewPage
                     ])->filter()->join(' · ') ?: __('veřejný web')),
                 TextEntry::make('php_settings')->label(__('PHP nastavení'))
                     ->state(fn () => ManagePhpSettings::summary($site))
-                    ->visible($site->mode !== SiteMode::Node),
+                    ->visible(! $site->mode->isApp()),
             ]),
             Section::make('access')->label(__('Přístup a služby'))->icon('outline:key')->columns(2)->schema([
                 TextEntry::make('ssh_access')->label('SSH / SFTP')->state(fn () => $site->ssh_access->getLabel())->badge()->color($site->ssh_access->getColor()),

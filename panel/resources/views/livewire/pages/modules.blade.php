@@ -26,6 +26,20 @@
             <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --xhprof=yes</span>.</p>
         </div>
     </x-wire::section>
+    <x-wire::section :heading="__('Python (weby v Djangu, Flasku, FastAPI)')">
+        <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+            <p>{{ __('Režim webu Python: aplikace běží pod gunicornem nebo uvicornem jako vlastní proces, každý release má vlastní virtualenv a deploy probíhá bez výpadku. Python a uv se na server dostanou až tímto krokem, základní instalace je bez nich.') }}</p>
+            <p>{{ __('Úlohy na pozadí: u webu přidejte worker Celery (a Celery beat pro plánované úlohy). Opravná vydání Pythonu nainstaluje tlačítko Aktualizovat Python.') }}</p>
+            <p>
+                {{ __('Stav:') }}
+                <x-wire::badge :color="$this->pythonVersions() !== [] ? 'success' : 'gray'">{{ $this->pythonVersions() !== [] ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge>
+                @if ($this->pythonVersions() !== [])
+                    · {{ implode(', ', $this->pythonLabels()) }}
+                @endif
+            </p>
+            <p class="text-xs text-gray-500">{{ __('Při instalaci:') }} <span class="font-mono">install.sh --python=3.13</span>.</p>
+        </div>
+    </x-wire::section>
     <x-wire::section :heading="__('Databázové servery')">
         <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
             <p>{{ __('Nainstalované:') }} {{ implode(', ', $this->dbEngines()) ?: __('žádný') }}{{ __('. Další doinstalujete v Hosting → Databáze → Servery (při instalaci') }} <span class="font-mono">--db=mariadb,postgres</span>).</p>

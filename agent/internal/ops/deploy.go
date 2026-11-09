@@ -355,7 +355,7 @@ func deployRun(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 			}
 			// A ready release (a copy from another site, a CI build): nothing to
 			// fetch or build, the defaults do.
-			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true, Migrate: st.Framework == "laravel" || st.Framework == "symfony"}
+			st.Deploy = &deployConfig{Keep: 5, AutoRollback: true, Migrate: st.Framework == "laravel" || st.Framework == "symfony" || st.Framework == "django", Assets: st.Framework == "django"}
 		}
 		if p.Artifact == "" && st.Deploy.Repo == "" {
 			return protocol.Invalid("no repository is set for " + p.Domain + "; it deploys only artifacts from CI")
@@ -622,7 +622,7 @@ func (d *deployment) build(ctx context.Context) error {
 	if d.artifact != "" {
 		d.logf("\n==> Build\nskipped: the artifact was built in CI (vendor/ and assets included)\n")
 	}
-	if d.artifact == "" && l.Framework != "nuxt" && l.Framework != "next" && l.Framework != "node" && d.exists("composer.json") {
+	if d.artifact == "" && (l.Mode == "classic" || l.Mode == "worker") && d.exists("composer.json") {
 		// Symfony's composer scripts (cache:clear) boot the kernel: in prod, per the Symfony deployment docs.
 		var composerEnv []string
 		if l.Framework == "symfony" {
@@ -643,6 +643,9 @@ func (d *deployment) build(ctx context.Context) error {
 		if err := d.step(ctx, "npm run build", dir, []string{"NODE_ENV=production"}, d.npm(), "run", "build", "--if-present"); err != nil {
 			return err
 		}
+	}
+	if l.Mode == "python" {
+		return d.buildPython(ctx)
 	}
 	switch l.Framework {
 	case "laravel":
@@ -801,7 +804,7 @@ func (d *deployment) restartServices(ctx context.Context) {
 				units = append(units, l.AppUnit)
 			}
 		}
-	case "node":
+	case "node", "python":
 		if l.Disabled {
 			units = append(units, l.AppUnit)
 			break

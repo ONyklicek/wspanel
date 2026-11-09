@@ -30,6 +30,8 @@ class CronJob extends Model
         return match ($this->kind) {
             'artisan' => 'php artisan '.implode(' ', $this->args),
             'console' => 'php bin/console '.implode(' ', $this->args),
+            'manage' => 'python manage.py '.implode(' ', $this->args),
+            'python' => 'python '.implode(' ', $this->args),
             default => 'php '.implode(' ', $this->args),
         };
     }
@@ -41,7 +43,7 @@ class CronJob extends Model
      */
     public static function splitArgs(string $command): array
     {
-        $command = (string) preg_replace('~^\s*(php\s+)?(artisan|bin/console)\s+~', '', $command);
+        $command = (string) preg_replace('~^\s*((php|python3?)\s+)?(artisan|bin/console|manage\.py)\s+~', '', $command);
 
         return array_values(array_filter(preg_split('/\s+/', trim($command)) ?: [], fn (string $a) => $a !== ''));
     }

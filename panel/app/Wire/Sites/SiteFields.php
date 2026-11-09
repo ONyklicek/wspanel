@@ -119,7 +119,30 @@ final class SiteFields
                 ->visibleWhen('mode', SiteMode::Node->value)
                 ->requiredIf('mode', SiteMode::Node->value)
                 ->rules([fn () => Rule::in(array_keys($system->nodeVersionOptions()))]),
+            Callout::make()->warning()->heading(__('Na serveru zatím není Python'))
+                ->content(__('Doinstalujete ho v Server → Moduly (Python), pak tu půjde vybrat verzi.'))
+                ->visible(fn ($get) => $get('mode') === SiteMode::Python->value && $system->pythonVersionOptions() === []),
+            Select::make('python_version')
+                ->label(__('Verze Pythonu'))
+                ->options(fn () => $system->pythonVersionOptions())
+                ->default(fn () => array_key_first($system->pythonVersionOptions()))
+                ->visibleWhen('mode', SiteMode::Python->value)
+                ->requiredIf('mode', SiteMode::Python->value)
+                ->rules([fn () => Rule::in(array_keys($system->pythonVersionOptions()))]),
+            self::pythonApp()
+                ->visible(fn ($get) => $get('mode') === SiteMode::Python->value && (Framework::tryFrom((string) $get('framework'))?->loadsPythonApp() ?? false)),
         ];
+    }
+
+    /** The WSGI/ASGI target of a Django, Flask or FastAPI site. */
+    public static function pythonApp(): TextInput
+    {
+        return TextInput::make('python_app')
+            ->label(__('Aplikace (modul:objekt)'))
+            ->placeholder(__('podle frameworku: Django ze souboru manage.py, Flask app:app, FastAPI main:app'))
+            ->rules(['nullable', 'max:120', 'regex:/^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*){0,5}:[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*){0,3}$/'])
+            ->validationMessages(['regex' => __('Ve tvaru modul:objekt, např. mysite.wsgi:application nebo main:app.')])
+            ->helperText(__('Co načte gunicorn (Django, Flask) nebo uvicorn (FastAPI). Prázdné = zvyklost frameworku.'));
     }
 
     /** Workers preselected for a new site: what nearly every app of the kind runs. */
@@ -135,7 +158,7 @@ final class SiteFields
             ->label(__('Workery'))
             ->options(fn ($get) => SiteActions::workerOptions((string) $get('framework')))
             ->default(array_values(array_unique(array_merge(...array_values(self::DEFAULT_WORKERS)))))
-            ->visible(fn ($get) => $get('mode') !== SiteMode::Node->value && isset(self::DEFAULT_WORKERS[(string) $get('framework')]))
+            ->visible(fn ($get) => ! (SiteMode::tryFrom((string) $get('mode'))?->isApp() ?? false) && isset(self::DEFAULT_WORKERS[(string) $get('framework')]))
             ->rules([fn ($get) => function (string $attribute, mixed $value, \Closure $fail) {
                 $chosen = (array) $value;
                 if (in_array('horizon', $chosen, true) && in_array('queue', $chosen, true)) {

@@ -308,7 +308,7 @@ class FileBrowser extends Component
     {
         return match ($this->getSite()->framework->value) {
             'symfony' => 'shared/.env.local',
-            'laravel', 'php', 'node', 'nuxt', 'next' => 'shared/.env',
+            'laravel', 'php', 'node', 'nuxt', 'next', 'django', 'flask', 'fastapi', 'python' => 'shared/.env',
             default => null,
         };
     }

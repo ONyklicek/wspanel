@@ -70,7 +70,7 @@ class ManageDeploys
         $lines = is_array($commands) ? $commands : (preg_split('/\R/', $commands) ?: []);
 
         return array_values(array_filter(array_map(
-            fn ($line) => trim((string) preg_replace('~^(php\s+)?(artisan|bin/console)\s+~', '', trim((string) $line))),
+            fn ($line) => trim((string) preg_replace('~^((php|python3?)\s+)?(artisan|bin/console|manage\.py)\s+~', '', trim((string) $line))),
             $lines,
         ), fn ($line) => $line !== ''));
     }

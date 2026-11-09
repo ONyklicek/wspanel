@@ -68,6 +68,8 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
             $site === null => [],
             $site->framework === Framework::Laravel => ['artisan' => 'php artisan …', 'php' => 'PHP skript webu'],
             $site->framework === Framework::Symfony => ['console' => 'php bin/console …', 'php' => 'PHP skript webu'],
+            $site->framework === Framework::Django => ['manage' => 'python manage.py …', 'python' => __('Python skript webu')],
+            $site->mode === SiteMode::Python => ['python' => __('Python skript webu')],
             default => ['php' => 'PHP skript webu'],
         };
 
@@ -76,7 +78,7 @@ final class CronJobResource implements DescribesResource, ProvidesNavigation, Pr
                 ->options(Site::query()->where('status', 'active')->where('mode', '!=', SiteMode::Node)->orderBy('domain')->pluck('domain', 'id')->all()),
             Select::make('kind')->rules([Options::rule()])->label(__('Typ'))->required()->live()->options(fn ($get) => $kinds(Site::find($get('site_id')))),
             TextInput::make('command')
-                ->label(__('Příkaz a argumenty (u PHP skriptu cesta relativně k releasu)'))
+                ->label(__('Příkaz a argumenty (u skriptu cesta relativně k releasu)'))
                 ->placeholder('backup:run --only-db')
                 ->required()
                 ->rules(['regex:/^[A-Za-z0-9:_.\/=@,+\- ]+$/'])

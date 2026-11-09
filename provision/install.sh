@@ -3,7 +3,7 @@
 #
 #   install.sh --db=mariadb,postgres --php=8.3,8.4 --panel-domain=panel.example.com \
 #              --acme-email=admin@example.com --agent-bin=./panel-agent-linux-amd64 \
-#              [--node=22,24] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
+#              [--node=22,24] [--python=3.13] [--panel-source=./panel] [--ssh-port=22] [--no-root-ssh] [--local-certs]
 #              [--panel-port=8443] [--clients=yes] [--mail-hosting=yes]
 #
 # Panel address:
@@ -51,6 +51,7 @@ PANEL_PHP="8.4" # the panel itself always runs on this version
 DB="none"
 PHP_VERSIONS="8.4"
 NODE_VERSIONS="22,24"
+PYTHON_VERSIONS="none"
 PANEL_DOMAIN=""
 PANEL_PORT=443
 CLIENTS=no
@@ -96,6 +97,7 @@ for arg in "$@"; do
     --db=*) DB="${arg#*=}" ;;
     --php=*) PHP_VERSIONS="${arg#*=}" ;;
     --node=*) NODE_VERSIONS="${arg#*=}" ;; # Node majors for SSR sites, "none" to skip
+    --python=*) PYTHON_VERSIONS="${arg#*=}" ;; # Python versions for Python sites (uv); "none" = later from Server → Moduly
     --panel-domain=*) PANEL_DOMAIN="${arg#*=}" ;;
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
@@ -179,6 +181,12 @@ NODE_LIST=()
 if [[ "$NODE_VERSIONS" != "none" ]]; then
   IFS=',' read -r -a NODE_LIST <<< "$NODE_VERSIONS"
   for v in "${NODE_LIST[@]}"; do [[ "$v" =~ ^[0-9]{2}$ ]] || die "invalid Node major: $v"; done
+fi
+
+PYTHON_LIST=()
+if [[ "$PYTHON_VERSIONS" != "none" ]]; then
+  IFS=',' read -r -a PYTHON_LIST <<< "$PYTHON_VERSIONS"
+  for v in "${PYTHON_LIST[@]}"; do [[ "$v" =~ ^3\.[0-9]{2}$ ]] || die "invalid Python version: $v (e.g. 3.13)"; done
 fi
 
 ARCH="$(uname -m)"
@@ -581,6 +589,14 @@ mariadb_socket=/run/mysqld/mysqld.sock
 postgres_os_user=postgres
 CONF
 chmod 0600 /etc/panel-agent/db.conf
+
+# ---------------------------------------------------------------- Python (uv)
+# Only when asked for: uv (pinned in the agent, sha256-checked) and CPython
+# builds in /opt/uv/python, the same way Server → Moduly installs them later.
+if [[ ${#PYTHON_LIST[@]} -gt 0 ]]; then
+  log "Python ${PYTHON_LIST[*]} (uv)"
+  /usr/sbin/panel-agent -config /etc/panel-agent/agent.json -python-install "$(IFS=,; echo "${PYTHON_LIST[*]}")"
+fi
 # The unit: wspanel-agent's (/usr/lib/systemd/system; changes with
 # systemctl edit panel-agent), or for an agent from source one in /etc.
 if agent_packaged; then

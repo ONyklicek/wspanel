@@ -171,7 +171,7 @@ func siteRestart(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	}
 	// Node: through the other slot, so visitors never see the restart.
 	skipApp := false
-	if l.Mode == "node" && !l.Disabled && fsx.Exists(l.AppUnitFile) {
+	if validate.AppMode(l.Mode) && !l.Disabled && fsx.Exists(l.AppUnitFile) {
 		d := &deployment{env: env, l: l, log: io.Discard}
 		if switched, err := d.blueGreenNode(ctx); err == nil && switched {
 			done = append(done, d.l.AppUnit+" (zero-downtime)")

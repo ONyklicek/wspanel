@@ -10,8 +10,9 @@ import (
 
 // writeToolLinks maintains /etc/panel-sites/bin/<user>, which /etc/profile.d
 // puts first on the site user's PATH: `php` is the site's PHP (FPM CLI of the
-// same version, or FrankenPHP's own PHP CLI in worker mode) and node/npm/npx the
-// site's Node (or the newest installed, for asset builds of PHP sites).
+// same version, or FrankenPHP's own PHP CLI in worker mode), python the release's
+// virtualenv (Python sites) and node/npm/npx the site's Node (or the newest
+// installed, for asset builds of PHP and Python sites).
 // Root-owned: the user can use the links, not change them.
 func writeToolLinks(env *Env, l siteLayout) error {
 	dir := filepath.Join(env.Cfg.ToolsDir, l.User)
@@ -38,6 +39,14 @@ func writeToolLinks(env *Env, l siteLayout) error {
 		wrapper := "#!/bin/sh\nexec " + env.Cfg.FrankenPHPBin + " php-cli \"$@\"\n"
 		if err := env.FS.WriteFile(filepath.Join(tmp, "php"), []byte(wrapper), 0o755, fsx.Root); err != nil {
 			return err
+		}
+	}
+	if l.Mode == "python" {
+		// The release's virtualenv: manage.py, pip list, … over SSH as the app sees them.
+		for _, tool := range []string{"python", "python3"} {
+			if err := env.FS.Symlink(filepath.Join(l.Home, "current", ".venv", "bin", "python"), filepath.Join(tmp, tool), fsx.Root); err != nil {
+				return err
+			}
 		}
 	}
 	versions := nodeVersions(env.Cfg)

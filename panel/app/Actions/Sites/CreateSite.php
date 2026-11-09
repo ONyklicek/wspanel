@@ -28,7 +28,7 @@ class CreateSite
      * A client's site counts against its package (sites, modes, PHP versions);
      * an admin may create one for a client by passing client_id.
      *
-     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string, tls?: string, client_id?: ?int}  $data
+     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string, python_version?: ?string, python_app?: ?string, tls?: string, client_id?: ?int}  $data
      *
      * @throws LimitReachedException
      */
@@ -64,6 +64,8 @@ class CreateSite
             'framework' => $data['framework'],
             'php_version' => $params['php_version'] ?? null,
             'node_version' => $params['node_version'] ?? null,
+            'python_version' => $params['python_version'] ?? null,
+            'python_app' => $params['python_app'] ?? null,
             'status' => SiteStatus::Pending,
             'tls_mode' => $params['tls'] ?? 'auto',
             'client_id' => $owner?->id,

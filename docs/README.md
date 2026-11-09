@@ -1,7 +1,7 @@
 # WSPanel – dokumentace
 
 WSPanel je hostingový panel pro jeden server s Debianem 13. Spravuje weby (PHP,
-Laravel, Symfony, Node), databáze, deploy z Gitu, poštu, DNS, SSH/SFTP,
+Laravel, Symfony, Node, Python), databáze, deploy z Gitu, poštu, DNS, SSH/SFTP,
 certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 
 ## Pro koho je co
@@ -32,7 +32,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 
 - **Web** = jedna doména. Má vlastního systémového uživatele `web_<doména>`
   (tečky a pomlčky nahrazené podtržítkem), vlastní adresář
-  `/srv/sites/<doména>` a vlastní PHP/Node proces. Weby se navzájem nevidí.
+  `/srv/sites/<doména>` a vlastní PHP/Node/Python proces. Weby se navzájem nevidí.
 - **Release** = jedna nasazená verze aplikace v `releases/<čas>`. Odkaz
   `current` ukazuje na tu, která právě běží.
 - **Shared** = `shared/` se soubory, které přežijí každý deploy: `.env`,
@@ -59,7 +59,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Služby** | všechny systemd služby včetně workerů webů (start/stop/restart) |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané; noční šifrovaná záloha serveru a pošty, klíč pro obnovu (obnova po havárii: `install --restore`) |
-| **Server → Moduly** | doinstalování klientů, pošty, XHProf; politika dvoufázového přihlášení |
+| **Server → Moduly** | doinstalování klientů, pošty, XHProf, Pythonu; politika dvoufázového přihlášení |
 | **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
 | **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |
 | **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru |

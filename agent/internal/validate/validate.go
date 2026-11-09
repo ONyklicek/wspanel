@@ -96,16 +96,22 @@ func DBName(field, n string) error {
 }
 
 // Frameworks by family. PHP frameworks run in classic (PHP-FPM) or worker
-// (FrankenPHP) mode, Node frameworks in node mode.
+// (FrankenPHP) mode, Node frameworks in node mode, Python ones in python mode.
 var (
 	PHPFrameworks    = []string{"laravel", "symfony", "php"}
 	WorkerFrameworks = []string{"laravel", "symfony"} // need a worker entry point (Octane / Symfony Runtime)
 	NodeFrameworks   = []string{"nuxt", "next", "node"}
-	Frameworks       = append(append([]string{}, PHPFrameworks...), NodeFrameworks...)
+	PythonFrameworks = []string{"django", "flask", "fastapi", "python"}
+	Frameworks       = append(append(append([]string{}, PHPFrameworks...), NodeFrameworks...), PythonFrameworks...)
 )
 
-// SiteModes: classic = PHP-FPM, worker = FrankenPHP instance, node = Node SSR process.
-var SiteModes = []string{"classic", "worker", "node"}
+// SiteModes: classic = PHP-FPM, worker = FrankenPHP instance, node = Node SSR
+// process, python = a Python app server (gunicorn / uvicorn).
+var SiteModes = []string{"classic", "worker", "node", "python"}
+
+// AppMode: the site is its own long-running process on an agent-allocated
+// port (two slots for zero-downtime deploys).
+func AppMode(mode string) bool { return mode == "node" || mode == "python" }
 
 // FrameworksForMode lists the frameworks a mode can run.
 func FrameworksForMode(mode string) []string {
@@ -116,6 +122,8 @@ func FrameworksForMode(mode string) []string {
 		return WorkerFrameworks
 	case "node":
 		return NodeFrameworks
+	case "python":
+		return PythonFrameworks
 	}
 	return nil
 }

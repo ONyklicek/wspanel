@@ -24,6 +24,12 @@ final class AgentMessages
         'Optimize' => 'Optimalizace',
         'Asset map' => 'Asset map',
         'Cache warmup' => 'Příprava cache',
+        'Virtualenv' => 'Virtualenv',
+        'Python dependencies (uv.lock)' => 'Závislosti Pythonu (uv.lock)',
+        'Python dependencies (pyproject.toml)' => 'Závislosti Pythonu (pyproject.toml)',
+        'Python dependencies (requirements.txt)' => 'Závislosti Pythonu (requirements.txt)',
+        'Static files' => 'Statické soubory',
+        'Migrations (Alembic)' => 'Migrace (Alembic)',
     ];
 
     public static function cs(?string $message): ?string

@@ -1,9 +1,10 @@
 @php
-    $php = ! $framework->isNode();
+    $php = ! $framework->isNode() && ! $framework->isPython();
     $build = match (true) {
         $framework === \App\Enums\Framework::Laravel => "composer install --no-dev --optimize-autoloader --no-interaction\n          npm ci && npm run build",
         $framework === \App\Enums\Framework::Symfony => "APP_ENV=prod composer install --no-dev --optimize-autoloader --no-interaction\n          APP_ENV=prod php bin/console asset-map:compile",
         $framework->isNode() => 'npm ci && npm run build',
+        $framework->isPython() => "test ! -f package.json || (npm ci && npm run build)\n          # .venv a závislosti Pythonu nainstaluje server (uv)",
         default => 'composer install --no-dev --optimize-autoloader --no-interaction',
     };
 @endphp

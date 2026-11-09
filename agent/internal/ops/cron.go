@@ -18,14 +18,16 @@ import (
 )
 
 // Scheduled tasks of a site: systemd timers running a whitelisted command
-// (artisan / bin/console / a PHP script of the site) as the site user, with
+// (artisan / bin/console / a PHP script of the site; manage.py / a Python
+// script in the release's virtualenv) as the site user, with
 // the same sandbox as workers. Cron syntax is converted to OnCalendar.
 
-var cronKinds = []string{"artisan", "console", "php"}
+var cronKinds = []string{"artisan", "console", "php", "manage", "python"}
 
 var (
 	cronArgRe    = regexp.MustCompile(`^[A-Za-z0-9:_./=@,+-]{1,200}$`) // no shell or systemd specifier characters ($ % " ' ; | & ...)
 	cronScriptRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}\.php$`)
+	cronPyRe     = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}\.py$`)
 )
 
 func cronUnitBase(user string, id int) string { return "wspanel-" + user + "-cron-" + strconv.Itoa(id) }
@@ -136,8 +138,8 @@ func cronField(s string, min, max int, dow bool) (string, error) {
 type cronParams struct {
 	Domain   string   `json:"domain"`
 	ID       int      `json:"id,omitempty"` // cron.edit / cron.remove
-	Kind     string   `json:"kind"`         // artisan | console | php
-	Args     []string `json:"args"`         // artisan/console: command + args; php: [script path]
+	Kind     string   `json:"kind"`         // artisan | console | php | manage | python
+	Args     []string `json:"args"`         // artisan/console/manage: command + args; php/python: [script path]
 	Schedule string   `json:"schedule"`     // 5-field cron expression
 }
 
@@ -164,6 +166,11 @@ func (p *cronParams) validate() (string, error) {
 			return "", protocol.Invalid("args: php needs one script path relative to the release (e.g. bin/task.php)")
 		}
 	}
+	if p.Kind == "python" {
+		if len(p.Args) != 1 || !cronPyRe.MatchString(p.Args[0]) || strings.Contains(p.Args[0], "..") {
+			return "", protocol.Invalid("args: python needs one script path relative to the release (e.g. tasks/cleanup.py)")
+		}
+	}
 	for _, a := range p.Args {
 		if !cronArgRe.MatchString(a) {
 			return "", protocol.Invalid(fmt.Sprintf("args: %q contains characters that are not allowed", a))
@@ -180,9 +187,23 @@ func cronExecStart(env *Env, l siteLayout, p cronParams) (string, string, error)
 			php = cli
 		}
 	}
+	if l.Mode == "python" {
+		py := filepath.Join(l.Home, "current", ".venv", "bin", "python")
+		switch {
+		case p.Kind == "manage" && l.Framework == "django":
+			return py + " manage.py " + strings.Join(p.Args, " "), "manage.py", nil
+		case p.Kind == "python":
+			return py + " " + p.Args[0], p.Args[0], nil
+		case p.Kind == "manage":
+			return "", "", protocol.Invalid("kind: manage needs a Django site")
+		}
+		return "", "", protocol.Invalid("kind: a Python site runs manage.py commands or Python scripts")
+	}
 	switch {
 	case l.Mode == "node":
 		return "", "", protocol.Invalid("kind: Node sites have no PHP tasks")
+	case p.Kind == "manage" || p.Kind == "python":
+		return "", "", protocol.Invalid("kind: " + p.Kind + " needs a Python site")
 	case p.Kind == "artisan" && l.Framework != "laravel":
 		return "", "", protocol.Invalid("kind: artisan needs a Laravel site")
 	case p.Kind == "console" && l.Framework != "symfony":

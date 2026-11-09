@@ -36,7 +36,7 @@ class SiteLogs extends Component
     {
         $site = $this->getSite();
         $sources = [];
-        if (! $site->framework->isNode()) {
+        if (! $site->mode->isApp()) {
             $sources['php'] = __('PHP chyby');
         }
         if (in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)) {

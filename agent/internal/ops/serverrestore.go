@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -519,6 +520,17 @@ func OpenBackupSource(ctx context.Context, env *Env, dir string) (backupSource, 
 func RestoreServerData(ctx context.Context, env *Env, man serverManifest, src backupSource, logf func(string, ...any)) RestoreReport {
 	var rep RestoreReport
 	done := map[dbRef]bool{}
+	// Python came from Server → Moduly on the old server, not from the
+	// installer's flags: what its sites run is installed before they return.
+	for _, v := range missingPythons(env) {
+		logf("Python %s for the Python sites", v)
+		raw, _ := json.Marshal(map[string]string{"version": v})
+		if _, err := pythonInstall(ctx, env, raw); err != nil {
+			rep.problem("Python %s: %v", v, err)
+			continue
+		}
+		rep.ok("Python %s", v)
+	}
 	for _, domain := range man.Sites {
 		file, err := src.newest(ctx, siteTarget(env, domain))
 		switch {
@@ -759,6 +771,9 @@ func restoreSiteFresh(ctx context.Context, env *Env, domain, file string) ([]dbR
 			return restored, err
 		}
 	}
+	if err := relinkPythonVenv(ctx, env, l, stamp); err != nil {
+		return restored, err
+	}
 	if err := d.switchTo(ctx, stamp); err != nil {
 		return restored, err
 	}
@@ -800,4 +815,18 @@ func restoreMail(env *Env, domain, path string) error {
 			return err
 		}
 	}
+}
+
+// missingPythons: Python versions the sites' state asks for that this server
+// does not have.
+func missingPythons(env *Env) []string {
+	have := pythonVersions(env.Cfg)
+	var out []string
+	for _, st := range allSiteStates(env.Cfg) {
+		if st.Mode == "python" && st.PythonVersion != "" && have[st.PythonVersion] == "" && !slices.Contains(out, st.PythonVersion) {
+			out = append(out, st.PythonVersion)
+		}
+	}
+	slices.Sort(out)
+	return out
 }

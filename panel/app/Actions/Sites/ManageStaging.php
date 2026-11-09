@@ -47,7 +47,7 @@ class ManageStaging
         }
         $staging = $this->createSite->handle(array_filter([
             'domain' => self::stagingDomain($production), 'framework' => $production->framework->value, 'mode' => $production->mode->value,
-            'php_version' => $production->php_version, 'node_version' => $production->node_version, 'client_id' => $production->client_id,
+            'php_version' => $production->php_version, 'node_version' => $production->node_version, 'python_version' => $production->python_version, 'python_app' => $production->python_app, 'client_id' => $production->client_id,
             'tls' => $production->tls_mode === 'internal' ? 'internal' : null,
         ], fn ($v) => $v !== null));
         if ($staging->status === SiteStatus::Failed) {

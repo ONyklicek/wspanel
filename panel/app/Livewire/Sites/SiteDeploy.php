@@ -167,11 +167,24 @@ class SiteDeploy extends ViewPage
                 default => __('Do releasu se nalinkuje .env ze shared/.'),
             }.__(' Přinese-li release vlastní .env (build z CI), jeho hodnoty se do shared/ doplní').(($c['env_from_deploy'] ?? false) ? __(' a mají přednost.') : __('; klíče, které nastavil panel, zůstanou.'))],
         ];
-        if (! $f->isNode()) {
+        if (! $f->isNode() && ! $f->isPython()) {
             $steps[] = ['Composer', __('composer install --no-dev, pokud repozitář obsahuje composer.json (u balíku z CI se přeskočí).')];
         }
         if ($f->isNode() || ($c['assets'] ?? false)) {
             $steps[] = [__('Build assetů'), __('npm ci a npm run build (Vite, Nuxt, Next…), pokud je v repozitáři package.json.')];
+        }
+        if ($f->isPython()) {
+            $steps[] = [__('Závislosti Pythonu'), __('uv vytvoří virtualenv .venv přímo v releasu a nainstaluje závislosti z uv.lock, pyproject.toml nebo requirements.txt. Chybí-li ').($f === Framework::FastApi ? 'uvicorn' : 'gunicorn').__(', doinstaluje se.')];
+        }
+        if ($f === Framework::Django) {
+            if ($c['migrate'] ?? false) {
+                $steps[] = [__('Migrace'), 'python manage.py migrate --noinput.'];
+            }
+            if ($c['assets'] ?? false) {
+                $steps[] = [__('Statické soubory'), 'python manage.py collectstatic --noinput'.(($c['commands'] ?? []) !== [] ? __(', pak vlastní příkazy: ').implode(', ', $c['commands']) : '').'.'];
+            }
+        } elseif ($f->isPython() && ($c['migrate'] ?? false)) {
+            $steps[] = [__('Migrace'), __('alembic upgrade head, pokud má repozitář alembic.ini.')];
         }
         if ($f === Framework::Laravel) {
             if ($c['migrate'] ?? false) {
@@ -392,23 +405,34 @@ class SiteDeploy extends ViewPage
                     ->rules(['nullable', 'regex:~^(https://[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+|git@[A-Za-z0-9.-]+:[A-Za-z0-9._\~/-]+|ssh://git@[A-Za-z0-9.-]+(:\d{1,5})?/[A-Za-z0-9._\~/-]+)$~']),
                 TextInput::make('branch')->label(__('Větev'))->required()->rules(['regex:~^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$~']),
                 Toggle::make('migrate')
-                    ->label($site->framework === Framework::Symfony ? __('Spouštět Doctrine migrace') : __('Spouštět migrace (artisan migrate --force)'))
-                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
-                Toggle::make('assets')->label(__('Buildit assety (npm ci + npm run build)'))->visible(! $site->framework->isNode()),
+                    ->label(match (true) {
+                        $site->framework === Framework::Symfony => __('Spouštět Doctrine migrace'),
+                        $site->framework === Framework::Django => __('Spouštět migrace (manage.py migrate)'),
+                        $site->framework->isPython() => __('Spouštět migrace Alembicu (je-li alembic.ini)'),
+                        default => __('Spouštět migrace (artisan migrate --force)'),
+                    })
+                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true) || $site->framework->isPython()),
+                Toggle::make('assets')
+                    ->label($site->framework === Framework::Django ? __('Statické soubory (npm build, je-li package.json, a collectstatic)') : __('Buildit assety (npm ci + npm run build)'))
+                    ->visible(! $site->framework->isNode()),
                 Toggle::make('maintenance')
                     ->label(__('Stránka údržby během migrací'))
                     ->helperText(__('Pro migrace, se kterými starý kód nepoběží: návštěvníci uvidí „Probíhá údržba“ od migrací do chvíle, kdy nový release odpovídá. Odkaz pro vstup správce je v logu deploye.'))
                     ->visibleWhen('migrate', true)
-                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
+                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true) || $site->framework->isPython()),
                 Toggle::make('auto_rollback')->label(__('Když nový release neodpovídá, vrátit předchozí')),
                 Select::make('keep')->rules([Options::rule()])->label(__('Držet releasů'))->options(array_combine(range(2, 10), range(2, 10)))->required(),
                 Textarea::make('commands')
-                    ->label($site->framework === Framework::Symfony ? __('Vlastní příkazy po deployi (bin/console)') : __('Vlastní příkazy po deployi (artisan)'))
+                    ->label(match ($site->framework) {
+                        Framework::Symfony => __('Vlastní příkazy po deployi (bin/console)'),
+                        Framework::Django => __('Vlastní příkazy po deployi (manage.py)'),
+                        default => __('Vlastní příkazy po deployi (artisan)'),
+                    })
                     ->rows(4)
                     ->placeholder("install:permissions\nlivewire:publish --assets")
                     ->helperText(__('Jeden na řádek, běží po migracích a optimalizaci, před přepnutím na nový release. Jen příkazy konzole s argumenty, žádný shell.'))
                     ->rules(['nullable', 'string', 'max:2000'])
-                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony], true)),
+                    ->visible(in_array($site->framework, [Framework::Laravel, Framework::Symfony, Framework::Django], true)),
                 Toggle::make('env_from_deploy')
                     ->label(__('Konfigurace z deploye má přednost (.env z CI / GitHub Secrets)'))
                     ->helperText(__('Vypnuto: klíče, které nastavil panel (databáze, pošta, Valkey, Reverb), zůstanou panelové a zbytek doplní .env z releasu. Zapnuto: platí .env z releasu celý; panel hlídá jen port, na kterém poslouchá Reverb.')),

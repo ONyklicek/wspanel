@@ -56,20 +56,23 @@ func sysVersions(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		frameworks[m] = validate.FrameworksForMode(m)
 	}
 	return map[string]any{
-		"agent":       Version,
-		"php":         php,
-		"php_default": env.Cfg.DefaultPHPVer,
-		"frankenphp":  franken,
-		"db_engines":  env.Cfg.DBEngines,
-		"frameworks":  frameworks,
-		"site_modes":  validate.SiteModes,
-		"worker_php":  workerPHP,
-		"node":        nodeMajors(env.Cfg),
-		"db_tools":    installedDBTools(env),
-		"dns_local":   env.Cfg.PowerDNSAPI != "" && env.Cfg.PowerDNSKey != "",
-		"workers":     workerTypesByFramework(),
-		"panel_units": env.Cfg.PanelUnits(),
-		"dry_run":     env.Cfg.DryRun,
+		"agent":              Version,
+		"php":                php,
+		"php_default":        env.Cfg.DefaultPHPVer,
+		"frankenphp":         franken,
+		"db_engines":         env.Cfg.DBEngines,
+		"frameworks":         frameworks,
+		"site_modes":         validate.SiteModes,
+		"worker_php":         workerPHP,
+		"node":               nodeMajors(env.Cfg),
+		"python":             pythonMinors(env.Cfg),
+		"python_installable": InstallablePython,
+		"python_patches":     pythonPatches(env.Cfg),
+		"db_tools":           installedDBTools(env),
+		"dns_local":          env.Cfg.PowerDNSAPI != "" && env.Cfg.PowerDNSKey != "",
+		"workers":            workerTypesByFramework(),
+		"panel_units":        env.Cfg.PanelUnits(),
+		"dry_run":            env.Cfg.DryRun,
 	}, nil
 }
 

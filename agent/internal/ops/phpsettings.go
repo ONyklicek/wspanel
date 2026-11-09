@@ -13,6 +13,7 @@ import (
 
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
+	"wspanel/agent/internal/validate"
 )
 
 // Per-site PHP settings (php.ini values). Only the directives below can be
@@ -126,7 +127,7 @@ func phpLines(settings map[string]string) []phpLine {
 
 // carryPHPSettings keeps what still applies after a mode switch.
 func carryPHPSettings(settings map[string]string, mode string) map[string]string {
-	if mode == "node" {
+	if validate.AppMode(mode) {
 		return nil
 	}
 	out := map[string]string{}
@@ -155,8 +156,8 @@ func sitePHP(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st.Mode == "node" {
-		return nil, protocol.Invalid("settings: a Node site runs no PHP")
+	if validate.AppMode(st.Mode) {
+		return nil, protocol.Invalid("settings: a " + st.Mode + " site runs no PHP")
 	}
 	clean := map[string]string{}
 	for k, v := range p.Settings {

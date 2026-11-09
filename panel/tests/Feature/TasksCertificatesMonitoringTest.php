@@ -70,6 +70,23 @@ class TasksCertificatesMonitoringTest extends TestCase
             ->assertHasErrors();
     }
 
+    public function test_django_sites_run_manage_py_tasks(): void
+    {
+        $site = Site::create(['domain' => 'dj.example.com', 'mode' => 'python', 'framework' => 'django', 'python_version' => '3.13', 'status' => 'active']);
+        $this->agent->shouldReceive('call')->once()
+            ->with('cron.add', ['domain' => 'dj.example.com', 'kind' => 'manage', 'args' => ['clearsessions'], 'schedule' => '0 3 * * *'])
+            ->andReturn(['id' => 1]);
+        $this->agent->shouldReceive('call')->once()->with('cron.list', ['domain' => 'dj.example.com'])
+            ->andReturn([['id' => 1, 'kind' => 'manage', 'args' => ['clearsessions'], 'schedule' => '0 3 * * *', 'calendar' => '*-*-* 03:00:00']]);
+
+        $this->headerTableAction(Livewire::test(ListCronJobs::class), 'create', ['site_id' => $site->id, 'kind' => 'manage', 'command' => 'python manage.py clearsessions', 'schedule' => '0 3 * * *'])
+            ->assertHasNoErrors();
+
+        $this->assertSame('python manage.py clearsessions', CronJob::sole()->commandLine());
+        $this->headerTableAction(Livewire::test(ListCronJobs::class), 'create', ['site_id' => $site->id, 'kind' => 'artisan', 'command' => 'inspire', 'schedule' => '* * * * *'])
+            ->assertHasErrors();
+    }
+
     public function test_certificate_precheck_reports_what_is_missing(): void
     {
         $cert = Certificate::create(['domain' => 'app.example.com', 'status' => 'missing']);

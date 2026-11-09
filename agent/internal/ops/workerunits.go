@@ -25,7 +25,7 @@ import (
 // not run twice, so they are swapped: old stops, then new starts.
 
 // Workers whose old instance may finish its work beside the new one.
-var drainingWorkers = []string{"queue", "horizon", "messenger", "pulsework"}
+var drainingWorkers = []string{"queue", "horizon", "messenger", "pulsework", "celery"}
 
 // workerDrainTimeout is how long an old consumer may finish its job.
 const workerDrainTimeout = 3600
@@ -134,11 +134,26 @@ func writeWorkerTemplate(ctx context.Context, env *Env, l siteLayout, typ string
 		}
 		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
 	})
-	if _, err := env.Exec.Run(ctx, "systemd-analyze", "verify", path); err != nil {
+	if _, err := env.Exec.Run(ctx, "systemd-analyze", "verify", verifyTarget(l, path, typ)); err != nil {
 		return fmt.Errorf("unit %s invalid, not installing: %w", filepath.Base(path), err)
 	}
 	_, err = env.Exec.Run(ctx, "systemctl", "daemon-reload")
 	return err
+}
+
+// verifyTarget is what systemd-analyze checks for a worker template. A
+// template is checked as instance "test_instance"; a Python worker's program
+// is the release's own .venv (releases/%i/...), which that instance lacks, so
+// its current release's instance is checked (it has one, see ensurePythonVenv).
+func verifyTarget(l siteLayout, template, typ string) string {
+	if l.Mode != "python" {
+		return template
+	}
+	rel, err := currentRelease(l)
+	if err != nil {
+		return template
+	}
+	return filepath.Join(filepath.Dir(template), workerInstance(l.User, typ, rel))
 }
 
 // startWorkerRelease rotates one worker to the current release (see the top
@@ -155,6 +170,7 @@ func startWorkerRelease(ctx context.Context, env *Env, l siteLayout, typ string,
 			olds = append(olds, u)
 		}
 	}
+	dropGoneReleases(ctx, env, l, typ, newUnit)
 	stopOld := func(block bool) {
 		for _, u := range olds {
 			_, _ = env.Exec.Run(ctx, "systemctl", "disable", u)
@@ -188,6 +204,24 @@ func startWorkerRelease(ctx context.Context, env *Env, l siteLayout, typ string,
 		stopOld(false)
 	}
 	return true, nil
+}
+
+// dropGoneReleases disables instances enabled for boot whose release no
+// longer exists: a server restored from a backup brings the old server's
+// links (and a new release name), and at boot they would only fail.
+func dropGoneReleases(ctx context.Context, env *Env, l siteLayout, typ, keep string) {
+	prefix := "wspanel-" + l.User + "-" + typ + "@"
+	links, _ := filepath.Glob(filepath.Join(env.Cfg.SystemdDir, "*.wants", prefix+"*.service"))
+	for _, link := range links {
+		name := filepath.Base(link)
+		rel := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".service")
+		if name == keep || fileIn(filepath.Join(l.Home, "releases"), rel) {
+			continue
+		}
+		if _, err := env.Exec.Run(ctx, "systemctl", "disable", name); err != nil {
+			_ = os.Remove(link) // systemd could not: the link is ours either way
+		}
+	}
 }
 
 // rotateWorkers brings every worker of the site to the current release.

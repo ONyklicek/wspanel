@@ -20,10 +20,12 @@ use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageWebRules;
 use App\Actions\Sites\ManageWorkers;
 use App\Actions\Sites\ManageXhprof;
+use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Models\Client;
 use App\Models\Site;
+use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsPrerequisites;
@@ -68,6 +70,8 @@ final class SiteActions
         'reverb' => 'Reverb – WebSockets (artisan reverb:start)',
         'pulse' => 'Pulse – kontroly (artisan pulse:check)',
         'pulsework' => 'Pulse – ingest z Redisu (artisan pulse:work)',
+        'celery' => 'Celery – worker (úlohy z fronty)',
+        'celerybeat' => 'Celery beat (plánovač úloh)',
     ];
 
     /**
@@ -185,22 +189,51 @@ final class SiteActions
             ->icon('outline:adjustments-horizontal')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Worker)
             ->modalHeading(fn (Site $record) => __('Změnit verzi pro :domain', ['domain' => $record->domain]))
-            ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Classic
-                ? __('Nový FPM pool naběhne vedle starého a web se na něj přepne. Bez výpadku.')
-                : __('Proces se restartuje s novou verzí (krátký výpadek).'))
+            ->modalDescription(fn (Site $record) => match ($record->mode) {
+                SiteMode::Classic => __('Nový FPM pool naběhne vedle starého a web se na něj přepne. Bez výpadku.'),
+                SiteMode::Python => __('Virtualenv se staví pro konkrétní verzi Pythonu, takže nová verze platí od příštího deploye. Do té doby web běží beze změny.'),
+                default => __('Proces se restartuje s novou verzí (krátký výpadek).'),
+            })
             ->form(fn (Site $record) => [
                 Select::make('version')->rules([Options::rule()])
-                    ->label($record->mode === SiteMode::Classic ? __('Verze PHP') : __('Verze Node'))
-                    ->options(collect($record->mode === SiteMode::Classic
-                        ? Limits::filterPhp(Limits::forCurrentUser(), app(SystemInfo::class)->phpVersionOptions())
-                        : app(SystemInfo::class)->nodeVersionOptions())
-                        ->except($record->mode === SiteMode::Classic ? $record->php_version : $record->node_version)
+                    ->label(match ($record->mode) {
+                        SiteMode::Classic => __('Verze PHP'),
+                        SiteMode::Python => __('Verze Pythonu'),
+                        default => __('Verze Node'),
+                    })
+                    ->options(collect(match ($record->mode) {
+                        SiteMode::Classic => Limits::filterPhp(Limits::forCurrentUser(), app(SystemInfo::class)->phpVersionOptions()),
+                        SiteMode::Python => app(SystemInfo::class)->pythonVersionOptions(),
+                        default => app(SystemInfo::class)->nodeVersionOptions(),
+                    })
+                        ->except(match ($record->mode) {
+                            SiteMode::Classic => $record->php_version,
+                            SiteMode::Python => $record->python_version,
+                            default => $record->node_version,
+                        })
                         ->all())
                     ->required(),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Změna verze selhala'), function () use ($record, $data) {
                 app(ChangeRuntime::class)->setVersion($record, $data['version']);
                 Toast::success("{$record->domain}: {$record->runtimeLabel()}");
+            }));
+    }
+
+    public static function pythonApp(): Action
+    {
+        return Action::make('pythonApp')
+            ->label(__('Aplikace Pythonu'))
+            ->icon('outline:command-line')
+            ->visible(fn (Site $record) => $record->isOperational() && $record->mode === SiteMode::Python && $record->framework->loadsPythonApp())
+            ->modalHeading(fn (Site $record) => __('Aplikace Pythonu: :domain', ['domain' => $record->domain]))
+            ->modalDescription(__('Po uložení se aplikace restartuje s novým modulem.'))
+            ->fillFormUsing(fn (Site $record) => ['python_app' => $record->python_app])
+            ->form([SiteFields::pythonApp()])
+            ->action(fn (Site $record, array $data) => self::attempt(__('Změna se nepovedla'), function () use ($record, $data) {
+                $out = app(AgentClient::class)->call('site.python_app', ['domain' => $record->domain, 'app' => (string) ($data['python_app'] ?? '')]);
+                $record->update(['python_app' => ($data['python_app'] ?? '') ?: null]);
+                Toast::success("{$record->domain}: ".$out['app']);
             }));
     }
 
@@ -350,22 +383,31 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->label(__('Přidat worker'))
             ->icon('outline:cpu-chip')
             ->visible(fn (Site $record) => $record->isOperational()
-                && ! $record->framework->isNode()
+                && $record->mode !== SiteMode::Node
                 && app(SystemInfo::class)->workerTypes($record->framework->value) !== [])
             ->modalDescription(__('Worker běží jako systemd služba pod uživatelem webu se sandboxem a po pádu se sám restartuje. Před prvním deployem se jen zaregistruje.'))
             ->form(fn (Site $record) => [
                 Select::make('worker')->rules([Options::rule()])
                     ->label(__('Typ'))
                     ->options(self::workerOptions($record->framework->value))
+                    ->live()
                     ->required(),
+                TextInput::make('app')
+                    ->label(__('Aplikace Celery (-A)'))
+                    ->placeholder($record->framework === Framework::Django ? __('balíček projektu (z Django projektu)') : 'tasks:celery')
+                    ->helperText(__('Modul nebo modul:objekt s instancí Celery, např. tasks, myapp.celery nebo tasks:celery. Platí pro všechny Celery workery webu. U Djanga lze nechat prázdné: použije se balíček projektu (jeho celery.py).'))
+                    ->rules(['nullable', 'max:120', 'regex:/^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*){0,5}(:[A-Za-z_][A-Za-z0-9_]*)?$/'])
+                    ->visible(fn ($get) => in_array($get('worker'), ManageWorkers::CELERY, true))
+                    ->required($record->framework !== Framework::Django), // Django: its project package
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Worker se nepodařilo přidat'), function () use ($record, $data) {
-                $out = app(ManageWorkers::class)->create($record, $data['worker']);
+                $out = app(ManageWorkers::class)->create($record, $data['worker'], $data['app'] ?? null);
                 $body = ($out['started'] ?? false) ? __('Běží.') : __('Zaregistrován, spustí se po prvním deployi.');
                 $body .= match ($data['worker']) {
                     'reverb' => __(' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).'),
                     'horizon' => __(' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).'),
                     'pulsework' => __(' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).'),
+                    'celery', 'celerybeat' => ' '.__('Aplikace Celery: :app. Broker (Valkey webu nebo jiný) si nastavte v aplikaci.', ['app' => $out['app'] ?? '']),
                     default => '',
                 };
                 Toast::success(__('Worker přidán'), $body);
@@ -418,7 +460,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
         return Action::make('phpSettings')
             ->label(__('PHP nastavení'))
             ->icon('outline:adjustments-horizontal')
-            ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Node)
+            ->visible(fn (Site $record) => $record->isOperational() && ! $record->mode->isApp())
             ->modalHeading(fn (Site $record) => __('PHP nastavení: :domain', ['domain' => $record->domain]))
             ->modalDescription(fn (Site $record) => $record->mode === SiteMode::Worker
                 ? __('Hodnoty php.ini pro FrankenPHP tohoto webu. Po uložení se aplikace restartuje.')
@@ -919,7 +961,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     {
         return [
             self::edge(), self::tls(), self::ssh(), self::credentials(),
-            self::setVersion(), self::switchMode(), self::phpSettings(), self::webRules(),
+            self::setVersion(), self::switchMode(), self::pythonApp(), self::phpSettings(), self::webRules(),
             self::valkey(), self::xhprof(), self::mountAdd(), self::mountRemove(), self::mountRemount(), self::staging(), self::import(),
             self::assignClient(), self::disable(), self::enable(), self::delete(),
         ];

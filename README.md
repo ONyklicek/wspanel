@@ -5,8 +5,8 @@ přes systemd, bez Dockeru. Docker slouží jen jako vývojový „server“.
 
 **Umí:**
 - klienty s balíčky a limity (každý vidí jen své weby, databáze a DNS),
-- weby: Čisté PHP, Laravel, Symfony, Nuxt/Next/Node v režimech PHP-FPM,
-  FrankenPHP worker a Node SSR,
+- weby: Čisté PHP, Laravel, Symfony, Nuxt/Next/Node a Django/Flask/FastAPI
+  v režimech PHP-FPM, FrankenPHP worker, Node SSR a Python (volitelný modul),
 - deploy z Gitu, releasů a GitHub Actions,
 - workery (fronty, Horizon, Reverb, Pulse, Messenger, plánovač),
 - MariaDB a PostgreSQL se zálohami, phpMyAdmin a Adminer,
@@ -507,6 +507,7 @@ Vydání verze: [docs/vyvoj.md](docs/vyvoj.md#vydání-verze).
 | Classic | PHP-FPM pool pod uživatelem webu | 8.2–8.4 (FPM balíčky) | edge → `panel-web` → FPM socket |
 | Worker | vlastní FrankenPHP instance pod uživatelem webu (Laravel Octane, Symfony 7.4+) | PHP zabudované ve FrankenPHP | edge → `/run/wspanel-sites/<user>/http.sock` |
 | Node SSR | Node proces (Nuxt, Next.js, `server.js`) | major verze z fnm (`/opt/fnm`) | edge → `127.0.0.1:<port>` (port přiděluje agent) |
+| Python | gunicorn / uvicorn z `.venv` releasu (Django, Flask, FastAPI, `app.py`) | CPython přes uv (`/opt/uv/python`), doinstaluje se v Modulech | edge → `127.0.0.1:<port>` (port přiděluje agent) |
 
 - **Změna režimu** (`site.switch_mode`): nový backend se postaví vedle starého a edge se
   přepne až ve chvíli, kdy je hotový. Při chybě web běží dál jako dřív.

@@ -284,6 +284,8 @@ func appUnitData(env *Env, l siteLayout) (unitData, string, error) {
 		}
 		d.Extra = portUnitExtra(l.Port)
 		return d, entry, nil
+	case "python":
+		return pythonUnitData(env, l)
 	}
 	return d, "", fmt.Errorf("mode %s has no app unit", l.Mode)
 }

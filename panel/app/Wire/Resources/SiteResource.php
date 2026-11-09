@@ -4,7 +4,6 @@ namespace App\Wire\Resources;
 
 use App\Actions\Sites\CreateSite;
 use App\Actions\Sites\ManageWorkers;
-use App\Enums\SiteMode;
 use App\Enums\SiteStatus;
 use App\Enums\SshAccess;
 use App\Exceptions\LimitReachedException;
@@ -119,7 +118,7 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                 TextColumn::make('runtime')
                     ->label(__('Běží na'))
                     ->state(fn (Site $record) => $record->runtimeLabel())
-                    ->description(fn (Site $record) => $record->mode === SiteMode::Node && $record->port ? "127.0.0.1:{$record->port}" : null),
+                    ->description(fn (Site $record) => $record->mode->isApp() && $record->port ? "127.0.0.1:{$record->port}" : null),
                 TextColumn::make('processes')
                     ->label(__('Procesy'))
                     ->state(function (Site $record) {

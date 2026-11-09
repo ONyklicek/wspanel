@@ -55,7 +55,7 @@ if [[ $MODE == bundle ]]; then
   docker cp "$BUNDLE" "$NAME:/root/bundle.tar.gz"
   on 'cd /root && tar -xzf bundle.tar.gz' 2>&1 | grep -q . && fail "the bundle does not unpack cleanly (warnings above)"
   log "Install (every module), unattended"
-  on "cd /root/wspanel && ./install $FLAGS > /root/install.log 2>&1" || fail "install failed"
+  on "cd /root/wspanel && ./install $FLAGS --python=3.13 > /root/install.log 2>&1" || fail "install failed"
 else
   log "An apt repository of these packages (throwaway key) on 127.0.0.1:8099"
   docker exec "$NAME" mkdir -p /root/debs /root/tools/provision
@@ -79,7 +79,7 @@ else
   on "cd /root && curl -fsSLO http://127.0.0.1:8099/apt/wspanel-archive-keyring.deb
       WSPANEL_APT_URI=http://127.0.0.1:8099/apt WSPANEL_CHANNEL=$channel apt-get install -y -q ./wspanel-archive-keyring.deb > /root/apt.log 2>&1
       apt-get update -q >> /root/apt.log 2>&1 && apt-get install -y -q wspanel >> /root/apt.log 2>&1" || fail "apt install wspanel (see /root/apt.log)"
-  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-install $FLAGS > /root/install.log 2>&1" || fail "wspanel-install failed"
+  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-install $FLAGS --python=3.13 > /root/install.log 2>&1" || fail "wspanel-install failed"
   log "The server follows its line's channel"
   line=$(on "dpkg-query -W -f='\${Version}' wspanel" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
   [[ $channel == pre ]] && line="$line-pre"
@@ -136,6 +136,52 @@ out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" =>
 [[ $out == active ]] || fail "site: $out"
 code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/')
 [[ $code == 200 ]] || fail "the site answered $code"
+
+log "Python: a placeholder, then a Django site with Celery deployed twice (the second through the other slot)"
+on 'test -x /usr/local/bin/uv && ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu >/dev/null' || fail "--python=3.13 did not install uv and Python 3.13"
+out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "py.localhost", "mode" => "python", "framework" => "python", "python_version" => "3.13", "tls" => "internal"]); echo $s->status->value;')
+[[ $out == active ]] || fail "Python site: $out"
+on 'curl -sk --resolve py.localhost:443:127.0.0.1 https://py.localhost/ | grep -q "Python 3.13"' || fail "the Python placeholder does not answer"
+out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "dj.localhost", "mode" => "python", "framework" => "django", "python_version" => "3.13", "tls" => "internal"]); echo $s->status->value;')
+[[ $out == active ]] || fail "Django site: $out"
+# A minimal Django project, as CI would upload it (gunicorn left out: the deploy adds it).
+on 'rm -rf /root/dj && mkdir -p /root/dj/shop && cd /root/dj
+    printf "Django>=5.2,<6\ncelery>=5.4,<6\n" > requirements.txt
+    printf "import os, sys\nif __name__ == \"__main__\":\n    os.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"shop.settings\")\n    from django.core.management import execute_from_command_line\n    execute_from_command_line(sys.argv)\n" > manage.py
+    touch shop/__init__.py
+    printf "import os\nfrom celery import Celery\nos.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"shop.settings\")\napp = Celery(\"shop\", broker=\"memory://\")\napp.config_from_object(\"django.conf:settings\", namespace=\"CELERY\")\n" > shop/celery.py
+    printf "from pathlib import Path\nBASE_DIR = Path(__file__).resolve().parent.parent\nSECRET_KEY = \"smoke\"\nDEBUG = False\nALLOWED_HOSTS = [\"*\"]\nINSTALLED_APPS = [\"django.contrib.contenttypes\", \"django.contrib.auth\", \"django.contrib.staticfiles\"]\nROOT_URLCONF = \"shop.urls\"\nDATABASES = {\"default\": {\"ENGINE\": \"django.db.backends.sqlite3\", \"NAME\": BASE_DIR / \"db.sqlite3\"}}\nSTATIC_URL = \"static/\"\nSTATIC_ROOT = BASE_DIR / \"staticfiles\"\n" > shop/settings.py
+    printf "from django.http import HttpResponse\nfrom django.urls import path\nurlpatterns = [path(\"\", lambda r: HttpResponse(\"django ok\"))]\n" > shop/urls.py
+    printf "import os\nfrom django.core.wsgi import get_wsgi_application\nos.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"shop.settings\")\napplication = get_wsgi_application()\n" > shop/wsgi.py' || fail "the Django project"
+slots=()
+for round in 1 2; do
+  on "cd /root/dj && tar -czf /var/lib/wspanel-artifacts/dj$round.tar.gz . && chown panel: /var/lib/wspanel-artifacts/dj$round.tar.gz" || fail "the artifact"
+  out=$(tinker '$j = app(App\Services\Agent\AgentClient::class)->call("deploy.run", ["domain" => "dj.localhost", "artifact" => "dj'"$round"'.tar.gz"]); echo json_encode(app(App\Services\Agent\AgentJobs::class)->await($j["job_id"], 900));')
+  [[ $out == *'"status":"success"'* ]] || { on 'tail -40 "$(ls -t /var/log/panel-agent/deploys/dj.localhost-*.log 2>/dev/null | head -1)"' >&2 || true; fail "Django deploy $round: $out"; }
+  on 'curl -sk --resolve dj.localhost:443:127.0.0.1 https://dj.localhost/ | grep -qx "django ok"' || fail "the Django site does not answer after deploy $round"
+  slots+=("$(on 'systemctl list-units --state=active --no-legend "wspanel-web_dj_localhost-app*.service" | awk "{print \$1}"')")
+  if [[ $round == 1 ]]; then # Celery from the project package, after the first release has its .venv
+    for w in celery celerybeat; do
+      out=$(tinker '$o = app(App\Actions\Sites\ManageWorkers::class)->create(App\Models\Site::where("domain", "dj.localhost")->first(), "'"$w"'"); echo json_encode($o);')
+      [[ $out == *'"started":true'* && $out == *'"app":"shop"'* ]] || fail "Celery worker $w: $out"
+    done
+  fi
+done
+# After the second deploy: the workers run from the new release, the old worker is gone.
+rel=$(on 'basename "$(readlink /srv/sites/dj.localhost/current)"')
+for _ in $(seq 1 30); do [[ "$(on 'systemctl list-units --state=active --no-legend "wspanel-web_dj_localhost-celery@*" | wc -l')" == 1 ]] && break; sleep 1; done
+sleep 5
+for w in celery celerybeat; do
+  on "systemctl is-active --quiet wspanel-web_dj_localhost-$w@$rel.service && [ \"\$(systemctl show -P NRestarts wspanel-web_dj_localhost-$w@$rel.service)\" = 0 ]" \
+    || { on "journalctl -u wspanel-web_dj_localhost-$w@$rel.service -n 20 --no-pager" >&2 || true; fail "Celery $w does not run from release $rel"; }
+done
+[[ "$(on 'systemctl list-units --state=active --no-legend "wspanel-web_dj_localhost-celery@*" | wc -l')" == 1 ]] || fail "the old Celery worker did not stop after the deploy"
+on 'journalctl -u "wspanel-web_dj_localhost-celery@*" --no-pager | grep -q "ready"' || fail "the Celery worker never got ready"
+# Python's patch update: just installed, so already the newest (the uv call itself is what is checked).
+out=$(tinker 'echo json_encode(app(App\Actions\Server\ManagePython::class)->upgrade("3.13"));')
+[[ $out == *'"changed":false'* ]] || fail "python.upgrade: $out"
+[[ ${slots[0]} != "${slots[1]}" && ${slots[1]} =~ ^wspanel-web_dj_localhost-appb?\.service$ ]] || fail "the deploys did not alternate the slots: ${slots[*]}"
+on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "the Django project was not found in manage.py"
 
 log "Mail: a mailbox receives"
 out=$(tinker '$h = app(App\Actions\Mail\ManageMailHosting::class); $d = $h->addDomain("app.localhost"); echo $h->saveMailbox($d, "info", "Smoke-heslo-123", 100, true)->address();')
@@ -212,6 +258,11 @@ if [[ $MODE == bundle ]]; then
   new 'grep -q "^PROBLEM" /var/log/wspanel-restore.log' && { new 'grep "^PROBLEM" /var/log/wspanel-restore.log' >&2; fail "the restore reported problems"; }
   code=$(new 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/')
   [[ $code == 200 ]] || fail "the restored site answered $code"
+  for _ in $(seq 1 15); do new 'curl -sk --resolve dj.localhost:443:127.0.0.1 https://dj.localhost/ | grep -qx "django ok"' && break; sleep 1; done
+  new 'curl -sk --resolve dj.localhost:443:127.0.0.1 https://dj.localhost/ | grep -qx "django ok"' || fail "the restored Django site does not answer (its .venv after the move)"
+  rel=$(new 'basename "$(readlink /srv/sites/dj.localhost/current)"')
+  new "systemctl is-active --quiet wspanel-web_dj_localhost-celery@$rel.service" || fail "Celery does not run from the restored release $rel"
+  [[ "$(new 'ls /etc/systemd/system/*.wants/ | grep -c "wspanel-web_dj_localhost-celery@"')" == 1 ]] || fail "boot links of the old server's releases stay: $(new 'ls /etc/systemd/system/*.wants/ | grep celery')"
   [[ "$(new 'mariadb -N -e "SELECT v FROM x" smokedb')" == 42 ]] || fail "the site's database did not come back"
   new 'doveadm auth test info@app.localhost Smoke-heslo-123 >/dev/null' || fail "the mailbox login did not come back"
   new 'doveadm mailbox status -u info@app.localhost messages INBOX | grep -q "messages=1"' || fail "the mailbox's mail did not come back"

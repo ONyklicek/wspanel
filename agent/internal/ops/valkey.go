@@ -93,7 +93,7 @@ func valkeyEnv(framework string, port int, password string) ([]string, map[strin
 	switch framework {
 	case "symfony":
 		return []string{"REDIS_URL"}, map[string]string{"REDIS_URL": url}
-	case "nuxt", "next", "node":
+	case "nuxt", "next", "node", "django", "flask", "fastapi", "python":
 		return []string{"REDIS_URL", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"},
 			map[string]string{"REDIS_URL": url, "REDIS_HOST": "127.0.0.1", "REDIS_PORT": p, "REDIS_PASSWORD": password}
 	default: // laravel, plain PHP

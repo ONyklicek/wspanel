@@ -62,7 +62,12 @@ func setupBackend(ctx context.Context, env *Env, l siteLayout, rb *undo) (bool, 
 		}
 		fallthrough
 
-	case "node":
+	case "node", "python":
+		if l.Mode == "python" {
+			if err := ensurePythonVenv(ctx, env, l); err != nil {
+				return false, err
+			}
+		}
 		data, entry, err := appUnitData(env, l)
 		if err != nil {
 			return false, err
@@ -95,13 +100,13 @@ func teardownBackend(ctx context.Context, env *Env, l siteLayout, mode, next str
 				return err
 			}
 		}
-	case "worker", "node":
-		if next != "worker" && next != "node" && fsx.Exists(l.AppUnitFile) {
+	case "worker", "node", "python":
+		if next != "worker" && !validate.AppMode(next) && fsx.Exists(l.AppUnitFile) {
 			if err := removeUnit(ctx, env, l.AppUnitFile); err != nil {
 				return err
 			}
 		}
-		if next != "node" {
+		if !validate.AppMode(next) {
 			removeNodeSlots(ctx, env, l)
 		}
 		if mode == "worker" {
@@ -243,7 +248,7 @@ func siteSwitchMode(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 	if _, ok := workerSpecs[st.Framework]["reverb"]; ok {
 		st.ReverbPort = old.ReverbPort // the Reverb route survives; otherwise refreshWorkers drops the worker
 	}
-	if st.Mode == "node" {
+	if validate.AppMode(st.Mode) {
 		if st.Port, err = allocatePort(env); err != nil {
 			return nil, err
 		}
@@ -371,6 +376,17 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 			return nil, protocol.Invalid("version: site already runs Node " + p.Version)
 		}
 		st.NodeVersion = p.Version
+		fallthrough
+	case "python":
+		if st.Mode == "python" {
+			if err = validate.OneOf("version", p.Version, pythonMinors(env.Cfg)); err != nil {
+				return nil, err
+			}
+			if p.Version == st.PythonVersion {
+				return nil, protocol.Invalid("version: site already runs Python " + p.Version)
+			}
+			st.PythonVersion = p.Version
+		}
 		l, lerr := layout(env.Cfg, st)
 		if lerr != nil {
 			return nil, lerr
@@ -389,6 +405,11 @@ func siteSetVersion(ctx context.Context, env *Env, raw json.RawMessage) (_ any, 
 		}
 		if err = writeToolLinks(env, l); err != nil {
 			return nil, err
+		}
+		if st.Mode == "python" { // Celery's PATH names the interpreter
+			if err = refreshWorkers(ctx, env, l); err != nil {
+				return nil, err
+			}
 		}
 		return siteOutput(l, started), nil
 	}

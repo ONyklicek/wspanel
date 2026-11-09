@@ -619,6 +619,9 @@ func siteRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 					return err
 				}
 			}
+			if err := relinkPythonVenv(ctx, env, l, newRelease); err != nil {
+				return err
+			}
 			if err := d.switchTo(ctx, newRelease); err != nil {
 				return err
 			}

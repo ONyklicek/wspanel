@@ -20,14 +20,17 @@ import (
 // siteLayout is everything derived from a validated site state. No path in
 // here is ever built from unvalidated input.
 type siteLayout struct {
-	Domain      string
-	Framework   string
-	Mode        string
-	PHPVersion  string
-	NodeVersion string
-	Port        int
-	ReverbPort  int
-	User        string
+	Domain        string
+	Framework     string
+	Mode          string
+	PHPVersion    string
+	NodeVersion   string
+	PythonVersion string
+	PythonApp     string
+	PythonCelery  string
+	Port          int
+	ReverbPort    int
+	User          string
 
 	OpcacheProduction bool
 	Disabled          bool
@@ -96,13 +99,16 @@ func appUnitNameB(user string) string { return "wspanel-" + user + "-appb.servic
 func layout(cfg config.Config, st siteState) (siteLayout, error) {
 	user := validate.SiteUser(st.Domain)
 	l := siteLayout{
-		Domain:      st.Domain,
-		Framework:   st.Framework,
-		Mode:        st.Mode,
-		PHPVersion:  st.PHPVersion,
-		NodeVersion: st.NodeVersion,
-		Port:        st.Port,
-		ReverbPort:  st.ReverbPort,
+		Domain:        st.Domain,
+		Framework:     st.Framework,
+		Mode:          st.Mode,
+		PHPVersion:    st.PHPVersion,
+		NodeVersion:   st.NodeVersion,
+		PythonVersion: st.PythonVersion,
+		PythonApp:     st.PythonApp,
+		PythonCelery:  st.PythonCelery,
+		Port:          st.Port,
+		ReverbPort:    st.ReverbPort,
 
 		OpcacheProduction: st.OpcacheProduction,
 		Disabled:          st.Disabled,
@@ -166,7 +172,7 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		l.Upstream = "unix/" + l.AppSocket
 		_, l.WorkerFile, l.WorkerEnv = workerEntry(st.Framework, l.Home)
 		l.WorkerIndex = workerIndex(st.Framework)
-	case "node":
+	case "node", "python":
 		// The slot that serves now: its port, its unit.
 		if st.Slot == "b" && st.PortB > 0 {
 			l.Port = st.PortB
@@ -215,7 +221,7 @@ func sharedDirs(framework string) []string {
 // sharedEnvFile is where DB credentials etc. go for each framework.
 func sharedEnvFile(framework string) string {
 	switch framework {
-	case "laravel", "nuxt", "next", "node", "php":
+	case "laravel", "nuxt", "next", "node", "php", "django", "flask", "fastapi", "python":
 		// php: plain sites read DB credentials from ~/shared/.env (outside the docroot).
 		return ".env"
 	case "symfony":
@@ -226,12 +232,14 @@ func sharedEnvFile(framework string) string {
 
 // siteParams is the common, validated description of how a site runs.
 type siteParams struct {
-	Domain      string `json:"domain"`
-	Framework   string `json:"framework"`
-	Mode        string `json:"mode"`
-	PHPVersion  string `json:"php_version,omitempty"`
-	NodeVersion string `json:"node_version,omitempty"`
-	TLS         string `json:"tls,omitempty"` // create only: auto | internal (default by domain)
+	Domain        string `json:"domain"`
+	Framework     string `json:"framework"`
+	Mode          string `json:"mode"`
+	PHPVersion    string `json:"php_version,omitempty"`
+	NodeVersion   string `json:"node_version,omitempty"`
+	PythonVersion string `json:"python_version,omitempty"`
+	PythonApp     string `json:"python_app,omitempty"` // python: module:object (empty = convention)
+	TLS           string `json:"tls,omitempty"`        // create only: auto | internal (default by domain)
 	// create only: the client's group (wsc_<id>) and the FPM process limit
 	Group       string `json:"group,omitempty"`
 	FPMChildren int    `json:"fpm_children,omitempty"`
@@ -257,6 +265,9 @@ func (p *siteParams) resolve(ctx context.Context, env *Env) (siteState, error) {
 		if err := validate.OneOf("tls", p.TLS, []string{"auto", "internal"}); err != nil {
 			return st, err
 		}
+	}
+	if p.Mode != "python" && (p.PythonVersion != "" || p.PythonApp != "") {
+		return st, protocol.Invalid("python_version, python_app: only valid for python mode")
 	}
 	switch p.Mode {
 	case "classic":
@@ -287,6 +298,17 @@ func (p *siteParams) resolve(ctx context.Context, env *Env) (siteState, error) {
 			return st, err
 		}
 		st.NodeVersion = p.NodeVersion
+	case "python":
+		if p.PHPVersion != "" || p.NodeVersion != "" {
+			return st, protocol.Invalid("php_version, node_version: not valid for python mode")
+		}
+		if err := validate.OneOf("python_version", p.PythonVersion, pythonMinors(env.Cfg)); err != nil {
+			return st, err
+		}
+		if err := validPythonApp(p.PythonApp); err != nil {
+			return st, err
+		}
+		st.PythonVersion, st.PythonApp = p.PythonVersion, p.PythonApp
 	}
 	return st, nil
 }
@@ -311,7 +333,7 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if st.TLS == "" && isInternalDomain(p.Domain) {
 		st.TLS = "internal" // no public CA can issue for these
 	}
-	if st.Mode == "node" {
+	if validate.AppMode(st.Mode) {
 		if st.Port, err = allocatePort(env); err != nil {
 			return nil, err
 		}
@@ -370,6 +392,11 @@ func siteCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = createSiteTree(env, l, owner, smtpPassword); err != nil {
 		return nil, err
 	}
+	if l.Mode == "python" {
+		if err = createPythonPlaceholder(env, l, owner); err != nil {
+			return nil, err
+		}
+	}
 
 	// 3. Backend for the mode, 4. edge, 5. state.
 	started, err := setupBackend(ctx, env, l, &rollback)
@@ -412,6 +439,12 @@ func siteOutput(l siteLayout, started bool) map[string]any {
 		out["node_version"] = l.NodeVersion
 		out["port"] = l.Port
 		out["doc_root"] = filepath.Join(l.Home, "current")
+	case "python":
+		out["python_version"] = l.PythonVersion
+		out["python_app"] = l.PythonApp
+		out["python_celery"] = celeryApp(l)
+		out["port"] = l.Port
+		out["doc_root"] = filepath.Join(l.Home, "current")
 	default:
 		out["doc_root"] = filepath.Join(l.Home, "current", "public")
 	}
@@ -433,7 +466,7 @@ func envFilePath(l siteLayout) string {
 //	tmp/ logs/
 func createSiteTree(env *Env, l siteLayout, o fsx.Owner, smtpPassword string) error {
 	dirs := []string{"releases", "releases/initial", "shared", "logs"}
-	if l.Mode != "node" {
+	if !validate.AppMode(l.Mode) {
 		dirs = append(dirs, "releases/initial/public")
 	}
 	for _, d := range dirs {
@@ -457,7 +490,9 @@ func createSiteTree(env *Env, l siteLayout, o fsx.Owner, smtpPassword string) er
 			return err
 		}
 	}
-	if l.Mode == "node" {
+	if l.Mode == "python" {
+		// createPythonPlaceholder: app.py and its virtualenv
+	} else if l.Mode == "node" {
 		js, err := render("placeholder-server.js.tmpl", l)
 		if err != nil {
 			return err

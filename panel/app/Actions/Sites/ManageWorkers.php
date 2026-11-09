@@ -17,15 +17,19 @@ class ManageWorkers
     /** Workers that keep their data in the site's Valkey. */
     public const NEEDS_VALKEY = ['horizon', 'pulsework'];
 
+    /** Workers that run the site's Celery app. */
+    public const CELERY = ['celery', 'celerybeat'];
+
     /**
      * Adds a worker and prepares what it needs: Horizon and Pulse's Redis
      * ingest get the site's Valkey switched on (nothing evicted, kept on disk)
      * when it is not yet; the agent sets the app's .env (queue connection,
      * Reverb keys and addresses) before the worker starts.
      *
+     * @param  string|null  $app  Celery workers: the site's Celery app (-A), null = the one it has
      * @return array<string, mixed> agent output (unit, started)
      */
-    public function create(Site $site, string $worker): array
+    public function create(Site $site, string $worker, ?string $app = null): array
     {
         app(Limits::class)->assertCanAdd($site->client, 'workers');
         if (in_array($worker, self::NEEDS_VALKEY, true) && $site->valkey === null) {
@@ -41,6 +45,9 @@ class ManageWorkers
         $params = ['domain' => $site->domain, 'worker' => $worker];
         if ($worker === 'reverb') {
             $params['public_port'] = Site::publicHttpsPort(); // where browsers reach Reverb
+        }
+        if (in_array($worker, self::CELERY, true) && filled($app)) {
+            $params['app'] = $app;
         }
         $out = $this->agent->call('worker.create', $params);
         rescue(fn () => $this->sync->handle(), report: false);

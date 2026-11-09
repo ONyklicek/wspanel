@@ -39,7 +39,7 @@ class Site extends Model
     }
 
     protected $fillable = [
-        'domain', 'mode', 'framework', 'php_version', 'node_version', 'port', 'ssh_access', 'ssh_keys', 'ssh_password', 'mail_mode', 'tls_mode',
+        'domain', 'mode', 'framework', 'php_version', 'node_version', 'python_version', 'python_app', 'port', 'ssh_access', 'ssh_keys', 'ssh_password', 'mail_mode', 'tls_mode',
         'system_user', 'home', 'doc_root', 'status', 'enabled', 'last_error',
         'health_ok', 'health_status', 'health_error', 'health_checked_at',
         'webhook_id', 'webhook_secret', 'webhook_enabled', 'webhook_via_site', 'deploy_trigger', 'deploy_requested_at', 'deploy_requested_ref', 'deploy_polled_ref', 'deploy_polled_at', 'deploy_poll_error', 'php_settings', 'edge_settings', 'ci_id', 'ci_token_hash', 'valkey', 'web_rules', 'xhprof', 'staging_of',
@@ -177,13 +177,14 @@ class Site extends Model
         return $this->system_user.'@'.(config('panel.ssh_host') ?: request()->getHost());
     }
 
-    /** Human label of what runs the site, e.g. "PHP 8.3", "PHP 8.5 · FrankenPHP", "Node 22". */
+    /** Human label of what runs the site, e.g. "PHP 8.3", "PHP 8.5 · FrankenPHP", "Node 22", "Python 3.13". */
     public function runtimeLabel(): string
     {
         return match ($this->mode) {
             SiteMode::Classic => "PHP {$this->php_version}",
             SiteMode::Worker => "PHP {$this->php_version} · FrankenPHP",
             SiteMode::Node => "Node {$this->node_version}",
+            SiteMode::Python => "Python {$this->python_version}",
         };
     }
 
@@ -200,6 +201,8 @@ class Site extends Model
             'framework' => $out['framework'],
             'php_version' => ($out['php_version'] ?? '') ?: null,
             'node_version' => $out['node_version'] ?? null,
+            'python_version' => $out['python_version'] ?? null,
+            'python_app' => ($out['python_app'] ?? '') ?: null,
             'port' => $out['port'] ?? null,
             'system_user' => $out['system_user'] ?? null,
             'home' => $out['home'] ?? null,

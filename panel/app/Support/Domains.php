@@ -56,6 +56,12 @@ final class Domains
         if ($data['mode'] === SiteMode::Node->value) {
             $params['node_version'] = (string) $data['node_version'];
         }
+        if ($data['mode'] === SiteMode::Python->value) {
+            $params['python_version'] = (string) $data['python_version'];
+            if (($data['python_app'] ?? '') !== '') {
+                $params['python_app'] = (string) $data['python_app'];
+            }
+        }
 
         return $params;
     }
