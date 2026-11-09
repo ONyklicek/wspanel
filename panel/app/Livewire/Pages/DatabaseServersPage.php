@@ -5,16 +5,20 @@ namespace App\Livewire\Pages;
 use App\Actions\Databases\ManageDatabaseServers;
 use App\Enums\DatabaseEngine;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
+use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Checkbox;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Radio;
+use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WirePanels\Pages\Page;
@@ -26,6 +30,7 @@ use NyonCode\WirePanels\Pages\Page;
 class DatabaseServersPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.database-servers';
 
@@ -62,6 +67,50 @@ class DatabaseServersPage extends Page
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
         }
+    }
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['engine-install'];
+    }
+
+    /** The new engine shows here, in the create form and in the services. */
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        Cache::forget('agent.sys.versions');
+        $this->refreshStatus();
+    }
+
+    /** @return array<string, string> engines this server does not have yet, value => label */
+    public function missingEngines(): array
+    {
+        return collect(DatabaseEngine::cases())
+            ->reject(fn (DatabaseEngine $e) => in_array($e, app(SystemInfo::class)->dbEngines(), true))
+            ->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()])->all();
+    }
+
+    protected function headerActions(): array
+    {
+        return [
+            Action::make('installEngine')
+                ->label(__('Doinstalovat engine'))
+                ->icon('outline:plus-circle')
+                ->visible(fn () => $this->missingEngines() !== [] && ! isset($this->backgroundJobs['engine-install']))
+                ->modalDescription(__('Nainstaluje databázový server a PHP ovladače pro všechny verze PHP. Engine pak z panelu nejde odebrat (odinstalace by smazala data).'))
+                ->form(fn () => [Select::make('engine')->rules([Options::rule()])->label(__('Engine'))->options($this->missingEngines())->required()])
+                ->action(function (array $data) {
+                    $label = DatabaseEngine::from($data['engine'])->getLabel();
+                    try {
+                        $this->startBackgroundJob('engine-install', app(AgentClient::class)->call('engine.install', ['engine' => $data['engine']]), [
+                            'title' => __('Instalace :engine', ['engine' => $label]),
+                            'done' => __(':engine nainstalován', ['engine' => $label]),
+                            'body' => __('Nové databáze teď můžete zakládat i v něm; služba je v Server → Služby.'),
+                        ]);
+                    } catch (AgentException $e) {
+                        Toast::error(__('Instalace selhala'), $e->getMessage());
+                    }
+                }),
+        ];
     }
 
     public static function engineLabel(string $engine): string

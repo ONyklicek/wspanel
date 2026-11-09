@@ -5,7 +5,7 @@
 **Databáze → Nová databáze** (nebo na detailu webu → Další → Nová databáze):
 
 - **Engine:** MariaDB nebo PostgreSQL (jen ty, které jsou nainstalované; další
-  doinstalujete v Databáze → Doinstalovat engine).
+  doinstalujete v Databáze → Servery → Doinstalovat engine).
 - **Název:** stejný název má i uživatel databáze.
 - **Web:** když databázi přiřadíte webu, panel zapíše přístupové údaje přímo do
   jeho `.env` a heslo nikde neukáže:

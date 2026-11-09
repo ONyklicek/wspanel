@@ -32,6 +32,7 @@ enum ServiceType: string implements HasLabel
     /** Whether `systemctl reload` is meaningful (graceful config reload). */
     public function supportsReload(): bool
     {
-        return in_array($this, [self::PhpFpm, self::Proxy, self::Web, self::MariaDb, self::PostgreSql], true);
+        // MariaDB's unit has no reload (CanReload=no): restart applies its config.
+        return in_array($this, [self::PhpFpm, self::Proxy, self::Web, self::PostgreSql], true);
     }
 }

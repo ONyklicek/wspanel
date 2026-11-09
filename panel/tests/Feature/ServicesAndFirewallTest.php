@@ -35,6 +35,7 @@ class ServicesAndFirewallTest extends TestCase
         ['unit' => 'panel-proxy.service', 'load' => 'loaded', 'active' => 'active', 'sub' => 'running', 'enabled' => 'enabled'],
         ['unit' => 'php8.3-fpm.service', 'load' => 'loaded', 'active' => 'active', 'sub' => 'running', 'enabled' => 'enabled'],
         ['unit' => 'php8.4-fpm.service', 'load' => 'loaded', 'active' => 'active', 'sub' => 'running', 'enabled' => 'enabled'],
+        ['unit' => 'mariadb.service', 'load' => 'loaded', 'active' => 'active', 'sub' => 'running', 'enabled' => 'enabled'],
         ['unit' => 'valkey-server.service', 'load' => 'loaded', 'active' => 'failed', 'sub' => 'failed', 'enabled' => 'enabled'],
         ['unit' => 'wspanel-web_my-shop_cz-horizon.service', 'load' => 'loaded', 'active' => 'inactive', 'sub' => 'dead', 'enabled' => 'enabled'],
     ];
@@ -78,7 +79,7 @@ class ServicesAndFirewallTest extends TestCase
 
         $this->artisan('panel:sync')->assertSuccessful();
 
-        $this->assertSame(5, Service::count());
+        $this->assertSame(6, Service::count());
         $this->assertDatabaseMissing('services', ['unit' => 'gone.service']);
         $worker = Service::where('type', 'worker')->sole();
         $this->assertSame('my-shop.cz', $worker->instance);
@@ -115,6 +116,9 @@ class ServicesAndFirewallTest extends TestCase
         $this->assertTrue($this->tableActionVisible($list, 'stop', $unit('php8.3-fpm.service')));
         $this->assertTrue($this->tableActionVisible($list, 'reset', $unit('valkey-server.service')));
         $this->assertFalse($this->tableActionVisible($list, 'reload', $unit('valkey-server.service')));
+        // MariaDB's unit cannot reload (systemd: "Job type reload is not applicable").
+        $this->assertFalse($this->tableActionVisible($list, 'reload', $unit('mariadb.service')));
+        $this->assertTrue($this->tableActionVisible($list, 'reload', $unit('php8.3-fpm.service')));
     }
 
     public function test_agent_errors_are_shown_not_thrown(): void

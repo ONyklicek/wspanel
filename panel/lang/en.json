@@ -659,7 +659,7 @@
     "Malá písmena, číslice a podtržítko, začíná písmenem.": "Lowercase letters, digits and underscore, starting with a letter.",
     "Malá písmena, číslice a podtržítko; začíná písmenem.": "Lowercase letters, digits and underscore; starts with a letter.",
     "Malá písmena, číslice, - a _.": "Lowercase letters, digits, - and _.",
-    "MariaDB ani PostgreSQL nejsou nainstalované. Doinstalujete je na stránce Databáze (Doinstalovat engine).": "Neither MariaDB nor PostgreSQL is installed. Install them on the Databases page (Install an engine).",
+    "MariaDB ani PostgreSQL nejsou nainstalované. Doinstalujete je tlačítkem Doinstalovat engine.": "Neither MariaDB nor PostgreSQL is installed. Install one with Install an engine.",
     "Max. doba běhu skriptu, s (max_execution_time)": "Max. script run time, s (max_execution_time)",
     "Max. doba načítání vstupu, s (max_input_time)": "Max. input parsing time, s (max_input_time)",
     "Max. počet vstupních proměnných (max_input_vars)": "Max. number of input variables (max_input_vars)",
@@ -2670,5 +2670,8 @@
     "Nová tajná hodnota": "New secret",
     "Nová proměnná": "New variable",
     "Po uložení už se hodnota nezobrazí, jde jen přepsat.": "Once saved the value is never shown again, it can only be replaced.",
-    "Nový přístup pro Composer": "New Composer credentials"
+    "Nový přístup pro Composer": "New Composer credentials",
+    "Instalace :engine": "Installing :engine",
+    ":engine nainstalován": ":engine installed",
+    "Nové databáze teď můžete zakládat i v něm; služba je v Server → Služby.": "You can now create databases in it too; its service is in Server → Services."
 }

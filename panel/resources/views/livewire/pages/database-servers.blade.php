@@ -1,9 +1,10 @@
 <div class="space-y-6">
+    @include('partials.background-jobs')
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Stav databázových serverů se nepodařilo načíst')">{{ $error }}</x-wire::callout>
     @elseif ($servers === [])
         <x-wire::empty-state icon="outline:circle-stack" :heading="__('Žádný databázový server')"
-            :description="__('MariaDB ani PostgreSQL nejsou nainstalované. Doinstalujete je na stránce Databáze (Doinstalovat engine).')" />
+            :description="__('MariaDB ani PostgreSQL nejsou nainstalované. Doinstalujete je tlačítkem Doinstalovat engine.')" />
     @endif
 
     @foreach ($servers as $engine => $s)

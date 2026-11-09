@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Actions\Databases\SyncDatabases;
 use App\Livewire\Databases\ListDatabases;
+use App\Livewire\Pages\DatabaseServersPage;
 use App\Models\Backup;
 use App\Models\Database;
 use App\Models\Site;
@@ -191,14 +192,19 @@ class DatabasesTest extends TestCase
     public function test_installing_a_missing_engine(): void
     {
         $this->agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb']]);
+        $this->agent->shouldReceive('call')->with('db.server_status')->andReturn(['engines' => []]);
         $this->agent->shouldReceive('call')->once()->with('engine.install', ['engine' => 'postgresql'])->andReturn(['job_id' => 'abcdef0123456789']);
-        $this->agent->shouldReceive('call')->once()->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => []]);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'abcdef0123456789'])->andReturn(['status' => 'done', 'output' => []]);
 
-        $this->headerTableAction(Livewire::test(ListDatabases::class), 'installEngine', ['engine' => 'postgresql'])
+        // It runs in the background; the page says so and then how it ended.
+        $this->pageAction(Livewire::test(DatabaseServersPage::class), 'installEngine', ['engine' => 'postgresql'])
             ->assertHasNoErrors()
-            ->assertNotified('Engine nainstalován');
+            ->assertSee('Instalace PostgreSQL')
+            ->call('pollBackgroundJobs')
+            ->assertNotified('PostgreSQL nainstalován')
+            ->assertDontSee('běží na pozadí');
 
-        $this->headerTableAction(Livewire::test(ListDatabases::class), 'installEngine', ['engine' => 'mariadb'])
+        $this->pageAction(Livewire::test(DatabaseServersPage::class), 'installEngine', ['engine' => 'mariadb'])
             ->assertHasErrors();
     }
 
