@@ -7,6 +7,7 @@ use App\Models\MailDomain;
 use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsPrerequisites;
 use App\Services\Mail\Deliverability;
+use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Forms\DnsGate;
 use App\Wire\Resources\MailDomainResource;
@@ -40,7 +41,7 @@ class ViewMailDomain extends ViewPage
         /** @var MailDomain $domain */
         $domain = $this->nativeRecord();
 
-        return [
+        return PageActions::arrange([
             Action::make('features')
                 ->label(__('Webmail a nastavení programů'))
                 ->icon('outline:cog-6-tooth')
@@ -114,7 +115,7 @@ class ViewMailDomain extends ViewPage
                         Toast::error(__('Doménu nejde odebrat'), $e->getMessage());
                     }
                 }),
-        ];
+        ], primary: null);
     }
 
     public function render(): View

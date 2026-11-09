@@ -8,6 +8,7 @@ use App\Enums\Game;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
+use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
@@ -180,8 +181,8 @@ class ViewGameServer extends ViewPage
     {
         $server = fn () => $this->server();
 
-        return [
-            Action::make('settings')->label(__('Nastavení'))->icon('outline:cog-6-tooth')->color('gray')
+        return PageActions::arrange([
+            Action::make('settings')->label(__('Upravit'))->icon('outline:pencil-square')->color('gray')
                 ->modalDescription(__('Nová paměť a procesor platí po restartu serveru (běžící server se restartuje sám).'))
                 ->fillFormUsing(fn () => ['name' => $server()->name, 'memory_mb' => $server()->memory_mb, 'cpu_percent' => $server()->cpu_percent])
                 ->form([
@@ -276,7 +277,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                         Toast::error(__('Smazání selhalo'), $e->getMessage());
                     }
                 }),
-        ];
+        ], primary: null);
     }
 
     public function render(): View

@@ -10,6 +10,7 @@ use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
 use App\Services\Dns\LocalDns;
+use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Dns\RecordForm;
 use App\Wire\Resources\DnsZoneResource;
@@ -60,7 +61,7 @@ class ViewDnsZone extends ViewPage
         return Infolist::make()->record($zone)->livewireComponent($this)->schema([
             Section::make('zone')->label(__('Zóna'))->columns(3)->schema([
                 TextEntry::make('provider')->label(__('Kde je zóna'))->state(fn () => $zone->provider->getLabel())->badge()->color('gray'),
-                TextEntry::make('site')->label(__('Web'))->state(fn () => $zone->site?->domain ?? '—'),
+                TextEntry::make('site')->label(__('Weby'))->state(fn () => $zone->sitesBelow()->pluck('domain')->implode(', ') ?: '—'),
                 TextEntry::make('delegation')->label(__('U registrátora nastavte'))->state(fn () => $zone->provider === DnsProvider::Local
                     ? 'nameservery '.implode(', ', DnsAdvisor::defaultNameservers()).' (IP '.config('panel.public_ipv4').')'
                     : __('nameservery, které ukazuje Cloudflare u zóny')),
@@ -72,7 +73,7 @@ class ViewDnsZone extends ViewPage
     {
         $zone = $this->zone();
 
-        return [
+        return PageActions::arrange([
             Action::make('add')
                 ->label(__('Přidat záznam'))
                 ->icon('outline:plus')
@@ -171,7 +172,7 @@ class ViewDnsZone extends ViewPage
                     })
                     ->successRedirect(fn () => DnsZoneResource::url('index')),
             ])->label(__('Další'))->icon('outline:ellipsis-vertical'),
-        ];
+        ], primary: 'add');
     }
 
     public function render(): View

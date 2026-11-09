@@ -1,5 +1,5 @@
 <div>
-    <x-wire::section :heading="__('DMARC reporty')"
+    <x-panel.table-section :heading="__('DMARC reporty')"
         :description="__('Kdo posílá poštu jménem domény a jestli prošla kontrolou DKIM a SPF, podle přehledů od přijímajících serverů.')">
         @if ($summary['reports'] > 0)
             <p class="mb-3 text-sm">
@@ -13,5 +13,5 @@
             </p>
         @endif
         {{ $this->table }}
-    </x-wire::section>
+    </x-panel.table-section>
 </div>

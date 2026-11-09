@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
+use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
 use NyonCode\WireCore\Core\Plugin\Hooks\TableComposingPayload;
 use NyonCode\WireCore\Core\Plugin\PluginManager;
@@ -45,6 +46,33 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
+    /**
+     * The same row actions look the same in every table (the modules' too):
+     * view, edit, download and delete are icons with their name on hover,
+     * delete always last. Other actions keep their text.
+     */
+    private static function uniformRowActions(object $table): void
+    {
+        if (! method_exists($table, 'getActions') || ! method_exists($table, 'actions')) {
+            return;
+        }
+        $icons = ['view' => 'outline:eye', 'edit' => 'outline:pencil-square', 'download' => 'outline:arrow-down-tray',
+            'delete' => 'outline:trash', 'drop' => 'outline:trash', 'revoke' => 'outline:trash'];
+        $last = ['delete', 'drop', 'revoke'];
+        $actions = $table->getActions();
+        foreach ($actions as $action) {
+            if ($action instanceof Action && isset($icons[$action->getName()])) {
+                $action->onlyIcon()->icon($icons[$action->getName()]);
+                if (rescue(fn () => $action->getTooltip(), null, report: false) === null) {
+                    $action->tooltip(fn ($record = null) => $action->getLabel($record));
+                }
+            }
+        }
+        usort($actions, fn ($a, $b) => (int) ($a instanceof Action && in_array($a->getName(), $last, true))
+            <=> (int) ($b instanceof Action && in_array($b->getName(), $last, true)));
+        $table->actions($actions);
+    }
+
     public function boot(): void
     {
         // The web tier receives the panel under an internal host name: every
@@ -100,6 +128,7 @@ class AppServiceProvider extends ServiceProvider
             if (method_exists($payload->table, 'actionsStyle')) {
                 $payload->table->actionsStyle('quiet');
             }
+            self::uniformRowActions($payload->table);
 
             return $payload;
         });

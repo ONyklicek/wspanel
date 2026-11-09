@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\Action;
-use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireForms\Components\CheckboxList;
 use NyonCode\WireForms\Components\Field;
 use NyonCode\WireForms\Components\Select;
@@ -109,24 +108,22 @@ class NotificationChannelTable extends Component
                             ? Toast::success(__('Odesláno'))
                             : Toast::error(__('Odeslání selhalo'), (string) $record->fresh()->last_error);
                     }),
-                ActionGroup::make([
-                    Action::make('edit')->label(__('Upravit'))->icon('outline:pencil')
-                        ->fillFormUsing(fn (NotificationChannel $r) => ['name' => $r->name, 'events' => $r->events, 'enabled' => $r->enabled])
-                        ->form([
-                            TextInput::make('name')->label(__('Název'))->required()->rules(['string', 'max:100']),
-                            CheckboxList::make('events')->label(__('Posílat'))->options(Lang::values(NotificationChannel::EVENTS))->required(),
-                            Toggle::make('enabled')->label(__('Zapnuto')),
-                        ])
-                        ->action(function (NotificationChannel $record, array $data) {
-                            $record->update(['name' => $data['name'], 'events' => array_values($data['events'] ?? []), 'enabled' => (bool) $data['enabled']]);
-                            Toast::success(__('Uloženo'));
-                        }),
-                    Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->requiresConfirmation()
-                        ->action(function (NotificationChannel $record) {
-                            $record->delete();
-                            Toast::success(__('Kanál smazán'));
-                        }),
-                ]),
+                Action::make('edit')->label(__('Upravit'))->icon('outline:pencil-square')
+                    ->fillFormUsing(fn (NotificationChannel $r) => ['name' => $r->name, 'events' => $r->events, 'enabled' => $r->enabled])
+                    ->form([
+                        TextInput::make('name')->label(__('Název'))->required()->rules(['string', 'max:100']),
+                        CheckboxList::make('events')->label(__('Posílat'))->options(Lang::values(NotificationChannel::EVENTS))->required(),
+                        Toggle::make('enabled')->label(__('Zapnuto')),
+                    ])
+                    ->action(function (NotificationChannel $record, array $data) {
+                        $record->update(['name' => $data['name'], 'events' => array_values($data['events'] ?? []), 'enabled' => (bool) $data['enabled']]);
+                        Toast::success(__('Uloženo'));
+                    }),
+                Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->requiresConfirmation()
+                    ->action(function (NotificationChannel $record) {
+                        $record->delete();
+                        Toast::success(__('Kanál smazán'));
+                    }),
             ])
             ->emptyState(__('Zatím žádný kanál'), __('Přidejte e-mail, Slack, Discord, Telegram nebo ntfy.'), 'outline:bell')
             ->searchable(false)

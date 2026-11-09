@@ -1,5 +1,5 @@
 <div>
-    <x-wire::section :heading="__('Aliasy a přeposílání')">
+    <x-panel.table-section :heading="__('Aliasy a přeposílání')">
         {{ $this->table }}
-    </x-wire::section>
+    </x-panel.table-section>
 </div>
