@@ -155,7 +155,12 @@ final class SiteFields
         $modes = collect(SiteMode::cases())
             ->reject(fn (SiteMode $m) => $m->value === $currentMode)
             ->filter(fn (SiteMode $m) => ! is_array($allowed) || $allowed === [] || in_array($m->value, $allowed, true))
+            ->filter(fn (SiteMode $m) => $system->modeAvailable($m))
             ->values();
+        if ($modes->isEmpty()) {
+            $modes = collect([SiteMode::Classic]);
+        }
+        $pythonMissing = ! $system->modeAvailable(SiteMode::Python);
         $phpOptions = fn () => Limits::filterPhp($client, $system->phpVersionOptions());
 
         return [
@@ -169,6 +174,9 @@ final class SiteFields
                 ->rules([Rule::in($modes->map(fn (SiteMode $m) => $m->value)->all())])
                 ->live()
                 ->afterStateUpdated(fn ($state, $set) => $set('framework', array_key_first(Framework::optionsForMode($state)))),
+            Callout::make()->info()->heading(__('Python weby po doinstalaci'))
+                ->content(__('Režim Python se tu objeví, až Python doinstalujete v Server → Moduly.'))
+                ->visible($pythonMissing && Gate::allows('admin')),
             Select::make('framework')
                 ->label(__('Typ aplikace'))
                 ->options(fn ($get) => Framework::optionsForMode($get('mode')))
@@ -193,9 +201,6 @@ final class SiteFields
                 ->visibleWhen('mode', SiteMode::Node->value)
                 ->requiredIf('mode', SiteMode::Node->value)
                 ->rules([fn () => Rule::in(array_keys($system->nodeVersionOptions()))]),
-            Callout::make()->warning()->heading(__('Na serveru zatím není Python'))
-                ->content(__('Doinstalujete ho v Server → Moduly (Python), pak tu půjde vybrat verzi.'))
-                ->visible(fn ($get) => $get('mode') === SiteMode::Python->value && $system->pythonVersionOptions() === []),
             Select::make('python_version')
                 ->label(__('Verze Pythonu'))
                 ->options(fn () => $system->pythonVersionOptions())

@@ -3,6 +3,7 @@
 namespace App\Services\Agent;
 
 use App\Enums\DatabaseEngine;
+use App\Enums\SiteMode;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -63,6 +64,28 @@ class SystemInfo
         } catch (AgentException) {
             return null;
         }
+    }
+
+    /**
+     * Whether the server has the runtime a site mode needs: an installed PHP
+     * (classic), FrankenPHP (worker), a Node or a Python version. When the
+     * agent cannot be asked, nothing is hidden: creating the site would then
+     * fail with the agent's own message rather than lose an option silently.
+     */
+    public function modeAvailable(SiteMode $mode): bool
+    {
+        try {
+            $this->versions();
+        } catch (AgentException) {
+            return true;
+        }
+
+        return match ($mode) {
+            SiteMode::Classic => $this->phpVersionOptions() !== [],
+            SiteMode::Worker => $this->workerPhpVersion() !== null,
+            SiteMode::Node => $this->nodeVersionOptions() !== [],
+            SiteMode::Python => $this->pythonVersionOptions() !== [],
+        };
     }
 
     /** @return array<string, string> major => label */

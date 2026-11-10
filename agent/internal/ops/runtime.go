@@ -196,7 +196,7 @@ var noBindExtra = []string{"CapabilityBoundingSet=", "SocketBindDeny=any"}
 
 // ---------------------------------------------------------------- FrankenPHP
 
-var frankenPHPVersionRe = regexp.MustCompile(`\bPHP (\d+\.\d+)\.\d+`)
+var frankenPHPVersionRe = regexp.MustCompile(`\bPHP (\d+\.\d+)(?:\.\d+)?\b`)
 
 // workerPHPVersion is the PHP version built into the FrankenPHP binary. One
 // binary = one PHP version; worker sites cannot choose another.

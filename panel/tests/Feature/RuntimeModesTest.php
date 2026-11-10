@@ -113,6 +113,24 @@ class RuntimeModesTest extends TestCase
             ->assertHasErrors(['data.framework']);
     }
 
+    public function test_a_new_site_is_not_offered_a_runtime_the_server_lacks(): void
+    {
+        $this->agent->shouldReceive('call')->with('sys.versions')->andReturn([
+            'php' => [['version' => '8.4', 'installed' => true]],
+            'worker_php' => '8.5',
+            'node' => ['24'],
+            'python' => [],
+            'panel_units' => [],
+        ]);
+        $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
+
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'py.example.com', 'mode' => 'python'])
+            ->assertDontSee(__('Django, Flask nebo FastAPI pod gunicornem / uvicornem, každý release s vlastním virtualenvem.'))
+            ->assertSee(__('Režim Python se tu objeví, až Python doinstalujete v Server → Moduly.'))
+            ->call('save')
+            ->assertHasErrors(['data.mode']);
+    }
+
     public function test_switch_mode_updates_the_site(): void
     {
         $site = Site::create(['domain' => 'm.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.3', 'status' => 'active']);
