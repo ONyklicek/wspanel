@@ -9,12 +9,15 @@ use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
 use App\Livewire\Pages\ModulesPage;
 use App\Livewire\Sites\FileBrowser;
+use App\Livewire\TaskIndicator;
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\GameServer;
 use App\Models\Package;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Features;
 use App\Support\Limits;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +71,41 @@ class GameServersTest extends TestCase
         $server = GameServer::sole();
         $this->assertSame('active', $server->status);
         $this->assertSame('Paper 1.21.10 #130', $server->versionLabel());
+    }
+
+    /**
+     * The install runs in the background: the modal closes at once onto the
+     * server's page ("installing"), the top bar's indicator settles the job
+     * live and the server becomes active; a failed job marks it failed.
+     */
+    public function test_the_install_runs_in_the_background_and_ends_live(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->with('game.create', Mockery::any())->andReturn(['job_id' => 'j1'], ['job_id' => 'j2']);
+        $status = ['j1' => ['status' => 'running'], 'j2' => ['status' => 'running']];
+        $this->agent->shouldReceive('call')->with('job.status', Mockery::any())->andReturnUsing(function ($op, $p) use (&$status) {
+            return $status[$p['id']];
+        });
+        $form = ['name' => 'Survival', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'memory_mb' => 2048, 'cpu_percent' => 0, 'eula' => true];
+
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', $form)->assertHasNoErrors()->assertRedirect();
+        $server = GameServer::sole();
+        $this->assertSame('installing', $server->status);
+        $indicator = Livewire::test(TaskIndicator::class)->assertSee('1 úloha běží')->assertSee('Instalace herního serveru Survival');
+        Livewire::test(ViewGameServer::class, ['record' => $server->id])->assertSee('instaluje se')->assertSee('běží na pozadí');
+
+        $status['j1'] = ['status' => 'done', 'output' => ['build' => '130']];
+        $indicator->call('settle')->assertDispatched('agent-task-finished')->assertDontSee('úloha běží');
+        $this->assertSame('active', $server->fresh()->status);
+        $this->assertSame('Paper 1.21.10 #130', $server->fresh()->versionLabel());
+        $this->assertNotNull(AgentTask::sole()->notified_at);
+
+        // Failed: marked so; the scheduler settles it with nobody on the page.
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', [...$form, 'name' => 'Second']);
+        $status['j2'] = ['status' => 'failed', 'error' => 'download failed'];
+        AgentTasks::settleAll();
+        $this->assertSame('failed', GameServer::where('name', 'Second')->sole()->status);
+        $this->assertSame('download failed', AgentTask::latest('id')->first()->error);
     }
 
     public function test_a_failed_install_leaves_no_record(): void

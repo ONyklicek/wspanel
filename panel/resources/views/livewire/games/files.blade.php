@@ -1,5 +1,6 @@
 <div class="wire-resource-page space-y-4 sm:space-y-6">
     @include('wire-panels::pages.partials.header')
+    @include('partials.subject-tasks')
 
     <p class="text-sm text-gray-500 dark:text-gray-400">
         {{ __('Soubory herního serveru tak, jak je vidí jeho uživatel') }} <span class="font-mono">wsg_{{ $server->getKey() }}</span>.

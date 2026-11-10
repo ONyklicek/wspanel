@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Actions\Games\ManageGameServers;
+use App\Models\AgentTask;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -19,7 +21,12 @@ class BackupGameServers extends Command
         $failed = 0;
         foreach (GameServer::acrossClients()->where('status', 'active')->orderBy('id')->get() as $server) {
             try {
-                $out = $games->backup($server);
+                // Nobody to show it to: the command waits for the backup.
+                $task = AgentTasks::wait($games->backup($server), 600);
+                if ($task->status === AgentTask::FAILED) {
+                    throw new AgentException('job_failed', (string) $task->error, 'game.backup');
+                }
+                $out = $task->isRunning() ? null : (array) $task->output;
                 $this->info($server->name.': '.($out['file'] ?? 'running').(isset($out['offsite_error']) ? ' (off-site: '.$out['offsite_error'].')' : ''));
                 if (isset($out['offsite_error'])) {
                     Log::warning('game server backup not copied off-site', ['server' => $server->id, 'error' => $out['offsite_error']]);

@@ -7,11 +7,12 @@ use App\Actions\Sites\ManageSsh;
 use App\Enums\Game;
 use App\Enums\SshAccess;
 use App\Exceptions\LimitReachedException;
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\GameServer;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use App\Support\CurrentClient;
 use App\Support\Limits;
 use Illuminate\Support\Facades\Cache;
@@ -22,7 +23,6 @@ class ManageGameServers
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
         private readonly Limits $limits,
     ) {}
 
@@ -49,8 +49,9 @@ class ManageGameServers
     }
 
     /**
-     * Creates the server: the record first, then the agent's install (Java,
-     * the download, the unit); true when it runs, false while installing.
+     * Creates the server: the record first ("installing"), then the agent's
+     * install (Java, the download, the unit) in the background; created()
+     * marks it active (or failed) once that ends.
      *
      * @param  array{name: string, game: string, flavor: string, version: string, port?: ?int, memory_mb: int, cpu_percent?: ?int, eula?: bool, client_id?: ?int}  $data
      *
@@ -89,16 +90,29 @@ class ManageGameServers
         }
         try {
             $job = $this->agent->call('game.create', $params);
-            $out = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 900) : $job;
         } catch (AgentException $e) {
             $server->delete();
             throw $e;
         }
-        if ($out !== null) {
-            $server->update(['status' => 'active', 'build' => ($out['build'] ?? '') ?: null]);
-        }
+        AgentTasks::start($job, 'game.create', [
+            'title' => __('Instalace herního serveru :name', ['name' => $server->name]),
+            'done' => __('Herní server :name běží', ['name' => $server->name]),
+            'body' => __('Hráči se připojí na :address.', ['address' => $server->address()]),
+        ], self::class.'@created', $server);
 
-        return $server;
+        return $server->refresh();
+    }
+
+    /** The install ended: the server runs, or it is marked failed (to delete or try again). */
+    public function created(AgentTask $task): void
+    {
+        $server = GameServer::acrossClients()->find($task->subject_id);
+        if ($server === null) {
+            return;
+        }
+        $task->status === AgentTask::DONE
+            ? $server->update(['status' => 'active', 'build' => ($task->output['build'] ?? '') ?: null])
+            : $server->update(['status' => 'failed']);
     }
 
     /** The game's own port when free, else the next one in the games' range. */
@@ -127,7 +141,10 @@ class ManageGameServers
     public function status(GameServer $server): array
     {
         $out = $this->agent->call('game.status', ['id' => $server->id]);
-        if ($server->status === 'installing') {
+        // The install's task marks it active when it ends; a server from
+        // before installs ran in the background has no task to do that.
+        if ($server->status === 'installing' && ! AgentTask::query()->running()
+            ->where('subject_type', $server->getMorphClass())->where('subject_id', $server->id)->exists()) {
             $server->update(['status' => 'active']);
         }
 
@@ -174,35 +191,56 @@ class ManageGameServers
     }
 
     /**
-     * The newest build, or another (newer) version; null while still running.
-     *
-     * @return array<string, mixed>|null
+     * The newest build, or another (newer) version, in the background.
      *
      * @throws AgentException
      */
-    public function upgrade(GameServer $server, ?string $version = null): ?array
+    public function upgrade(GameServer $server, ?string $version = null): AgentTask
     {
         $job = $this->agent->call('game.update', array_filter(['id' => $server->id, 'version' => $version]));
-        $out = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 600) : $job;
-        if ($out !== null && ($out['changed'] ?? false)) {
-            $server->update(['version' => $out['version'], 'build' => ($out['build'] ?? '') ?: null]);
-        }
 
-        return $out;
+        return AgentTasks::start($job, 'game.update', [
+            'title' => __('Aktualizace serveru :name', ['name' => $server->name]),
+            'done' => __('Server :name je aktuální', ['name' => $server->name]),
+        ], self::class.'@upgraded', $server);
+    }
+
+    public function upgraded(AgentTask $task): void
+    {
+        $server = GameServer::acrossClients()->find($task->subject_id);
+        if ($server !== null && $task->status === AgentTask::DONE && ($task->output['changed'] ?? false)) {
+            $server->update(['version' => $task->output['version'], 'build' => ($task->output['build'] ?? '') ?: null]);
+            $task->update(['done_title' => __('Server :name aktualizován na :version', ['name' => $server->name, 'version' => $server->versionLabel()])]);
+        }
     }
 
     /**
-     * A backup now (copied off-site when set up); null while still running.
-     *
-     * @return array{file: string, size: int, offsite?: string, offsite_error?: string}|null
+     * A backup now (copied off-site when set up), in the background; the
+     * task's output: file, size, offsite or offsite_error.
      *
      * @throws AgentException
      */
-    public function backup(GameServer $server): ?array
+    public function backup(GameServer $server): AgentTask
     {
         $job = $this->agent->call('game.backup', ['id' => $server->id]);
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 600) : $job;
+        return AgentTasks::start($job, 'game.backup', [
+            'title' => __('Záloha serveru :name', ['name' => $server->name]),
+            'done' => __('Záloha serveru :name vytvořena', ['name' => $server->name]),
+        ], self::class.'@backedUp', $server);
+    }
+
+    public function backedUp(AgentTask $task): void
+    {
+        if ($task->status !== AgentTask::DONE) {
+            return;
+        }
+        $out = (array) $task->output;
+        $task->update(match (true) {
+            isset($out['offsite_error']) => ['done_title' => __('Záloha vytvořena, ale kopie mimo server selhala'), 'body' => (string) $out['offsite_error']],
+            isset($out['offsite']) => ['done_title' => __('Záloha vytvořena a zkopírována mimo server'), 'body' => (string) ($out['file'] ?? '')],
+            default => ['body' => (string) ($out['file'] ?? '')],
+        });
     }
 
     /**
@@ -241,11 +279,14 @@ class ManageGameServers
     }
 
     /** @throws AgentException */
-    public function restore(GameServer $server, string $file): bool
+    public function restore(GameServer $server, string $file): AgentTask
     {
         $job = $this->agent->call('game.restore', ['id' => $server->id, 'file' => $file]);
 
-        return ! isset($job['job_id']) || $this->jobs->await($job['job_id'], 600) !== null;
+        return AgentTasks::start($job, 'game.restore', [
+            'title' => __('Obnova serveru :name ze zálohy', ['name' => $server->name]),
+            'done' => __('Server :name obnoven ze zálohy :file', ['name' => $server->name, 'file' => $file]),
+        ], subject: $server);
     }
 
     /**
@@ -311,17 +352,32 @@ class ManageGameServers
     }
 
     /**
-     * Installs (or updates) a plugin and what it requires; null while running.
-     *
-     * @return array{installed: list<array{name: string, version: string, file: string}>, needs: list<string>}|null
+     * Installs (or updates) a plugin and what it requires, in the background.
      *
      * @throws AgentException
      */
-    public function installPlugin(GameServer $server, string $source, string $project): ?array
+    public function installPlugin(GameServer $server, string $source, string $project): AgentTask
     {
         $job = $this->agent->call('game.plugin_install', ['id' => $server->id, 'source' => $source, 'project' => $project]);
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
+        return AgentTasks::start($job, 'game.plugin_install', [
+            'title' => __('Instalace pluginu :project', ['project' => $project]),
+            'done' => __('Plugin :project nainstalován', ['project' => $project]),
+        ], self::class.'@extensionInstalled', $server);
+    }
+
+    /** What a plugin or mod install brought, for the message. */
+    public function extensionInstalled(AgentTask $task): void
+    {
+        if ($task->status !== AgentTask::DONE || ! isset($task->output['installed'])) {
+            return;
+        }
+        $names = collect($task->output['installed'])->map(fn ($p) => $p['name'].' '.$p['version'])->implode(', ');
+        $needs = (array) ($task->output['needs'] ?? []);
+        $task->update([
+            'done_title' => __('Nainstalováno: :names', ['names' => $names]),
+            'body' => $needs !== [] ? __('Plugin potřebuje i: :needs (nainstalujte je zvlášť).', ['needs' => implode(', ', $needs)]) : __('Projeví se po restartu serveru.'),
+        ]);
     }
 
     /** @throws AgentException */
@@ -378,16 +434,15 @@ class ManageGameServers
         return $this->agent->call('game.mods', ['id' => $server->id] + ($check ? ['check' => true] : []));
     }
 
-    /**
-     * @return array{installed: list<array{name: string, version: string, file: string}>}|null
-     *
-     * @throws AgentException
-     */
-    public function installMod(GameServer $server, string $name): ?array
+    /** @throws AgentException */
+    public function installMod(GameServer $server, string $name): AgentTask
     {
         $job = $this->agent->call('game.mod_install', ['id' => $server->id, 'name' => $name]);
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
+        return AgentTasks::start($job, 'game.mod_install', [
+            'title' => __('Instalace modu :name', ['name' => $name]),
+            'done' => __('Mod :name nainstalován', ['name' => $name]),
+        ], self::class.'@extensionInstalled', $server);
     }
 
     /** @throws AgentException */

@@ -1,5 +1,6 @@
 <div class="wire-resource-page space-y-4 sm:space-y-6">
     @include('wire-panels::pages.partials.header')
+    @include('partials.subject-tasks')
 
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>

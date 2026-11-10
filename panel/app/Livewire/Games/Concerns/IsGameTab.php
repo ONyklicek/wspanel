@@ -2,16 +2,25 @@
 
 namespace App\Livewire\Games\Concerns;
 
+use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\GameServer;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Infolists\Infolist;
 
 /** A tab of a game server: headed by its name, trail Herní servery › name › tab. */
 trait IsGameTab
 {
+    use WatchesAgentTasks;
+
     abstract protected function tabLabel(): string;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        return $this->server();
+    }
 
     public function server(): GameServer
     {

@@ -28,8 +28,8 @@ class ListGameServers extends ListPage
                 ->form(fn () => GameServerResource::createFields())
                 ->action(function (array $data) {
                     try {
+                        // Installs in the background: the server's page shows how it goes.
                         $server = app(ManageGameServers::class)->create($data);
-                        Toast::success(__('Herní server :name běží', ['name' => $server->name]), __('Hráči se připojí na :address.', ['address' => $server->address()]));
                         $this->redirect(GameServerResource::url('view', $server));
                     } catch (AgentException $e) {
                         Toast::error(__('Server se nepodařilo vytvořit'), $e->getMessage());

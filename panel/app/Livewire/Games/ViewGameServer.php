@@ -6,12 +6,15 @@ use App\Actions\Games\ManageGameServers;
 use App\Actions\Sites\ManageSsh;
 use App\Enums\Game;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesAgentTasks;
+use App\Models\AgentTask;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
 use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Infolists\Infolist;
@@ -26,6 +29,7 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
 class ViewGameServer extends ViewPage
 {
     use TranslatesPageText;
+    use WatchesAgentTasks;
 
     protected static ?string $resource = GameServerResource::class;
 
@@ -58,6 +62,20 @@ class ViewGameServer extends ViewPage
     {
         /** @var GameServer */
         return $this->nativeRecord();
+    }
+
+    protected function agentTaskSubject(): ?Model
+    {
+        return $this->server();
+    }
+
+    /** An install, update, backup or restore ended: the state and the backups as they are now. */
+    protected function agentTaskFinished(AgentTask $task): void
+    {
+        $this->refreshStatus();
+        if ($this->backups !== null) {
+            $this->loadBackups();
+        }
     }
 
     public function getTitle(): ?string
@@ -141,13 +159,7 @@ class ViewGameServer extends ViewPage
     public function backupNow(): void
     {
         try {
-            $out = app(ManageGameServers::class)->backup($this->server());
-            match (true) {
-                $out === null => Toast::warning(__('Záloha ještě běží'), __('Obnovte seznam za chvíli.')),
-                isset($out['offsite_error']) => Toast::warning(__('Záloha vytvořena, ale kopie mimo server selhala'), $out['offsite_error']),
-                isset($out['offsite']) => Toast::success(__('Záloha vytvořena a zkopírována mimo server'), $out['file']),
-                default => Toast::success(__('Záloha vytvořena'), $out['file']),
-            };
+            app(ManageGameServers::class)->backup($this->server());
         } catch (AgentException $e) {
             Toast::error(__('Záloha selhala'), $e->getMessage());
         }
@@ -168,9 +180,7 @@ class ViewGameServer extends ViewPage
     public function restore(string $file): void
     {
         try {
-            app(ManageGameServers::class)->restore($this->server(), $file)
-                ? Toast::success(__('Obnoveno ze zálohy :file', ['file' => $file]))
-                : Toast::warning(__('Obnova ještě běží'), __('Obnovte stránku za chvíli.'));
+            app(ManageGameServers::class)->restore($this->server(), $file);
         } catch (AgentException $e) {
             Toast::error(__('Obnova selhala'), $e->getMessage());
         }
@@ -254,12 +264,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                 ] : [])
                 ->action(function (array $data) use ($server) {
                     try {
-                        $out = app(ManageGameServers::class)->upgrade($server(), $data['version'] ?? null);
-                        match (true) {
-                            $out === null => Toast::warning(__('Aktualizace ještě běží'), __('Obnovte stránku za chvíli.')),
-                            ! ($out['changed'] ?? false) => Toast::success(__('Server je aktuální')),
-                            default => Toast::success(__('Aktualizováno na :version', ['version' => $server()->fresh()->versionLabel()])),
-                        };
+                        app(ManageGameServers::class)->upgrade($server(), $data['version'] ?? null);
                     } catch (AgentException $e) {
                         Toast::error(__('Aktualizace selhala'), $e->getMessage());
                     }

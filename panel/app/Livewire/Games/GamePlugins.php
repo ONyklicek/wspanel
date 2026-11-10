@@ -4,6 +4,7 @@ namespace App\Livewire\Games;
 
 use App\Actions\Games\ManageGameServers;
 use App\Livewire\Games\Concerns\IsGameTab;
+use App\Models\AgentTask;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use App\Wire\Resources\GameServerResource;
@@ -116,6 +117,15 @@ class GamePlugins extends ViewPage
         }
     }
 
+    /** A plugin or mod install ended: the list as it is now, and the restart hint. */
+    protected function agentTaskFinished(AgentTask $task): void
+    {
+        if ($task->status === AgentTask::DONE && in_array($task->op, ['game.plugin_install', 'game.mod_install'], true)) {
+            $this->changed = true;
+        }
+        $this->load($this->checked);
+    }
+
     public function install(string $source, string $project): void
     {
         $factorio = $this->factorio();
@@ -123,17 +133,9 @@ class GamePlugins extends ViewPage
             return;
         }
         try {
-            $out = $factorio
+            $factorio
                 ? app(ManageGameServers::class)->installMod($this->server(), $project)
                 : app(ManageGameServers::class)->installPlugin($this->server(), $source, $project);
-            if ($out === null) {
-                Toast::warning(__('Instalace ještě běží'), __('Obnovte stránku za chvíli.'));
-            } else {
-                $names = collect($out['installed'])->map(fn ($p) => $p['name'].' '.$p['version'])->implode(', ');
-                Toast::success(__('Nainstalováno: :names', ['names' => $names]),
-                    ($out['needs'] ?? []) !== [] ? __('Plugin potřebuje i: :needs (nainstalujte je zvlášť).', ['needs' => implode(', ', $out['needs'])]) : __('Projeví se po restartu serveru.'));
-                $this->changed = true;
-            }
         } catch (AgentException $e) {
             Toast::error(__('Plugin se nepodařilo nainstalovat'), $e->getMessage());
         }

@@ -2,9 +2,11 @@
 
 namespace App\Livewire\Games;
 
+use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\GameServer;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Infolists\Infolist;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
@@ -12,7 +14,16 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
 /** A game server's files: its home, as its own user (a tab of the server). */
 class GameServerFiles extends ViewPage
 {
+    use WatchesAgentTasks;
+
     protected static ?string $resource = GameServerResource::class;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        $server = $this->nativeRecord();
+
+        return $server instanceof GameServer ? $server : null;
+    }
 
     public function mount(mixed $record = null): void
     {

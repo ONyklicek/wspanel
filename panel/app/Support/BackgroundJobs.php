@@ -2,69 +2,54 @@
 
 namespace App\Support;
 
-use App\Services\Agent\AgentClient;
-use App\Services\Agent\AgentException;
-use Illuminate\Support\Facades\Cache;
+use App\Models\AgentTask;
 
 /**
- * Long agent jobs (installing a module, system updates) the panel does not
- * wait for: the job id is kept under a key, the page asks how it went.
+ * A page's long agent jobs by name (installing a module, system updates):
+ * AgentTasks under a key, so the page finds what it started and the top
+ * bar's indicator shows it like any other.
  */
 final class BackgroundJobs
 {
-    private const TTL = 6 * 3600;
-
     /**
+     * @param  array<string, mixed>  $job  the agent's answer
      * @param  array{title: string, done: string, body?: string|null}  $text
      */
-    public static function start(string $key, string $jobId, array $text): void
+    public static function start(string $key, array $job, array $text, string $op = ''): AgentTask
     {
-        Cache::put(self::cacheKey($key), ['id' => $jobId, 'started' => now()->toIso8601String(), ...$text], self::TTL);
+        return AgentTasks::start($job, $op, $text, key: $key);
     }
 
-    /** @return array{id: string, started: string, title: string, done: string, body?: string|null}|null */
+    /** @return array{id: int, started: string, title: string, done: string, body?: string|null}|null */
     public static function running(string $key): ?array
     {
-        return Cache::get(self::cacheKey($key));
+        $task = self::task($key);
+
+        return $task === null ? null : [
+            'id' => $task->id, 'started' => $task->started_at->toIso8601String(),
+            'title' => $task->title, 'done' => $task->done_title, 'body' => $task->body,
+        ];
     }
 
     /**
      * One look at the job: 'running', 'done' or 'failed' (with the error).
-     * A job the agent no longer knows (it restarted) counts as done.
      *
      * @return array{status: string, error?: string|null}
      */
     public static function check(string $key): array
     {
-        $job = self::running($key);
-        if ($job === null) {
+        $task = self::task($key);
+        if ($task === null) {
             return ['status' => 'done'];
         }
-        try {
-            $out = app(AgentClient::class)->call('job.status', ['id' => $job['id']]);
-        } catch (AgentException $e) {
-            if ($e->errorCode === 'not_found') {
-                self::forget($key);
+        $task = AgentTasks::settle($task);
+        AgentTasks::notify($task);
 
-                return ['status' => 'done'];
-            }
-
-            return ['status' => 'running'];
-        }
-        if (($out['status'] ?? 'running') !== 'running') {
-            self::forget($key);
-        }
-
-        return ['status' => $out['status'] ?? 'running', 'error' => $out['error'] ?? null];
+        return ['status' => $task->isRunning() ? 'running' : $task->status, 'error' => $task->error];
     }
 
-    public static function forget(string $key): void
+    private static function task(string $key): ?AgentTask
     {
-        Cache::forget(self::cacheKey($key));
-    }
-
-    private static function cacheKey(string $key): string
-    {
-        return 'agent-job:'.$key;
+        return AgentTask::query()->running()->where('key', $key)->latest('id')->first();
     }
 }

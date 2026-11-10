@@ -145,6 +145,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Language switch in the user menu; component round trips keep the language.
         $this->app->make(PageChrome::class)->add('partials.locale-menu', PageChrome::USER_MENU, sort: 90);
+        // What runs in the background (long agent jobs), live, on every page.
+        $this->app->make(PageChrome::class)->add('partials.task-indicator', PageChrome::TOPBAR);
         Livewire::addPersistentMiddleware([SetLocale::class]);
 
         // Menu sections. Entries name a group by key; the heading and order live here.

@@ -2,6 +2,7 @@
 
 use App\Actions\Firewall\ManageGeoblock;
 use App\Services\Notify\Heartbeat;
+use App\Support\AgentTasks;
 use App\Support\Features;
 use App\Support\PanelRelease;
 use Illuminate\Support\Facades\Schedule;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Schedule;
 // the panel never assumes state it did not verify.
 Schedule::command('panel:sync')->everyMinute()->withoutOverlapping();
 Schedule::command('panel:metrics')->everyMinute()->withoutOverlapping();
+// Long agent jobs end even with nobody on the page: their handlers run here.
+Schedule::call(fn () => AgentTasks::settleAll())->name('agent-tasks')->everyMinute()->withoutOverlapping();
 // Notifications: new and resolved problems, finished deploys (only changes).
 Schedule::command('panel:alerts')->everyMinute()->withoutOverlapping();
 // Watching from outside (Healthchecks.io), when set: Notifikace → Hlídání zvenku.

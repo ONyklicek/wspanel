@@ -3,7 +3,7 @@
 namespace App\Livewire\Concerns;
 
 use App\Support\BackgroundJobs;
-use App\Support\Toast;
+use Livewire\Attributes\On;
 
 /**
  * A page that starts long agent jobs and shows them running: the page stays
@@ -41,14 +41,20 @@ trait WatchesBackgroundJobs
      */
     protected function startBackgroundJob(string $key, mixed $job, array $text): void
     {
-        if (! is_array($job) || ! isset($job['job_id'])) {
-            Toast::success($text['done'], $text['body'] ?? null);
-            $this->backgroundJobFinished($key, true);
-
-            return;
+        $task = BackgroundJobs::start($key, is_array($job) ? $job : [], $text);
+        if (! $task->isRunning()) {
+            $this->backgroundJobFinished($key, $task->status === 'done');
         }
-        BackgroundJobs::start($key, (string) $job['job_id'], $text);
-        Toast::success(__('Spuštěno na pozadí'), __(':title: můžete pokračovat v práci, výsledek se tu ukáže.', ['title' => $text['title']]));
+        $this->loadBackgroundJobs();
+    }
+
+    /** A job of this page settled by someone else (the top bar's indicator, the scheduler). */
+    #[On('agent-task-finished')]
+    public function backgroundJobSettled(?string $key = null, string $status = 'done'): void
+    {
+        if ($key !== null && in_array($key, $this->backgroundJobKeys(), true)) {
+            $this->backgroundJobFinished($key, $status === 'done');
+        }
         $this->loadBackgroundJobs();
     }
 
@@ -63,9 +69,8 @@ trait WatchesBackgroundJobs
             if ($state['status'] === 'running') {
                 continue;
             }
-            $ok = $state['status'] === 'done';
-            $ok ? Toast::success($job['done'], $job['body'] ?? null) : Toast::error(__(':title selhalo', ['title' => $job['title']]), $state['error'] ?? null);
-            $this->backgroundJobFinished($key, $ok);
+            // BackgroundJobs::check told the person (once, whoever noticed first).
+            $this->backgroundJobFinished($key, $state['status'] === 'done');
         }
         $this->loadBackgroundJobs();
     }

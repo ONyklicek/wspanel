@@ -2,6 +2,7 @@
 @php($state = $status['state'] ?? null)
 <div class="wire-resource-page space-y-4 sm:space-y-6" wire:poll.15s="refreshStatus">
     @include('wire-panels::pages.partials.header')
+    @include('partials.subject-tasks')
 
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
@@ -14,6 +15,8 @@
                     <dd>
                         @if ($server->status === 'installing')
                             <x-wire::badge color="warning">{{ __('instaluje se') }}</x-wire::badge>
+                        @elseif ($server->status === 'failed')
+                            <x-wire::badge color="danger">{{ __('instalace selhala') }}</x-wire::badge>
                         @elseif ($state === 'active')
                             <x-wire::badge color="success">{{ __('běží') }}</x-wire::badge>
                         @elseif (in_array($state, ['activating', 'reloading'], true))
