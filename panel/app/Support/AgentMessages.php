@@ -61,6 +61,26 @@ final class AgentMessages
 
         return [
             // Game servers
+            // Game packages
+            '/^manifest: (.+)$/' => fn ($m) => 'Manifest balíčku neplatí: '.$m[1],
+            '/^game servers \[([\d ]+)\] run (.+): delete them first$/' => 'Balíček $2 používají herní servery (#$1): nejdřív je smažte.',
+            '/^package (\S+) extends (\S+): remove it first$/' => 'Balíček $1 rozšiřuje hru $2: nejdřív odeberte jeho.',
+            '/^package (\S+) is already built in$/' => 'Balíček $1 je vestavěný.',
+            '/^package (\S+) is already installed from the catalog$/' => 'Balíček $1 je už nainstalovaný z katalogu.',
+            "/^package (\\S+) is already the administrator's own$/" => 'Balíček $1 už je nahraný jako vlastní.',
+            '/^the game (\S+) is already added by (\S+)$/' => 'Hru $1 už přidává balíček $2.',
+            '/^extends: no installed package adds the game (\S+)$/' => 'Rozšiřuje hru $1, kterou žádný nainstalovaný balíček nepřidává.',
+            '/^the variant (\S+) of (\S+) already exists \((\S+)\)$/' => 'Varianta $1 hry $2 už existuje (balíček $3).',
+            '/^flavor (\S+): (.+) runs no (\S+) source$/' => 'Varianta $1: hra $2 neumí zdroj $3.',
+            '/^id: a built-in package stays$/' => 'Vestavěný balíček nejde odebrat.',
+            '/^no package (\S+)$/' => 'Balíček $1 není nainstalovaný.',
+            '/^the catalog has no package (\S+)$/' => 'Katalog balíček $1 nenabízí.',
+            "/^the catalog's signature does not match WSPanel's key: refused$/" => 'Podpis katalogu nesedí s klíčem WSPanelu: odmítnuto.',
+            "/^WSPanel's game catalog is not reachable: (.+)$/" => 'Katalog herních balíčků WSPanelu není dostupný ($1).',
+            "/^WSPanel's game catalog has no signature: (.+)$/" => 'Katalog herních balíčků WSPanelu nemá podpis ($1).',
+            '/^the game catalog is not in a format this agent reads \(update WSPanel\)$/' => 'Katalog má novější formát, než tahle verze umí přečíst: aktualizujte WSPanel.',
+            '/^no installed game package adds the (\S+) variant of (\S+) any more$/' => 'Variantu $1 hry $2 už žádný nainstalovaný balíček nepřidává.',
+            '/^no installed game package adds (\S+) any more$/' => 'Hru $1 už žádný nainstalovaný balíček nepřidává.',
             '/^eula: .*$/' => 'Server Minecraftu se bez souhlasu s EULA nespustí.',
             '/^version: Minecraft before 1\.20\.5 .*$/' => 'Minecraft starší než 1.20.5 potřebuje Javu 17, kterou Debian 13 nemá.',
             '/^version: a world cannot go back to an older Minecraft$/' => 'Svět nejde vrátit na starší verzi Minecraftu.',

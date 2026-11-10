@@ -170,6 +170,47 @@ func run(args []string, wait bool) error {
 		return c.show("/mail/domains", []string{"domain", "mailboxes", "webmail"})
 	case "dns":
 		return c.show("/dns/zones", []string{"domain", "provider"})
+	case "games":
+		return c.show("/games", []string{"id", "name", "engine", "proto", "default_port", "available"})
+	case "game-servers":
+		return c.show("/game-servers", []string{"id", "name", "game", "flavor", "version", "status", "address"})
+	case "game-packages":
+		return c.show("/game-packages", []string{"id", "name", "version", "origin", "game", "extends"})
+	case "game-catalog":
+		return c.show("/game-packages/catalog", []string{"id", "name", "version", "game", "extends", "installed"})
+	case "game-package":
+		// game-package upload <manifest.json> | install <id> | remove <id>
+		if err := need(3); err != nil {
+			return err
+		}
+		var out map[string]any
+		switch args[1] {
+		case "upload":
+			b, err := os.ReadFile(args[2])
+			if err != nil {
+				return err
+			}
+			if !json.Valid(b) {
+				return fmt.Errorf("%s is not JSON (a game package manifest)", args[2])
+			}
+			if err := c.post("/game-packages", json.RawMessage(b), &out); err != nil {
+				return err
+			}
+			fmt.Println("uploaded:", cell(out["data"].(map[string]any)["id"]))
+		case "install":
+			if err := c.post("/game-packages/"+url.PathEscape(args[2])+"/install", nil, &out); err != nil {
+				return err
+			}
+			fmt.Println("installed:", args[2])
+		case "remove":
+			if err := c.do(http.MethodDelete, "/game-packages/"+url.PathEscape(args[2]), nil, &out); err != nil {
+				return err
+			}
+			fmt.Println("removed:", args[2])
+		default:
+			return fmt.Errorf("game-package upload <file> | install <id> | remove <id>")
+		}
+		return nil
 	}
 	return fmt.Errorf("unknown command %q, see wspanel help", args[0])
 }
@@ -324,6 +365,13 @@ const usage = `wspanel: the command line for a WSPanel server
   wspanel deploys <domain>
   wspanel restart <domain>              the app and its workers
   wspanel databases | mail | dns
+  wspanel games                         games and variants game servers can run
+  wspanel game-servers
+  wspanel game-packages                 installed game packages (administrators)
+  wspanel game-catalog                  what WSPanel's signed catalog offers
+  wspanel game-package upload <manifest.json>
+  wspanel game-package install <id>     from the catalog (also a newer version)
+  wspanel game-package remove <id>
 
   --json      print the API's answer as it is
   WSPANEL_URL, WSPANEL_TOKEN override the saved login.

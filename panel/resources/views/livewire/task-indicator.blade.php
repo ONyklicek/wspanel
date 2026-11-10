@@ -12,7 +12,7 @@
                     ])>
                     @if ($running > 0)
                         {!! icon('outline:arrow-path', 'size-4 shrink-0 animate-spin') !!}
-                        <span>{{ trans_choice('{1} :count úloha běží|[2,4] :count úlohy běží|[5,*] :count úloh běží', $running, ['count' => $running]) }}</span>
+                        <span>{{ \App\Support\Lang::count($running, ':count úloha běží', ':count úlohy běží', ':count úloh běží') }}</span>
                         {{-- The longest running one, live. --}}
                         <span class="hidden opacity-70 sm:inline">· <x-panel.elapsed :since="$recent->filter->isRunning()->min('started_at')" /></span>
                     @else

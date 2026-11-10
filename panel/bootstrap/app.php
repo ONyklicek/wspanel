@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\GamesController;
 use App\Http\Controllers\Api\V1Controller;
 use App\Http\Controllers\CiDeployController;
 use App\Http\Controllers\DeployWebhookController;
@@ -51,6 +52,15 @@ return Application::configure(basePath: dirname(__DIR__))
                 Route::get('/databases', [V1Controller::class, 'databases'])->name('databases');
                 Route::get('/mail/domains', [V1Controller::class, 'mailDomains'])->name('mail.domains');
                 Route::get('/dns/zones', [V1Controller::class, 'dnsZones'])->name('dns.zones');
+                // Game servers (the module) and the game packages that say what they can run.
+                Route::get('/games', [GamesController::class, 'games'])->name('games');
+                Route::get('/game-servers', [GamesController::class, 'servers'])->name('game-servers');
+                Route::get('/game-servers/{id}', [GamesController::class, 'showServer'])->whereNumber('id')->name('game-servers.show');
+                Route::get('/game-packages', [GamesController::class, 'packages'])->name('game-packages');
+                Route::get('/game-packages/catalog', [GamesController::class, 'catalog'])->name('game-packages.catalog');
+                Route::post('/game-packages', [GamesController::class, 'upload'])->name('game-packages.upload');
+                Route::post('/game-packages/{id}/install', [GamesController::class, 'install'])->where('id', '[a-z0-9][a-z0-9-]{1,40}')->name('game-packages.install');
+                Route::delete('/game-packages/{id}', [GamesController::class, 'remove'])->where('id', '[a-z0-9][a-z0-9-]{1,40}')->name('game-packages.remove');
             });
 
             // Deploy API for CI pipelines: bearer token, no session.
