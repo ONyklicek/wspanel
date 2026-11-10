@@ -13,6 +13,8 @@
                     @if ($running > 0)
                         {!! icon('outline:arrow-path', 'size-4 shrink-0 animate-spin') !!}
                         <span>{{ trans_choice('{1} :count úloha běží|[2,4] :count úlohy běží|[5,*] :count úloh běží', $running, ['count' => $running]) }}</span>
+                        {{-- The longest running one, live. --}}
+                        <span class="hidden opacity-70 sm:inline">· <x-panel.elapsed :since="$recent->filter->isRunning()->min('started_at')" /></span>
                     @else
                         {!! icon('outline:check-circle', 'size-4 shrink-0') !!}
                         <span class="hidden sm:inline">{{ __('Úlohy') }}</span>
@@ -35,7 +37,7 @@
                             <p class="truncate font-medium text-gray-900 dark:text-gray-100">{{ $task->title }}</p>
                             <p class="text-xs text-gray-500 dark:text-gray-400">
                                 @if ($task->isRunning())
-                                    {{ __('běží od :time', ['time' => $task->started_at->setTimezone(config('app.timezone'))->format('H:i')]) }}
+                                    {{ __('běží') }} <x-panel.elapsed :since="$task->started_at" /> <span class="opacity-70">({{ __('od :time', ['time' => $task->started_at->setTimezone(config('app.timezone'))->format('H:i')]) }})</span>
                                 @elseif ($task->status === 'done')
                                     {{ __('hotovo :when', ['when' => $task->finished_at?->diffForHumans()]) }}
                                 @else
