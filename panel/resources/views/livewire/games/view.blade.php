@@ -93,6 +93,7 @@
             @if ($backups === [])
                 <p class="mt-3 text-sm text-gray-500">{{ __('Zatím žádná záloha.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="mt-3 w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($backups as $b)
@@ -104,11 +105,13 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
             @php($local = collect($backups)->pluck('file'))
             @php($remoteOnly = collect($offsite)->reject(fn ($o) => $local->contains($o['file'])))
             @if ($remoteOnly->isNotEmpty())
                 <p class="mt-4 text-sm font-medium">{{ __('Jen mimo server') }}</p>
+                <div class="overflow-x-auto">
                 <table class="mt-1 w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($remoteOnly as $o)
@@ -120,6 +123,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @elseif ($offsite !== [])
                 <p class="mt-3 text-xs text-gray-500">{{ \App\Support\Lang::count(count($offsite), ':count kopie mimo server', ':count kopie mimo server', ':count kopií mimo server') }}</p>
             @endif

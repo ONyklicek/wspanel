@@ -51,6 +51,7 @@
 
     @if ($runs !== [])
         <x-wire::section :heading="__('Poslední příkazy')">
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
                 <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                     @foreach ($runs as $r)
@@ -63,6 +64,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         </x-wire::section>
     @endif
 

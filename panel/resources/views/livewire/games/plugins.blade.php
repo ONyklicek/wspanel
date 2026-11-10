@@ -27,6 +27,7 @@
             @if ($installed === [])
                 <p class="text-sm text-gray-500">{{ $this->mods() ? __('Zatím žádné módy.') : __('Zatím žádné pluginy.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($installed as $p)
@@ -48,6 +49,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
         </x-wire::section>
 

@@ -83,7 +83,7 @@
         @endif
 
         <div class="grid gap-6 lg:grid-cols-5">
-            <div class="flex flex-col gap-6 lg:col-span-2">
+            <div class="flex min-w-0 flex-col gap-6 lg:col-span-2">
                 <x-wire::section :heading="__('Historie')">
                     <ul class="-mx-2 divide-y divide-gray-100 text-sm dark:divide-white/5">
                         @forelse ($deployments as $d)
@@ -133,7 +133,7 @@
                 @endif
             </div>
 
-            <div class="lg:col-span-3">
+            <div class="min-w-0 lg:col-span-3">
                 <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 sm:px-6 dark:border-gray-700">
                         <h3 class="text-base font-semibold">

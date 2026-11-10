@@ -52,3 +52,10 @@
 /* Row actions stay on one line: wrapped, three icon buttons stack and every
    row of the table grows to three buttons' height. */
 td[data-row-actions] > div { flex-wrap: nowrap; }
+
+/* A log or output wrapped line by line also wraps a long word (a path, a
+   hash, a URL) rather than pushing the page sideways on a phone. */
+pre.whitespace-pre-wrap { overflow-wrap: anywhere; }
+/* A grid's items never grow past their column: on a phone (one column) a
+   long word in them would otherwise widen the page. */
+.grid > * { min-width: 0; }

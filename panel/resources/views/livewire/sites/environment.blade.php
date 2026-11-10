@@ -21,6 +21,7 @@
             @if ($vars === [])
                 <p class="text-sm text-gray-500">{{ __('Zatím žádné proměnné.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="w-full table-fixed text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($vars as $k => $v)
@@ -35,6 +36,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
         </div>
     </div>
@@ -51,6 +53,7 @@
             @if ($secrets === [])
                 <p class="text-sm text-gray-500">{{ __('Zatím žádné tajné hodnoty.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="w-full table-fixed text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($secrets as $k => $set)
@@ -65,6 +68,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
         </div>
     </div>
@@ -80,6 +84,7 @@
             </div>
             <div class="px-4 py-4 sm:px-6">
             @if (($composer ?? []) !== [])
+                <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($composer as $c)
@@ -91,6 +96,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @else
                 <p class="text-sm text-gray-500">{{ __('Zatím žádné přístupy.') }}</p>
             @endif

@@ -43,6 +43,7 @@
                 @if ($foundTotal > count($found))
                     <p class="mt-3 text-xs text-gray-500">{{ __('Zobrazeno :n z :total, upřesněte hledání.', ['n' => count($found), 'total' => $foundTotal]) }}</p>
                 @endif
+                <div class="overflow-x-auto">
                 <table class="mt-3 w-full text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($found as $p)
@@ -60,6 +61,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
         @endif
     </x-wire::section>

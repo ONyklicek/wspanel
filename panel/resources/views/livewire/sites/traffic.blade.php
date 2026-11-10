@@ -54,6 +54,7 @@
                 @if (empty($stats[$key]))
                     <p class="text-sm text-gray-500">{{ __('Zatím nic.') }}</p>
                 @else
+                    <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead class="text-xs text-gray-500"><tr><th class="pb-1 font-normal">{{ $col }}</th><th class="pb-1 text-right font-normal">{{ __('Požadavků') }}</th></tr></thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -62,6 +63,7 @@
                             @endforeach
                         </tbody>
                     </table>
+                    </div>
                 @endif
             </x-wire::section>
         @endforeach

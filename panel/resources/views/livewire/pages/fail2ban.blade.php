@@ -8,6 +8,7 @@
         @if ($banned->isEmpty())
             <p class="text-sm text-gray-500">{{ __('Žádná adresa teď není zablokovaná') }}{{ $bans ? __(' (hlídá: ').implode(', ', array_keys($bans)).')' : '' }}.</p>
         @else
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
                 <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Adresa') }}</th><th class="py-1 pe-3 font-normal">{{ __('Kde') }}</th><th class="py-1"></th></tr></thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -22,6 +23,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </x-wire::section>
 </div>

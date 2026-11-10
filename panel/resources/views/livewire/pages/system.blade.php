@@ -32,6 +32,7 @@
             @if ($settings['swaps'] === [])
                 <p class="text-sm text-gray-500">{{ __('Server nemá žádný swap. Při nedostatku paměti jádro rovnou ukončuje procesy (třeba databázi); 1–2 GB swapu je rozumná pojistka.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Kde') }}</th><th class="py-1 pe-3 font-normal">{{ __('Velikost') }}</th><th class="py-1 pe-3 font-normal">{{ __('Využito') }}</th><th></th></tr></thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -45,6 +46,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             @endif
             <p class="mt-2 text-xs text-gray-500">{{ __('Swappiness: :n', ['n' => $settings['swappiness'] >= 0 ? $settings['swappiness'] : '—']) }}</p>
         </x-wire::section>
@@ -52,22 +54,26 @@
 
     @if ($network)
         <x-wire::section :heading="__('Síť')" :description="__('Jen pro čtení: chybná změna sítě z webové stránky by odřízla cestu zpět. Síť se mění u poskytovatele nebo na serveru.')">
+            {{-- On a phone the MAC goes under the interface's name and long IPv6
+                 addresses wrap: the table never pushes the page sideways. --}}
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
-                <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Rozhraní') }}</th><th class="py-1 pe-3 font-normal">{{ __('Stav') }}</th><th class="py-1 pe-3 font-normal">{{ __('Adresy') }}</th><th class="py-1 font-normal">MAC</th></tr></thead>
+                <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Rozhraní') }}</th><th class="py-1 pe-3 font-normal">{{ __('Stav') }}</th><th class="py-1 pe-3 font-normal">{{ __('Adresy') }}</th><th class="hidden py-1 font-normal sm:table-cell">MAC</th></tr></thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                     @foreach ($network['interfaces'] as $i)
-                        <tr>
-                            <td class="py-1 pe-3 font-mono text-xs">{{ $i['name'] }}</td>
+                        <tr class="align-top">
+                            <td class="py-1 pe-3 font-mono text-xs">{{ $i['name'] }}<span class="block text-gray-500 sm:hidden">{{ $i['mac'] }}</span></td>
                             <td class="py-1 pe-3"><x-wire::badge :color="$i['state'] === 'up' ? 'success' : 'gray'">{{ $i['state'] }}</x-wire::badge></td>
-                            <td class="py-1 pe-3 font-mono text-xs">{!! implode('<br>', array_map('e', $i['addresses'])) ?: '—' !!}</td>
-                            <td class="py-1 font-mono text-xs text-gray-500">{{ $i['mac'] }}</td>
+                            <td class="py-1 pe-3 font-mono text-xs break-all">{!! implode('<br>', array_map('e', $i['addresses'])) ?: '—' !!}</td>
+                            <td class="hidden py-1 font-mono text-xs text-gray-500 sm:table-cell">{{ $i['mac'] }}</td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
-            <p class="mt-3 text-sm">
-                {{ __('Výchozí brána:') }} <span class="font-mono text-xs">{{ collect($network['gateways'])->map(fn ($g) => $g['gateway'].' ('.$g['dev'].')')->implode(', ') ?: '—' }}</span>
-                · {{ __('DNS servery:') }} <span class="font-mono text-xs">{{ implode(', ', $network['resolvers']) ?: '—' }}</span>
+            </div>
+            <p class="mt-3 text-sm break-words">
+                {{ __('Výchozí brána:') }} <span class="font-mono text-xs break-all">{{ collect($network['gateways'])->map(fn ($g) => $g['gateway'].' ('.$g['dev'].')')->implode(', ') ?: '—' }}</span>
+                · {{ __('DNS servery:') }} <span class="font-mono text-xs break-all">{{ implode(', ', $network['resolvers']) ?: '—' }}</span>
             </p>
         </x-wire::section>
     @endif
@@ -90,6 +96,7 @@
             @elseif ($disks['disks'] === [] || collect($disks['disks'])->every(fn ($d) => ! $d['available']))
                 <p class="text-sm text-gray-500">{{ __('Disky stav SMART nehlásí. U virtuálního serveru je to běžné: fyzické disky hlídá poskytovatel.') }}</p>
             @else
+                <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Disk') }}</th><th class="py-1 pe-3 font-normal">{{ __('Stav') }}</th><th class="py-1 pe-3 font-normal">{{ __('Teplota') }}</th><th class="py-1 pe-3 font-normal">{{ __('V provozu') }}</th><th class="py-1 font-normal">{{ __('Podrobnosti') }}</th></tr></thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
@@ -117,6 +124,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
                 <p class="mt-2 text-xs text-gray-500">{{ __('Disk se stavem „pozor“ zálohujte a nechte vyměnit, dokud ještě čte.') }}</p>
             @endif
         </x-wire::section>

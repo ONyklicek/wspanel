@@ -53,6 +53,7 @@
         </form>
         @if ($usage)
             <p class="mb-2 text-sm">{{ __(':path celkem :size', ['path' => $usage['path'], 'size' => $size($usage['total'])]) }}@if ($usage['partial'])<span class="text-xs text-gray-500"> {{ __('(některé složky nešly přečíst)') }}</span>@endif</p>
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
                 <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                     @foreach ($usage['entries'] as $e)
@@ -66,6 +67,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </x-wire::section>
 </div>

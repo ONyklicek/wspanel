@@ -1,6 +1,7 @@
 @if ($rows === [])
     @if ($empty !== '')<p class="text-sm text-gray-500">{{ $empty }}</p>@endif
 @else
+    <div class="overflow-x-auto">
     <table class="w-full text-left text-sm">
         <tbody class="divide-y divide-gray-100 dark:divide-white/5">
             @foreach ($rows as $r)
@@ -15,4 +16,5 @@
             @endforeach
         </tbody>
     </table>
+    </div>
 @endif
