@@ -188,7 +188,24 @@ func portUnitExtra(port int) []string {
 		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
 		"SocketBindAllow=tcp:" + strconv.Itoa(port),
 		"SocketBindDeny=any",
+		// A server process holds a descriptor per connection: the default
+		// soft limit of 1024 caps WebSockets (Reverb) and keep-alive clients.
+		"LimitNOFILE=65536",
 	}
+}
+
+// nodeLoadsEnvFile: Node 22.9 and later read a .env themselves
+// (--env-file-if-exists), as the site user. systemd's EnvironmentFile= is
+// not used for it: PID 1 reads that file as root, and the site user owns the
+// path, so a symlink would hand the app any root-only KEY=value file.
+func nodeLoadsEnvFile(bin string) bool {
+	m := nodeDirRe.FindStringSubmatch(filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(bin)))))
+	if m == nil {
+		return false
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	return major > 22 || (major == 22 && minor >= 9)
 }
 
 // noBindExtra: the unit may not bind any IP port (Unix sockets are unaffected).
@@ -280,6 +297,13 @@ func appUnitData(env *Env, l siteLayout) (unitData, string, error) {
 			return d, "", protocol.Invalid("node_version: Node " + l.NodeVersion + " is not installed")
 		}
 		entry, args := nodeEntry(l.Framework, l.Port)
+		// Nuxt's server (Nitro) and a plain server.js do not read .env at
+		// runtime, so the database credentials and the Environment tab never
+		// reached them; Next.js reads it itself. Variables set by the unit
+		// take precedence over the file.
+		if l.Framework != "next" && nodeLoadsEnvFile(bin) {
+			args = append([]string{"--env-file-if-exists=.env"}, args...)
+		}
 		d.Description = "WSPanel Node SSR app for " + l.Domain
 		d.ExecStart = bin + " " + strings.Join(args, " ")
 		port := strconv.Itoa(l.Port)

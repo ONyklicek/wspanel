@@ -122,7 +122,7 @@ func TestNodeModeSite(t *testing.T) {
 	}
 	user := "web_n_example_com"
 	unit := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-app.service"))
-	if !strings.Contains(unit, "v22.12.0/installation/bin/node server.js") || !strings.Contains(unit, "Environment=HOST=127.0.0.1") {
+	if !strings.Contains(unit, "v22.12.0/installation/bin/node --env-file-if-exists=.env server.js") || !strings.Contains(unit, "Environment=HOST=127.0.0.1") {
 		t.Errorf("node unit:\n%s", unit)
 	}
 	edge := read(t, filepath.Join(env.Cfg.ProxySitesDir, "n.example.com.caddy"))
@@ -209,7 +209,7 @@ func TestSwitchModes(t *testing.T) {
 	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "s.example.com", "mode": "node", "framework": "nuxt", "node_version": "22"}); err != nil {
 		t.Fatal(err)
 	}
-	if !fsx.Exists(appUnit) || !strings.Contains(read(t, appUnit), "node .output/server/index.mjs") {
+	if !fsx.Exists(appUnit) || !strings.Contains(read(t, appUnit), "node --env-file-if-exists=.env .output/server/index.mjs") {
 		t.Fatalf("app unit after worker -> node:\n%s", read(t, appUnit))
 	}
 	if fsx.Exists(filepath.Join(env.Cfg.SiteConfigDir, user+".Caddyfile")) || fsx.Exists(queue) {

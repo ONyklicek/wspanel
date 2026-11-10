@@ -189,7 +189,7 @@ func TestPythonModeSite(t *testing.T) {
 	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "p.example.com", "mode": "node", "framework": "node", "node_version": "22"}); err != nil {
 		t.Fatal(err)
 	}
-	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-app.service")); !strings.Contains(u, "/bin/node server.js") {
+	if u := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-app.service")); !strings.Contains(u, "/bin/node --env-file-if-exists=.env server.js") {
 		t.Errorf("after switch to node:\n%s", u)
 	}
 	if _, err := call(t, env, siteDelete, map[string]string{"domain": "d.example.com", "confirm": "d.example.com"}); err != nil {

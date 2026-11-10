@@ -76,3 +76,11 @@ func TestPoolsAreRefreshedWithOneReloadPerVersion(t *testing.T) {
 		t.Errorf("unchanged pools rewritten: %d", changed)
 	}
 }
+
+func TestNodeLoadsEnvFileFromVersion22_9(t *testing.T) {
+	for dir, want := range map[string]bool{"v20.18.0": false, "v22.8.0": false, "v22.9.0": true, "v24.1.0": true} {
+		if got := nodeLoadsEnvFile("/opt/fnm/node-versions/" + dir + "/installation/bin/node"); got != want {
+			t.Errorf("%s: %v", dir, got)
+		}
+	}
+}

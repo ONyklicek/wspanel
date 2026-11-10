@@ -157,11 +157,23 @@ func pythonEntry(l siteLayout) (entry string, argv []string) {
 	workers := strconv.Itoa(pythonWorkers())
 	switch l.Framework {
 	case "django", "flask":
+		// Threaded workers: a slow client or upload no longer holds a whole
+		// worker (Caddy does not buffer request bodies, which sync workers
+		// need). Each worker is replaced after about 2000 requests (a leak
+		// stays bounded); shutdown lets requests in flight finish. Idle
+		// connections outlive the edge's (2 min), so the edge never sends on
+		// one the app just closed. The edge logs every request already, so
+		// gunicorn logs none of its own.
 		return ".venv/bin/gunicorn", []string{py, "-m", "gunicorn", "--bind", "127.0.0.1:" + port,
-			"--workers", workers, "--access-logfile", "-", "--forwarded-allow-ips", "127.0.0.1", pythonApp(l.Framework, l.PythonApp)}
+			"--workers", workers, "--worker-class", "gthread", "--threads", "4",
+			"--max-requests", "2000", "--max-requests-jitter", "200",
+			"--timeout", "60", "--graceful-timeout", "25", "--keep-alive", "125",
+			"--forwarded-allow-ips", "127.0.0.1", pythonApp(l.Framework, l.PythonApp)}
 	case "fastapi":
 		return ".venv/bin/uvicorn", []string{py, "-m", "uvicorn", "--host", "127.0.0.1", "--port", port,
-			"--workers", workers, "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1", pythonApp(l.Framework, l.PythonApp)}
+			"--workers", workers, "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1",
+			"--timeout-keep-alive", "125", "--timeout-graceful-shutdown", "25", "--no-access-log",
+			pythonApp(l.Framework, l.PythonApp)}
 	default: // python: the app listens on $HOST:$PORT itself
 		return "app.py", []string{py, "app.py"}
 	}
@@ -208,6 +220,9 @@ func pythonBuildEnv(env *Env, l siteLayout, dir string) ([]string, error) {
 		"UV_PYTHON_DOWNLOADS=never", "UV_CACHE_DIR=" + l.Home + "/tmp/uv",
 		"UV_PROJECT_ENVIRONMENT=" + dir + "/.venv", "VIRTUAL_ENV=" + dir + "/.venv",
 		"UV_NO_PROGRESS=1", "UV_NO_CONFIG=1", "PYTHONDONTWRITEBYTECODE=1",
+		// The packages' bytecode is compiled once in the build, not by
+		// every worker at each start (the app itself writes none).
+		"UV_COMPILE_BYTECODE=1",
 		"PATH=" + dir + "/.venv/bin:" + filepath.Join(env.Cfg.ToolsDir, l.User) + ":/usr/local/bin:/usr/bin:/bin",
 	}, nil
 }
@@ -244,7 +259,13 @@ func (d *deployment) buildPython(ctx context.Context) error {
 		}
 	}
 	if srv := pythonServer(l.Framework); srv != "" && !d.exists(".venv/bin/"+srv) {
-		if err := d.step(ctx, srv+" (not among the project's dependencies)", dir, env, uv, "pip", "install", "--python", py, srv); err != nil {
+		pkg := srv
+		if srv == "uvicorn" {
+			// uvloop and httptools (faster), and a WebSocket library, without
+			// which FastAPI's WebSocket routes fail.
+			pkg = "uvicorn[standard]"
+		}
+		if err := d.step(ctx, srv+" (not among the project's dependencies)", dir, env, uv, "pip", "install", "--python", py, pkg); err != nil {
 			return err
 		}
 	}
