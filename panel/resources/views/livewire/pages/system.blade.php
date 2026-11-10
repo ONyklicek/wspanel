@@ -77,7 +77,15 @@
             @if (! $disks['installed'])
                 <div class="flex flex-wrap items-center gap-3 text-sm">
                     <span class="text-gray-500">{{ __('Sledování disků není nainstalované (balíček smartmontools).') }}</span>
-                    <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="installSmart">{{ __('Nainstalovat') }}</x-wire::button>
+                    @if (isset($backgroundJobs['packages']))
+                        {{-- Installing: the state where the button was, not only at the top. --}}
+                        <span class="inline-flex items-center gap-2 text-primary-700 dark:text-primary-300">
+                            {!! icon('outline:arrow-path', 'size-4 animate-spin') !!}
+                            {{ __('Instaluje se…') }} <x-panel.elapsed :since="\Illuminate\Support\Carbon::parse($backgroundJobs['packages']['started'])" />
+                        </span>
+                    @else
+                        <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="installSmart" wire:loading.attr="disabled" wire:target="installSmart">{{ __('Nainstalovat') }}</x-wire::button>
+                    @endif
                 </div>
             @elseif ($disks['disks'] === [] || collect($disks['disks'])->every(fn ($d) => ! $d['available']))
                 <p class="text-sm text-gray-500">{{ __('Disky stav SMART nehlásí. U virtuálního serveru je to běžné: fyzické disky hlídá poskytovatel.') }}</p>

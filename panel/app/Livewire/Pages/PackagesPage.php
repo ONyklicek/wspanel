@@ -131,6 +131,7 @@ class PackagesPage extends Page
         } catch (AgentException $e) {
             Toast::error($action === 'install' ? __('Instalace selhala') : __('Odebrání selhalo'), $e->getMessage());
         }
+        $this->loadBackgroundJobs();
         $this->load();
         if ($this->found !== null) {
             $this->findPackages();

@@ -94,7 +94,7 @@ class SystemPage extends Page
         } catch (AgentException $e) {
             Toast::error(__('Instalace selhala'), $e->getMessage());
         }
-        $this->load();
+        $this->loadBackgroundJobs();
     }
 
     protected function headerActions(): array
