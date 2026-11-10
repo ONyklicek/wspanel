@@ -81,9 +81,15 @@ Pro práci z vlastního počítače (TablePlus, DBeaver…) bez otevření portu
 použijte SSH tunel přes účet správce serveru (ne přes účet webu, ten tunely
 nesmí):
 ```
-ssh -L 3306:127.0.0.1:3306 root@server
+ssh -N -L 3306:127.0.0.1:3306 root@server     # MariaDB
+ssh -N -L 5432:127.0.0.1:5432 root@server     # PostgreSQL
 ```
-a v klientovi server `127.0.0.1`. Superuživatel pak potřebuje heslo (viz výše).
+a v klientovi server `127.0.0.1` a stejný port (je-li na vašem počítači
+obsazený, změňte první číslo, např. `13306:127.0.0.1:3306`). Hotový příkaz
+ukazuje karta serveru v **Databáze → Servery**. Místo `root` použijte jiný
+účet správce, pokud je root přes SSH zakázaný (`--no-root-ssh`).
+Přihlásíte se údaji databáze webu, nebo superuživatelem, ale ten potřebuje
+heslo (viz výše): bez hesla se přihlásí jen přímo na serveru.
 
 ## MongoDB
 

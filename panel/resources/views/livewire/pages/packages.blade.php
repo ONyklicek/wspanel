@@ -32,7 +32,7 @@
 
     <x-wire::section :heading="__('Najít a nainstalovat')" :description="__('Balíčky z repozitářů Debianu nastavených na serveru (htop, ncdu, imagemagick…). Instalují se bez doporučených balíčků.')">
         <form wire:submit="findPackages" class="flex flex-wrap items-center gap-3">
-            <input type="search" wire:model="query" placeholder="{{ __('Název balíčku') }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+            <input type="search" wire:model="query" placeholder="{{ __('Název balíčku') }}" class="w-full rounded-lg sm:max-w-sm border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
             <x-wire::button type="submit" size="sm" icon="outline:magnifying-glass">{{ __('Hledat') }}</x-wire::button>
         </form>
         @error('query')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -44,13 +44,15 @@
                     <p class="mt-3 text-xs text-gray-500">{{ __('Zobrazeno :n z :total, upřesněte hledání.', ['n' => count($found), 'total' => $foundTotal]) }}</p>
                 @endif
                 <div class="overflow-x-auto">
-                <table class="mt-3 w-full text-left text-sm">
+                <table class="mt-3 w-full table-fixed text-left text-sm">
                     <tbody class="divide-y divide-gray-100 dark:divide-white/5">
                         @foreach ($found as $p)
                             <tr wire:key="f-{{ $p['name'] }}">
-                                <td class="py-1 pe-3 font-mono text-xs">{{ $p['name'] }}</td>
-                                <td class="py-1 pe-3 text-xs text-gray-500">{{ $p['summary'] }}</td>
-                                <td class="py-1 text-right">
+                                <td class="py-1 pe-3 align-top font-mono text-xs break-all">{{ $p['name'] }}
+                                    <div class="font-sans text-gray-500 break-normal md:hidden">{{ $p['summary'] }}</div>
+                                </td>
+                                <td class="hidden py-1 pe-3 align-top text-xs text-gray-500 md:table-cell md:w-1/2">{{ $p['summary'] }}</td>
+                                <td class="w-28 py-1 text-right align-top">
                                     @if ($p['version'])
                                         <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                                     @else
@@ -68,32 +70,34 @@
 
     <x-wire::section :heading="__('Nainstalované')" :description="__('Podržet = zmrazit verzi: aktualizace systému (ruční i automatické bezpečnostní) balíček přeskočí, dokud ho neuvolníte. Hodí se, když nová verze něco rozbije. Odebrat jde jen to, co server ani panel nepotřebují; konfigurace balíčku zůstane.')">
         <div class="mb-3 flex flex-wrap items-center gap-4">
-            <input type="search" wire:model.live.debounce.300ms="filter" placeholder="{{ __('Filtrovat') }}" class="w-full max-w-xs rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+            <input type="search" wire:model.live.debounce.300ms="filter" placeholder="{{ __('Filtrovat') }}" class="w-full rounded-lg sm:max-w-xs border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model.live="manualOnly" class="rounded border-gray-300">{{ __('Jen nainstalované ručně a podržené') }}</label>
             <span class="text-xs text-gray-500">{{ \App\Support\Lang::count(count($installed), ':count balíček celkem', ':count balíčky celkem', ':count balíčků celkem') }}</span>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm">
-                <thead class="text-xs text-gray-500"><tr><th class="py-1 pe-3 font-normal">{{ __('Balíček') }}</th><th class="py-1 pe-3 font-normal">{{ __('Verze') }}</th><th class="py-1 pe-3 font-normal">{{ __('Velikost') }}</th><th class="py-1 pe-3 font-normal">{{ __('Popis') }}</th><th></th></tr></thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-white/5">
-                    @foreach (array_slice($this->shownInstalled(), 0, 500) as $p)
-                        <tr wire:key="i-{{ $p['name'] }}">
-                            <td class="py-1 pe-3 font-mono text-xs">{{ $p['name'] }}
-                                @if ($p['held'])<x-wire::badge color="warning">{{ __('podržený') }}</x-wire::badge>@endif
-                            </td>
-                            <td class="py-1 pe-3 font-mono text-xs text-gray-500">{{ $p['version'] }}</td>
-                            <td class="py-1 pe-3 text-xs tabular-nums">{{ $size($p['size']) }}</td>
-                            <td class="max-w-md truncate py-1 pe-3 text-xs text-gray-500" title="{{ $p['summary'] }}">{{ $p['summary'] }}</td>
-                            <td class="whitespace-nowrap py-1 text-right">
-                                <x-wire::button size="xs" color="gray" outlined wire:click="hold({{ \Illuminate\Support\Js::from($p['name']) }}, {{ $p['held'] ? 'false' : 'true' }})" :wire:confirm="$p['held'] ? null : __('Podržet :name ve verzi :version? Aktualizace ho budou přeskakovat, i bezpečnostní opravy, dokud ho neuvolníte.', ['name' => $p['name'], 'version' => $p['version'] ?? ''])" title="{{ $p['held'] ? __('Aktualizace systému ho zase budou aktualizovat.') : __('apt-mark hold: aktualizace systému balíček přeskočí a zůstane v současné verzi.') }}">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
-                                @unless ($p['protected'])
-                                    <x-wire::button size="xs" color="danger" outlined wire:click="ask('remove', {{ \Illuminate\Support\Js::from($p['name']) }})">{{ __('Odebrat') }}</x-wire::button>
-                                @endunless
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+        @php($shown = array_slice($this->shownInstalled(), 0, 500))
+        <div class="-mx-4 sm:-mx-6">
+            <div class="hidden grid-cols-[minmax(0,14rem)_minmax(0,10rem)_5rem_minmax(0,1fr)_auto] gap-x-3 border-b border-gray-100 px-4 pb-1 text-xs text-gray-500 md:grid sm:px-6 dark:border-white/5">
+                <span>{{ __('Balíček') }}</span><span>{{ __('Verze') }}</span><span>{{ __('Velikost') }}</span><span>{{ __('Popis') }}</span><span></span>
+            </div>
+            <ul class="divide-y divide-gray-100 dark:divide-white/5">
+                @foreach ($shown as $p)
+                    <li wire:key="i-{{ $p['name'] }}" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-2 text-xs sm:px-6 md:grid-cols-[minmax(0,14rem)_minmax(0,10rem)_5rem_minmax(0,1fr)_auto] md:py-1">
+                        <div class="flex min-w-0 items-center gap-2">
+                            <span class="truncate font-mono text-sm md:text-xs" title="{{ $p['name'] }}">{{ $p['name'] }}</span>
+                            @if ($p['held'])<x-wire::badge color="warning">{{ __('podržený') }}</x-wire::badge>@endif
+                        </div>
+                        <span class="col-start-1 truncate font-mono text-gray-500 md:col-start-auto" title="{{ $p['version'] }}">{{ $p['version'] }}<span class="md:hidden"> · {{ $size($p['size']) }}</span></span>
+                        <span class="hidden tabular-nums md:block">{{ $size($p['size']) }}</span>
+                        <span class="col-start-1 truncate text-gray-500 md:col-start-auto" title="{{ $p['summary'] }}">{{ $p['summary'] }}</span>
+                        <div class="col-start-2 row-span-3 row-start-1 flex flex-col items-end gap-1 sm:flex-row md:col-start-auto md:row-span-1 md:row-start-auto">
+                            <x-wire::button size="xs" color="gray" outlined wire:click="hold({{ \Illuminate\Support\Js::from($p['name']) }}, {{ $p['held'] ? 'false' : 'true' }})" :wire:confirm="$p['held'] ? null : __('Podržet :name ve verzi :version? Aktualizace ho budou přeskakovat, i bezpečnostní opravy, dokud ho neuvolníte.', ['name' => $p['name'], 'version' => $p['version'] ?? ''])" title="{{ $p['held'] ? __('Aktualizace systému ho zase budou aktualizovat.') : __('apt-mark hold: aktualizace systému balíček přeskočí a zůstane v současné verzi.') }}">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
+                            @unless ($p['protected'])
+                                <x-wire::button size="xs" color="danger" outlined wire:click="ask('remove', {{ \Illuminate\Support\Js::from($p['name']) }})">{{ __('Odebrat') }}</x-wire::button>
+                            @endunless
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
         </div>
     </x-wire::section>
 </div>
