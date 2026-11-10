@@ -152,7 +152,8 @@
                         @if ($selected?->error)
                             <p class="mb-3 text-sm text-danger-600 dark:text-danger-400">{{ $selected->error }}</p>
                         @endif
-                        <pre class="max-h-[40rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100">{{ $log !== '' ? $log : __('Vyberte deploy v historii.') }}</pre>
+                        @include('partials.live-log', ['event' => 'deploy-log', 'initial' => $initialLog, 'empty' => __('Vyberte deploy v historii.'),
+                            'class' => 'max-h-[40rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100'])
                     </div>
                 </div>
             </div>

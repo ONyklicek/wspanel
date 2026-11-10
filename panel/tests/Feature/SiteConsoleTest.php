@@ -55,8 +55,8 @@ class SiteConsoleTest extends TestCase
         Livewire::test(SiteConsole::class, ['record' => $site->id])
             ->assertSee('npm run build')->assertSee('Vlastní příkaz')
             ->call('quick', 'rm -rf')
-            ->call('quick', 'npm-build')->assertSee('built in 2s')->assertSet('done', false)
-            ->call('follow')->assertSet('done', true)->assertSee('hotovo');
+            ->call('quick', 'npm-build')->assertDispatched('console-output', content: "\$ npm run build\nbuilt in 2s\n", reset: true)->assertSet('done', false)
+            ->call('follow')->assertDispatched('console-output', content: "[exit 0]\n", reset: false)->assertSet('done', true)->assertSee('hotovo');
     }
 
     public function test_a_client_without_a_shell_runs_quick_commands_only(): void

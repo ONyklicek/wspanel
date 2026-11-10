@@ -44,7 +44,8 @@
                         <x-wire::badge color="danger">{{ __('skončil s chybou :n', ['n' => $exit ?? '?']) }}</x-wire::badge>
                     @endif
                 </div>
-                <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-3 font-mono text-xs text-gray-100" x-data x-init="$el.scrollTop = $el.scrollHeight" x-effect="$el.scrollTop = $el.scrollHeight">{{ $output }}</pre>
+                @include('partials.live-log', ['event' => 'console-output', 'initial' => $initialOutput, 'empty' => '',
+                    'class' => 'max-h-[32rem] min-h-[3rem] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-3 font-mono text-xs text-gray-100'])
             </div>
         </x-wire::section>
     @endif

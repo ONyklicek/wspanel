@@ -18,6 +18,7 @@ use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
 use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubException;
+use App\Support\ConsoleText;
 use App\Support\Lang;
 use App\Support\PublicAddress;
 use App\Support\Toast;
@@ -59,9 +60,11 @@ class SiteDeploy extends ViewPage
 
     public ?string $logRelease = null;
 
-    public string $log = '';
-
+    /** How much of the log the browser already has (the log itself never rides the snapshot). */
     public int $logOffset = 0;
+
+    /** The log read on mount, drawn once into the page; later output arrives as a "deploy-log" event. */
+    protected string $initialLog = '';
 
     public string $logStatus = '';
 
@@ -78,7 +81,7 @@ class SiteDeploy extends ViewPage
         $this->refreshHistory();
         $this->logRelease = $this->deployments()->first()?->release;
         if ($this->logRelease) {
-            $this->refreshLog();
+            $this->initialLog = $this->readLog() ?? '';
         }
     }
 
@@ -121,32 +124,54 @@ class SiteDeploy extends ViewPage
         }
     }
 
-    /** Polled while a deploy runs: appends new log output. */
+    /**
+     * Polled while a deploy runs: only the new output goes to the browser,
+     * which appends it. A composer install logs hundreds of lines; carried
+     * in the component state it went up and down whole every two seconds.
+     */
     public function refreshLog(): void
     {
-        if (! $this->logRelease) {
-            return;
+        $chunk = $this->readLog();
+        if ($chunk !== null && $chunk !== '') {
+            $this->dispatch('deploy-log', content: $chunk, reset: false);
         }
-        try {
-            $chunk = app(ManageDeploys::class)->log($this->site(), $this->logRelease, $this->logOffset);
-        } catch (AgentException) {
-            return;
-        }
-        $this->log .= $chunk['content'];
-        $this->logOffset = $chunk['offset'];
-        $this->logStatus = $chunk['status'];
-        if ($this->logStatus !== 'running' && $this->running) {
-            $this->refreshHistory();
-        }
+        $this->skipRenderUnlessFinished();
     }
 
     public function showLog(string $release): void
     {
         abort_unless(preg_match('/^\d{8}T\d{6}Z$/', $release) === 1, 404);
         $this->logRelease = $release;
-        $this->log = '';
         $this->logOffset = 0;
-        $this->refreshLog();
+        $this->dispatch('deploy-log', content: $this->readLog() ?? '', reset: true);
+    }
+
+    /** The log's next part from the agent (null when it cannot be read); moves the offset. */
+    private function readLog(): ?string
+    {
+        if (! $this->logRelease) {
+            return null;
+        }
+        try {
+            $chunk = app(ManageDeploys::class)->log($this->site(), $this->logRelease, $this->logOffset);
+        } catch (AgentException) {
+            return null;
+        }
+        $this->logOffset = $chunk['offset'];
+        $this->logStatus = $chunk['status'];
+        if ($this->logStatus !== 'running' && $this->running) {
+            $this->refreshHistory();
+        }
+
+        return ConsoleText::tidy($chunk['content']);
+    }
+
+    /** A poll that only appended output changes nothing else on the page. */
+    private function skipRenderUnlessFinished(): void
+    {
+        if ($this->logStatus === 'running' && $this->running) {
+            $this->skipRender();
+        }
     }
 
     /**
@@ -649,6 +674,7 @@ class SiteDeploy extends ViewPage
             'breadcrumbs' => $this->breadcrumbs(),
             'headerActions' => $this->renderedHeaderActions(),
             'subNavigation' => $this->subNavigation($this->nativeRecord()),
+            'initialLog' => $this->initialLog,
         ]);
     }
 }

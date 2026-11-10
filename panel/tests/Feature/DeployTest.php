@@ -48,7 +48,8 @@ class DeployTest extends TestCase
         Livewire::test(DeploySite::class, ['record' => $this->site->id])
             ->assertSee('git@github.com:acme/app.git')
             ->assertSee('20261107T100000Z')
-            ->assertSet('log', "==> Composer\n")
+            ->assertSee('==> Composer')
+            ->assertSet('logOffset', 13)
             ->assertSet('current', '20261107T100000Z');
 
         $this->assertSame('success', Deployment::sole()->status);
@@ -108,9 +109,9 @@ class DeployTest extends TestCase
 
         $this->pageAction(Livewire::test(DeploySite::class, ['record' => $this->site->id]), 'deploy')
             ->assertSet('logRelease', '20261107T110000Z')
-            ->assertSet('log', "==> Fetch source\n")
+            ->assertDispatched('deploy-log', content: "==> Fetch source\n", reset: true)
             ->call('refreshLog')
-            ->assertSet('log', "==> Fetch source\n==> Composer\n")
+            ->assertDispatched('deploy-log', content: "==> Composer\n", reset: false)
             ->assertSet('logOffset', 30);
     }
 

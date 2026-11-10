@@ -6,6 +6,7 @@ use App\Actions\Sites\RunSiteCommands;
 use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\ConsoleText;
 use App\Support\Toast;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
@@ -30,8 +31,6 @@ class SiteConsole extends ViewPage
     /** The run shown and followed. */
     public ?string $run = null;
 
-    public string $output = '';
-
     public int $offset = 0;
 
     public bool $done = true;
@@ -39,6 +38,9 @@ class SiteConsole extends ViewPage
     public ?int $exit = null;
 
     public ?string $error = null;
+
+    /** The first part of a run's output, drawn when its box appears (later parts arrive as events). */
+    protected string $initialOutput = '';
 
     public function mount(mixed $record = null): void
     {
@@ -95,22 +97,31 @@ class SiteConsole extends ViewPage
             return;
         }
         try {
-            [$this->run, $this->output, $this->offset, $this->done, $this->exit] = [$fn(), '', 0, false, null];
-            $this->follow();
+            [$this->run, $this->offset, $this->done, $this->exit] = [$fn(), 0, false, null];
+            $this->follow(reset: true);
         } catch (AgentException $e) {
             Toast::error(__('Příkaz se nepodařilo spustit'), $e->getMessage());
         }
     }
 
-    /** Polled while the run is not done. */
-    public function follow(): void
+    /**
+     * Polled while the run is not done: only the new output goes to the
+     * browser, which appends it (the output never rides the component state).
+     */
+    public function follow(bool $reset = false): void
     {
         if ($this->run === null) {
             return;
         }
         try {
             $out = app(RunSiteCommands::class)->output($this->site(), $this->run, $this->offset);
-            $this->output = mb_substr($this->output.$out['output'], -200_000);
+            $chunk = ConsoleText::tidy((string) $out['output']);
+            if ($reset) {
+                $this->initialOutput = $chunk;
+            }
+            if ($reset || $chunk !== '') {
+                $this->dispatch('console-output', content: $chunk, reset: $reset);
+            }
             [$this->offset, $this->done, $this->exit] = [(int) $out['offset'], (bool) $out['done'], $out['exit']];
             if ($this->done) {
                 $this->load();
@@ -125,8 +136,8 @@ class SiteConsole extends ViewPage
         if (! preg_match('/^[0-9a-f]{16}$/', $run)) {
             return;
         }
-        [$this->run, $this->output, $this->offset, $this->done, $this->exit] = [$run, '', 0, false, null];
-        $this->follow();
+        [$this->run, $this->offset, $this->done, $this->exit] = [$run, 0, false, null];
+        $this->follow(reset: true);
     }
 
     public function infolist(): Infolist
@@ -142,6 +153,7 @@ class SiteConsole extends ViewPage
             'headerActions' => $this->renderedHeaderActions(),
             'subNavigation' => $this->subNavigation($this->nativeRecord()),
             'site' => $this->site(),
+            'initialOutput' => $this->initialOutput,
         ]);
     }
 }
