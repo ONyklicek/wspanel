@@ -1715,7 +1715,7 @@
     "Záloha nahrána mimo server": "Backup uploaded off the server",
     "Záloha obnovena": "Backup restored",
     "Záloha obnovena, web ale neodpovídá": "Backup restored, but the site does not answer",
-    "Záloha produkce ještě běží, zkuste to za chvíli.": "The production backup is still running; try again in a moment.",
+    "Záloha produkce ještě běží, nic se nepřepsalo. Zkuste to za chvíli.": "The production backup is still running; nothing was overwritten. Try again in a moment.",
     "Záloha produkce z doby před nasazením je v Zálohách.": "The production backup from before the deploy is in Backups.",
     "Záloha se objeví v seznamu, až se stáhne.": "The backup appears in the list once it is downloaded.",
     "Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout. Přijme se jen kopie s platným podpisem tohoto serveru.": "The backup is downloaded from the off-server storage beside the site's other backups; then you can restore or download it. Only a copy with a valid signature of this server is accepted.",

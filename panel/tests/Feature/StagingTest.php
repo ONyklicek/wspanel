@@ -7,6 +7,7 @@ use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
@@ -19,6 +20,8 @@ class StagingTest extends TestCase
     private array $calls = [];
 
     private int $historyCalls = 0;
+
+    private bool $backupFails = false;
 
     protected function setUp(): void
     {
@@ -33,7 +36,7 @@ class StagingTest extends TestCase
                 'db.create' => ['password' => null],
                 'site.mail' => ['mode' => $p['mode']],
                 'site.backup' => ['job_id' => 'j1'],
-                'job.status' => ['status' => 'done', 'output' => []],
+                'job.status' => $this->backupFails && $p['id'] === 'j1' ? ['status' => 'failed', 'error' => 'disk full', 'op' => 'site.backup'] : ['status' => 'done', 'output' => []],
                 'env.get' => ['content' => "APP_URL=https://shop.example.com\n"],
                 // The deploy shows as running first, then finished.
                 'deploy.history' => ['deploys' => [['id' => 'r1', 'status' => $this->historyCalls++ % 2 === 0 ? 'running' : 'success', 'started' => null, 'finished' => null, 'ref' => null, 'commit' => null, 'error' => null]]],
@@ -89,8 +92,26 @@ class StagingTest extends TestCase
 
         $ops = $this->ops();
         $this->assertSame('site.backup', $ops[0]);
+        $this->assertSame(['id' => 'j1'], $this->params('job.status'), 'the push waits for the backup');
+        $this->assertLessThan(array_search('db.copy', $ops), array_search('job.status', $ops), 'the backup is done before production is overwritten');
         $this->assertSame(['engine' => 'mariadb', 'from' => 'stg_shop', 'to' => 'shop'], $this->params('db.copy'));
         $this->assertSame(['domain' => 'shop.example.com', 'artifact' => 'copy-x.tar.gz'], $this->params('deploy.run'));
+    }
+
+    public function test_a_failed_backup_of_production_stops_the_push(): void
+    {
+        $staging = app(ManageStaging::class)->create($this->production());
+        $this->calls = [];
+        $this->backupFails = true;
+
+        try {
+            app(ManageStaging::class)->push($staging, files: true, databases: true);
+            $this->fail('pushed without a backup of production');
+        } catch (AgentException) {
+        }
+
+        $this->assertNotContains('db.copy', $this->ops(), 'production was overwritten without its backup');
+        $this->assertNotContains('deploy.run', $this->ops());
     }
 
     public function test_a_staging_copy_is_not_copied_again(): void
