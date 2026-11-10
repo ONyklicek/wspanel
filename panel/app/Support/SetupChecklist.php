@@ -2,14 +2,11 @@
 
 namespace App\Support;
 
-use App\Actions\Mail\ManageMail;
-use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Server\ManageOffsite;
 use App\Models\NotificationChannel;
 use App\Models\Setting;
 use App\Models\Site;
-use App\Services\Dns\Resolver;
-use App\Services\Mail\Deliverability;
+use App\Services\Dns\ServerDns;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -35,22 +32,15 @@ final class SetupChecklist
         $add(NotificationChannel::query()->exists(), __('Nastavit notifikace'), __('E-mail, Slack nebo webhook, když web spadne nebo dojde místo na disku.'), url('/notification-channels'));
         $add(Cache::remember('setup.offsite', 60, fn () => app(ManageOffsite::class)->enabled()), __('Zálohy mimo server'), __('Kopie záloh do S3, na FTP nebo NAS, aby přežily i ztrátu serveru.'), url('/offsite'));
 
-        // Mail the server sends or receives: the checks other servers make.
-        $hosting = app(ManageMailHosting::class);
-        // Through a relay (SMTP provider) the server's own PTR does not matter.
-        $relay = Cache::remember('setup.relay', 600, fn () => (string) (rescue(fn () => app(ManageMail::class)->status(), [], report: false)['relay'] ?? ''));
-        $sends = $relay === '' && ($hosting->installed() || Site::query()->where('mail_mode', 'send')->exists());
-        $v4 = (string) config('panel.public_ipv4');
-        if ($sends && $v4 !== '' && PublicAddress::host($v4)) {
-            $host = ManageMailHosting::mailHost();
-            $ptr = Cache::remember('setup.ptr', 600, fn () => app(Resolver::class)->reverse($v4));
-            $add($ptr === $host, __('Reverzní záznam (PTR) :ip → :host', ['ip' => $v4, 'host' => $host]),
-                __('Nastavuje ho poskytovatel serveru. Bez něj velcí poskytovatelé pošty zprávy odmítají.'), url('/mail'));
-            if ($hosting->installed()) {
-                $spf = Cache::remember('setup.host_spf', 600, fn () => app(Deliverability::class)->hostSpf()['ok']);
-                $add($spf, __('SPF serveru pošty :host', ['host' => $host]),
-                    __('TXT "v=spf1 a -all": přeposlaná pošta s ním projde u příjemce.'), url('/mail-domains'));
-            }
+        // The server's own records in public DNS (its name, the mail server,
+        // the reverse record, its nameservers): one step until all are right.
+        $dns = app(ServerDns::class)->cached();
+        if ($dns !== []) {
+            $failing = array_filter($dns, fn (array $r) => ! $r['ok']);
+            $add($failing === [], __('DNS záznamy serveru'),
+                $failing === [] ? __('Adresa panelu, server pošty, PTR a SPF platí.')
+                    : __('Chybí nebo nesedí: :list', ['list' => collect($failing)->map(fn ($r) => $r['type'].' '.$r['name'])->implode(', ')]),
+                url('/system'));
         }
 
         return $steps;

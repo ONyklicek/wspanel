@@ -10,6 +10,7 @@ use App\Models\CronJob;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Services\Dns\ServerDns;
 use App\Support\CurrentClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Number;
@@ -57,6 +58,10 @@ class Alerts
                     match ($c->status) {
                         'expired' => __('Certifikát vypršel: :domain', ['domain' => $c->domain]), 'missing' => __('Chybí certifikát: :domain', ['domain' => $c->domain]), default => __('Certifikát brzy vyprší: :domain', ['domain' => $c->domain])
                     }, (string) ($c->last_error ?? ($c->not_after ? __('platí do ').$c->not_after->format('j. n. Y') : '')));
+            }
+            // The server's own DNS (its name, the mail server, PTR, nameservers).
+            foreach (rescue(fn () => app(ServerDns::class)->failing(), [], report: false) as $r) {
+                $add('dns:'.$r['key'], null, 'warning', ServerDns::problem($r), ServerDns::fix($r));
             }
             try {
                 $m = app(ServerMetrics::class)->now();

@@ -7,6 +7,7 @@ use App\Actions\System\ManageSystem;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
+use App\Services\Dns\ServerDns;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use NyonCode\WireForms\Components\Select;
@@ -44,6 +45,9 @@ class SystemPage extends Page
     /** @var array<string, mixed>|null */
     public ?array $disks = null;
 
+    /** @var list<array{key: string, name: string, type: string, want: string, now: string, ok: bool, note: string}> the server's own records in public DNS */
+    public array $dns = [];
+
     public ?string $error = null;
 
     protected function backgroundJobKeys(): array
@@ -64,6 +68,7 @@ class SystemPage extends Page
 
     public function load(): void
     {
+        $this->dns = app(ServerDns::class)->cached();
         $system = app(ManageSystem::class);
         try {
             $this->settings = $system->settings();
@@ -73,6 +78,16 @@ class SystemPage extends Page
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
         }
+    }
+
+    /** Asks public DNS again, after a record was set or fixed. */
+    public function refreshDns(): void
+    {
+        $this->dns = app(ServerDns::class)->refresh();
+        $failing = collect($this->dns)->reject(fn (array $r) => $r['ok'])->count();
+        $failing === 0
+            ? Toast::success(__('DNS serveru je v pořádku'))
+            : Toast::warning(__('DNS serveru: :count záznamů chybí nebo nesedí', ['count' => $failing]), __('Změna DNS se může projevit až za několik hodin (TTL).'));
     }
 
     public function toggleNtp(): void

@@ -52,6 +52,43 @@
         </x-wire::section>
     @endif
 
+    @if ($dns !== [])
+        <x-wire::section :heading="__('DNS serveru')" :description="__('Záznamy, které server sám potřebuje, zjištěné ve veřejném DNS. Panel je hlídá a upozorní, když některý přestane platit. Záznamy webů a domén pošty jsou u nich.')">
+            <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="text-xs text-gray-500"><tr>
+                    <th class="py-1 pe-3 font-normal">{{ __('Název') }}</th><th class="py-1 pe-3 font-normal">{{ __('Typ') }}</th>
+                    <th class="py-1 pe-3 font-normal">{{ __('Má být') }}</th><th class="py-1 font-normal">{{ __('Stav') }}</th>
+                </tr></thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-white/5">
+                    @foreach ($dns as $r)
+                        <tr wire:key="dns-{{ $r['key'] }}" class="align-top">
+                            <td class="py-1.5 pe-3 font-mono text-xs break-all">{{ $r['name'] }}</td>
+                            <td class="py-1.5 pe-3 font-mono text-xs">{{ $r['type'] }}</td>
+                            <td class="py-1.5 pe-3">
+                                <span class="font-mono text-xs break-all">{{ $r['want'] }}</span>
+                                <p class="text-xs text-gray-500">{{ $r['note'] }}</p>
+                            </td>
+                            <td class="py-1.5">
+                                <x-wire::badge :color="$r['ok'] ? 'success' : 'warning'">{{ $r['ok'] ? __('platí') : __('chybí') }}</x-wire::badge>
+                                @if (! $r['ok'] && $r['now'] !== '')
+                                    <p class="mt-0.5 font-mono text-xs text-gray-500 break-all">{{ __('teď: :now', ['now' => $r['now']]) }}</p>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+                <x-wire::button size="xs" color="gray" outlined wire:click="refreshDns" wire:loading.attr="disabled" wire:target="refreshDns">{{ __('Zkontrolovat znovu') }}</x-wire::button>
+                @if (collect($dns)->contains(fn ($r) => $r['type'] === 'A' && str_starts_with($r['name'], 'ns1.')))
+                    <span class="text-xs text-gray-500">{{ __('Nameservery ns1/ns2 leží v doméně, kterou samy obsluhují: u registrátora k nim zadejte i IP adresu (glue záznam).') }}</span>
+                @endif
+            </div>
+        </x-wire::section>
+    @endif
+
     @if ($network)
         <x-wire::section :heading="__('Síť')" :description="__('Jen pro čtení: chybná změna sítě z webové stránky by odřízla cestu zpět. Síť se mění u poskytovatele nebo na serveru.')">
             {{-- On a phone the MAC goes under the interface's name and long IPv6

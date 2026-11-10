@@ -11,6 +11,7 @@ use App\Models\Deployment;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Services\Dns\ServerDns;
 use Illuminate\Support\Number;
 
 /**
@@ -58,6 +59,9 @@ final class Attention
         if ($admin && ($release = PanelRelease::available()) !== null) {
             $add('info', __('K dispozici je WSPanel :version (tento server má :current)', ['version' => $release['version'], 'current' => PanelRelease::current()]),
                 __('Aktualizace: Zabezpečení → Aktualizace, nebo na serveru :command', ['command' => PanelRelease::upgradeCommand()]), url('/updates'));
+        }
+        foreach ($admin ? rescue(fn () => app(ServerDns::class)->failing(), [], report: false) : [] as $r) {
+            $add('warning', ServerDns::problem($r), ServerDns::fix($r), url('/system'));
         }
         if ($admin) {
             try {
