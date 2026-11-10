@@ -33,6 +33,15 @@ TITLE="WSPanel $(cat "$HERE/VERSION" 2>/dev/null || echo dev)"
 
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo ./install)"
+# The server's own name must resolve (Debian: "127.0.1.1 <name>" in
+# /etc/hosts). Some VPS images lack the line: sudo then warns on every call
+# ("unable to resolve host") and mail stumbles over it.
+own="$(hostname 2>/dev/null || true)"
+if [[ -n $own ]] && ! getent hosts "$own" >/dev/null 2>&1; then
+  short="${own%%.*}"
+  if [[ $short != "$own" ]]; then printf '127.0.1.1\t%s %s\n' "$own" "$short"; else printf '127.0.1.1\t%s\n' "$own"; fi >> /etc/hosts
+  echo "Added the server's name $own to /etc/hosts (127.0.1.1)." >&2
+fi
 [[ -x "$AGENT" ]] || die "this bundle has no agent for $ARCH ($AGENT)"
 . /etc/os-release
 [[ "${ID:-}" == debian && "${VERSION_CODENAME:-}" == trixie ]] || die "Debian 13 (trixie) required, found ${PRETTY_NAME:-unknown}"
