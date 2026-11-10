@@ -497,18 +497,9 @@ for m in wspanel_sender_logins wspanel_login_senders; do
   [[ -f /etc/postfix/$m ]] || printf '# Managed by WSPanel agent.\n' > "/etc/postfix/$m"
   postmap "/etc/postfix/$m"
 done
-postconf -e "myhostname=$MAIL_NAME" "myorigin=\$myhostname" "inet_interfaces=loopback-only" \
-  "mydestination=" "local_transport=error:local delivery is disabled" "mynetworks=127.0.0.0/8 [::1]/128" \
-  "smtpd_sasl_auth_enable=yes" "smtpd_sasl_type=cyrus" "smtpd_sasl_path=smtpd" "smtpd_sasl_security_options=noanonymous" \
-  "smtpd_tls_security_level=none" \
-  "smtpd_relay_restrictions=permit_sasl_authenticated, reject" \
-  "smtpd_recipient_restrictions=permit_sasl_authenticated, reject" \
-  "smtpd_sender_login_maps=hash:/etc/postfix/wspanel_sender_logins" \
-  "smtpd_sender_restrictions=reject_sender_login_mismatch" \
-  "local_login_sender_maps=hash:/etc/postfix/wspanel_login_senders, static:*" \
-  "smtpd_milters=inet:127.0.0.1:8891" "non_smtpd_milters=inet:127.0.0.1:8891" "milter_default_action=accept" \
-  "smtp_tls_security_level=may" "smtp_tls_CApath=/etc/ssl/certs" "message_size_limit=26214400"
-postconf -F 'smtp/inet/chroot = n' # smtpd must reach /etc/sasldb2
+install -d -m 0755 /usr/lib/wspanel
+install -m 0755 "$HERE/postfix-base.sh" /usr/lib/wspanel/postfix-base.sh
+/usr/lib/wspanel/postfix-base.sh "$MAIL_NAME"
 install -d -m 0755 /etc/opendkim
 install -d -m 0750 -o opendkim -g opendkim /etc/opendkim/keys
 [[ -f /etc/opendkim/KeyTable ]] || printf '# Managed by WSPanel agent.\n' > /etc/opendkim/KeyTable
@@ -591,38 +582,14 @@ fi
 # ---------------------------------------------------------------- DNS (optional)
 # Authoritative only (no recursion), zones in SQLite, managed by the agent over
 # the API on loopback. Zones can also live at Cloudflare (panel, API token).
+# Added later in Server → Moduly as well: then it stays on upgrades.
+install -m 0755 "$HERE/dns.sh" /usr/lib/wspanel/dns.sh
+[[ -f /etc/powerdns/pdns.d/wspanel.conf ]] && DNS_SERVER=powerdns
 PDNS_API_KEY=""
 if [[ "$DNS_SERVER" == powerdns ]]; then
   log "DNS server (PowerDNS)"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends pdns-server pdns-backend-sqlite3
-  rm -f /etc/powerdns/pdns.d/bind.conf
-  install -d -m 0750 -o pdns -g pdns /var/lib/powerdns
-  if [[ ! -s /var/lib/powerdns/pdns.sqlite3 ]]; then
-    sqlite3 /var/lib/powerdns/pdns.sqlite3 < /usr/share/pdns-backend-sqlite3/schema/schema.sqlite3.sql
-    chown pdns:pdns /var/lib/powerdns/pdns.sqlite3 && chmod 0640 /var/lib/powerdns/pdns.sqlite3
-  fi
-  if [[ -f /etc/powerdns/pdns.d/wspanel.conf ]]; then
-    PDNS_API_KEY="$(sed -n 's/^api-key=//p' /etc/powerdns/pdns.d/wspanel.conf)"
-  else
-    PDNS_API_KEY="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
-  fi
-  cat > /etc/powerdns/pdns.d/wspanel.conf <<CONF
-# Managed by WSPanel install.sh.
-launch=gsqlite3
-gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
-local-address=0.0.0.0, ::
-api=yes
-api-key=$PDNS_API_KEY
-webserver=yes
-webserver-address=127.0.0.1
-webserver-port=8081
-webserver-allow-from=127.0.0.1/32
-default-soa-content=ns1.$MAIL_NAME. hostmaster.$MAIL_NAME. 0 10800 3600 604800 3600
-default-ttl=3600
-CONF
-  chmod 0640 /etc/powerdns/pdns.d/wspanel.conf; chgrp pdns /etc/powerdns/pdns.d/wspanel.conf
-  systemctl enable pdns >/dev/null
-  systemctl restart pdns
+  /usr/lib/wspanel/dns.sh install "$MAIL_NAME"
+  PDNS_API_KEY="$(sed -n 's/^api-key=//p' /etc/powerdns/pdns.d/wspanel.conf)"
 fi
 
 # ---------------------------------------------------------------- agent

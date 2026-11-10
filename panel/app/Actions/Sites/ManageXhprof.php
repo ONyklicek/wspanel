@@ -37,6 +37,26 @@ class ManageXhprof
         ], self::class.'@installedNow', key: 'xhprof');
     }
 
+    /**
+     * Takes XHProf and XHGui away. Refused while a site has profiling on.
+     *
+     * @throws AgentException
+     */
+    public function uninstall(): AgentTask
+    {
+        $sites = Site::acrossClients()->whereNotNull('xhprof')->orderBy('domain')->pluck('domain');
+        if ($sites->isNotEmpty()) {
+            throw new AgentException('conflict', __('Profilování je zapnuté u webů :sites: nejdřív ho vypněte (Nastavení webu → Výkon a ladění).', ['sites' => $sites->implode(', ')]), 'panel');
+        }
+        $job = $this->agent->call('xhprof.uninstall');
+        Cache::forget('xhprof.installed');
+
+        return AgentTasks::start($job, 'xhprof.uninstall', [
+            'title' => __('Odinstalace XHProf + XHGui'),
+            'done' => __('XHProf odinstalován'),
+        ], self::class.'@installedNow', key: 'xhprof');
+    }
+
     public function installedNow(AgentTask $task): void
     {
         Cache::forget('xhprof.installed');

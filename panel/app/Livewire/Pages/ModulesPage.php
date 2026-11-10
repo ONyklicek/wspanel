@@ -2,12 +2,14 @@
 
 namespace App\Livewire\Pages;
 
+use App\Actions\Dns\ManageDnsServer;
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Server\ManagePython;
 use App\Actions\Sites\ManageXhprof;
 use App\Http\Middleware\EnsureTwoFactor;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\GameServer;
 use App\Models\Setting;
@@ -105,7 +107,7 @@ class ModulesPage extends Page
 
     public function dnsLocal(): bool
     {
-        return (bool) rescue(fn () => app(SystemInfo::class)->versions()['dns_local'] ?? false, false, report: false);
+        return app(ManageDnsServer::class)->installed();
     }
 
     public function mailHosting(): bool
@@ -115,7 +117,23 @@ class ModulesPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['mail-install', 'python', 'xhprof'];
+        return ['mail-install', 'python', 'xhprof', 'dns'];
+    }
+
+    /**
+     * Runs a module's install or removal in the background: the agent's
+     * refusal (something still uses it) is said at once.
+     *
+     * @param  callable(): AgentTask  $start
+     */
+    private function runModuleTask(callable $start, string $failed): void
+    {
+        try {
+            $start();
+        } catch (AgentException $e) {
+            Toast::error($failed, $e->getMessage());
+        }
+        $this->loadBackgroundJobs();
     }
 
     /** The menu gains Pošta, a module its card: a fresh page load shows it. */
@@ -216,6 +234,50 @@ class ModulesPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
+            Action::make('uninstallMail')
+                ->label(__('Odinstalovat poštu'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['mail-install']) && app(ManageMailHosting::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription(__('Odebere Dovecot, Rspamd a webmail a zavře porty 25, 465, 587, 993, 995 a 4190. Jde jen tehdy, když nezbývá žádná poštovní doména (Pošta → Domény). Weby dál odesílají poštu přes Postfix.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageMailHosting::class)->uninstall(), __('Odinstalace nejde'))),
+            Action::make('installDns')
+                ->label(__('Nainstalovat DNS server'))
+                ->icon('outline:globe-alt')
+                ->visible(fn () => ! isset($this->backgroundJobs['dns']) && ! $this->dnsLocal())
+                ->requiresConfirmation()
+                ->modalDescription(__('Nainstaluje PowerDNS (jen autoritativní, žádný překlad cizích domén) a otevře port 53 (TCP i UDP). Zóny pak přidáte v menu Síť → DNS. Trvá zhruba minutu.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageDnsServer::class)->install(), __('Instalace selhala'))),
+            Action::make('uninstallDns')
+                ->label(__('Odinstalovat DNS server'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['dns']) && $this->dnsLocal())
+                ->requiresConfirmation()
+                ->modalDescription(__('Odebere PowerDNS a zavře port 53. Jde jen tehdy, když na serveru nezbývá žádná DNS zóna (Síť → DNS); zóny v Cloudflare zůstávají.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageDnsServer::class)->uninstall(), __('Odinstalace nejde'))),
+            Action::make('uninstallXhprof')
+                ->label(__('Odinstalovat XHProf'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['xhprof']) && app(ManageXhprof::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription(__('Odebere rozšíření XHProf ze všech verzí PHP a XHGui. Jde jen tehdy, když žádný web nemá profilování zapnuté.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageXhprof::class)->uninstall(), __('Odinstalace nejde'))),
+            Action::make('removePython')
+                ->label(__('Odinstalovat verzi Pythonu'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['python']) && $this->pythonVersions() !== [])
+                ->modalDescription(__('Smaže zvolenou verzi Pythonu; s poslední verzí odejde i uv. Jde jen tehdy, když na ní neběží žádný web.'))
+                ->form(fn () => [
+                    Select::make('version')->label(__('Verze'))
+                        ->options(array_combine($this->pythonVersions(), $this->pythonLabels()))
+                        ->default($this->pythonVersions()[0] ?? null)->required()
+                        ->rules([fn () => 'in:'.implode(',', $this->pythonVersions())]),
+                ])
+                ->action(fn (array $data) => $this->runModuleTask(fn () => app(ManagePython::class)->remove((string) $data['version']), __('Odinstalace nejde'))),
             Action::make('twoFactor')
                 ->label(__('Dvoufázové přihlášení'))
                 ->icon('outline:lock-closed')

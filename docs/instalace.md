@@ -153,7 +153,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--php=` | `8.4` | verze PHP-FPM pro classic weby, např. `8.2,8.3,8.4` |
 | `--node=` | `22,24` | major verze Node pro SSR weby (`none` = jen jedna pro build panelu) |
 | `--python=` | `none` | verze Pythonu pro Python weby, např. `3.13` nebo `3.12,3.13` (uv a CPython do `/opt/uv/python`); později Server → Moduly |
-| `--dns=` | `none` | `powerdns` = server je autoritativní DNS pro zóny z panelu |
+| `--dns=` | `none` | `powerdns` = server je autoritativní DNS pro zóny z panelu; později Server → Moduly |
 | `--mail=` | `send` | výchozí režim pošty nových webů: `send` (odesílat) nebo `capture` (zachytávat v Mailpitu) |
 | `--ssh-port=` | `22` | port SSH |
 | `--ssh-password=` | `no` | `yes`: správci (i root) se přihlašují i heslem (hlídá fail2ban); `no`: jen klíčem – bez klíče správce root podrží heslo, jen pokud ho měl už před instalací (nikdy nezamkne, nikdy nepovolí víc) |

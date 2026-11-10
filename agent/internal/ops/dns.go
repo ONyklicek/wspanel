@@ -33,7 +33,7 @@ type RRset struct {
 
 func pdnsEnabled(env *Env) error {
 	if env.Cfg.PowerDNSAPI == "" || env.Cfg.PowerDNSKey == "" {
-		return protocol.NotFound("local DNS (PowerDNS) is not installed on this server (install.sh --dns=powerdns)")
+		return protocol.NotFound("local DNS (PowerDNS) is not installed on this server (Server → Moduly)")
 	}
 	return nil
 }

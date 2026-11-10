@@ -7,6 +7,11 @@ zapínají při instalaci (`install.sh --mail-hosting=yes`) nebo později
 v **Server → Moduly**. Bez nich nechte schránky u poskytovatele (Google
 Workspace, Microsoft 365, Seznam…) a nastavte jeho MX záznamy.
 
+Tamtéž je jde i **odinstalovat**, jakmile nezbývá žádná poštovní doména
+(Pošta → Domény): odejde Dovecot, Rspamd a webmail, zavřou se porty 25, 465,
+587, 993, 995 a 4190 a Postfix se vrátí k odesílání pošty z webů, která
+funguje dál.
+
 ## Dva režimy každého webu
 
 | Režim | Kam pošta jde | Kdy |

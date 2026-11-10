@@ -34,7 +34,7 @@ func xhprofInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err := decode(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
-	res, err := env.Exec.Run(ctx, "xhprof", env.Cfg.PHPVersions...)
+	res, err := runModuleScript(ctx, env, "xhprof", env.Cfg.PHPVersions...)
 	if err != nil {
 		return nil, err
 	}

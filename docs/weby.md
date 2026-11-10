@@ -697,6 +697,8 @@ Návštěvnost se drží 90 dní, kontroly dostupnosti 30 dní.
 Volitelný modul (`install.sh --xhprof=yes` nebo **Server → Moduly**). U webu
 v režimu PHP-FPM ho zapnete v **Nastavení → Výkon a ladění → XHProf** a zvolíte, kolik procent
 požadavků měřit (na produkci jen část, měření požadavek zpomalí).
+Odinstalovat ho jde tamtéž (**Odinstalovat XHProf**), když ho žádný web nemá
+zapnutý.
 
 - Rozšíření XHProf se načte jen do poolu webů, které profilování mají zapnuté,
   jinde PHP neovlivní.
@@ -766,6 +768,8 @@ přidáte stejným tlačítkem; nabízí se 3.12, 3.13 a 3.14.
   nejnovější opravné vydání (např. 3.13.5 → 3.13.18). Virtualenvy zůstanou,
   protože stojí na odkazu verze (`cpython-3.13-…`), ne na konkrétním vydání.
   Weby na té verzi se restartují na nový interpret a staré sestavení se smaže.
+- **Odinstalace verze:** Server → Moduly → **Odinstalovat verzi Pythonu**,
+  když na ní neběží žádný web. S poslední verzí odejde i uv.
 
 ## Smazání webu
 

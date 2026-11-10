@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "db.instance_create": true, "db.instance_update": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "xhprof.install": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "game.mod_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "mail.uninstall": true, "xhprof.install": true, "xhprof.uninstall": true, "dns.install": true, "dns.uninstall": true, "python.remove": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "game.mod_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -76,6 +76,8 @@ func Registry() map[string]Op {
 		{"mail.relay", true, mailRelay},
 		{"mail.dkim", true, mailDKIM},
 		{"mail.log", false, mailLog},
+		{"dns.install", true, dnsInstall},
+		{"dns.uninstall", true, dnsUninstall},
 		{"dns.zones", false, dnsZones},
 		{"dns.zone_create", true, dnsZoneCreate},
 		{"dns.zone_delete", true, dnsZoneDelete},
@@ -120,6 +122,7 @@ func Registry() map[string]Op {
 		{"php.install", true, phpInstall},
 		{"python.install", true, pythonInstall},
 		{"python.upgrade", true, pythonUpgrade},
+		{"python.remove", true, pythonRemove},
 		{"site.python_app", true, sitePythonApp},
 		{"db.root_password", true, dbRootPassword},
 		{"db.remote", true, dbRemote},
@@ -161,6 +164,7 @@ func Registry() map[string]Op {
 		{"client.quota", true, clientQuota},
 		{"site.directives", true, siteDirectives},
 		{"mail.install", true, mailInstall},
+		{"mail.uninstall", true, mailUninstall},
 		{"mail.hosting", false, mailHostingStatus},
 		{"mail.domain.set", true, mailDomainSet},
 		{"mail.mailbox.set", true, mailMailboxSet},
@@ -179,6 +183,7 @@ func Registry() map[string]Op {
 		{"mail.queue", true, mailQueue},
 		{"site.xhprof", true, siteXhprof},
 		{"xhprof.install", true, xhprofInstall},
+		{"xhprof.uninstall", true, xhprofUninstall},
 		{"xhprof.status", false, xhprofStatus},
 		{"site.traffic", true, siteTraffic},
 		{"site.app_install", true, siteAppInstall},

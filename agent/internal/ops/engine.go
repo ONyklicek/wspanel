@@ -67,6 +67,13 @@ func engineInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 
 // persistDBEngines rewrites db_engines in agent.json, keeping every other key.
 func persistDBEngines(env *Env) error {
+	return persistConfig(env, map[string]any{"db_engines": env.Cfg.DBEngines})
+}
+
+// persistConfig rewrites these keys of agent.json (nil removes one), keeping
+// every other key: what the agent changed in its own configuration at run
+// time survives its restart.
+func persistConfig(env *Env, keys map[string]any) error {
 	if env.ConfigPath == "" {
 		return nil
 	}
@@ -78,7 +85,13 @@ func persistDBEngines(env *Env) error {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return err
 	}
-	m["db_engines"] = env.Cfg.DBEngines
+	for k, v := range keys {
+		if v == nil {
+			delete(m, k)
+		} else {
+			m[k] = v
+		}
+	}
 	var out bytes.Buffer
 	enc := json.NewEncoder(&out)
 	enc.SetIndent("", "  ")

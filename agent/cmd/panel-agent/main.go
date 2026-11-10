@@ -259,6 +259,7 @@ func binaries(cfg config.Config) map[string]string {
 		"doveadm":            "/usr/bin/doveadm",  // quota get
 		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
 		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
+		"dns-setup":          "/usr/lib/wspanel/dns.sh",    // install|remove
 		"clamav":             "/usr/lib/wspanel/clamav.sh", // enable|disable
 		"nft":                "/usr/sbin/nft",              // -f <the agent's own ruleset> only
 		"saslpasswd2":        "/usr/sbin/saslpasswd2",      // password on stdin (-p)

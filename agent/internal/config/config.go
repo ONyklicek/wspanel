@@ -172,6 +172,12 @@ type Config struct {
 	// PowerDNSConf: the agent's own PowerDNS settings (DNSSEC, zone
 	// transfers and NOTIFY to the secondary servers).
 	PowerDNSConf string `json:"powerdns_conf"`
+	// PowerDNSSetup: the installer's PowerDNS settings (dns.sh), with the API
+	// key the agent takes when DNS is added from the panel.
+	PowerDNSSetup string `json:"powerdns_setup"`
+	// InstallFlags: the installer's saved choices (wspanel-install keeps a
+	// server's modules with them); a module removed in the panel leaves them.
+	InstallFlags string `json:"install_flags"`
 
 	// Build artifacts uploaded by CI (through the panel) for deploys that skip
 	// the build on the server. Root-owned dir the panel user may write into.
@@ -284,6 +290,8 @@ func Defaults() Config {
 		RspamdActions:     "/etc/rspamd/local.d/wspanel-actions.inc",
 		RspamdAntivirus:   "/etc/rspamd/local.d/antivirus.conf",
 		PowerDNSConf:      "/etc/powerdns/pdns.d/wspanel-agent.conf",
+		PowerDNSSetup:     "/etc/powerdns/pdns.d/wspanel.conf",
+		InstallFlags:      "/etc/wspanel/install.flags",
 		DovecotUsers:      "/etc/dovecot/wspanel/users",
 		VmailRoot:         "/var/mail/vmail",
 		DovecotBlocked:    "/etc/dovecot/wspanel/blocked",

@@ -4,6 +4,8 @@
 # Idempotent.
 #
 #   xhprof.sh <php version>...
+#   xhprof.sh --remove           takes it away (the agent first checks that
+#                                no site has profiling on)
 #
 # The extension is installed for every given PHP version but loaded only by
 # the pools of sites that have profiling on. XHGui and the collector come
@@ -12,6 +14,14 @@
 set -euo pipefail
 # Run by the agent (umask 077): what it installs is read by other users.
 umask 022
+if [[ "${1:-}" == --remove ]]; then
+  export DEBIAN_FRONTEND=noninteractive
+  rm -rf /usr/share/wspanel-xhgui
+  mapfile -t pkgs < <(dpkg-query -W -f='${Package} ${Status}\n' 'php*-xhprof' 2>/dev/null | awk '/ok installed/ {print $1}')
+  ((${#pkgs[@]} == 0)) || apt-get purge -y -q -o DPkg::Lock::Timeout=900 "${pkgs[@]}" >/dev/null
+  echo "xhprof removed"
+  exit 0
+fi
 (($# > 0)) || { echo "usage: xhprof.sh <php version>..." >&2; exit 2; }
 XHGUI_VERSION=0.23.7
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

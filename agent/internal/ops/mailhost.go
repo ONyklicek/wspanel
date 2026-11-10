@@ -672,7 +672,7 @@ func mailInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 		return nil, err
 	}
 	host := mailHostName(env)
-	res, err := env.Exec.Run(ctx, "mail-hosting", host)
+	res, err := runModuleScript(ctx, env, "mail-hosting", host)
 	if err != nil {
 		return nil, err
 	}

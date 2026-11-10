@@ -104,6 +104,29 @@ class ManageMailHosting
         return $job;
     }
 
+    /**
+     * Takes mail hosting away (Dovecot, Rspamd, webmail; ports 25, 465,
+     * 587, 993, 995 and 4190 close). Refused while a mail domain is left;
+     * the sites keep sending mail.
+     *
+     * @throws AgentException
+     */
+    public function uninstall(): AgentTask
+    {
+        $domains = MailDomain::acrossClients()->orderBy('domain')->pluck('domain');
+        if ($domains->isNotEmpty()) {
+            throw new AgentException('conflict', __('Zbývají poštovní domény (:domains): nejdřív je smažte (Pošta → Domény).', ['domains' => $domains->implode(', ')]), 'panel');
+        }
+        $job = $this->agent->call('mail.uninstall');
+        Cache::forget('mail.hosting.status');
+
+        return AgentTasks::start($job, 'mail.uninstall', [
+            'title' => __('Odinstalace pošty (schránky)'),
+            'done' => __('Pošta (schránky) odinstalována'),
+            'body' => __('Weby dál odesílají poštu přes Postfix.'),
+        ], self::class.'@filtersSet', key: 'mail-install');
+    }
+
     /** The host name mail clients and MX records use. */
     public static function mailHost(): string
     {

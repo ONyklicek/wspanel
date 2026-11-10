@@ -13,7 +13,9 @@ poradí, jaké záznamy nastavit, a ověří je.
 | Co nastavit u registrátora | nameservery na tento server | nameservery Cloudflare | nic |
 | Výpadek serveru | doména neodpovídá ani v DNS | DNS běží dál | DNS běží dál |
 
-Lokální DNS je potřeba zapnout při instalaci (`--dns=powerdns`). Server je
+Lokální DNS se zapíná při instalaci (`--dns=powerdns`) nebo později
+v **Server → Moduly → Nainstalovat DNS server** (na pozadí, otevře port 53).
+Tamtéž jde odinstalovat, když na serveru nezbývá žádná zóna. Server je
 autoritativní jen pro své zóny a nic jiného nepřekládá (žádná rekurze).
 
 ## Přidání zóny

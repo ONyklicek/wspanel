@@ -2,7 +2,9 @@
 
 namespace App\Actions\Server;
 
+use App\Enums\SiteMode;
 use App\Models\AgentTask;
+use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
@@ -26,6 +28,26 @@ class ManagePython
             'title' => __('Instalace Pythonu :version', ['version' => $version]),
             'done' => __('Python :version nainstalován', ['version' => $version]),
             'body' => __('Při zakládání webu zvolte režim Python.'),
+        ], self::class.'@versionsChanged', key: 'python');
+    }
+
+    /**
+     * Takes an installed Python version away (uv goes with the last one).
+     * Refused while a site runs on it.
+     *
+     * @throws AgentException
+     */
+    public function remove(string $version): AgentTask
+    {
+        $sites = Site::acrossClients()->where('mode', SiteMode::Python)->where('python_version', $version)->orderBy('domain')->pluck('domain');
+        if ($sites->isNotEmpty()) {
+            throw new AgentException('conflict', __('Na Pythonu :version běží :sites: nejdřív je přepněte na jinou verzi, nebo smažte.', ['version' => $version, 'sites' => $sites->implode(', ')]), 'panel');
+        }
+        $job = $this->agent->call('python.remove', ['version' => $version]);
+
+        return AgentTasks::start($job, 'python.remove', [
+            'title' => __('Odinstalace Pythonu :version', ['version' => $version]),
+            'done' => __('Python :version odinstalován', ['version' => $version]),
         ], self::class.'@versionsChanged', key: 'python');
     }
 

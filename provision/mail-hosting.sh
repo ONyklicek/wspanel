@@ -15,6 +15,59 @@ set -euo pipefail
 # users (Valkey as _rspamd, Roundcube…) would be root-only. Secrets get their
 # modes explicitly below.
 umask 022
+
+# mail-hosting.sh --remove <mail host name>: takes mail hosting away again
+# (the agent first checks that no mail domain is left). Postfix goes back to
+# sending the sites' mail only; the system's PHP stays.
+if [[ "${1:-}" == --remove ]]; then
+  MAIL_HOST=${2:?usage: mail-hosting.sh --remove <mail host name>}
+  export DEBIAN_FRONTEND=noninteractive
+  rm -f /etc/wspanel/mail/hosting
+  systemctl disable --now dovecot rspamd rspamd-valkey postsrsd roundcube-gc.timer >/dev/null 2>&1 || true
+  # Postfix: what hosting added goes, the rest is the sites' sending again.
+  postconf -X virtual_mailbox_domains virtual_mailbox_maps virtual_alias_maps virtual_transport \
+    smtpd_sasl_exceptions_networks smtpd_discard_ehlo_keyword_address_maps smtpd_helo_required disable_vrfy_command \
+    smtpd_tls_cert_file smtpd_tls_key_file smtpd_tls_mandatory_protocols smtpd_tls_protocols \
+    sender_canonical_maps sender_canonical_classes recipient_canonical_maps recipient_canonical_classes transport_maps
+  for s in submission/inet smtps/inet wspanel-dmarc/unix; do
+    postconf -M "$s" >/dev/null 2>&1 && postconf -MX "$s"
+  done
+  /usr/lib/wspanel/postfix-base.sh "$MAIL_HOST"
+  rm -f /etc/postfix/wspanel_{vdomains,vmailboxes,valiases,mailbox_senders,srs_exclude,transport,loopback_sasl,loopback_ehlo}{,.db}
+  systemctl restart postfix
+  sed -i '/^MacroList[[:space:]]*daemon_name|ORIGINATING$/d' /etc/opendkim.conf
+  systemctl restart opendkim
+  # Webmail.
+  rm -f /etc/php/*/fpm/pool.d/webmail.conf /etc/panel-web/webmail.caddy /etc/tmpfiles.d/wspanel-webmail.conf
+  for unit in $(systemctl list-units --type=service --all --plain --no-legend 'php*-fpm.service' | awk '{print $1}'); do
+    systemctl reload "$unit" 2>/dev/null || true
+  done
+  systemctl reload panel-web 2>/dev/null || true
+  rm -rf /etc/systemd/system/roundcube-gc.service.d /etc/systemd/system/rspamd-valkey.service
+  systemctl daemon-reload
+  # Firewall, fail2ban.
+  if command -v ufw >/dev/null; then
+    for p in 25 465 587 993 995 4190; do ufw delete allow "$p/tcp" >/dev/null 2>&1 || true; done
+  fi
+  rm -f /etc/fail2ban/jail.d/wspanel-mail.conf
+  systemctl reload fail2ban 2>/dev/null || true
+  # Antivirus for incoming mail has nothing to scan any more.
+  [[ -x /usr/lib/wspanel/clamav.sh ]] && dpkg-query -W -f='${Status}' clamav-daemon 2>/dev/null | grep -q 'ok installed' \
+    && /usr/lib/wspanel/clamav.sh disable >/dev/null 2>&1 || true
+  apt-get purge -y -q -o DPkg::Lock::Timeout=900 \
+    dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd dovecot-sieve dovecot-managesieved rspamd postsrsd \
+    roundcube-core roundcube-sqlite3 roundcube-plugins >/dev/null
+  # The purge leaves the preseeded templates without their questions: a
+  # later install could not preseed Roundcube again.
+  /usr/share/debconf/fix_db.pl >/dev/null 2>&1 || true
+  rm -rf /etc/dovecot /etc/rspamd /etc/roundcube /var/lib/rspamd /var/lib/wspanel-webmail /var/lib/roundcube \
+    /usr/share/roundcube /var/mail/vmail /etc/wspanel/mail/rspamd-controller.pw
+  userdel webmail >/dev/null 2>&1 || true
+  userdel vmail >/dev/null 2>&1 || true
+  echo "mail hosting removed"
+  exit 0
+fi
+
 MAIL_HOST=${1:?mail host name}
 MAIL_HOST=${MAIL_HOST,,} # host names are case-insensitive
 PHP=${2:-8.4}
@@ -26,6 +79,9 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Roundcube from Debian (security updates with the system), without its
 # web server and database helpers: WSPanel serves it and keeps its SQLite.
+# A server whose mail hosting was taken away before (templates left without
+# questions) is repaired first, or the preseeding below is refused.
+/usr/share/debconf/fix_db.pl >/dev/null 2>&1 || true
 echo "roundcube-core roundcube/dbconfig-install boolean false" | debconf-set-selections
 echo "roundcube-core roundcube/reconfigure-webserver multiselect" | debconf-set-selections
 apt-get install -y -q --no-install-recommends \

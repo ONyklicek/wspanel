@@ -65,7 +65,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | **Server → Balíčky** | hledání a instalace balíčků Debianu, podržení verze, odebrání (ne toho, co potřebuje systém nebo panel) |
 | **Server → PHP** | verze PHP, rozšíření (přidat/odebrat), doinstalování verze, FrankenPHP |
 | **Server → Zálohy mimo server** | kopie všech záloh do S3 (Amazon S3, R2, B2, Wasabi, MinIO), na FTP(S) nebo SMB (NAS), podepsané; noční šifrovaná záloha serveru a pošty, klíč pro obnovu (obnova po havárii: `install --restore`) |
-| **Server → Moduly** | doinstalování klientů, pošty, XHProf, Pythonu, herních serverů; politika dvoufázového přihlášení |
+| **Server → Moduly** | doinstalování i odinstalování klientů, pošty, DNS serveru, XHProf, Pythonu, herních serverů (na pozadí; odebrat jde, jen když ho nic nepoužívá); politika dvoufázového přihlášení |
 | **Zabezpečení → Firewall** | pravidla UFW, přístup k panelu (z jakých adres), blokování zemí |
 | **Zabezpečení → Fail2ban** | zablokované adresy a jejich odblokování |
 | **Zabezpečení → Aktualizace** | balíčky k aktualizaci, bezpečnostní zvlášť, restart serveru (hned, v určený čas, automaticky po aktualizacích) |
