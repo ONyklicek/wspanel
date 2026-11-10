@@ -164,7 +164,9 @@ PANEL_IS_IP=0
 [[ "$PANEL_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && PANEL_IS_IP=1
 # Hostname for mail and DNS (an IP address is not one).
 MAIL_NAME="$PANEL_DOMAIN"
-[[ $PANEL_IS_IP -eq 1 ]] && MAIL_NAME="$(hostname -f 2>/dev/null || hostname)"
+# Host names are case-insensitive; mail and DNS take them in lower case
+# (VPS images name servers like "NyonVps").
+[[ $PANEL_IS_IP -eq 1 ]] && MAIL_NAME="$(hostname -f 2>/dev/null || hostname)" && MAIL_NAME="${MAIL_NAME,,}"
 [[ -n "$AGENT_BIN" && -x "$AGENT_BIN" ]] || die "--agent-bin must point to the built panel-agent binary"
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${MAIL_NAME}"
@@ -274,6 +276,8 @@ PHP_PKGS=()
 for v in "${PHP_LIST[@]}"; do
   # Extensions Laravel and Symfony need or recommend.
   for ext in fpm cli common opcache intl bcmath mbstring xml curl zip gd sqlite3 redis apcu; do
+    # From PHP 8.5 OPcache is part of PHP: sury has no php8.5-opcache.
+    [[ $ext == opcache && ${v%%.*} -eq 8 && ${v#*.} -ge 5 ]] && continue
     PHP_PKGS+=("php${v}-${ext}")
   done
   [[ " ${DB_ENGINES[*]} " == *" mariadb "* ]] && PHP_PKGS+=("php${v}-mysql")

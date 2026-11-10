@@ -32,6 +32,34 @@ var basePHPPackages = []string{"fpm", "cli", "common", "opcache", "intl", "bcmat
 // never removed from the panel.
 var phpCorePackages = []string{"fpm", "cli", "common", "cgi", "dev", "phpdbg", "opcache", "readline"}
 
+// opcacheBuiltIn: from PHP 8.5 OPcache is part of PHP itself, and sury
+// publishes no phpX.Y-opcache package for it.
+func opcacheBuiltIn(version string) bool {
+	var major, minor int
+	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
+		return false
+	}
+	return major > 8 || (major == 8 && minor >= 5)
+}
+
+// phpInstallPackages: what installing a PHP version brings (as install.sh).
+func phpInstallPackages(version string, engines []string) []string {
+	pkgs := make([]string, 0, len(basePHPPackages)+2)
+	for _, ext := range basePHPPackages {
+		if ext == "opcache" && opcacheBuiltIn(version) {
+			continue
+		}
+		pkgs = append(pkgs, "php"+version+"-"+ext)
+	}
+	if slices.Contains(engines, "mariadb") {
+		pkgs = append(pkgs, "php"+version+"-mysql")
+	}
+	if slices.Contains(engines, "postgresql") {
+		pkgs = append(pkgs, "php"+version+"-pgsql")
+	}
+	return pkgs
+}
+
 var phpExtRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 
 type phpVersionInfo struct {
@@ -188,16 +216,7 @@ func phpInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if slices.Contains(env.Cfg.PHPVersions, p.Version) {
 		return map[string]any{"version": p.Version, "changed": false}, nil
 	}
-	pkgs := make([]string, 0, len(basePHPPackages)+2)
-	for _, ext := range basePHPPackages {
-		pkgs = append(pkgs, "php"+p.Version+"-"+ext)
-	}
-	if slices.Contains(env.Cfg.DBEngines, "mariadb") {
-		pkgs = append(pkgs, "php"+p.Version+"-mysql")
-	}
-	if slices.Contains(env.Cfg.DBEngines, "postgresql") {
-		pkgs = append(pkgs, "php"+p.Version+"-pgsql")
-	}
+	pkgs := phpInstallPackages(p.Version, env.Cfg.DBEngines)
 	if _, err := env.Exec.RunIO(ctx, nil, nil, "apt-get", "update", "-q"); err != nil {
 		return nil, err
 	}

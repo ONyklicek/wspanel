@@ -16,6 +16,7 @@ set -euo pipefail
 # modes explicitly below.
 umask 022
 MAIL_HOST=${1:?mail host name}
+MAIL_HOST=${MAIL_HOST,,} # host names are case-insensitive
 PHP=${2:-8.4}
 [[ "$PHP" =~ ^[0-9]\.[0-9]$ ]] || { echo "invalid PHP version" >&2; exit 2; }
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
