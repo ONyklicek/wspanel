@@ -66,7 +66,7 @@
         @endif
     </x-wire::section>
 
-    <x-wire::section :heading="__('Nainstalované')" :description="__('Podržený balíček zůstane ve své verzi, aktualizace ho přeskočí. Odebrat jde jen to, co server ani panel nepotřebují; konfigurace balíčku zůstane.')">
+    <x-wire::section :heading="__('Nainstalované')" :description="__('Podržet = zmrazit verzi: aktualizace systému (ruční i automatické bezpečnostní) balíček přeskočí, dokud ho neuvolníte. Hodí se, když nová verze něco rozbije. Odebrat jde jen to, co server ani panel nepotřebují; konfigurace balíčku zůstane.')">
         <div class="mb-3 flex flex-wrap items-center gap-4">
             <input type="search" wire:model.live.debounce.300ms="filter" placeholder="{{ __('Filtrovat') }}" class="w-full max-w-xs rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model.live="manualOnly" class="rounded border-gray-300">{{ __('Jen nainstalované ručně a podržené') }}</label>
@@ -85,7 +85,7 @@
                             <td class="py-1 pe-3 text-xs tabular-nums">{{ $size($p['size']) }}</td>
                             <td class="max-w-md truncate py-1 pe-3 text-xs text-gray-500" title="{{ $p['summary'] }}">{{ $p['summary'] }}</td>
                             <td class="whitespace-nowrap py-1 text-right">
-                                <x-wire::button size="xs" color="gray" outlined wire:click="hold({{ \Illuminate\Support\Js::from($p['name']) }}, {{ $p['held'] ? 'false' : 'true' }})" title="{{ $p['held'] ? __('Aktualizace systému ho zase budou aktualizovat.') : __('apt-mark hold: aktualizace systému balíček přeskočí a zůstane v současné verzi.') }}">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
+                                <x-wire::button size="xs" color="gray" outlined wire:click="hold({{ \Illuminate\Support\Js::from($p['name']) }}, {{ $p['held'] ? 'false' : 'true' }})" :wire:confirm="$p['held'] ? null : __('Podržet :name ve verzi :version? Aktualizace ho budou přeskakovat, i bezpečnostní opravy, dokud ho neuvolníte.', ['name' => $p['name'], 'version' => $p['version'] ?? ''])" title="{{ $p['held'] ? __('Aktualizace systému ho zase budou aktualizovat.') : __('apt-mark hold: aktualizace systému balíček přeskočí a zůstane v současné verzi.') }}">{{ $p['held'] ? __('Uvolnit') : __('Podržet') }}</x-wire::button>
                                 @unless ($p['protected'])
                                     <x-wire::button size="xs" color="danger" outlined wire:click="ask('remove', {{ \Illuminate\Support\Js::from($p['name']) }})">{{ __('Odebrat') }}</x-wire::button>
                                 @endunless
