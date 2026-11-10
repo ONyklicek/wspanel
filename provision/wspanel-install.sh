@@ -353,7 +353,20 @@ ssh_port=$(ask_valid "Port SSH serveru (správa serveru i SFTP webů):" "$cur_ss
 [[ -n "${pub_ssh:-}" ]] && flags+=("--public-ssh-port=$pub_ssh") || { [[ $ssh_port != 22 ]] && flags+=("--public-ssh-port=$ssh_port"); }
 # Keys only for administrators, never a lock-out: who can get in with a key.
 SSH_KEY_RE='^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+=*( [^[:cntrl:]]*)?$'
-key_of() { local h; h="$(getent passwd "$1" | cut -d: -f6)"; [[ -n "$h" && -f "$h/.ssh/authorized_keys" ]] && grep -Eq "$SSH_KEY_RE" "$h/.ssh/authorized_keys"; }
+# A key sshd would accept for the user (as install.sh's has_key: the files
+# sshd -T names, parsed by ssh-keygen, key options included).
+key_of() {
+  local user=$1 home f
+  home="$(getent passwd "$user" | cut -d: -f6)"
+  [[ -n "$home" ]] || return 1
+  for f in $(sshd -T -C "user=$user,host=localhost,addr=127.0.0.1" 2>/dev/null | awk '$1 == "authorizedkeysfile" { for (i = 2; i <= NF; i++) print $i }'); do
+    f="${f//%h/$home}"; f="${f//%u/$user}"; f="${f//%%/%}"
+    [[ $f == /* ]] || f="$home/$f"
+    [[ -f "$f" ]] && ssh-keygen -l -f "$f" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+valid_key() { [[ "$1" =~ $SSH_KEY_RE ]] && ssh-keygen -l -f <(printf '%s\n' "$1") >/dev/null 2>&1; }
 sudo_key=""
 for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do key_of "$u" && sudo_key="$u" && break; done
 root_ssh=""
@@ -376,7 +389,7 @@ if ((! have_key)); then
     key="$(printf '%s' "$key" | tr -d '\r' | sed 's/^ *//; s/ *$//')"
     if [[ -z "$key" && $auth == heslo ]]; then
       break
-    elif [[ -n "$key" && "$key" =~ $SSH_KEY_RE ]]; then
+    elif [[ -n "$key" ]] && valid_key "$key"; then
       flags+=("--ssh-key=$key"); root_ssh+=" (klíč ${key%% *} vložený)"
       break
     elif [[ -z "$key" ]]; then

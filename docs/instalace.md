@@ -155,7 +155,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--dns=` | `none` | `powerdns` = server je autoritativní DNS pro zóny z panelu |
 | `--mail=` | `send` | výchozí režim pošty nových webů: `send` (odesílat) nebo `capture` (zachytávat v Mailpitu) |
 | `--ssh-port=` | `22` | port SSH |
-| `--ssh-password=` | `no` | `yes`: správci (i root) se přihlašují i heslem (hlídá fail2ban); `no`: jen klíčem – ale jen když má správce klíč, jinak root heslo podrží (nikdy nezamkne) |
+| `--ssh-password=` | `no` | `yes`: správci (i root) se přihlašují i heslem (hlídá fail2ban); `no`: jen klíčem – bez klíče správce root podrží heslo, jen pokud ho měl už před instalací (nikdy nezamkne, nikdy nepovolí víc) |
 | `--ssh-key=` | – | veřejný klíč pro roota (`"ssh-ed25519 AAAA… popis"`), přidá se do `/root/.ssh/authorized_keys` |
 | `--no-root-ssh` | – | zakáže přihlášení roota přes SSH; odmítne se, pokud jiný správce (skupina `sudo`) nemá klíč |
 | `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy (za NATem zadejte ručně) |

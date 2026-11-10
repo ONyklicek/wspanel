@@ -177,12 +177,33 @@ MAIL_NAME="$PANEL_DOMAIN"
 [[ "$MAIL_DEFAULT" == send || "$MAIL_DEFAULT" == capture ]] || die "--mail must be send or capture"
 [[ "$DNS_SERVER" == none || "$DNS_SERVER" == powerdns ]] || die "--dns must be none or powerdns"
 [[ "$SSH_PASSWORD" == yes || "$SSH_PASSWORD" == no ]] || die "--ssh-password must be yes or no"
+# has_key <user>: a key sshd would accept for the user: the files sshd reads
+# for them (AuthorizedKeysFile as sshd -T resolves it, %h and %u expanded,
+# relative to the home), each parsed by ssh-keygen like sshd parses it (key
+# options, comments). Unreadable or unparsable: no key.
+has_key() {
+  local user=$1 home f
+  home="$(getent passwd "$user" | cut -d: -f6)"
+  [[ -n "$home" ]] || return 1
+  for f in $(sshd -T -C "user=$user,host=localhost,addr=127.0.0.1" 2>/dev/null | awk '$1 == "authorizedkeysfile" { for (i = 2; i <= NF; i++) print $i }'); do
+    f="${f//%h/$home}"; f="${f//%u/$user}"; f="${f//%%/%}"
+    [[ $f == /* ]] || f="$home/$f"
+    [[ -f "$f" ]] && ssh-keygen -l -f "$f" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+# root_password_now: whether root can log in with a password as sshd is set
+# up before this run (the provider's image, or WSPanel's earlier choice).
+root_password_now() {
+  local t
+  t="$(sshd -T -C user=root,host=localhost,addr=127.0.0.1 2>/dev/null)" || return 1
+  grep -qx 'passwordauthentication yes' <<<"$t" && grep -qx 'permitrootlogin yes' <<<"$t"
+}
 # Root without SSH needs another administrator who can get in: before anything changes.
 if [[ "$ROOT_LOGIN" == no ]]; then
   ok_admin=""
   for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
-    h="$(getent passwd "$u" | cut -d: -f6)"
-    [[ -n "$h" && -s "$h/.ssh/authorized_keys" ]] && ok_admin="$u" && break
+    has_key "$u" && ok_admin="$u" && break
   done
   [[ -n "$ok_admin" ]] || die "--no-root-ssh: no other administrator (group sudo) has an SSH key; root would be the only way in"
 fi
@@ -858,31 +879,33 @@ log "SSH (keys only) and fail2ban"
 install -d -m 0755 /etc/ssh/authorized_keys /etc/panel-sites/bin
 SSH_KEY_RE='^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+=*( [^[:cntrl:]]*)?$'
 if [[ -n "$SSH_KEY" ]]; then
-  [[ "$SSH_KEY" =~ $SSH_KEY_RE ]] || die "--ssh-key: a public SSH key (ssh-ed25519 AAAA… comment)"
+  [[ "$SSH_KEY" =~ $SSH_KEY_RE ]] && ssh-keygen -l -f <(printf '%s\n' "$SSH_KEY") >/dev/null 2>&1 \
+    || die "--ssh-key: a public SSH key (ssh-ed25519 AAAA… comment)"
   install -d -m 0700 /root/.ssh
   touch /root/.ssh/authorized_keys && chmod 0600 /root/.ssh/authorized_keys
   grep -qxF "$SSH_KEY" /root/.ssh/authorized_keys || printf '%s\n' "$SSH_KEY" >> /root/.ssh/authorized_keys
 fi
-# has_key <user>: an SSH key in the user's authorized_keys.
-has_key() {
-  local home
-  home="$(getent passwd "$1" | cut -d: -f6)"
-  [[ -n "$home" && -f "$home/.ssh/authorized_keys" ]] && grep -Eq "$SSH_KEY_RE" "$home/.ssh/authorized_keys"
-}
 sudo_with_key=""
 for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
   has_key "$u" && sudo_with_key="$u" && break
 done
-# Never lock the administrator out: keys only when an administrator has one.
-# With --ssh-password=yes administrators keep their passwords by choice.
+# Administrators log in with keys; their password only by choice
+# (--ssh-password=yes). Never a lock-out, never more than the server allowed:
+# with no administrator's key, root keeps its password only when it could log
+# in with it before this run (a fresh server whose provider set a root
+# password); a server already on keys only stays so, with a warning.
 ROOT_PASSWORD=0
+NO_ADMIN_KEY=0
 if [[ "$SSH_PASSWORD" == yes ]]; then
   [[ "$ROOT_LOGIN" == no ]] || ROOT_LOGIN="yes"
 elif [[ "$ROOT_LOGIN" == no ]]; then
   [[ -n "$sudo_with_key" ]] || die "--no-root-ssh: no other administrator (group sudo) has an SSH key; root would be the only way in"
 elif ! has_key root && [[ -z "$sudo_with_key" ]]; then
-  ROOT_PASSWORD=1
-  ROOT_LOGIN="yes"
+  NO_ADMIN_KEY=1
+  if root_password_now; then
+    ROOT_PASSWORD=1
+    ROOT_LOGIN="yes"
+  fi
 fi
 sed -e "s|__ROOT_LOGIN__|$ROOT_LOGIN|" -e "s|__PASSWORD__|$SSH_PASSWORD|" "$HERE/files/sshd-wspanel.conf.tmpl" > /etc/ssh/sshd_config.d/50-wspanel.conf
 if ((ROOT_PASSWORD)); then
@@ -977,6 +1000,10 @@ if ((ROOT_PASSWORD)); then
   printf '\n\033[1;33mSSH:\033[0m no administrator has an SSH key, so root still logs in with its password.\n'
   printf '     Safer: put your public key into /root/.ssh/authorized_keys (or install --ssh-key="ssh-ed25519 …")\n'
   printf '     and run the installer again: then SSH takes keys only.\n'
+elif ((NO_ADMIN_KEY)); then
+  printf '\n\033[1;31mSSH:\033[0m no administrator has an SSH key WSPanel could find, and root had no password login before:\n'
+  printf '     nothing was relaxed. Make sure you can still log in (a key in a place sshd reads, or the provider'"'"'s console);\n'
+  printf '     a password for administrators only by choice: install --ssh-password=yes.\n'
 fi
 # What to set at the registrar or DNS provider, checked in public DNS now.
 (cd /srv/panel/current && runuser -u panel -- php artisan panel:dns-records 2>/dev/null) || true

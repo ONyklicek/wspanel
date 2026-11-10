@@ -47,11 +47,15 @@ Po přihlášení jste v adresáři webu:
 - Opakované chybné přihlášení zablokuje IP adresu (fail2ban, 5 pokusů →
   1 hodina).
 - Správci serveru (root) se přihlašují podle volby při instalaci: **heslem
-  i klíčem** (výchozí v průvodci), nebo **jen klíčem**. Jen klíčem jde zvolit,
-  až když má root (nebo jiný správce se `sudo`) SSH klíč: instalace správce
-  nikdy nezamkne venku. Bez klíče root heslo podrží a na konci instalace
-  na to upozorní. Změna: instalace znovu s `--ssh-password=yes|no`
-  (a případně `--ssh-key=…`).
+  i klíčem** (výchozí v průvodci), nebo **jen klíčem**. Jen klíčem průvodce
+  nabídne, až když má root (nebo jiný správce se `sudo`) SSH klíč, jinak si
+  ho vyžádá. Klíč hledá tam, kde ho hledá sshd (`AuthorizedKeysFile`, i
+  `authorized_keys2`, i klíče s volbami jako `from=` nebo `restrict`).
+  Neinteraktivní instalace bez klíče správce nic nepovolí navíc: heslo pro
+  roota podrží jen tehdy, když ho server měl už před instalací (VPS
+  s heslem od poskytovatele); server, kde root heslem nemohl, zůstane jen
+  s klíči a instalace na konci upozorní. Změna: instalace znovu
+  s `--ssh-password=yes|no` (a případně `--ssh-key=…`).
 
 ### Nejde se přihlásit jako root heslem
 
