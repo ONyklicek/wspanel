@@ -70,8 +70,28 @@ done
 # newest 3 snapshots and 2 kits stay.
 STATE=/var/lib/wspanel
 THIS_VERSION="$(cat "$HERE/VERSION" 2>/dev/null || echo dev)"
-installed_version() { sed -n 's/^PANEL_VERSION=//p' /srv/panel/shared/.env 2>/dev/null | tail -1; }
-installed_method() { sed -n 's/^PANEL_INSTALL_METHOD=//p' /srv/panel/shared/.env 2>/dev/null | tail -1; }
+# Root's own record of the release (the panel's .env is the panel user's, and
+# a version from there ends up in a path that runs as root). A server
+# installed before that record existed falls back to .env, validated.
+SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+release_value() {
+  local v
+  v="$(sed -n "s/^$1=//p" /etc/wspanel/release.conf 2>/dev/null | tail -1)"
+  [[ -n "$v" ]] || v="$(sed -n "s/^$1=//p" /srv/panel/shared/.env 2>/dev/null | tail -1)"
+  printf '%s' "$v"
+}
+installed_version() {
+  local v
+  v="$(release_value PANEL_VERSION)"
+  [[ "$v" =~ $SEMVER_RE ]] && printf '%s\n' "$v"
+  return 0
+}
+installed_method() {
+  local m
+  m="$(release_value PANEL_INSTALL_METHOD)"
+  [[ "$m" == apt || "$m" == bundle ]] && printf '%s\n' "$m"
+  return 0
+}
 
 snapshot() {
   [[ -f /srv/panel/shared/database.sqlite && -f /srv/panel/shared/.env ]] || return 0
@@ -120,6 +140,7 @@ rollback() {
     break
   done < <(ls -1d "$STATE"/rollback/*/ 2>/dev/null | sort -r)
   [[ -n "$snap" ]] || die "no snapshot of a version other than $now in $STATE/rollback"
+  [[ "$from" =~ $SEMVER_RE ]] || die "the snapshot ${snap%/} names no version ($from)"
   kit="$STATE/kit/$from"
   [[ -x "$kit/install" ]] || die "the installer of $from is not kept in $kit; install $from again (get.sh with WSPANEL_VERSION=$from)"
   method="$(cat "$kit/KIT_METHOD" 2>/dev/null || true)"

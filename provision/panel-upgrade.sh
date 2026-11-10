@@ -14,9 +14,20 @@ set -euo pipefail
 version=${1:?version}
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a version: $version" >&2; exit 2; }
 
+# Where the release comes from is root's (/etc/wspanel/release.conf, written
+# by the installer), never the panel's .env: the panel user can write that,
+# and a repository named there would be anyone's release, run as root. Only
+# the token comes from .env; it can do no more than read the release from
+# this repository.
+conf=/etc/wspanel/release.conf
+[[ -f $conf && ! -L $conf && "$(stat -c %u:%a "$conf")" =~ ^0:[0-7][0145][0145]$ ]] || {
+  echo "$conf is missing or not root's own: upgrade once from the command line (get.sh)" >&2
+  exit 2
+}
+conf_get() { sed -nE "s/^$1=\"?([^\"]*)\"?\$/\1/p" "$conf" | tail -1; }
 env_get() { sed -nE "s/^$1=\"?([^\"]*)\"?\$/\1/p" /srv/panel/shared/.env 2>/dev/null | tail -1; }
-method="$(env_get PANEL_INSTALL_METHOD)"
-repo="$(env_get PANEL_RELEASE_REPO)"
+method="$(conf_get PANEL_INSTALL_METHOD)"
+repo="$(conf_get PANEL_RELEASE_REPO)"
 token="$(env_get PANEL_RELEASE_TOKEN)"
 export DEBIAN_FRONTEND=noninteractive
 

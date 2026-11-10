@@ -779,6 +779,25 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   # How the next version comes: apt (wspanel-update) or a release bundle (get.sh).
   [[ -n "${WSPANEL_VIA_APT:-}" ]] && set_panel_env PANEL_INSTALL_METHOD apt
   [[ -z "${WSPANEL_VIA_APT:-}" && "$bundle_version" =~ ^[0-9] ]] && set_panel_env PANEL_INSTALL_METHOD bundle
+  # The same, root's own copy. What runs as root to upgrade or roll back
+  # (panel-upgrade.sh, wspanel-rollback) reads it here and never from the
+  # panel's .env: the panel user writes that file, and a repository named
+  # there would be a release of anyone's, run as root.
+  set_release() {
+    install -d -m 0755 /etc/wspanel
+    touch /etc/wspanel/release.conf
+    chown root:root /etc/wspanel/release.conf
+    chmod 0644 /etc/wspanel/release.conf
+    if grep -q "^$1=" /etc/wspanel/release.conf; then
+      sed -i "s|^$1=.*|$1=$2|" /etc/wspanel/release.conf
+    else
+      echo "$1=$2" >> /etc/wspanel/release.conf
+    fi
+  }
+  [[ "$bundle_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] && set_release PANEL_VERSION "$bundle_version"
+  [[ "$bundle_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && set_release PANEL_RELEASE_REPO "$bundle_repo"
+  [[ -n "${WSPANEL_VIA_APT:-}" ]] && set_release PANEL_INSTALL_METHOD apt
+  [[ -z "${WSPANEL_VIA_APT:-}" && "$bundle_version" =~ ^[0-9] ]] && set_release PANEL_INSTALL_METHOD bundle
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs
@@ -804,10 +823,19 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   grep -q '^APP_KEY=base64:' /srv/panel/shared/.env || (cd "$release" && as_panel php artisan key:generate --force)
   (cd "$release" && as_panel php artisan migrate --force && as_panel php artisan optimize)
   setfacl -m u:panel-web:x "$release"
-  setfacl -R -m u:panel-web:rX,d:u:panel-web:rX "$release/public"
+  # -P: a symlink the build left in public/ is not followed (root sets the ACL).
+  setfacl -R -P -m u:panel-web:rX,d:u:panel-web:rX "$release/public"
   ln -sfn "$release" /srv/panel/current.tmp && mv -Tf /srv/panel/current.tmp /srv/panel/current
-  # Keep the last 5 releases.
-  ls -1dt /srv/panel/releases/*/ | tail -n +6 | xargs -r rm -rf
+  # Keep the last 5 releases. The directory is the panel user's: only real
+  # directories are pruned (find -type d lists no symlink), each named
+  # without a trailing slash, so rm removes a link in its place and never
+  # what a link points to. "ls releases/*/ | xargs rm -rf" followed a planted
+  # link to /etc or /usr and emptied it.
+  current_release="$(readlink -f /srv/panel/current)"
+  find /srv/panel/releases -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | tail -n +6 | cut -d' ' -f2- |
+    while IFS= read -r old_release; do
+      [[ "$old_release" != "$current_release" ]] && rm -rf -- "$old_release"
+    done
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
   install -m 0644 "$HERE/files/panel-queue.service" /etc/systemd/system/panel-queue.service
 fi
