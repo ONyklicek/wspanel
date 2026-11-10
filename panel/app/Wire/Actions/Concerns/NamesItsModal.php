@@ -32,8 +32,7 @@ trait NamesItsModal
                 (bool) preg_match('/^(create|add|new)/i', $name) => __('Vytvořit'),
                 (bool) preg_match('/^install/i', $name) => __('Nainstalovat'),
                 // An operation does what it says ("Aktualizovat", "Obnovit", "Rozbalit sem").
-                (bool) preg_match('/^(upgrade|update|import|upload|restore|rollback|reboot|extract|compress|mount|assign|switch|staging|delete|drop|remove|sftp|run|send|copy|move|generate)/i', $name)
-                    => rescue(fn () => (string) $this->getLabel(), __('Uložit'), report: false) ?: __('Uložit'),
+                (bool) preg_match('/^(upgrade|update|import|upload|restore|rollback|reboot|extract|compress|mount|assign|switch|staging|delete|drop|remove|sftp|run|send|copy|move|generate)/i', $name) => rescue(fn () => (string) $this->getLabel(), __('Uložit'), report: false) ?: __('Uložit'),
                 // Anything else is settings: saved.
                 default => __('Uložit'),
             };

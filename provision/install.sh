@@ -928,6 +928,8 @@ printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
 chmod 0600 /etc/wspanel/install.flags
 
 log "Done. Panel: $PANEL_URL"
+# What to set at the registrar or DNS provider, checked in public DNS now.
+(cd /srv/panel/current && runuser -u panel -- php artisan panel:dns-records 2>/dev/null) || true
 if [[ -n "$PANEL_SOURCE" && -z "${WSPANEL_ADMIN_BY_INSTALLER:-}" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then
   log "Create the admin account: cd /srv/panel/current && runuser -u panel -- php artisan wire:user"
 fi
