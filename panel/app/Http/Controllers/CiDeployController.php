@@ -74,9 +74,26 @@ class CiDeployController
             'status' => $deploy['status'],
             'ref' => $deploy['ref'] ?? null,
             'commit' => $deploy['commit'] ?? null,
-            'error' => $deploy['error'] ?? null,
+            'error' => self::publicError($deploy['error'] ?? null),
             'url' => $site->url(),
         ]);
+    }
+
+    /**
+     * A deploy's error as a CI log may show it: a public repository's log is
+     * public. One line, no credentials in URLs, no paths on this server; the
+     * whole of it is in the panel (the site's deploy log).
+     */
+    public static function publicError(?string $error): ?string
+    {
+        if ($error === null || trim($error) === '') {
+            return null;
+        }
+        $line = trim(strtok(trim($error), "\n"));
+        $line = (string) preg_replace('#([a-z][a-z0-9+.-]*://)[^/\s@]+@#i', '$1***@', $line);
+        $line = (string) preg_replace('#(?<![\w.-])/(?:srv|home|var|etc|run|root|tmp|usr|opt)/[^\s:\'"]*#', '…', $line);
+
+        return Str::limit($line, 300).' (the whole log is in the panel)';
     }
 
     /** @param  array{ref?: string, artifact?: string, commit?: string}  $options */
