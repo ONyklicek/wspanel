@@ -46,6 +46,10 @@ class GameServer extends Model
     public function versionLabel(): string
     {
         $name = $this->game->is('minecraft') ? ucfirst($this->flavor) : $this->game->label();
+        if ($this->version === 'latest') {
+            // Steam: no versions, only builds.
+            return trim($name.' '.($this->build ? __('build :build', ['build' => $this->build]) : __('nejnovější')));
+        }
 
         return trim($name.' '.$this->version.($this->build ? ' #'.$this->build : ''));
     }
@@ -67,5 +71,41 @@ class GameServer extends Model
     public function sftpTarget(): string
     {
         return $this->systemUser().'@'.(config('panel.ssh_host') ?: parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'server');
+    }
+
+    /**
+     * What the server does now, from its install status and the agent's unit
+     * state: installing | failed | running | starting | stopping | crashed |
+     * stopped | unknown (the agent did not answer).
+     *
+     * @param  array<string, mixed>|null  $live  ManageGameServers::liveState()
+     */
+    public function runState(?array $live): string
+    {
+        return match (true) {
+            $this->status === 'installing' => 'installing',
+            $this->status === 'failed' => 'failed',
+            $live === null || ! isset($live['state']) => 'unknown',
+            $live['state'] === 'active' => 'running',
+            in_array($live['state'], ['activating', 'reloading'], true) => 'starting',
+            $live['state'] === 'deactivating' => 'stopping',
+            $live['state'] === 'failed' => 'crashed',
+            default => 'stopped',
+        };
+    }
+
+    /** @return array{label: string, color: string} */
+    public static function runStateBadge(string $state): array
+    {
+        return match ($state) {
+            'installing' => ['label' => __('instaluje se'), 'color' => 'warning'],
+            'failed' => ['label' => __('instalace selhala'), 'color' => 'danger'],
+            'running' => ['label' => __('běží'), 'color' => 'success'],
+            'starting' => ['label' => __('spouští se'), 'color' => 'warning'],
+            'stopping' => ['label' => __('zastavuje se'), 'color' => 'warning'],
+            'crashed' => ['label' => __('spadl'), 'color' => 'danger'],
+            'stopped' => ['label' => __('zastaveno'), 'color' => 'gray'],
+            default => ['label' => __('neznámý'), 'color' => 'gray'],
+        };
     }
 }

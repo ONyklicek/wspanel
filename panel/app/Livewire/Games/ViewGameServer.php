@@ -33,19 +33,6 @@ class ViewGameServer extends ViewPage
 
     protected static ?string $resource = GameServerResource::class;
 
-    /** @var array<string, mixed>|null */
-    public ?array $status = null;
-
-    public ?string $error = null;
-
-    public string $command = '';
-
-    /** @var list<array{command: string, output: string}> */
-    public array $console = [];
-
-    /** @var list<string>|null */
-    public ?array $logs = null;
-
     /** @var list<array{file: string, size: int, created_at: string}>|null */
     public ?array $backups = null;
 
@@ -55,7 +42,6 @@ class ViewGameServer extends ViewPage
     public function mount(mixed $record = null): void
     {
         parent::mount($record);
-        $this->refreshStatus();
     }
 
     public function server(): GameServer
@@ -73,9 +59,7 @@ class ViewGameServer extends ViewPage
     protected function agentTaskFinished(AgentTask $task): void
     {
         $this->refreshStatus();
-        if ($this->backups !== null) {
-            $this->loadBackups();
-        }
+        $this->loadBackups();
     }
 
     public function getTitle(): ?string
@@ -96,61 +80,10 @@ class ViewGameServer extends ViewPage
         return Infolist::make()->schema([]);
     }
 
+    /** The live status above redraws itself; this tells it something changed now. */
     public function refreshStatus(): void
     {
-        // Still installing (or the install failed): nothing runs to ask about yet.
-        if (in_array($this->server()->fresh()?->status, ['installing', 'failed'], true)) {
-            $this->status = null;
-            $this->error = null;
-
-            return;
-        }
-        try {
-            $this->status = app(ManageGameServers::class)->status($this->server());
-            $this->error = null;
-        } catch (AgentException $e) {
-            $this->error = $e->getMessage();
-        }
-    }
-
-    public function control(string $action): void
-    {
-        if (! in_array($action, ['start', 'stop', 'restart'], true)) {
-            return;
-        }
-        try {
-            app(ManageGameServers::class)->control($this->server(), $action);
-            Toast::success(match ($action) {
-                'start' => __('Server se spouští'),
-                'stop' => __('Server zastaven'),
-                default => __('Server se restartuje'),
-            });
-        } catch (AgentException $e) {
-            Toast::error(__('Akce selhala'), $e->getMessage());
-        }
-        $this->refreshStatus();
-    }
-
-    public function send(): void
-    {
-        $this->validate(['command' => ['required', 'string', 'max:1000', 'not_regex:/[\r\n]/']], [], ['command' => __('příkaz')]);
-        try {
-            $out = app(ManageGameServers::class)->command($this->server(), $this->command);
-            $this->console[] = ['command' => $this->command, 'output' => $out];
-            $this->console = array_slice($this->console, -30);
-            $this->command = '';
-        } catch (AgentException $e) {
-            Toast::error(__('Příkaz se nepodařilo poslat'), $e->getMessage());
-        }
-    }
-
-    public function loadLogs(): void
-    {
-        try {
-            $this->logs = app(ManageGameServers::class)->logs($this->server(), 300);
-        } catch (AgentException $e) {
-            Toast::error(__('Log se nepodařilo načíst'), $e->getMessage());
-        }
+        $this->dispatch('game-refresh');
     }
 
     public function loadBackups(): void
@@ -260,9 +193,11 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     }
                 }),
             Action::make('upgrade')->label(__('Aktualizovat'))->icon('outline:arrow-path')->color('gray')
-                ->modalDescription(fn () => $server()->game->is('minecraft')
-                    ? __('Stáhne nejnovější sestavení zvolené verze (nebo novější verzi). Server se na chvíli zastaví. Svět se na novější verzi převede a zpět už nejde: zálohu udělejte předem.')
-                    : __('Stáhne nejnovější stabilní Factorio. Server se na chvíli zastaví, mapa zůstane.'))
+                ->modalDescription(fn () => match (true) {
+                    $server()->game->is('minecraft') => __('Stáhne nejnovější sestavení zvolené verze (nebo novější verzi). Server se na chvíli zastaví. Svět se na novější verzi převede a zpět už nejde: zálohu udělejte předem.'),
+                    $server()->game->is('factorio') => __('Stáhne nejnovější stabilní Factorio. Server se na chvíli zastaví, mapa zůstane.'),
+                    default => __('Stáhne nejnovější build hry (u Steamu jen změněné soubory). Server se na chvíli zastaví, data zůstanou.'),
+                })
                 ->form(fn () => $server()->game->is('minecraft') ? [
                     Select::make('version')->label(__('Verze'))->required()
                         ->options(collect(app(ManageGameServers::class)->versions($server()->game, $server()->flavor))

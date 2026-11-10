@@ -64,6 +64,9 @@ class GameServerSettings extends ViewPage
 
             return;
         }
+        if (! $this->server()->game->is('minecraft')) {
+            return; // an engine with no settings form here
+        }
         try {
             $out = app(ManageGameServers::class)->properties($this->server());
             $this->exists = (bool) ($out['exists'] ?? false);

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -53,6 +54,9 @@ type gameState struct {
 	OwnsFirewall bool `json:"owns_firewall,omitempty"`
 	SFTP         bool `json:"sftp,omitempty"`          // SFTP into its home
 	SFTPPassword bool `json:"sftp_password,omitempty"` // with a password (else keys only)
+	// Settings: a native game's own (its package declares them); secrets too,
+	// so never in what the panel is shown.
+	Settings map[string]string `json:"settings,omitempty"`
 }
 
 func (g gameState) user() string       { return "wsg_" + strconv.Itoa(g.ID) }
@@ -195,8 +199,15 @@ func gameCatalog(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 			flavors = append(flavors, map[string]any{"id": f.ID, "label": f.Label, "package": f.Package, "addons": f.Addons})
 		}
 		out[id] = versions
-		games[id] = map[string]any{"name": d.Label, "engine": d.Engine, "proto": d.Proto, "default_port": d.DefaultPort,
-			"min_memory_mb": d.MinMemoryMB, "available": d.available(), "package": d.Package, "flavors": flavors}
+		game := map[string]any{"name": d.Label, "engine": d.Engine, "proto": d.Proto, "default_port": d.DefaultPort,
+			"min_memory_mb": d.MinMemoryMB, "available": d.available(), "package": d.Package, "flavors": flavors, "console": true}
+		if d.Run != nil {
+			game["console"], game["disk_gb"], game["settings"] = d.Run.Console != nil, d.Run.DiskGB, len(d.Run.Settings) > 0
+			if d.Run.Console != nil {
+				game["commands"] = d.Run.Console.Commands
+			}
+		}
+		games[id] = game
 	}
 	out["games"] = games
 	return out, nil
@@ -286,6 +297,9 @@ func fetchSourceVersions(ctx context.Context, src gameSource) ([]string, error) 
 				out = append(out, v)
 			}
 		}
+	case "steamcmd":
+		// Steam has no versions to choose: the branch's newest build.
+		out = append(out, "latest")
 	case "factorio":
 		var fac struct {
 			Stable struct {
@@ -464,6 +478,12 @@ func resolveGameDownload(ctx context.Context, src gameSource, version string) (g
 		}
 		return gameDownload{}, fmt.Errorf("factorio %s: no published checksum", version)
 	}
+	if src.Type == "steamcmd" {
+		if version != "latest" {
+			return gameDownload{}, protocol.Invalid("version: latest (Steam installs the newest build)")
+		}
+		return gameDownload{}, nil // SteamCMD fetches it itself (steamInstall)
+	}
 	return gameDownload{}, protocol.Invalid("flavor: unknown source " + src.Type)
 }
 
@@ -537,8 +557,12 @@ func le(b []byte) uint32 { return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<
 func applyRconGuard(ctx context.Context, env *Env) error {
 	ports := []string{}
 	for _, g := range allGames(env) {
-		ports = append(ports, strconv.Itoa(g.RconPort))
+		if g.RconPort > 0 {
+			ports = append(ports, strconv.Itoa(g.RconPort))
+		}
 	}
+	slices.Sort(ports)
+	ports = slices.Compact(ports)
 	file := filepath.Join(gameStateDir(env), "rcon-guard.nft")
 	rules := "table inet wspanel_games\ndelete table inet wspanel_games\n"
 	if len(ports) > 0 {
@@ -694,6 +718,10 @@ func gameExecStart(env *Env, g gameState) string {
 			return fmt.Sprintf("%s @libraries/net/minecraftforge/forge/%s-%s/unix_args.txt nogui", jvm, g.Version, g.Build)
 		}
 		return jvm + " -jar " + home + "/server/server.jar --nogui"
+	case "native":
+		if r, err := nativeRun(env, g); err == nil {
+			return nativeExecStart(env, g, r)
+		}
 	case "factorio":
 		return fmt.Sprintf("%s/server/factorio/bin/x64/factorio --config %s/data/config.ini --start-server-load-latest --server-settings %s/data/server-settings.json --port %d --rcon-bind 127.0.0.1:%d --rcon-password %s",
 			home, home, home, g.Port, g.RconPort, g.RconPassword)
@@ -712,19 +740,28 @@ func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 	}
 	extra := []string{
 		"CapabilityBoundingSet=",
+		// Its command line (RCON password, a server token) is nobody else's.
+		"ProtectProc=invisible",
 		"SocketBindAllow=" + gameProto(env, g) + ":" + strconv.Itoa(g.Port),
-		"SocketBindAllow=tcp:" + strconv.Itoa(g.RconPort),
+	}
+	if g.RconPort > 0 {
+		extra = append(extra, "SocketBindAllow=tcp:"+strconv.Itoa(g.RconPort))
+	}
+	extra = append(extra,
 		"SocketBindDeny=any",
 		fmt.Sprintf("MemoryMax=%dM", memMax),
 		"MemorySwapMax=0",
 		"SuccessExitStatus=143",
 		"Nice=5",
-	}
+	)
 	if g.CPUPercent > 0 {
 		extra = append(extra, fmt.Sprintf("CPUQuota=%d%%", g.CPUPercent))
 	}
 	if engine == "factorio" {
 		extra = append(extra, "KillSignal=SIGINT") // saves the map on the way out
+	}
+	if r, err := nativeRun(env, g); err == nil && r.StopSignal != "" {
+		extra = append(extra, "KillSignal="+r.StopSignal)
 	}
 	unit, err := render("unit.service.tmpl", unitData{
 		Description: fmt.Sprintf("WSPanel game server %d (%s): %s", g.ID, gameLabel(env, g.Game), g.Name),
@@ -752,6 +789,9 @@ func placeDownload(ctx context.Context, env *Env, g gameState, d gameDownload) e
 	home := gameHome(env, g.ID)
 	if env.Cfg.DryRun {
 		return nil
+	}
+	if src, err := gameSourceOf(env, g); err == nil && src.Type == "steamcmd" {
+		return steamInstall(ctx, env, g, src)
 	}
 	file, err := downloadVerified(ctx, d.URL, d.Sum, 2<<30)
 	if err != nil {
@@ -830,6 +870,12 @@ func writeAsUser(ctx context.Context, env *Env, g gameState, path string, data [
 func configureGame(ctx context.Context, env *Env, g gameState, eula bool) error {
 	data := filepath.Join(gameHome(env, g.ID), "data")
 	switch gameEngine(env, g) {
+	case "native":
+		r, err := nativeRun(env, g)
+		if err != nil {
+			return err
+		}
+		return configureNative(ctx, env, g, r)
 	case "minecraft":
 		if eula {
 			if err := writeAsUser(ctx, env, g, filepath.Join(data, "eula.txt"),
@@ -929,10 +975,12 @@ func (p *gameParams) validate(env *Env) error {
 	case r == nil:
 		return protocol.Invalid("game: " + strings.Join(sortedKeys(defs), " or ") + " (the installed game packages)")
 	case !r.available():
-		return protocol.Invalid("game: " + r.Label + " has no server for this processor (" + runtime.GOARCH + ")")
+		return protocol.Invalid("game: " + r.Label + " has no server for this processor (" + hostArch + ")")
 	case !slices.Contains(flavors, p.Flavor):
 		return protocol.Invalid("flavor: " + strings.Join(flavors, " or "))
-	case !mcVersionRe.MatchString(p.Version):
+	case r.Engine == "native" && p.Version != "latest":
+		return protocol.Invalid("version: latest")
+	case r.Engine != "native" && !mcVersionRe.MatchString(p.Version):
 		return protocol.Invalid("version: e.g. 1.21.10")
 	case r.Engine == "minecraft" && mcJava(p.Version) == 0:
 		return protocol.Invalid("version: Minecraft before 1.20.5 needs Java 17, which Debian 13 does not ship")
@@ -957,118 +1005,200 @@ func (p *gameParams) validate(env *Env) error {
 }
 
 // gameCreate (async): the user, the home, Java when needed, the server from
-// its publisher, its settings, the unit, the firewall, and a start.
+// its publisher, its settings, the unit, the firewall, and a start. Not a
+// mutating op as a whole: it holds the agent's lock for the privileged steps
+// only, so a long download (a SteamCMD game is tens of GB) does not stop the
+// rest of the panel; the server is claimed meanwhile.
 func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
 	var p gameParams
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := p.validate(env); err != nil {
-		return nil, err
-	}
-	if _, err := loadGame(env, p.ID); err == nil {
-		return nil, protocol.Conflict(fmt.Sprintf("game server %d already exists", p.ID))
-	}
-	def, _ := gameDefOf(env, p.Game)
-	if err := gamePortFree(env, p.Port, def.Proto, p.ID); err != nil {
-		return nil, err
-	}
-	rcon, err := freeRconPort(env, p.ID)
+	release, err := claimGame(p.ID)
 	if err != nil {
 		return nil, err
 	}
-	g := gameState{ID: p.ID, Name: p.Name, Game: p.Game, Flavor: p.Flavor, Proto: def.Proto, Version: p.Version, Port: p.Port,
-		RconPort: rcon, RconPassword: randomHex(24), MemoryMB: p.MemoryMB, CPUPercent: p.CPUPercent, Group: p.Group}
-	src, err := gameSourceOf(env, g)
-	if err != nil {
-		return nil, err
-	}
-	dl, err := resolveGameDownload(ctx, src, g.Version)
-	if err != nil {
-		return nil, err
-	}
-	g.Build, g.Java = dl.Build, dl.Java
-	if def.Engine == "minecraft" {
-		if _, err := ensureJava(ctx, env, g.Java); err != nil {
-			return nil, err
-		}
-	}
-
+	defer release()
+	var g gameState
+	var def gameDef
+	var src gameSource
+	var dl gameDownload
 	var rollback undo
 	defer func() {
 		if err != nil {
-			rollback.run()
+			_ = withMutate(env, func() error { rollback.run(); return nil })
 		}
 	}()
-	home := gameHome(env, g.ID)
-	groupArgs := []string{"--user-group"}
-	if g.Group != "" {
-		groupArgs = []string{"--gid", g.Group}
-	}
-	if _, err = env.Exec.Run(ctx, "useradd", append(append([]string{"--system"}, groupArgs...), "--no-create-home",
-		"--home-dir", home, "--shell", "/usr/sbin/nologin", "--comment", "WSPanel game server "+strconv.Itoa(g.ID), g.user())...); err != nil {
-		return nil, err
-	}
-	rollback.add(func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "userdel", g.user()) })
-	owner, err := lookupOwner(env, g.user())
-	if err != nil {
-		return nil, err
-	}
-	if err = env.FS.MkdirAll(env.Cfg.GamesRoot, 0o751, fsx.Root); err != nil {
-		return nil, err
-	}
-	if err = env.FS.Mkdir(home, 0o750, owner); err != nil {
-		return nil, err
-	}
-	rollback.add(func() { _ = os.RemoveAll(home) })
-	for _, d := range []string{"server", "data", "tmp"} {
-		if err = env.FS.Mkdir(filepath.Join(home, d), 0o750, owner); err != nil {
-			return nil, err
+	if err = withMutate(env, func() error {
+		if err := p.validate(env); err != nil {
+			return err
 		}
+		if _, err := loadGame(env, p.ID); err == nil {
+			return protocol.Conflict(fmt.Sprintf("game server %d already exists", p.ID))
+		}
+		def, _ = gameDefOf(env, p.Game)
+		if def.Run != nil {
+			if err := checkDisk(env, def.Run.DiskGB); err != nil {
+				return err
+			}
+		}
+		if err := gamePortFree(env, p.Port, def.Proto, p.ID); err != nil {
+			return err
+		}
+		g = gameState{ID: p.ID, Name: p.Name, Game: p.Game, Flavor: p.Flavor, Proto: def.Proto, Version: p.Version, Port: p.Port,
+			RconPassword: randomHex(24), MemoryMB: p.MemoryMB, CPUPercent: p.CPUPercent, Group: p.Group}
+		switch {
+		case def.Run == nil:
+			rcon, err := freeRconPort(env, p.ID)
+			if err != nil {
+				return err
+			}
+			g.RconPort = rcon
+		case def.Run.Console != nil && def.Run.Console.Port == "own":
+			rcon, err := freeRconPort(env, p.ID)
+			if err != nil {
+				return err
+			}
+			g.RconPort = rcon
+		case def.Run.Console != nil:
+			g.RconPort = g.Port // Source RCON: TCP on the game's port
+		}
+		var err error
+		if src, err = gameSourceOf(env, g); err != nil {
+			return err
+		}
+		if dl, err = resolveGameDownload(ctx, src, g.Version); err != nil {
+			return err
+		}
+		g.Build, g.Java = dl.Build, dl.Java
+		switch {
+		case def.Engine == "minecraft":
+			if _, err := ensureJava(ctx, env, g.Java); err != nil {
+				return err
+			}
+		case src.Type == "steamcmd":
+			if err := ensureSteamDeps(ctx, env); err != nil {
+				return err
+			}
+		}
+		home := gameHome(env, g.ID)
+		groupArgs := []string{"--user-group"}
+		if g.Group != "" {
+			groupArgs = []string{"--gid", g.Group}
+		}
+		if _, err := env.Exec.Run(ctx, "useradd", append(append([]string{"--system"}, groupArgs...), "--no-create-home",
+			"--home-dir", home, "--shell", "/usr/sbin/nologin", "--comment", "WSPanel game server "+strconv.Itoa(g.ID), g.user())...); err != nil {
+			return err
+		}
+		rollback.add(func() { _, _ = env.Exec.Run(context.WithoutCancel(ctx), "userdel", g.user()) })
+		owner, err := lookupOwner(env, g.user())
+		if err != nil {
+			return err
+		}
+		if err := env.FS.MkdirAll(env.Cfg.GamesRoot, 0o751, fsx.Root); err != nil {
+			return err
+		}
+		if err := env.FS.Mkdir(home, 0o750, owner); err != nil {
+			return err
+		}
+		rollback.add(func() { _ = os.RemoveAll(home) })
+		for _, d := range []string{"server", "data", "tmp"} {
+			if err := env.FS.Mkdir(filepath.Join(home, d), 0o750, owner); err != nil {
+				return err
+			}
+		}
+		// Kept now, so its ports are taken while it downloads.
+		if err := saveGame(env, g); err != nil {
+			return err
+		}
+		rollback.add(func() { _ = os.Remove(gameStatePath(env, g.ID)) })
+		return nil
+	}); err != nil {
+		return nil, err
 	}
+
+	// The long part, as the game's user, without the lock.
 	if err = placeDownload(ctx, env, g, dl); err != nil {
 		return nil, err
 	}
-	if err = configureGame(ctx, env, g, p.EULA); err != nil {
-		return nil, err
-	}
-	if def.Engine == "factorio" && !env.Cfg.DryRun {
-		// The first map, made by the game itself.
-		if err = asUser(ctx, env, g.user(), filepath.Join(home, "server/factorio/bin/x64/factorio"),
-			"--config", filepath.Join(home, "data/config.ini"), "--create", filepath.Join(home, "data/saves/world.zip")); err != nil {
-			return nil, fmt.Errorf("creating the Factorio map failed: %w", err)
+
+	err = withMutate(env, func() error {
+		home := gameHome(env, g.ID)
+		if src.Type == "steamcmd" {
+			g.Build = steamBuildID(env, g, src)
 		}
-	}
-	if err = saveGame(env, g); err != nil {
-		return nil, err
-	}
-	rollback.add(func() { _ = os.Remove(gameStatePath(env, g.ID)) })
-	if err = applyRconGuard(ctx, env); err != nil {
-		return nil, err
-	}
-	if err = writeGameUnit(ctx, env, g); err != nil {
-		return nil, err
-	}
-	rollback.add(func() {
-		_ = os.Remove(filepath.Join(env.Cfg.SystemdDir, g.unit()))
-		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
-	})
-	if !ufwAllows(ctx, env, g.Port, gameProto(env, g)) {
-		if _, err = env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
-			return nil, err
+		if err := configureGame(ctx, env, g, p.EULA); err != nil {
+			return err
 		}
-		g.OwnsFirewall = true
-		if err = saveGame(env, g); err != nil {
-			return nil, err
+		if def.Engine == "factorio" && !env.Cfg.DryRun {
+			// The first map, made by the game itself.
+			if err := asUser(ctx, env, g.user(), filepath.Join(home, "server/factorio/bin/x64/factorio"),
+				"--config", filepath.Join(home, "data/config.ini"), "--create", filepath.Join(home, "data/saves/world.zip")); err != nil {
+				return fmt.Errorf("creating the Factorio map failed: %w", err)
+			}
+		}
+		if err := saveGame(env, g); err != nil {
+			return err
+		}
+		if err := applyRconGuard(ctx, env); err != nil {
+			return err
+		}
+		if err := writeGameUnit(ctx, env, g); err != nil {
+			return err
 		}
 		rollback.add(func() {
-			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)))
+			_ = os.Remove(filepath.Join(env.Cfg.SystemdDir, g.unit()))
+			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
 		})
-	}
-	if _, err = env.Exec.Run(ctx, "systemctl", "enable", "--now", g.unit()); err != nil {
+		if !ufwAllows(ctx, env, g.Port, gameProto(env, g)) {
+			if _, err := env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
+				return err
+			}
+			g.OwnsFirewall = true
+			if err := saveGame(env, g); err != nil {
+				return err
+			}
+			rollback.add(func() {
+				_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)))
+			})
+		}
+		_, err := env.Exec.Run(ctx, "systemctl", "enable", "--now", g.unit())
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
 	return gameView(ctx, env, g, false), nil
+}
+
+// A game server's long job (an install, an update) claims it: deleting or
+// restoring it meanwhile is refused.
+var gameJobs = struct {
+	sync.Mutex
+	busy map[int]bool
+}{busy: map[int]bool{}}
+
+func claimGame(id int) (func(), error) {
+	gameJobs.Lock()
+	defer gameJobs.Unlock()
+	if gameJobs.busy[id] {
+		return nil, protocol.Conflict(fmt.Sprintf("game server %d is being installed or updated", id))
+	}
+	gameJobs.busy[id] = true
+	return func() {
+		gameJobs.Lock()
+		delete(gameJobs.busy, id)
+		gameJobs.Unlock()
+	}, nil
+}
+
+func gameBusy(id int) error {
+	gameJobs.Lock()
+	defer gameJobs.Unlock()
+	if gameJobs.busy[id] {
+		return protocol.Conflict(fmt.Sprintf("game server %d is being installed or updated: wait until it ends", id))
+	}
+	return nil
 }
 
 // gameView: the server as the panel shows it (never the RCON password).
@@ -1080,24 +1210,51 @@ func gameView(ctx context.Context, env *Env, g gameState, players bool) map[stri
 	if st, err := unitStates(ctx, env, []string{g.unit()}); err == nil && len(st) == 1 {
 		out["state"], out["sub_state"] = st[0].Active, st[0].Sub
 	}
-	if res, err := env.Exec.Run(ctx, "systemctl", "show", "-P", "MemoryCurrent", g.unit()); err == nil {
-		if n, err := strconv.ParseInt(strings.TrimSpace(res.Stdout), 10, 64); err == nil {
-			out["memory_bytes"] = n
+	// Memory now, the CPU time used so far (two samples give the load) and
+	// since when it runs: what the panel's live view draws.
+	if res, err := env.Exec.Run(ctx, "systemctl", "show", "--timestamp=unix", "--property=MemoryCurrent,CPUUsageNSec,ActiveEnterTimestamp,NRestarts", g.unit()); err == nil {
+		for _, line := range strings.Split(res.Stdout, "\n") {
+			k, v, _ := strings.Cut(strings.TrimSpace(line), "=")
+			n, err := strconv.ParseInt(strings.TrimPrefix(v, "@"), 10, 64)
+			if err != nil {
+				continue // [not set] / an empty timestamp
+			}
+			switch k {
+			case "MemoryCurrent":
+				out["memory_bytes"] = n
+			case "CPUUsageNSec":
+				out["cpu_nsec"] = n
+			case "ActiveEnterTimestamp":
+				if n > 0 {
+					out["since"] = n
+				}
+			case "NRestarts":
+				out["restarts"] = n
+			}
 		}
 	}
 	if players && out["state"] == "active" {
-		if list, err := gamePlayers(ctx, gameEngine(env, g), g); err == nil {
+		list, err := gamePlayers(ctx, env, g)
+		if err == nil {
 			out["players"] = list
 		}
+		// Ready to play: its console answers (a unit is "active" long before
+		// the world is loaded). An engine with no way to ask is ready once active.
+		out["ready"] = err == nil || errors.Is(err, errNoPlayerQuery)
 	}
+	out["console"] = nativeHasConsole(env, g)
 	return out
 }
 
 var mcListRe = regexp.MustCompile(`(?i)there are (\d+) of a max(?:imum)? of (\d+) players online:?\s*(.*)$`)
 
 // gamePlayers: who is online (an RCON question each game words its way).
-func gamePlayers(ctx context.Context, engine string, g gameState) (map[string]any, error) {
-	switch engine {
+func gamePlayers(ctx context.Context, env *Env, g gameState) (map[string]any, error) {
+	switch engine := gameEngine(env, g); engine {
+	case "native":
+		if r, err := nativeRun(env, g); err == nil && r.Query == "a2s" {
+			return a2sQuery(ctx, g.Port)
+		}
 	case "minecraft":
 		out, err := rconExec(ctx, g.RconPort, g.RconPassword, "list")
 		if err != nil {
@@ -1129,8 +1286,11 @@ func gamePlayers(ctx context.Context, engine string, g gameState) (map[string]an
 		}
 		return map[string]any{"online": len(names), "names": names}, nil
 	}
-	return nil, fmt.Errorf("unknown game")
+	return nil, errNoPlayerQuery
 }
+
+// errNoPlayerQuery: the engine has no way to tell who plays.
+var errNoPlayerQuery = errors.New("the game's engine cannot tell who plays")
 
 var mcColorRe = regexp.MustCompile(`§.`)
 
@@ -1159,13 +1319,18 @@ func gameStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	return gameView(ctx, env, g, true), nil
 }
 
+// gameList: every server's state; with players, who is online on each
+// running one too (one RCON question per server).
 func gameList(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
-	if err := decode(raw, &struct{}{}); err != nil {
+	var p struct {
+		Players bool `json:"players"`
+	}
+	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
 	out := []map[string]any{}
 	for _, g := range allGames(env) {
-		out = append(out, gameView(ctx, env, g, false))
+		out = append(out, gameView(ctx, env, g, p.Players))
 	}
 	return map[string]any{"servers": out}, nil
 }
@@ -1213,6 +1378,9 @@ func gameCommand(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	}
 	if gameEngine(env, g) == "minecraft" {
 		p.Command = strings.TrimPrefix(p.Command, "/")
+	}
+	if !nativeHasConsole(env, g) || g.RconPort == 0 {
+		return nil, protocol.Invalid("this game has no console the panel can use")
 	}
 	if env.Cfg.DryRun {
 		return map[string]any{"output": ""}, nil
@@ -1263,6 +1431,9 @@ func gameSettings(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if err != nil {
 		return nil, err
 	}
+	if err := gameBusy(g.ID); err != nil {
+		return nil, err
+	}
 	check := gameParams{ID: g.ID, Name: p.Name, Game: g.Game, Flavor: g.Flavor, Version: g.Version, Port: g.Port, MemoryMB: p.MemoryMB, CPUPercent: p.CPUPercent, EULA: true}
 	if err := check.validate(env); err != nil {
 		return nil, err
@@ -1280,7 +1451,7 @@ func gameSettings(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 
 // gameUpdate (async): the newest build of the version (Paper), another
 // version, or the newest Factorio; the server stops for the swap.
-func gameUpdate(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+func gameUpdate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err error) {
 	var p struct {
 		ID      int    `json:"id"`
 		Version string `json:"version,omitempty"`
@@ -1289,15 +1460,22 @@ func gameUpdate(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	release, err := claimGame(g.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	version := g.Version
 	if p.Version != "" {
 		version = p.Version
 	}
 	engine := gameEngine(env, g)
-	if !mcVersionRe.MatchString(version) || engine == "minecraft" && mcJava(version) == 0 {
+	switch {
+	case engine == "native" && version != "latest":
+		return nil, protocol.Invalid("version: latest")
+	case engine != "native" && (!mcVersionRe.MatchString(version) || engine == "minecraft" && mcJava(version) == 0):
 		return nil, protocol.Invalid("version: e.g. 1.21.10")
-	}
-	if engine == "minecraft" && compareVersions(version, g.Version) < 0 {
+	case engine == "minecraft" && compareVersions(version, g.Version) < 0:
 		return nil, protocol.Invalid("version: a world cannot go back to an older Minecraft")
 	}
 	src, err := gameSourceOf(env, g)
@@ -1311,41 +1489,56 @@ func gameUpdate(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if version == g.Version && dl.Build == g.Build && engine == "minecraft" {
 		return map[string]any{"changed": false, "version": g.Version, "build": g.Build}, nil
 	}
-	if engine == "minecraft" {
-		if _, err := ensureJava(ctx, env, dl.Java); err != nil {
-			return nil, err
-		}
-	}
 	active := false
-	if st, err := unitStates(ctx, env, []string{g.unit()}); err == nil && len(st) == 1 {
-		active = st[0].Active == "active"
-	}
-	if active {
-		if _, err := env.Exec.Run(ctx, "systemctl", "stop", g.unit()); err != nil {
-			return nil, err
+	if err := withMutate(env, func() error {
+		if engine == "minecraft" {
+			if _, err := ensureJava(ctx, env, dl.Java); err != nil {
+				return err
+			}
 		}
+		if st, err := unitStates(ctx, env, []string{g.unit()}); err == nil && len(st) == 1 {
+			active = st[0].Active == "active"
+		}
+		if active {
+			if _, err := env.Exec.Run(ctx, "systemctl", "stop", g.unit()); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-	from := g.Version + " " + g.Build
+	from := strings.TrimSpace(g.Version + " " + g.Build)
 	g.Version, g.Build = version, dl.Build
 	if dl.Java > 0 {
 		g.Java = dl.Java
 	}
+	// The download, as the game's user, without the lock.
 	err = placeDownload(ctx, env, g, dl)
-	if err == nil {
-		err = saveGame(env, g)
+	if src.Type == "steamcmd" {
+		g.Build = steamBuildID(env, g, src)
 	}
-	if err == nil {
-		err = writeGameUnit(ctx, env, g)
-	}
-	if active {
-		if _, serr := env.Exec.Run(ctx, "systemctl", "start", g.unit()); err == nil {
-			err = serr
+	if lerr := withMutate(env, func() error {
+		if err == nil {
+			err = saveGame(env, g)
 		}
+		if err == nil {
+			err = configureGame(ctx, env, g, false)
+		}
+		if err == nil {
+			err = writeGameUnit(ctx, env, g)
+		}
+		if active {
+			if _, serr := env.Exec.Run(ctx, "systemctl", "start", g.unit()); err == nil {
+				err = serr
+			}
+		}
+		return err
+	}); lerr != nil {
+		return nil, lerr
 	}
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"changed": true, "from": strings.TrimSpace(from), "version": g.Version, "build": g.Build}, nil
+	to := strings.TrimSpace(g.Version + " " + g.Build)
+	return map[string]any{"changed": from != to, "from": from, "version": g.Version, "build": g.Build}, nil
 }
 
 func compareVersions(a, b string) int {
@@ -1409,8 +1602,12 @@ func gameBackup(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	args := append(userCreds(g.user()), "/usr/bin/tar", "-czf", "-", "-C", gameHome(env, g.ID))
 	// What the server makes again from its own jar on start (Paper's and
 	// Mojang's bundler), and logs: not the world, and most of the size.
-	for _, ex := range gameBackupExcludes[gameEngine(env, g)] {
-		args = append(args, "--exclude=data/"+ex)
+	excludes := gameBackupExcludes[gameEngine(env, g)]
+	if r, err := nativeRun(env, g); err == nil && r.Backup != nil {
+		excludes = r.Backup.Exclude
+	}
+	for _, ex := range excludes {
+		args = append(args, "--exclude=data/"+strings.TrimSuffix(ex, "/"))
 	}
 	args = append(args, "data")
 	_, err = env.Exec.RunIO(ctx, nil, f, "setpriv", args...)
@@ -1475,6 +1672,9 @@ func gameRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
+	if err := gameBusy(g.ID); err != nil {
+		return nil, err
+	}
 	if !gameTarget(env, g.ID).match(p.File) {
 		return nil, protocol.Invalid("file: a backup of this game server")
 	}
@@ -1527,6 +1727,9 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	}
 	g, err := decodeGame(env, raw, &p, &p.ID)
 	if err != nil {
+		return nil, err
+	}
+	if err := gameBusy(g.ID); err != nil {
 		return nil, err
 	}
 	_, _ = env.Exec.Run(ctx, "systemctl", "disable", "--now", g.unit())

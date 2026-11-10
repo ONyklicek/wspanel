@@ -25,6 +25,9 @@ class ManageGamePackages
     public function list(bool $catalog = false): array
     {
         $out = $this->agent->call('games.packages', $catalog ? ['catalog' => true] : []);
+        // A package put in /etc/wspanel/games.d by hand: whoever looks at the
+        // packages sees the new server form offer it too, not ten minutes later.
+        $this->changed([]);
         // Not an exception: the agent's words, in the panel's language.
         if (isset($out['catalog_error'])) {
             $out['catalog_error'] = AgentMessages::cs((string) $out['catalog_error']);

@@ -798,6 +798,19 @@ func (e checksumError) Error() string {
 	return "checksum mismatch (got " + e.got + "): refusing the download"
 }
 
+// noPublishedChecksum: a download whose publisher gives no checksum and
+// whose content is verified later by the program itself (SteamCMD's
+// bootstrap); HTTPS only. Never for anything root runs.
+const noPublishedChecksum = "none:https"
+
+// downloadUnverified: see noPublishedChecksum.
+func downloadUnverified(ctx context.Context, url string, limit int64) (string, error) {
+	if !strings.HasPrefix(url, "https://") {
+		return "", fmt.Errorf("%s: an unverified download needs HTTPS", url)
+	}
+	return downloadVerified(ctx, url, noPublishedChecksum, limit)
+}
+
 func downloadOnce(ctx context.Context, url, sum string, limit int64) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -834,7 +847,7 @@ func downloadOnce(ctx context.Context, url, sum string, limit int64) (string, er
 		os.Remove(f.Name())
 		return "", err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); want == "" || got != want {
+	if got := hex.EncodeToString(h.Sum(nil)); sum != noPublishedChecksum && (want == "" || got != want) {
 		os.Remove(f.Name())
 		return "", checksumError{got}
 	}

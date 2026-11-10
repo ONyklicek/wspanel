@@ -1,11 +1,13 @@
-<div class="wire-resource-page space-y-4 sm:space-y-6">
+<div class="wire-resource-page space-y-4 sm:space-y-6" wire:poll.10s="load">
     @include('wire-panels::pages.partials.header')
 
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    @if (! $server->game->is('minecraft'))
+    @if (! $server->game->is('minecraft') && ! $server->game->is('factorio'))
+        <x-wire::callout color="info" :heading="__('Tahle hra nemá v panelu správu hráčů')">{{ __('Kdo je online, ukazuje Přehled; správce a bany nastavíte příkazy v konzoli hry.') }}</x-wire::callout>
+    @elseif (! $server->game->is('minecraft'))
         <x-wire::callout color="info" :heading="__('Hráči Factoria')">{{ __('Správci a bany Factoria nastavíte v konzoli: /promote Jméno, /ban Jméno, /whitelist add Jméno.') }}</x-wire::callout>
     @else
         @unless ($running)

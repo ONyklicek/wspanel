@@ -1,0 +1,51 @@
+{
+  "id": "cs2",
+  "name": "Counter-Strike 2",
+  "version": "1.0.0",
+  "description": "Dedikovaný server Counter-Strike 2 ze Steamu (SteamCMD, anonymní přihlášení). Instalace stáhne kolem 60 GB.",
+  "game": {
+    "id": "cs2",
+    "label": "Counter-Strike 2",
+    "engine": "native",
+    "proto": "udp",
+    "default_port": 28015,
+    "min_memory_mb": 4096,
+    "arch": ["amd64"],
+    "run": {
+      "command": "game/bin/linuxsteamrt64/cs2",
+      "args": [
+        "-dedicated", "-usercon", "-port", "{port}", "-maxplayers", "{setting:max_players}",
+        "+game_alias", "{setting:mode}", "+map", "{setting:map}",
+        "+hostname", "{name}", "+rcon_password", "{rcon_password}", "+tv_enable", "0",
+        {"when": "gslt", "args": ["+sv_setsteamaccount", "{setting:gslt}"]},
+        {"when": "password", "args": ["+sv_password", "{setting:password}"]}
+      ],
+      "stop_signal": "SIGINT",
+      "console": {"protocol": "source-rcon", "port": "game",
+                  "commands": ["status", "say ", "changelevel ", "mp_restartgame 1", "kick ", "mp_warmup_end"]},
+      "query": "a2s",
+      "disk_gb": 60,
+      "links": {"game/csgo/cfg/server.cfg": "server.cfg", "game/csgo/addons/": "addons/"},
+      "settings": [
+        {"key": "mode", "label": "Herní režim", "type": "select", "default": "competitive",
+         "options": [
+           {"value": "competitive", "label": "Competitive"},
+           {"value": "casual", "label": "Casual"},
+           {"value": "wingman", "label": "Wingman"},
+           {"value": "deathmatch", "label": "Deathmatch"},
+           {"value": "armsrace", "label": "Arms Race"}
+         ]},
+        {"key": "map", "label": "Mapa", "type": "text", "default": "de_dust2", "pattern": "^[a-z0-9_]{1,40}$",
+         "help": "Mapa po spuštění, např. de_mirage, de_inferno, de_nuke."},
+        {"key": "max_players", "label": "Počet hráčů", "type": "int", "default": "10", "min": 2, "max": 64},
+        {"key": "gslt", "label": "Steam Game Server Login Token", "type": "secret", "pattern": "^[A-F0-9]{32}$",
+         "help": "Bez tokenu se k serveru připojíte jen přes adresu a není ve veřejném seznamu. Token vytvoříte na steamcommunity.com/dev/managegameservers (aplikace 730)."},
+        {"key": "password", "label": "Heslo pro připojení", "type": "secret",
+         "help": "Prázdné = server bez hesla."}
+      ]
+    }
+  },
+  "flavors": [
+    {"id": "public", "label": "Stabilní vydání (Steam)", "source": {"type": "steamcmd", "app_id": 730}}
+  ]
+}

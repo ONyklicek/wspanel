@@ -171,10 +171,66 @@ class ManageGameServers
         return $out;
     }
 
+    /**
+     * Every server's state as the agent sees it now (unit state, memory,
+     * CPU time, since when, players), keyed by id: one agent call however
+     * many rows ask, so a list polled every few seconds stays one call.
+     *
+     * @return array<int, array<string, mixed>>
+     *
+     * @throws AgentException
+     */
+    public function liveStates(): array
+    {
+        return Cache::driver('array')->remember('games.live', 2, fn () => collect($this->agent->call('game.list', ['players' => true])['servers'] ?? [])
+            ->keyBy(fn ($s) => (int) $s['id'])->all());
+    }
+
+    /**
+     * One server's row of liveStates(); null when the agent does not answer.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function liveState(GameServer $server): ?array
+    {
+        return rescue(fn () => $this->liveStates()[$server->id] ?? null, null, report: false);
+    }
+
+    /**
+     * A native game's own settings, as its package declares them, and what
+     * the server has set (secrets only say whether they are set).
+     *
+     * @return array{settings: list<array<string, mixed>>, values: array<string, string>, secrets: array<string, bool>}
+     *
+     * @throws AgentException
+     */
+    public function options(GameServer $server): array
+    {
+        $out = $this->agent->call('game.options', ['id' => $server->id]);
+
+        return ['settings' => (array) ($out['settings'] ?? []), 'values' => (array) ($out['values'] ?? []), 'secrets' => (array) ($out['secrets'] ?? [])];
+    }
+
+    /**
+     * @param  array<string, string>  $values
+     * @param  array<string, string>  $secrets  a secret left out keeps its value
+     * @param  list<string>  $clear
+     *
+     * @throws AgentException
+     */
+    public function setOptions(GameServer $server, array $values, array $secrets = [], array $clear = [], bool $restart = false): void
+    {
+        $this->agent->call('game.set_options', array_filter([
+            'id' => $server->id, 'values' => (object) $values, 'secrets' => $secrets === [] ? null : $secrets,
+            'clear' => $clear === [] ? null : $clear, 'restart' => $restart ?: null,
+        ], fn ($v) => $v !== null));
+    }
+
     /** @throws AgentException */
     public function control(GameServer $server, string $action): void
     {
         $this->agent->call('game.action', ['id' => $server->id, 'action' => $action]);
+        Cache::driver('array')->forget('games.live');
     }
 
     /** @throws AgentException */

@@ -8,11 +8,13 @@ a samotný server hry se stáhnou až s prvním herním serverem.
 |---|---|---|
 | Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric a Forge (módy); s balíčkem z katalogu Folia (vícevláknový) | 25565/tcp |
 | Factorio | stabilní vydání (jen procesory x86-64) | 34197/udp |
+| Counter-Strike 2 | balíček z Katalogu WSPanelu; ze Steamu (SteamCMD), jen x86-64, asi 60 GB na disku, nejméně 4 GB paměti | 28015/udp |
 
 Které hry a varianty jdou spustit, určují **herní balíčky**
 (**Server → Herní balíčky**): Minecraft a Factorio jsou vestavěné, další
-přicházejí z podepsaného katalogu WSPanelu (Folia) nebo jako vlastní balíček
-správce. Formát, katalog a API: [Herní balíčky](herni-balicky.md).
+přicházejí z podepsaného katalogu WSPanelu (Folia, Counter-Strike 2) nebo jako vlastní balíček
+správce. Jak přidat hru nebo variantu (postup s příkladem), formát, katalog
+a API: [Herní balíčky](herni-balicky.md#jak-přidat-hru-nebo-variantu).
 
 ## Nový server
 
@@ -20,6 +22,14 @@ správce. Formát, katalog a API: [Herní balíčky](herni-balicky.md).
 paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmínky
 (EULA), jinak se server nespustí.
 
+- **Hry ze Steamu** (Counter-Strike 2) mají jedinou verzi, „nejnovější“:
+  instalace stáhne aktuální build přes SteamCMD (u CS2 kolem 60 GB, podle
+  připojení i desítky minut; běží na pozadí a panel mezitím funguje), na
+  stránce serveru je pak vidět číslo buildu. **Aktualizovat** stáhne jen
+  změněné soubory. Mapu, režim, počet hráčů, heslo a Steam token (GSLT,
+  bez něj není server ve veřejném seznamu) nastavíte v záložce
+  **Nastavení**; vlastní `server.cfg` a `addons/` (Metamod, pluginy) jsou
+  ve složce `data` a patří do záloh.
 - **Verze** nabízí vydavatel hry (PaperMC, Mojang, Wube). Minecraft starší
   než 1.20.5 potřebuje Javu 17, kterou Debian 13 nemá, proto v nabídce
   není. Javu 21 nebo 25 (podle verze) panel doinstaluje z Debianu sám.
@@ -45,8 +55,18 @@ a port; výchozí port Minecraftu se nepíše).
 
 ## Stránka serveru
 
-- **Stav, hráči a paměť** (obnovují se samy), **Spustit / Zastavit /
-  Restartovat**. Zastavený server zůstane zastavený i po restartu serveru.
+Seznam serverů ukazuje u každého živě, jestli běží, kolik hráčů je online
+(a kdo) a kolik paměti bere; spustit, zastavit a restartovat jde přímo
+z řádku.
+
+- **Stav** (obnovuje se sám, při spouštění a zastavování častěji): běží
+  (a jak dlouho), spouští se, zastavuje se, zastaveno, spadl. Minecraft
+  a Factorio jsou „spouští se“, dokud nenačtou svět a neodpoví jejich
+  konzole. Dále hráči online se jmény, zatížení procesoru (100 % = jedno
+  jádro, vedle případného limitu), paměť proti nastavenému limitu, adresa
+  pro hráče s tlačítkem pro zkopírování a počet automatických restartů po
+  pádu. **Spustit / Zastavit / Restartovat**; zastavený server zůstane
+  zastavený i po restartu serveru.
 - **Nastavení** (Minecraft): formulář nad `server.properties`, jak ho
   zapsal server dané verze, po skupinách (hra, hráči a přístup, svět,
   výkon a síť, resource pack), s rozsahy hodnot; volby, které panel nezná
@@ -99,10 +119,13 @@ a port; výchozí port Minecraftu se nepíše).
   panel hesla neukládá. Přihlášení: `sftp -P <port SSH> wsg_<id>@<server>`
   (stránka ho ukáže). Změna přístupu ukončí otevřené SFTP relace, běžící
   server hry ne. U klienta platí limit SSH/SFTP z jeho balíčku.
-- **Konzole:** příkazy serveru, např. `list`, `say Ahoj`, `op Jméno`,
-  `whitelist add Jméno` u Minecraftu, `/players` nebo `/promote Jméno`
-  u Factoria. Panel je posílá přes RCON.
-- **Log** služby serveru.
+- **Konzole:** log serveru tak, jak se zapisuje (sleduje se živě, jde
+  vypnout), a v něm odeslané příkazy s odpověďmi. Příkazy serveru, např.
+  `list`, `say Ahoj`, `op Jméno`, `whitelist add Jméno` u Minecraftu,
+  `/players` nebo `/promote Jméno` u Factoria, panel posílá přes RCON;
+  časté příkazy jsou připravené pod polem, šipkami ↑ ↓ se vrátíte
+  k poslaným. Varování jsou žlutě, chyby červeně, příchody a odchody
+  hráčů zeleně.
 - **Zálohy:** data serveru (svět, nastavení, pluginy či módy) každou noc
   (mezi 4. a 5. hodinou) a kdykoli tlačítkem *Zálohovat teď*. Běžící
   Minecraft před zálohou uloží svět a po dobu zálohy neukládá. Knihovny a

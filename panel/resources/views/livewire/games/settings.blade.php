@@ -6,7 +6,11 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    @if ($server->game->is('factorio'))
+    @if ($server->game->hasOwnSettings())
+        @livewire(\App\Livewire\Games\GameOptions::class, ['server' => $server->getKey()], key('game-options-'.$server->getKey()))
+    @elseif (! $server->game->is('factorio') && ! $server->game->is('minecraft'))
+        <x-wire::callout color="info" :heading="__('Tahle hra nemá v panelu formulář nastavení')">{{ __('Nastavení hry upravíte v záložce Soubory nebo přes SFTP; změny platí po restartu serveru.') }}</x-wire::callout>
+    @elseif ($server->game->is('factorio'))
         @if ($exists)
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('Nastavení ze souboru data/server-settings.json. Ostatní volby souboru zůstanou, jak jsou. Změny platí po restartu serveru.') }}</p>
             <form wire:submit="saveFactorio" class="space-y-6">

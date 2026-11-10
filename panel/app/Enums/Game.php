@@ -160,6 +160,30 @@ final class Game implements Castable
         return (int) ($this->def['min_memory_mb'] ?? 1024);
     }
 
+    /** Whether the panel can send it commands (a native game may have no console). */
+    public function hasConsole(): bool
+    {
+        return (bool) ($this->def['console'] ?? true);
+    }
+
+    /** @return list<string>|null commands its package offers under the console (null: none said) */
+    public function consoleCommands(): ?array
+    {
+        return isset($this->def['commands']) && is_array($this->def['commands']) ? array_values(array_map('strval', $this->def['commands'])) : null;
+    }
+
+    /** Free disk an install needs, in GB (0: not said). */
+    public function diskGb(): int
+    {
+        return (int) ($this->def['disk_gb'] ?? 0);
+    }
+
+    /** Whether its package declares settings of its own (native games: Nastavení). */
+    public function hasOwnSettings(): bool
+    {
+        return (bool) ($this->def['settings'] ?? false);
+    }
+
     /** What a player types to connect (the panel's host name and the port). */
     public function connectHint(string $host, int $port): string
     {

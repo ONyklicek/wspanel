@@ -7,7 +7,9 @@
     @endif
 
     @php($factorio = $this->factorio())
-    @if (! $this->paper() && ! $factorio)
+    @if (! $this->paper() && ! $factorio && ! $server->game->is('minecraft'))
+        <x-wire::callout color="info" :heading="__('Tahle hra nemá v panelu pluginy ani módy')">{{ __('Soubory hry upravíte v záložce Soubory nebo přes SFTP.') }}</x-wire::callout>
+    @elseif (! $this->paper() && ! $factorio)
         <x-wire::callout color="info" :heading="__('Pluginy jen pro Paper')">{{ __('Oficiální server (Vanilla) pluginy nenačítá. Pro pluginy založte server ve variantě Paper.') }}</x-wire::callout>
     @else
         @if ($factorio && ! $account)

@@ -9,5 +9,6 @@ Manifesty herních balíčků WSPanelu.
 - Vestavěné balíčky (Minecraft, Factorio) jsou v agentovi:
   `agent/internal/ops/gamepkgs/`.
 
-Formát manifestu, pravidla, katalog, REST API, příkazová řádka a postup pro
-nový engine: [docs/herni-balicky.md](../docs/herni-balicky.md).
+Jak přidat hru nebo variantu krok za krokem, formát manifestu, pravidla,
+katalog, REST API, příkazová řádka a postup pro nový engine:
+[docs/herni-balicky.md](../docs/herni-balicky.md).

@@ -224,11 +224,13 @@ func Registry() map[string]Op {
 		{"game.status", false, gameStatus},
 		{"game.logs", false, gameLogs},
 		{"game.backups", false, gameBackups},
-		{"game.create", true, gameCreate},
+		{"game.create", false, gameCreate}, // async; locks Mutate only for the privileged steps
+		{"game.options", false, gameOptions},
+		{"game.set_options", true, gameSetOptions},
 		{"game.action", true, gameAction},
 		{"game.command", true, gameCommand},
 		{"game.settings", true, gameSettings},
-		{"game.update", true, gameUpdate},
+		{"game.update", false, gameUpdate}, // async; locks Mutate only for the privileged steps
 		{"game.backup", true, gameBackup},
 		{"game.restore", true, gameRestore},
 		{"game.delete", true, gameDelete},

@@ -1,27 +1,126 @@
 # Herní balíčky
 
 Co herní server umí spustit, určují **herní balíčky**. Balíček je JSON
-manifest, který buď **přidá hru** (Minecraft, Factorio…), nebo **rozšíří
-existující hru o varianty** (Folia pro Minecraft). Panel i agent se podle
+manifest, který buď **přidá hru** (Minecraft, Factorio, Counter-Strike 2…),
+nebo **rozšíří existující hru o varianty** (Folia pro Minecraft). Panel i agent se podle
 nainstalovaných balíčků řídí: formulář nového serveru nabízí jejich hry,
 varianty a verze, agent podle nich server stáhne, nastaví a spustí.
 
 Balíček je **popis, ne program**. Agent běží jako root, proto manifest
-neobsahuje žádné příkazy ani cesty: jen jmenuje mechanismy, které agent
-sám obsahuje (engine, zdroj stažení), a jejich parametry. Každé pole agent
-ověří dřív, než balíček začne platit; neznámé pole, engine nebo zdroj
-balíček odmítne.
+neobsahuje žádné příkazy pro roota: jmenuje mechanismy, které agent sám
+obsahuje (engine, zdroj stažení, konzoli, dotaz na hráče), a jejich
+parametry. Hra s enginem `native` navíc popíše, který program ze své
+složky spustit a s jakými argumenty – ten ale běží jako uživatel hry ve
+stejném sandboxu jako každý herní server. Každé pole agent ověří dřív,
+než balíček začne platit; neznámé pole, engine nebo zdroj balíček odmítne.
 
+- [Jak přidat hru nebo variantu](#jak-přidat-hru-nebo-variantu) – postup krok za krokem
 - [Odkud se balíčky berou](#odkud-se-balíčky-berou)
 - [V panelu](#v-panelu-server--herní-balíčky)
 - [Formát manifestu](#formát-manifestu) – úplný popis polí
+- [Běh hry (`game.run`)](#běh-hry-gamerun-engine-native) – hra, kterou balíček spouští sám (CS2)
 - [Enginy a zdroje](#enginy-a-zdroje)
 - [Pravidla](#pravidla-konflikty-pořadí-odebrání)
 - [Katalog WSPanelu a podpis](#katalog-wspanelu-a-podpis)
 - [REST API](#rest-api)
 - [Příkazová řádka](#příkazová-řádka-wspanel)
 - [Operace agenta](#operace-agenta-interní-api)
-- [Nový engine nebo zdroj](#nový-engine-nebo-zdroj-pro-vývojáře)
+- [Nová hra s vlastním enginem](#nová-hra-s-vlastním-enginem-pro-vývojáře)
+
+## Jak přidat hru nebo variantu
+
+### 1. Stačí balíček?
+
+Balíček skládá to, co agent umí: **engine** (jak hru spustit, nastavit,
+mluvit s její konzolí) a **zdroj** (odkud a jak ověřeně stáhnout server).
+Agent umí enginy `minecraft`, `factorio` a `native` a zdroje `papermc`,
+`mojang`, `fabric`, `forge`, `factorio` a `steamcmd`.
+
+| Chci přidat | Jak |
+|---|---|
+| Variantu Minecraftu z jiného projektu PaperMC (jako Folia) | balíček s `extends` – [krok 2](#2-napište-manifest) |
+| Samostatnou hru nad existujícím enginem, např. „Minecraft s módy“ s vlastním portem a víc pamětí | balíček s `game` – [krok 2](#2-napište-manifest) |
+| Hru, jejíž dedikovaný server je na Steamu s anonymním přihlášením (Counter-Strike 2, Valheim, Rust, ARK, Garry's Mod…) | balíček s enginem `native` a zdrojem `steamcmd` – [Běh hry](#běh-hry-gamerun-engine-native); hotový je **Counter-Strike 2** v Katalogu WSPanelu |
+| Hru, která se stahuje jinak (vlastní web vydavatele, Steam s přihlášením) | balíček nestačí: potřebuje nový zdroj v agentovi – [pro vývojáře](#nová-hra-s-vlastním-enginem-pro-vývojáře) |
+| Server z vlastního souboru nebo adresy (vlastní JAR, modpack z webu) | nejde, záměrně: agent stahuje jen od vydavatele hry a ověřuje otisk; soubory serveru ale můžete po instalaci změnit přes **Soubory** nebo SFTP |
+
+Projekt PaperMC musí být herní server (`paper`, `folia`); `velocity`
+a `waterfall` jsou proxy a jako herní server nepoběží.
+
+### 2. Napište manifest
+
+Soubor `<id>.json`, kde `<id>` je `id` balíčku. Příklad samostatné hry nad
+enginem Minecraftu (agent ho přijme tak, jak je):
+
+```json
+{
+  "id": "minecraft-mody",
+  "name": "Minecraft s módy",
+  "version": "1.0.0",
+  "description": "Samostatná hra pro módované servery: víc paměti a vlastní port.",
+  "game": {
+    "id": "mcmody",
+    "label": "Minecraft s módy",
+    "engine": "minecraft",
+    "proto": "tcp",
+    "default_port": 25600,
+    "min_memory_mb": 4096,
+    "arch": ["amd64", "arm64"]
+  },
+  "flavors": [
+    {"id": "fabric", "label": "Fabric", "source": {"type": "fabric"},
+     "addons": {"kind": "mods", "modrinth_loaders": ["fabric"]}},
+    {"id": "forge", "label": "Forge", "source": {"type": "forge"},
+     "addons": {"kind": "mods", "modrinth_loaders": ["forge"]}}
+  ]
+}
+```
+
+Rozšíření existující hry o variantu vypadá jako `minecraft-folia`
+v [Formátu manifestu](#formát-manifestu) níže: místo `game` je
+`"extends": "minecraft"` a `id` varianty nesmí v té hře už existovat.
+Všechna pole a jejich pravidla: [Formát manifestu](#formát-manifestu).
+
+Na co si dát pozor:
+- `game.id` se ukládá k serverům: po prvním serveru ho neměňte. Při
+  změně čehokoli jiného zvyšte `version`.
+- `default_port` volte tak, aby se nepletl jiné hře; panel jinak vezme
+  další volný port.
+- `addons` uveďte, jen když varianta pluginy nebo módy opravdu načítá: podle
+  něj se zobrazí záložka **Pluginy a módy** a hledá v Modrinthu.
+
+### 3. Nahrajte ho
+
+Kteroukoli z cest; agent manifest pokaždé celý zkontroluje:
+
+- **Panel:** **Server → Herní balíčky → Nahrát vlastní balíček**, vložit JSON.
+- **API:** `POST /api/v1/game-packages`, tělo = manifest ([REST API](#rest-api)).
+- **CLI:** `wspanel game-package upload minecraft-mody.json`.
+- **Soubor na serveru:** `/etc/wspanel/games.d/minecraft-mody.json`
+  (vlastník root, práva 0644). Agent ho čte při každém dotazu, restart
+  netřeba; formulář nového serveru ho nabídne po otevření stránky
+  **Herní balíčky** (jinak do 10 minut).
+
+Odmítnutý manifest panel i API vrátí s důvodem (např. `game.engine:
+factorio or minecraft`); soubor vložený ručně se ukáže mezi **Balíčky,
+které neplatí**.
+
+### 4. Vyzkoušejte
+
+1. **Server → Herní balíčky:** balíček je mezi nainstalovanými, u něj jeho
+   hra a varianty.
+2. **Herní servery → Nový server:** vyberte novou hru a variantu; seznam
+   verzí přichází od vydavatele (prázdný = zdroj neodpovídá nebo pro
+   tuto architekturu nic nemá).
+3. Po instalaci na stránce serveru stav přejde přes „spouští se“ na
+   „běží“, jakmile odpoví konzole; v konzoli zkuste `list`.
+
+### 5. Sdílejte ho (volitelné)
+
+Aby balíček mohli instalovat všichni z **Katalogu WSPanelu**, pošlete pull
+request se souborem `games/catalog/<id>.json` do repozitáře WSPanelu.
+S nejbližším vydáním se katalog podepíše a panel ho nabídne
+([Katalog WSPanelu a podpis](#katalog-wspanelu-a-podpis)).
 
 ## Odkud se balíčky berou
 
@@ -119,11 +218,12 @@ než 64 KB.
 |---|---|---|
 | `id` | string | `^[a-z][a-z0-9]{1,31}$`; ukládá se k serveru, neměnit |
 | `label` | string | 1–64 znaků; název hry v panelu |
-| `engine` | string | `minecraft` nebo `factorio` – jak agent hru spouští, viz [Enginy](#enginy-a-zdroje) |
+| `engine` | string | `minecraft`, `factorio` nebo `native` – jak agent hru spouští, viz [Enginy](#enginy-a-zdroje) |
 | `proto` | string | `tcp` nebo `udp` – protokol portu hry (otevírá se ve firewallu) |
 | `default_port` | číslo | 1024–65535; výchozí port (panel vezme ten, nebo další volný z rozsahu 20000–40000 mimo 27000–27999) |
 | `min_memory_mb` | číslo | 256–65536; nejmenší paměť serveru |
-| `arch` | pole | `amd64` a/nebo `arm64`; na jiném procesoru se hra nenabízí |
+| `arch` | pole | `amd64` a/nebo `arm64`; na jiném procesoru se hra nenabízí (SteamCMD jen `amd64`) |
+| `run` | objekt | jen a vždy s enginem `native`: jak hru spustit, viz [Běh hry](#běh-hry-gamerun-engine-native) |
 
 ### Varianta (`flavors[]`)
 
@@ -133,10 +233,92 @@ než 64 KB.
 | `label` | string | 1–64 znaků; název ve formuláři |
 | `source.type` | string | zdroj serveru, musí ho umět engine hry, viz [Zdroje](#zdroje) |
 | `source.project` | string | jen u `papermc`: projekt PaperMC (`paper`, `folia`), `^[a-z0-9][a-z0-9-]{0,31}$` |
+| `source.app_id` | číslo | jen a vždy u `steamcmd`: Steam aplikace dedikovaného serveru (CS2: `730`, Valheim: `896660`) |
+| `source.branch` | string | jen u `steamcmd`, volitelně: betaverze Steamu (`^[a-z0-9][a-z0-9-]{0,31}$`), jinak `public` |
 | `addons` | objekt | ne – pluginy nebo módy, které varianta načítá |
 | `addons.kind` | string | `plugins` (složka `data/plugins`) nebo `mods` (`data/mods`) |
 | `addons.modrinth_loaders` | pole | 1–10 jmen loaderů Modrinthu (`paper`, `folia`, `fabric`…): podle nich se hledá a ověřuje kompatibilita |
 | `addons.hangar` | bool | i katalog Hangar (pluginy PaperMC); jen se zdrojem `papermc` |
+
+## Běh hry (`game.run`, engine `native`)
+
+S enginem `native` balíček sám popíše, jak hru spustit. Tak přichází
+**Counter-Strike 2** ([`games/catalog/cs2.json`](../games/catalog/cs2.json))
+a stejně jde přidat jiný dedikovaný server ze Steamu.
+
+```json
+"game": {
+  "id": "cs2", "label": "Counter-Strike 2", "engine": "native", "proto": "udp",
+  "default_port": 28015, "min_memory_mb": 4096, "arch": ["amd64"],
+  "run": {
+    "command": "game/bin/linuxsteamrt64/cs2",
+    "args": ["-dedicated", "-usercon", "-port", "{port}", "-maxplayers", "{setting:max_players}",
+             "+map", "{setting:map}", "+hostname", "{name}", "+rcon_password", "{rcon_password}",
+             {"when": "gslt", "args": ["+sv_setsteamaccount", "{setting:gslt}"]}],
+    "stop_signal": "SIGINT",
+    "console": {"protocol": "source-rcon", "port": "game", "commands": ["status", "changelevel "]},
+    "query": "a2s",
+    "disk_gb": 60,
+    "links": {"game/csgo/cfg/server.cfg": "server.cfg", "game/csgo/addons/": "addons/"},
+    "settings": [
+      {"key": "map", "label": "Mapa", "type": "text", "default": "de_dust2", "pattern": "^[a-z0-9_]{1,40}$"},
+      {"key": "max_players", "label": "Počet hráčů", "type": "int", "default": "10", "min": 2, "max": 64},
+      {"key": "gslt", "label": "Steam Game Server Login Token", "type": "secret", "pattern": "^[A-F0-9]{32}$"}
+    ]
+  }
+},
+"flavors": [{"id": "public", "label": "Stabilní vydání (Steam)", "source": {"type": "steamcmd", "app_id": 730}}]
+```
+
+| Pole | Pravidlo |
+|---|---|
+| `command` | program ve složce `server/` hry (relativní cesta, bez `..`); spouští se jako uživatel hry |
+| `args` | nejvýš 64 argumentů; každý jeden řádek do 200 znaků se zástupnými hodnotami (níže). Skupina `{"when": "<nastavení>", "args": [...]}` se použije, jen když má nastavení hodnotu (a u `bool` když je zapnuté) |
+| `stop_signal` | `SIGINT`, `SIGTERM` (výchozí) nebo `SIGQUIT`: čím se hra zastaví, aby uložila svět |
+| `console` | `{"protocol": "source-rcon", "port": "game" \| "own", "commands": [...]}`. `game`: RCON na TCP portu hry (Source, CS2); `own`: vlastní port, argumenty musí předat `{rcon_port}`. `commands` (nejvýš 12): rychlé příkazy pod konzolí v panelu. Bez `console` hra v panelu konzoli nemá (log ano) |
+| `query` | `a2s`: panel se ptá hry protokolem Steamu (A2S) na hráče; hra je „běží“, až odpoví. Bez něj je připravená hned po spuštění |
+| `disk_gb` | volné místo, které instalace potřebuje; menší disk instalaci odmítne dřív, než cokoli stáhne |
+| `links` | soubory a složky, které hra čte ze své instalace, ale patří k jejím datům: `"cesta/v/server": "cesta/v/data"` (složka s `/` na konci). Agent je přesune do `data/` a nahradí odkazem; v `data/` je zálohy uchovají a aktualizace hry je nepřepíše. Jen věci, které Steam nedodává (vlastní `server.cfg`, `addons/`) |
+| `backup.exclude` | cesty v `data/`, které se nezálohují |
+| `settings` | nejvýš 30 voleb, které panel ukáže v záložce **Nastavení** a dosadí do argumentů |
+
+**Zástupné hodnoty v argumentech:** `{port}` (port hry), `{rcon_port}`,
+`{rcon_password}` (náhodné, zná ho jen agent), `{name}` (název serveru
+z panelu), `{memory_mb}`, `{setting:<klíč>}`. Jiné složené závorky manifest
+odmítne.
+
+**Volby (`settings[]`):**
+
+| Pole | Pravidlo |
+|---|---|
+| `key` | `^[a-z][a-z0-9_]{0,31}$` |
+| `label`, `help` | text pro panel (do 64 / 300 znaků) |
+| `type` | `text`, `int`, `bool`, `select` nebo `secret` (heslo, token: panel ho jen zapíše, nikdy nezobrazí, v auditu je skrytý) |
+| `default` | výchozí hodnota (ne u `secret`); musí projít vlastními pravidly |
+| `required` | volba nesmí být prázdná |
+| `pattern` | u `text` a `secret`: regulární výraz (RE2), který hodnota musí splnit |
+| `min`, `max` | u `int` |
+| `options` | u `select`: 1–50 položek `{"value", "label"}` |
+
+Hodnota je vždy jeden řádek bez uvozovek a zpětných lomítek (`text` do
+128 znaků); do argumentů jde jako jeden argument, nikdy přes shell.
+
+**Bezpečnost:** program běží jako uživatel hry ve stejném sandboxu systemd
+jako každý herní server (jen vlastní složka pro zápis, žádná práva navíc,
+port jen ten svůj a TCP portu RCON, limity paměti a CPU). Příkazový řádek
+hry (heslo RCON, token) ostatní uživatelé serveru nevidí (`ProtectProc`).
+RCON je dostupný jen rootovi na `127.0.0.1`; firewall otevře jen port hry
+a jen jejím protokolem.
+
+**Porty:** herní servery dostávají porty 20000–40000 kromě 27000–27999
+(RCON), proto CS2 začíná na 28015 místo obvyklého 27015 – hráči se
+připojují na adresu s portem, kterou ukáže panel.
+
+**Instalace a aktualizace** běží na pozadí a dlouhé stahování nebrzdí zbytek
+panelu (agent při něm nedrží svůj zámek). SteamCMD se instaluje do složky
+hry pod jejím uživatelem; z Debianu se doinstalují jen 32bitové knihovny
+`lib32gcc-s1`, které SteamCMD potřebuje. **Aktualizovat** stáhne ze Steamu
+jen změněné soubory.
 
 ## Enginy a zdroje
 
@@ -148,6 +330,7 @@ jmenuje.
 |---|---|---|
 | `minecraft` | Java z Debianu (21/25 podle verze, doinstaluje se), `server.properties` (port, RCON), EULA, konzole přes RCON, hráči (`list`), záloha s `save-off`/`save-all`, Nastavení a Hráči v panelu | `papermc`, `mojang`, `fabric`, `forge` |
 | `factorio` | headless server, `server-settings.json`, první mapa, konzole přes RCON, hráči, módy z mod portálu | `factorio` |
+| `native` | spustí program, který popíše balíček (`game.run`), s argumenty z panelu a z nastavení; konzole přes Source RCON a hráči přes Steam A2S, když je hra má; formulář Nastavení z `settings` | `steamcmd` |
 
 ### Zdroje
 
@@ -161,6 +344,7 @@ vydavatel zveřejňuje; soubor s jiným otiskem se odmítne.
 | `fabric` | oficiální instalátor z mavenu Fabricu, nejnovější stabilní loader | SHA-256 z mavenu | stabilní verze hry |
 | `forge` | instalátor z mavenu Forge, doporučené (jinak nejnovější) sestavení | SHA-256 z mavenu | verze s buildem Forge |
 | `factorio` | factorio.com, headless pro Linux | SHA-256 ze `sha256sums` | nejnovější stabilní |
+| `steamcmd` | Steam přes SteamCMD, anonymní přihlášení, do složky `server/` hry | soubory hry ověřuje SteamCMD proti podepsaným manifestům Steamu; samotný SteamCMD (zavaděč, ~3 MB) se stahuje přes HTTPS od Valve, otisk Valve nezveřejňuje, a aktualizuje se sám | jen `latest`: nejnovější build větve |
 
 Seznam verzí si agent drží hodinu (každý zdroj zvlášť); zdroj, který
 neodpovídá, nenabízí nic, dokud neodpoví.
@@ -303,6 +487,8 @@ nebo `{"ok": false, "error": {"code", "message"}}`). Herní balíčky:
 | `games.package_install` | `id` | `{"installed": <balíček>}` |
 | `games.package_upload` | `manifest` (string, JSON manifestu) | `{"installed": <balíček>}` |
 | `games.package_remove` | `id` | `{"removed": "<id>"}` |
+| `game.options` | `id` | volby hry s enginem `native`: `{"settings": [...], "values": {…}, "secrets": {"<klíč>": true}}` (tajné jen zda jsou nastavené) |
+| `game.set_options` | `id`, `values`, `secrets`, `clear`, `restart` | uloží volby; prázdné tajné ponechá, `clear` je odebere; s `restart` restartuje běžící server |
 
 Chybové kódy: `invalid_params` (manifest nebo parametr), `conflict`,
 `not_found`. Operace se zapisují do auditu jako každá jiná. Herní servery
@@ -310,25 +496,57 @@ samotné (`game.create`, `game.update`…) berou hru a variantu z balíčků;
 `game.create` ukládá ke stavu serveru i protokol portu, aby firewall seděl,
 i kdyby balíček později zmizel.
 
-## Nový engine nebo zdroj (pro vývojáře)
+## Nová hra s vlastním enginem (pro vývojáře)
 
-Hra, kterou umí existující engine a zdroj, je jen manifest. Nová hra, která
-potřebuje jiné spouštění (třeba Counter-Strike 2 přes SteamCMD a Source
-RCON), potřebuje nový engine nebo zdroj v agentovi:
+Většinu her pokryje engine `native` se zdrojem `steamcmd` bez jediného
+řádku kódu. Kód v agentovi potřebuje jen hra, která se **stahuje jinak**
+(nový zdroj), nebo potřebuje něco, co `native` neumí: jinou konzoli než
+Source RCON, jiný dotaz na hráče než A2S, vygenerovaný konfigurační soubor,
+první svět vytvořený zvláštním příkazem. Engine je kód, ne konfigurace:
+agent běží jako root a manifest nesmí nic spouštět pod rootem.
 
-1. Zdroj: `fetchSourceVersions` (verze) a `resolveGameDownload` (adresa
-   a otisk) v `agent/internal/ops/games.go`; stažení vždy ověřené otiskem
-   vydavatele (u SteamCMD jeho vlastní kontrolou).
-2. Engine: jeho jméno a zdroje, které umí, do `gameEngines`
-   (`agent/internal/ops/gamepkgs.go`); spuštění (`gameExecStart`),
-   konfigurace (`configureGame`), umístění souborů (`placeDownload`),
-   hráči (`gamePlayers`), co se nezálohuje (`gameBackupExcludes`).
-3. Testy v `agent/internal/ops/gamepkgs_test.go` (manifest, odmítnutí)
-   a `games_test.go` (zdroj proti falešnému vydavateli).
-4. Panel se přizpůsobí sám (hry bere z agenta); obrazovky specifické pro
-   engine (Nastavení, Hráči) se řídí `Game::is('<engine>')`.
-5. Balíček s hrou do `games/catalog/` (nebo jako vestavěný do
-   `agent/internal/ops/gamepkgs/`) a dokumentace sem.
+**V agentovi** (`agent/internal/ops/`):
+
+1. **Engine a jeho zdroje:** jméno enginu a zdroje, které umí, do
+   `gameEngines` v `gamepkgs.go`. Od té chvíle manifest s tímto enginem
+   projde kontrolou.
+2. **Zdroj** (nový způsob stažení) v `games.go`:
+   - `fetchSourceVersions` – seznam verzí od vydavatele,
+   - `resolveGameDownload` – adresa a otisk souboru (`sha256:`/`sha1:`);
+     stažení bez otisku vydavatele se nepřijímá (u SteamCMD jeho vlastní
+     kontrola).
+3. **Instalace a běh** v `games.go`:
+   - `placeDownload` – kam a jak se stažený soubor rozbalí (`server/`),
+   - `configureGame` – konfigurace hry: port, RCON, první mapa nebo svět;
+     při každém spuštění vrací port a RCON, které spravuje panel,
+   - `gameExecStart` – příkazový řádek služby systemd (jen absolutní cesty,
+     žádný shell); sandbox a limity paměti a CPU doplní agent sám.
+4. **Konzole a hráči:** příkazy jdou přes `rconExec` (protokol Source RCON;
+   jiný protokol = nová funkce vedle něj). `gamePlayers` vrací, kdo hraje
+   (`online`, `max`, `names`); engine, který to zjistit neumí, ať vrátí
+   `errNoPlayerQuery` – server se pak bere za připravený hned po spuštění.
+5. **Zálohy:** `gameBackupExcludes` (co nezálohovat, např. cache)
+   a v `gameBackup` případné uložení světa před zálohou (Minecraft:
+   `save-off` / `save-all flush`).
+6. **Testy:** `gamepkgs_test.go` (manifest s novým enginem projde, chybný
+   ne) a `games_test.go` (zdroj proti falešnému vydavateli, `configureGame`,
+   `gameExecStart`).
+
+**V panelu** (`panel/`) není potřeba nic, aby hra fungovala: hry,
+varianty, porty i verze bere od agenta (`App\Enums\Game`), stav,
+konzole, log, zálohy, soubory a SFTP jsou společné všem hrám. Záložky
+napsané pro konkrétní hru se řídí enginem (`Game::is('<engine>')`) a u
+nového enginu jen řeknou, že pro tu hru nic nemají, dokud jim nepřidáte
+větev:
+
+- **Nastavení** (`GameServerSettings`, `games/settings.blade.php`),
+- **Hráči** (`GamePlayers`, `games/players.blade.php`),
+- **Pluginy a módy** (`GamePlugins`; u Minecraftu podle `addons` varianty),
+- návrhy častých příkazů v konzoli (`GameConsole::suggestions()`).
+
+**Nakonec** balíček s hrou do `games/catalog/` (nebo jako vestavěný do
+`agent/internal/ops/gamepkgs/` a do `Game::BUILTIN` v panelu) a řádek do
+tabulek [Enginy a zdroje](#enginy-a-zdroje).
 
 Herní servery běží vždy nativně (systemd, vlastní uživatel, sandbox,
 limity), ne v kontejneru.

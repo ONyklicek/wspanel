@@ -285,7 +285,8 @@ func TestRconAndPlayers(t *testing.T) {
 	if _, err := rconExec(context.Background(), port, "wrong", "list"); err == nil || !strings.Contains(err.Error(), "wrong password") {
 		t.Errorf("wrong password: %v", err)
 	}
-	p, err := gamePlayers(context.Background(), "minecraft", gameState{Game: "minecraft", RconPort: port, RconPassword: "secret"})
+	env, _ := testEnv(t)
+	p, err := gamePlayers(context.Background(), env, gameState{Game: "minecraft", RconPort: port, RconPassword: "secret"})
 	if err != nil || p["online"] != 2 || p["max"] != 20 || strings.Join(p["names"].([]string), ",") != "Alice,Bob" {
 		t.Errorf("players: %v %v", p, err)
 	}
@@ -505,5 +506,35 @@ func TestFabricAndForgeComeFromTheirInstallers(t *testing.T) {
 	g.Flavor = "vanilla"
 	if addonLoaders(env, g) != nil {
 		t.Error("vanilla loads nothing")
+	}
+}
+
+func TestTheListShowsWhatEachServerUsesAndSinceWhen(t *testing.T) {
+	env, dr := testEnv(t)
+	saveGame(env, gameState{ID: 5, Name: "x", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 2048})
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		switch {
+		case strings.Contains(c.String(), "--property=Id,LoadState"):
+			return executor.Result{Stdout: "Id=wspanel-game-5.service\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n"}, nil
+		case strings.Contains(c.String(), "CPUUsageNSec"):
+			return executor.Result{Stdout: "MemoryCurrent=1073741824\nCPUUsageNSec=42000000000\nActiveEnterTimestamp=@1767225600\nNRestarts=2\n"}, nil
+		}
+		return executor.Result{}, nil
+	}
+	out, err := call(t, env, gameList, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := out.(map[string]any)["servers"].([]map[string]any)[0]
+	if s["state"] != "active" || s["memory_bytes"] != int64(1073741824) || s["cpu_nsec"] != int64(42000000000) || s["since"] != int64(1767225600) || s["restarts"] != int64(2) {
+		t.Errorf("%v", s)
+	}
+	if _, ok := s["players"]; ok {
+		t.Error("players asked for without being wanted")
+	}
+	// Asked, with RCON not answering yet (the world loads): active, not ready.
+	out, _ = call(t, env, gameList, map[string]any{"players": true})
+	if s := out.(map[string]any)["servers"].([]map[string]any)[0]; s["ready"] != false {
+		t.Errorf("ready while its console does not answer: %v", s)
 	}
 }

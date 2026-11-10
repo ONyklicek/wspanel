@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\Game;
+use App\Livewire\Games\GameConsole;
+use App\Livewire\Games\GameOptions;
 use App\Livewire\Games\GamePlayers;
 use App\Livewire\Games\GamePlugins;
 use App\Livewire\Games\GameServerSettings;
+use App\Livewire\Games\GameServerStatus;
 use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
 use App\Livewire\Pages\ModulesPage;
@@ -139,16 +143,110 @@ class GameServersTest extends TestCase
     {
         Features::setGames(true);
         $server = GameServer::create(['name' => 'Survival', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'build' => '130', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
-        $this->agent->shouldReceive('call')->with('game.status', ['id' => $server->id])->andReturn(['state' => 'active', 'memory_bytes' => 900_000_000, 'players' => ['online' => 1, 'max' => 20, 'names' => ['Alice']]]);
+        $this->agent->shouldReceive('call')->with('game.status', ['id' => $server->id])->andReturn(['state' => 'active', 'memory_bytes' => 900_000_000, 'since' => now()->subHour()->getTimestamp(), 'players' => ['online' => 1, 'max' => 20, 'names' => ['Alice']]]);
+        $this->agent->shouldReceive('call')->with('game.list', ['players' => true])->andReturn(['servers' => [['id' => $server->id, 'state' => 'active']]]);
+        $this->agent->shouldReceive('call')->with('game.logs', ['id' => $server->id, 'lines' => 200])->andReturn(['lines' => ['2026-11-10T12:00:01+0100 srv java[42]: [12:00:01 INFO]: Alice joined the game']]);
         $this->agent->shouldReceive('call')->once()->with('game.command', ['id' => $server->id, 'command' => 'say ahoj'])->andReturn(['output' => '']);
         $this->agent->shouldReceive('call')->once()->with('game.action', ['id' => $server->id, 'action' => 'stop'])->andReturn([]);
 
-        Livewire::test(ViewGameServer::class, ['record' => $server->id])
-            ->assertSee('Alice')->assertSee('1 / 20')
+        $this->get('/games/'.$server->id)->assertOk()->assertSee('Alice')->assertSee('Konzole');
+        Livewire::test(GameServerStatus::class, ['server' => $server->id])
+            ->assertSee('Alice')->assertSee('1')->assertSee('/ 20')->assertSee('běží')
+            ->call('control', 'stop')->assertSet('pending', 'stop')->assertSee('zastavuje se')
+            ->call('control', 'rm -rf');
+        Livewire::test(GameConsole::class, ['server' => $server->id])
+            ->assertSee('Alice joined the game')->assertSet('running', true)
             ->set('command', "say a\nstop")->call('send')->assertHasErrors('command')
             ->set('command', 'say ahoj')->call('send')->assertHasNoErrors()->assertSee('&gt; say ahoj', false)
-            ->call('control', 'stop')->assertNotified()
-            ->call('control', 'rm -rf');
+            ->assertDispatched('game-command-sent');
+    }
+
+    public function test_the_status_follows_the_server_live(): void
+    {
+        Features::setGames(true);
+        $server = $this->minecraft();
+        $live = ['state' => 'active', 'ready' => false, 'cpu_nsec' => 1_000_000_000, 'since' => now()->getTimestamp()];
+        $this->agent->shouldReceive('call')->with('game.status', ['id' => $server->id])->andReturnUsing(function () use (&$live) {
+            return $live;
+        });
+
+        // Active but its console does not answer yet: still loading the world.
+        $status = Livewire::test(GameServerStatus::class, ['server' => $server->id])->assertSet('state', 'starting')->assertSee('načítá svět');
+        $this->assertSame(2000, $status->instance()->interval());
+
+        $live = ['ready' => true, 'players' => ['online' => 0, 'max' => 20, 'names' => []]] + $live;
+        $live['cpu_nsec'] = 1_000_000_000 + 500_000_000_000; // far more than one core over the gap: a load is drawn
+        $this->travel(5)->seconds();
+        $status->call('refresh')->assertSet('state', 'running')->assertDispatched('game-state-changed', server: $server->id, state: 'running');
+        $this->assertNotNull($status->get('cpuPercent'));
+        $this->assertSame(5000, $status->instance()->interval());
+
+        $live = ['state' => 'failed'];
+        $status->call('refresh')->assertSet('state', 'crashed')->assertSee('spadl')->assertSee('Spustit');
+    }
+
+    public function test_the_list_shows_what_runs_and_starts_and_stops_from_the_row(): void
+    {
+        Features::setGames(true);
+        $server = $this->minecraft();
+        $this->agent->shouldReceive('call')->with('game.list', ['players' => true])->andReturn(['servers' => [
+            ['id' => $server->id, 'state' => 'active', 'memory_bytes' => 1_073_741_824, 'players' => ['online' => 3, 'max' => 20, 'names' => ['A', 'B', 'C']]],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('game.action', ['id' => $server->id, 'action' => 'restart'])->andReturn([]);
+
+        $list = Livewire::test(ListGameServers::class)->assertSee('běží')->assertSee('3 / 20')->assertSee('1,0 GB / 2 GB');
+        $this->tableAction($list, $server, 'restart')->assertNotified();
+    }
+
+    public function test_a_game_of_another_engine_gets_the_live_page_and_plain_tabs(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->with('games.catalog')->andReturn(['games' => [
+            'valheim' => ['name' => 'Valheim', 'engine' => 'steamcmd', 'proto' => 'udp', 'default_port' => 2456, 'min_memory_mb' => 2048, 'available' => true, 'package' => 'valheim',
+                'flavors' => [['id' => 'stable', 'label' => 'Stabilní', 'package' => 'valheim', 'addons' => null]]],
+        ]]);
+        Game::flush();
+        $server = GameServer::create(['name' => 'Vikingové', 'game' => 'valheim', 'flavor' => 'stable', 'version' => '0.220', 'port' => 2456, 'memory_mb' => 4096, 'status' => 'active']);
+        // Its engine cannot tell who plays: the agent finds it ready once active.
+        $this->agent->shouldReceive('call')->with('game.status', ['id' => $server->id])->andReturn(['state' => 'active', 'ready' => true]);
+        $this->agent->shouldNotReceive('call')->with('game.properties', Mockery::any());
+
+        Livewire::test(GameServerStatus::class, ['server' => $server->id])->assertSet('state', 'running');
+        Livewire::test(GameConsole::class, ['server' => $server->id])->assertDontSee('whitelist add')->assertDontSee('/promote');
+        $this->get('/games/'.$server->id.'/settings')->assertOk()->assertSee('nemá v panelu formulář nastavení');
+        $this->get('/games/'.$server->id.'/players')->assertOk()->assertSee('nemá v panelu správu hráčů')->assertDontSee('Hráči Factoria');
+        $this->get('/games/'.$server->id.'/plugins')->assertOk()->assertSee('nemá v panelu pluginy ani módy')->assertDontSee('jen pro Paper');
+    }
+
+    public function test_counter_strike_2_from_a_package_gets_its_own_settings_form(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->with('games.catalog')->andReturn(['cs2' => ['public' => ['latest']], 'games' => [
+            'cs2' => ['name' => 'Counter-Strike 2', 'engine' => 'native', 'proto' => 'udp', 'default_port' => 28015, 'min_memory_mb' => 4096, 'available' => true, 'package' => 'cs2',
+                'console' => true, 'commands' => ['status', 'changelevel '], 'disk_gb' => 60, 'settings' => true,
+                'flavors' => [['id' => 'public', 'label' => 'Stabilní vydání (Steam)', 'package' => 'cs2', 'addons' => null]]],
+        ]]);
+        Game::flush();
+        $server = GameServer::create(['name' => 'Dust', 'game' => 'cs2', 'flavor' => 'public', 'version' => 'latest', 'build' => '20251110', 'port' => 28015, 'memory_mb' => 4096, 'status' => 'active']);
+        $this->assertSame('Counter-Strike 2 build 20251110', $server->versionLabel());
+        $this->agent->shouldReceive('call')->with('game.options', ['id' => $server->id])->andReturn([
+            'settings' => [
+                ['key' => 'map', 'label' => 'Mapa', 'type' => 'text', 'default' => 'de_dust2'],
+                ['key' => 'mode', 'label' => 'Herní režim', 'type' => 'select', 'options' => [['value' => 'competitive', 'label' => 'Competitive'], ['value' => 'wingman', 'label' => 'Wingman']]],
+                ['key' => 'gslt', 'label' => 'Steam Game Server Login Token', 'type' => 'secret'],
+            ],
+            'values' => ['map' => 'de_dust2', 'mode' => 'competitive'], 'secrets' => ['gslt' => true],
+        ]);
+        $this->agent->shouldReceive('call')->once()->with('game.set_options', ['id' => $server->id, 'values' => (object) ['map' => 'de_mirage', 'mode' => 'wingman'], 'restart' => true])->andReturn(['saved' => true]);
+        $this->agent->shouldNotReceive('call')->with('game.properties', Mockery::any());
+
+        $this->get('/games/'.$server->id.'/settings')->assertOk()->assertSee('Mapa')->assertSee('Wingman')->assertSee('nastaveno');
+        // The token is kept: an empty secret field sends nothing.
+        Livewire::test(GameOptions::class, ['server' => $server->id])
+            ->set('values.map', 'de_mirage')->set('values.mode', 'wingman')
+            ->call('save', true)->assertNotified()->assertDispatched('game-refresh');
+        $this->agent->shouldReceive('call')->with('game.list', ['players' => true])->andReturn(['servers' => [['id' => $server->id, 'state' => 'active', 'console' => true]]]);
+        Livewire::test(GameConsole::class, ['server' => $server->id])->assertSee('changelevel')->assertDontSee('whitelist');
     }
 
     public function test_another_clients_server_is_out_of_reach(): void

@@ -101,14 +101,16 @@ class GamePackagesPage extends Page
     protected function headerActions(): array
     {
         return [
+            Action::make('guide')->label(__('Jak přidat hru'))->icon('outline:book-open')->color('gray')
+                ->url(HelpPage::url(parameters: ['doc' => 'herni-balicky'])),
             Action::make('upload')->label(__('Nahrát vlastní balíček'))->icon('outline:arrow-up-tray')
-                ->modalDescription(__('Manifest herního balíčku (JSON): přidá hru, nebo rozšíří existující o varianty. Nic se z něj nespouští; agent ho celý zkontroluje a uloží do /etc/wspanel/games.d. Formát popisuje games/README.md v repozitáři WSPanelu.'))
+                ->modalDescription(__('Manifest herního balíčku (JSON): přidá hru, nebo rozšíří existující o varianty. Nic se z něj nespouští; agent ho celý zkontroluje a uloží do /etc/wspanel/games.d. Postup s příkladem a všechna pole: Nápověda → Herní balíčky.'))
                 ->modalWidth('3xl')
                 ->modalSubmitActionLabel(__('Nahrát'))
                 ->form([
                     Textarea::make('manifest')->label(__('Manifest (JSON)'))->rows(14)->required()
                         ->rules(['required', 'string', 'max:65536', 'json'])
-                        ->placeholder("{\n  \"id\": \"minecraft-purpur\",\n  \"name\": \"Purpur pro Minecraft\",\n  \"version\": \"1.0.0\",\n  \"extends\": \"minecraft\",\n  \"flavors\": [ … ]\n}"),
+                        ->placeholder("{\n  \"id\": \"minecraft-mody\",\n  \"name\": \"Minecraft s módy\",\n  \"version\": \"1.0.0\",\n  \"game\": {\"id\": \"mcmody\", \"engine\": \"minecraft\", …},\n  \"flavors\": [ … ]\n}"),
                 ])
                 ->action(function (array $data) {
                     abort_unless(auth()->user()?->can('game-packages'), 403);

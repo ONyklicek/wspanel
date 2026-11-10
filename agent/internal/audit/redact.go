@@ -17,6 +17,7 @@ var sensitive = map[string]map[string]bool{
 	"env.vars_set":               {"secrets": true},                         // Prostředí's secrets
 	"game.files":                 {"content": true},                         // a game's configs (server.properties holds RCON's password)
 	"game.factorio_set_settings": {"secrets": true},                         // the factorio.com token, the game password
+	"game.set_options":           {"secrets": true},                         // a native game's secret settings (a server token, the game password)
 	"offsite.set":                {"secret_key": true, "signing_key": true}, // storage credentials, backup signing key
 	"mail.mailbox.password":      {"current_password": true},                // the mailbox's own, proving the change
 	"*":                          {"password": true, "secret": true, "token": true, "key": true, "private_key": true},

@@ -50,6 +50,8 @@ type gamePkgGame struct {
 	DefaultPort int      `json:"default_port"`
 	MinMemoryMB int      `json:"min_memory_mb"`
 	Arch        []string `json:"arch"`
+	// Run: how the native engine starts the game (gamenative.go); only there.
+	Run *gameRunSpec `json:"run,omitempty"`
 }
 
 type gamePkgFlavor struct {
@@ -64,6 +66,8 @@ type gamePkgFlavor struct {
 type gameSource struct {
 	Type    string `json:"type"`
 	Project string `json:"project,omitempty"` // papermc: the PaperMC project (paper, folia)
+	AppID   int    `json:"app_id,omitempty"`  // steamcmd: the dedicated server's Steam app
+	Branch  string `json:"branch,omitempty"`  // steamcmd: a beta branch (default: public)
 }
 
 // gameAddonSpec: plugins or mods the variant loads, from Modrinth (by its
@@ -79,6 +83,8 @@ var (
 	gameEngines = map[string][]string{ // engine -> the source types it can run
 		"minecraft": {"papermc", "mojang", "fabric", "forge"},
 		"factorio":  {"factorio"},
+		// A game the package describes how to run (gamenative.go).
+		"native": {"steamcmd"},
 	}
 	gamePkgIDRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,40}$`)
 	gameIDRe        = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
@@ -141,6 +147,14 @@ func parseGamePkg(b []byte) (gamePkg, error) {
 				return p, fmt.Errorf("game.arch: amd64 and/or arm64")
 			}
 		}
+		if (g.Engine == "native") != (g.Run != nil) {
+			return p, fmt.Errorf("game.run: describes how the native engine runs the game, and only it")
+		}
+		if g.Run != nil {
+			if err := g.Run.check(); err != nil {
+				return p, fmt.Errorf("game.run.%v", err)
+			}
+		}
 	}
 	seen := map[string]bool{}
 	for _, f := range p.Flavors {
@@ -155,6 +169,12 @@ func parseGamePkg(b []byte) (gamePkg, error) {
 			return p, fmt.Errorf("flavor %s: source.project, the PaperMC project (paper, folia)", f.ID)
 		case f.Source.Type != "papermc" && f.Source.Project != "":
 			return p, fmt.Errorf("flavor %s: source.project is for papermc only", f.ID)
+		case f.Source.Type == "steamcmd" && (f.Source.AppID < 1 || f.Source.AppID > 99_999_999):
+			return p, fmt.Errorf("flavor %s: source.app_id, the dedicated server's Steam app id", f.ID)
+		case f.Source.Type != "steamcmd" && (f.Source.AppID != 0 || f.Source.Branch != ""):
+			return p, fmt.Errorf("flavor %s: source.app_id and source.branch are for steamcmd only", f.ID)
+		case f.Source.Branch != "" && !gameSlugRe.MatchString(f.Source.Branch):
+			return p, fmt.Errorf("flavor %s: source.branch, a Steam branch name", f.ID)
 		}
 		seen[f.ID] = true
 		if a := f.Addons; a != nil {
@@ -198,7 +218,10 @@ func (d gameDef) flavor(id string) (gameFlavorDef, bool) {
 	return d.Flavors[i], true
 }
 
-func (d gameDef) available() bool { return slices.Contains(d.Arch, runtime.GOARCH) }
+// hostArch: the processor game servers run on (tests pretend another).
+var hostArch = runtime.GOARCH
+
+func (d gameDef) available() bool { return slices.Contains(d.Arch, hostArch) }
 
 // gamePkgProblem: a package that is not in effect, and why.
 type gamePkgProblem struct {
