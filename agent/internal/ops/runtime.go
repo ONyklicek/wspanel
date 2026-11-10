@@ -256,6 +256,10 @@ type unitData struct {
 	Environment []string
 	Extra       []string // extra [Service] lines (capabilities, socket bind rules)
 	StopTimeout int
+	// Oneshot: a run to completion (a scheduled task), never restarted.
+	Oneshot bool
+	// The pause before a restart and the most it grows to (default 2s, 30s).
+	RestartSec, RestartMaxDelay string
 }
 
 // appUnitData renders the long-running app process of worker and node sites.

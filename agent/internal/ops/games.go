@@ -733,12 +733,13 @@ func gameExecStart(env *Env, g gameState) string {
 // the game's port and RCON.
 func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 	home := gameHome(env, g.ID)
-	memMax := g.MemoryMB
+	memMax := gameUnitMemoryMB(env, g)
 	engine := gameEngine(env, g)
-	if engine == "minecraft" {
-		memMax = g.MemoryMB*5/4 + 256 // the heap plus the JVM's own
-	}
 	extra := []string{
+		// All games share one memory budget, and under pressure the kernel
+		// takes a game before a site, a database or the panel.
+		"Slice=" + gamesSlice,
+		"OOMScoreAdjust=500",
 		"CapabilityBoundingSet=",
 		// Its command line (RCON password, a server token) is nobody else's.
 		"ProtectProc=invisible",
@@ -767,12 +768,22 @@ func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 		Description: fmt.Sprintf("WSPanel game server %d (%s): %s", g.ID, gameLabel(env, g.Game), g.Name),
 		User:        g.user(), Home: home, WorkDir: filepath.Join(home, "data"),
 		ExecStart: gameExecStart(env, g), StopTimeout: 120, Extra: extra,
+		// A server killed for memory is not started again every few seconds:
+		// the pause grows to five minutes while it keeps failing.
+		RestartSec: "10s", RestartMaxDelay: "5min",
 	})
+	if err != nil {
+		return err
+	}
+	sliceChanged, err := writeGamesSlice(env)
 	if err != nil {
 		return err
 	}
 	// The unit holds Factorio's RCON password: root only.
 	path := filepath.Join(env.Cfg.SystemdDir, g.unit())
+	if old, err := os.ReadFile(path); err == nil && string(old) == string(unit) && !sliceChanged {
+		return nil // nothing for systemd to reload
+	}
 	if err := env.FS.WriteFile(path, unit, 0o600, fsx.Root); err != nil {
 		return err
 	}
@@ -1043,6 +1054,9 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 			}
 		}
 		if err := gamePortFree(env, p.Port, def.Proto, p.ID); err != nil {
+			return err
+		}
+		if err := checkGameMemory(env, gameState{ID: p.ID, Game: p.Game, Flavor: p.Flavor, MemoryMB: p.MemoryMB}, 0); err != nil {
 			return err
 		}
 		g = gameState{ID: p.ID, Name: p.Name, Game: p.Game, Flavor: p.Flavor, Proto: def.Proto, Version: p.Version, Port: p.Port,
@@ -1438,7 +1452,11 @@ func gameSettings(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if err := check.validate(env); err != nil {
 		return nil, err
 	}
+	previous := gameUnitMemoryMB(env, g)
 	g.Name, g.MemoryMB, g.CPUPercent = p.Name, p.MemoryMB, p.CPUPercent
+	if err := checkGameMemory(env, g, previous); err != nil {
+		return nil, err
+	}
 	if err := saveGame(env, g); err != nil {
 		return nil, err
 	}

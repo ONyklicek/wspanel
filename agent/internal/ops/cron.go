@@ -227,14 +227,12 @@ func writeCron(ctx context.Context, env *Env, l siteLayout, p cronParams, calend
 	unit, err := render("unit.service.tmpl", unitData{
 		Description: fmt.Sprintf("WSPanel task %d of %s", p.ID, l.Domain),
 		User:        l.User, Home: l.Home, ExecStart: exec, StopTimeout: 30, Extra: noBindExtra,
+		Oneshot: true, // a task is a run, not a restarting service
 	})
 	if err != nil {
 		return err
 	}
-	// A task is a oneshot run, not a restarting service.
-	unitS := strings.Replace(string(unit), "Type=simple", "Type=oneshot", 1)
-	unitS = strings.Replace(unitS, "Restart=always\nRestartSec=5s\n", "TimeoutStartSec=1h\n", 1)
-	unitS = strings.Replace(unitS, "[Install]\nWantedBy=multi-user.target\n", "", 1)
+	unitS := string(unit)
 	timer := fmt.Sprintf("# Managed by WSPanel agent. Do not edit.\n# wspanel-cron: %s\n[Unit]\nDescription=WSPanel task %d of %s\n\n[Timer]\nOnCalendar=%s\nAccuracySec=1s\n\n[Install]\nWantedBy=timers.target\n",
 		meta, p.ID, l.Domain, calendar)
 	if err := env.FS.WriteFile(base+".service", []byte(unitS), 0o644, fsx.Root); err != nil {

@@ -48,6 +48,13 @@ paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmín
 - **Paměť** je u Minecraftu velikost haldy Javy (2048 MB stačí na pár
   hráčů, s pluginy a víc hráči 4096 MB a víc). Proces dostane navíc rezervu
   pro samotnou Javu. Procesor 0 znamená bez omezení, 200 = dvě jádra.
+- **Společný rozpočet paměti:** všechny herní servery dohromady smí použít
+  RAM serveru bez čtvrtiny, ale vždy se nechává aspoň 1,5 GB pro weby, databáze
+  a panel. Na serveru s 8 GB RAM tak hrám zbývá zhruba 6 GB. Server, kvůli
+  kterému by limity her dohromady tento rozpočet přesáhly, panel nepřidá.
+  Snížit paměť jde vždy. Když se hrám paměť nedostává, jádro zastavuje hry,
+  ne weby. Server, který spadne pro nedostatek paměti, se znovu spustí
+  s prodlevou, která roste až na 5 minut.
 
 Minecraft si napoprvé vygeneruje svět, to trvá minutu až dvě. Hráči se
 připojí na adresu, kterou panel ukáže na stránce serveru (doména panelu

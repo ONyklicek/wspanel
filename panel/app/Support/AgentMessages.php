@@ -150,6 +150,7 @@ final class AgentMessages
             '/^downloading (.+) failed: .*checksum mismatch.*$/s' => 'Stažení $1 se nepodařilo: soubor neodpovídá otisku z katalogu. Nic se neinstalovalo.',
             '/^(Modrinth|Hangar): (.+)$/s' => 'Katalog $1 neodpovídá: $2',
             '/^memory_mb: (\d+) to 262144$/' => 'Paměť musí být $1 až 262144 MB.',
+            '/^memory_mb: the game servers would reserve (\d+) MB together; this server has (\d+) MB of RAM and keeps (\d+) MB for the sites, databases and the panel, so games may use (\d+) MB \((\d+) MB left\)$/' => 'Herní servery by si dohromady vyhradily $1 MB. Server má $2 MB RAM a $3 MB drží pro weby, databáze a panel, hrám tedy zbývá $4 MB (volných $5 MB). Snižte paměť tohoto nebo jiného herního serveru.',
 
             // Server → Systém, Procesy, Balíčky
             '/^pid: the process has already ended$/' => 'Proces už neběží.',

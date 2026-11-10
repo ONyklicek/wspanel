@@ -2,16 +2,26 @@
 [Unit]
 Description={{.Description}}
 After=network.target
-StartLimitIntervalSec=300
-StartLimitBurst=10
+{{- if not .Oneshot}}
+# Never given up on: a process that failed while its database or the network
+# was restarting comes back on its own, after a pause that grows with each
+# failure in a row (RestartSteps up to RestartMaxDelaySec).
+StartLimitIntervalSec=0
+{{- end}}
 
 [Service]
-Type=simple
+Type={{if .Oneshot}}oneshot{{else}}simple{{end}}
 User={{.User}}
 WorkingDirectory={{if .WorkDir}}{{.WorkDir}}{{else}}{{.Home}}/current{{end}}
 ExecStart={{.ExecStart}}
+{{- if .Oneshot}}
+TimeoutStartSec=1h
+{{- else}}
 Restart=always
-RestartSec=5s
+RestartSec={{or .RestartSec "2s"}}
+RestartSteps=5
+RestartMaxDelaySec={{or .RestartMaxDelay "30s"}}
+{{- end}}
 KillSignal=SIGTERM
 TimeoutStopSec={{.StopTimeout}}
 Environment=TMPDIR={{.Home}}/tmp
@@ -45,6 +55,8 @@ LockPersonality=yes
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent -/var/lib/panel-proxy -/etc/panel-proxy
+{{- if not .Oneshot}}
 
 [Install]
 WantedBy=multi-user.target
+{{- end}}

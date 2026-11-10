@@ -21,6 +21,7 @@ class AgentMessagesTest extends TestCase
             'health' => ['Get "https://a.example.com/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)', 'Vypršel časový limit, web neodpověděl včas.'],
             'command' => ['systemctl: exit status 1', 'Příkaz systemctl skončil chybou (kód 1).'],
             'english tail dropped' => ['port 22 is protected (SSH/HTTP/HTTPS); change it on the server directly', 'Port 22 je chráněný (SSH/HTTP/HTTPS), z panelu ho nejde zavřít.'],
+            'games memory budget' => ['memory_mb: the game servers would reserve 7168 MB together; this server has 8000 MB of RAM and keeps 2000 MB for the sites, databases and the panel, so games may use 6000 MB (368 MB left)', 'Herní servery by si dohromady vyhradily 7168 MB. Server má 8000 MB RAM a 2000 MB drží pro weby, databáze a panel, hrám tedy zbývá 6000 MB (volných 368 MB). Snižte paměť tohoto nebo jiného herního serveru.'],
             'unknown stays' => ['something new the agent says', 'something new the agent says'],
             'czech stays' => ['Agent není dostupný (/run/panel-agent.sock): No such file', 'Agent není dostupný (/run/panel-agent.sock): No such file'],
         ];
