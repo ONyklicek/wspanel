@@ -58,7 +58,9 @@ Průvodce (textové okno, šipky a mezerník) se postupně zeptá:
   panel i weby pak dostanou certifikáty od vlastní certifikační autority serveru),
 - jestli je server za NATem: veřejná IP adresa a přesměrované porty HTTPS a SSH
   (panel podle nich doporučuje DNS záznamy a ukazuje adresy pro připojení),
-- na port SSH a jestli úplně zakázat přihlášení roota (jinak root jen s klíčem),
+- na port SSH a jak se správci přihlašují: **heslem i klíčem** (výchozí),
+  nebo **jen klíčem** (pak chce veřejný klíč pro roota, pokud ho ještě nemá);
+  úplný zákaz roota přes SSH nabídne, jen když má klíč jiný správce se `sudo`,
 - které databázové servery, verze PHP a Node instalovat,
 - které moduly zapnout (klienti a balíčky, pošta se schránkami a webmailem,
   DNS server, profilování XHProf),
@@ -153,7 +155,9 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--dns=` | `none` | `powerdns` = server je autoritativní DNS pro zóny z panelu |
 | `--mail=` | `send` | výchozí režim pošty nových webů: `send` (odesílat) nebo `capture` (zachytávat v Mailpitu) |
 | `--ssh-port=` | `22` | port SSH |
-| `--no-root-ssh` | – | zakáže přihlášení roota přes SSH (nejdřív si ověřte jiný účet s klíčem) |
+| `--ssh-password=` | `no` | `yes`: správci (i root) se přihlašují i heslem (hlídá fail2ban); `no`: jen klíčem – ale jen když má správce klíč, jinak root heslo podrží (nikdy nezamkne) |
+| `--ssh-key=` | – | veřejný klíč pro roota (`"ssh-ed25519 AAAA… popis"`), přidá se do `/root/.ssh/authorized_keys` |
+| `--no-root-ssh` | – | zakáže přihlášení roota přes SSH; odmítne se, pokud jiný správce (skupina `sudo`) nemá klíč |
 | `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy (za NATem zadejte ručně) |
 | `--public-https-port=` / `--public-ssh-port=` | 443 / 22 | porty, jak je vidí klienti (jen pro přesměrování portů, např. dev kontejner) |
 | `--panel-allow=` | veřejný | panel jen z těchto adres/sítí, např. `10.8.0.0/24,203.0.113.7`; `any` = zase veřejný (viz [Bezpečnost](bezpecnost.md#panel-jen-z-vnitřní-sítě)) |

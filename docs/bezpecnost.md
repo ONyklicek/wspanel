@@ -47,7 +47,9 @@ neznamenala kompromitaci serveru ani ostatních webů.
   - `SocketBindDeny`, takže nesmí poslouchat na portech,
   - nevidí konfiguraci ani stav agenta a proxy.
 - **SSH/SFTP:** bez tunelů a forwardingu, klíče spravuje jen panel, hesla
-  jsou volitelná a hlídá je fail2ban.
+  jsou volitelná a hlídá je fail2ban. Správci serveru se přihlašují heslem
+  i klíčem, nebo jen klíčem (volba při instalaci); jen klíčem jde zvolit,
+  až když správce klíč má, takže se nezamkne venku.
 - **Databáze:** každá má vlastního uživatele s právy jen na ni. Dočasné
   přístupy phpMyAdmin/Adminer platí 30 minut a jen pro jednu databázi.
 - **Pošta:**

@@ -310,7 +310,12 @@ PWSSH=(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLev
 check "password login refused without a password set" bash -c "! SSHPASS=wrong-password-123 sshpass -e \"\${@}\" web_shop_localhost@127.0.0.1 true" _ "${PWSSH[@]}"
 pw=$(php "$(site shop.localhost) echo app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'shell', file_get_contents('$W/key.pub'), 'generate');" | tr -d '[:space:]')
 contains "password login works once a password is set" "$(SSHPASS=$pw sshpass -e "${PWSSH[@]}" web_shop_localhost@127.0.0.1 'id -un' 2>&1)" "web_shop_localhost"
-expect "root never logs in with a password" "$(sshd -T -C user=root,host=x,addr=127.0.0.1 | awk '/^passwordauthentication/ {print $2}')" "no"
+# Root's password: the installer's choice (--ssh-password=yes), or kept because
+# no administrator has a key yet (never a lock-out); otherwise keys only.
+want_pw=no
+grep -qx -- '--ssh-password=yes' /etc/wspanel/install.flags 2>/dev/null && want_pw=yes
+grep -Eqs '^(ssh-|ecdsa-|sk-)' /root/.ssh/authorized_keys || want_pw=yes
+expect "root logs in with a password only as chosen (or without a key)" "$(sshd -T -C user=root,host=x,addr=127.0.0.1 | awk '/^passwordauthentication/ {print $2}')" "$want_pw"
 php "$(site shop.localhost) app(App\\Actions\\Sites\\ManageSsh::class)->handle(\$s, 'shell', file_get_contents('$W/key.pub'), 'remove');" >/dev/null
 check "removed password no longer works" bash -c "! SSHPASS='$pw' sshpass -e \"\${@}\" web_shop_localhost@127.0.0.1 true" _ "${PWSSH[@]}"
 "${SSH[@]}" -N -L 13306:127.0.0.1:3306 web_shop_localhost@127.0.0.1 2>"$W/tun.err" &

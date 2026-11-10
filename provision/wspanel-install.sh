@@ -351,9 +351,48 @@ cur_ssh="$(sshd -T 2>/dev/null | awk '$1 == "port" {print $2; exit}' || true)"; 
 ssh_port=$(ask_valid "Port SSH serveru (správa serveru i SFTP webů):" "$cur_ssh" '^[0-9]{2,5}$' "Port je číslo 10–65535.")
 [[ $ssh_port != 22 ]] && flags+=("--ssh-port=$ssh_port")
 [[ -n "${pub_ssh:-}" ]] && flags+=("--public-ssh-port=$pub_ssh") || { [[ $ssh_port != 22 ]] && flags+=("--public-ssh-port=$ssh_port"); }
-root_ssh="root přes SSH jen klíčem"
-if whiptail --title "$TITLE" --defaultno --yesno "Zakázat přihlášení roota přes SSH úplně?\n\nZapněte, jen když se na server přihlašujete jiným účtem s SSH klíčem a sudo. Jinak root zůstane, ale jen s klíčem (heslem ne)." 12 72; then
-  flags+=("--no-root-ssh"); root_ssh="root přes SSH zakázaný"
+# Keys only for administrators, never a lock-out: who can get in with a key.
+SSH_KEY_RE='^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+=*( [^[:cntrl:]]*)?$'
+key_of() { local h; h="$(getent passwd "$1" | cut -d: -f6)"; [[ -n "$h" && -f "$h/.ssh/authorized_keys" ]] && grep -Eq "$SSH_KEY_RE" "$h/.ssh/authorized_keys"; }
+sudo_key=""
+for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do key_of "$u" && sudo_key="$u" && break; done
+root_ssh=""
+have_key=0; { key_of root || [[ -n "$sudo_key" ]]; } && have_key=1
+auth=$(W --default-item heslo --menu "Jak se správci (root) přihlašují přes SSH?" 13 76 2 \
+  heslo "Heslem i klíčem (heslo hlídá fail2ban)" \
+  klic  "Jen SSH klíčem (bezpečnější)") || auth=heslo
+if [[ $auth == heslo ]]; then
+  flags+=("--ssh-password=yes"); root_ssh="správci heslem i klíčem"
+fi
+if ((! have_key)); then
+  # Keys only needs a key; with the password, one is welcome but optional.
+  while :; do
+    if [[ $auth == klic ]]; then
+      msg="Jen klíčem: root zatím žádný klíč nemá, bez něj by se na server nedalo přihlásit.\n\nVložte veřejný klíč pro root (ssh-ed25519 AAAA… z ~/.ssh/id_ed25519.pub, z Termiusu apod.)."
+    else
+      msg="Volitelně veřejný SSH klíč pro root (ssh-ed25519 AAAA…), přihlášení heslem zůstane.\n\nPrázdné = jen heslo."
+    fi
+    key=$(W --inputbox "$msg" 14 76 "") || key=""
+    key="$(printf '%s' "$key" | tr -d '\r' | sed 's/^ *//; s/ *$//')"
+    if [[ -z "$key" && $auth == heslo ]]; then
+      break
+    elif [[ -n "$key" && "$key" =~ $SSH_KEY_RE ]]; then
+      flags+=("--ssh-key=$key"); root_ssh+=" (klíč ${key%% *} vložený)"
+      break
+    elif [[ -z "$key" ]]; then
+      W --msgbox "Bez klíče nejde zvolit přihlášení jen klíčem: vložte klíč, nebo se vraťte a zvolte heslo i klíč." 9 72 || true
+      auth=$(W --default-item heslo --menu "Jak se správci (root) přihlašují přes SSH?" 13 76 2 \
+        heslo "Heslem i klíčem (heslo hlídá fail2ban)" \
+        klic  "Jen SSH klíčem (bezpečnější)") || auth=heslo
+      if [[ $auth == heslo ]]; then flags+=("--ssh-password=yes"); root_ssh="správci heslem i klíčem"; fi
+    else
+      W --msgbox "To není veřejný SSH klíč. Začíná ssh-ed25519, ssh-rsa nebo ecdsa-sha2-… a má jeden řádek." 9 72 || true
+    fi
+  done
+fi
+[[ $auth == klic ]] && root_ssh="správci jen klíčem${root_ssh#správci heslem i klíčem}"
+if [[ -n "$sudo_key" ]] && whiptail --title "$TITLE" --defaultno --yesno "Zakázat přihlášení roota přes SSH úplně?\n\nSprávce $sudo_key má SSH klíč a sudo: přihlášení zůstane přes něj." 11 72; then
+  flags+=("--no-root-ssh"); root_ssh+=", root přes SSH zakázaný (správa přes $sudo_key)"
 fi
 say "SSH: port $ssh_port, $root_ssh"
 

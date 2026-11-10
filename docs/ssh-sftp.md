@@ -46,6 +46,25 @@ Po přihlášení jste v adresáři webu:
   sám klíč nepřidá.
 - Opakované chybné přihlášení zablokuje IP adresu (fail2ban, 5 pokusů →
   1 hodina).
-- Root se heslem nepřihlásí nikdy.
+- Správci serveru (root) se přihlašují podle volby při instalaci: **heslem
+  i klíčem** (výchozí v průvodci), nebo **jen klíčem**. Jen klíčem jde zvolit,
+  až když má root (nebo jiný správce se `sudo`) SSH klíč: instalace správce
+  nikdy nezamkne venku. Bez klíče root heslo podrží a na konci instalace
+  na to upozorní. Změna: instalace znovu s `--ssh-password=yes|no`
+  (a případně `--ssh-key=…`).
+
+### Nejde se přihlásit jako root heslem
+
+Server přijímá od správců jen klíč (`Authentication that can continue:
+publickey`). Přihlaste se konzolí VPS u poskytovatele a buď přidejte klíč:
+
+```
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+echo 'ssh-ed25519 AAAA… vas-klic' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+```
+
+nebo povolte heslo: `wspanel-install` a v SSH zvolte *Heslem i klíčem*
+(neinteraktivně `./install --yes --ssh-password=yes`).
 - Změna nastavení ukončí běžící SSH relace webu.
 - Co uživatel dělá v shellu, panel neaudituje (agent audituje jen své operace).

@@ -1,9 +1,10 @@
 # Managed by WSPanel install.sh.
-# Server accounts log in with keys only. Site users authenticate with keys the
-# panel manages in root-owned /etc/ssh/authorized_keys/<user> (they cannot add
-# their own) or, when enabled in the panel, a password (locked otherwise;
-# fail2ban bans repeated failures).
-PasswordAuthentication no
+# Administrators log in with keys, and with a password too when the installer
+# was told so (--ssh-password=yes; fail2ban bans repeated failures). Site users
+# authenticate with keys the panel manages in root-owned
+# /etc/ssh/authorized_keys/<user> (they cannot add their own) or, when enabled
+# in the panel, a password (locked otherwise).
+PasswordAuthentication __PASSWORD__
 KbdInteractiveAuthentication no
 PermitRootLogin __ROOT_LOGIN__
 

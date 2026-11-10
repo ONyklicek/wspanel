@@ -452,12 +452,15 @@ func systemAccounts(users, groups map[string]bool) ([]sysUser, []sysGroup) {
 }
 
 // enabledUnits: WSPanel's units that start with the system (the restore
-// enables them again; the symlinks are not copied).
+// enables them again; the symlinks are not copied). Game servers are not part
+// of the server's backup, so neither are their units (nor the RCON guard).
 func enabledUnits(env *Env) []string {
 	var out []string
 	wants, _ := filepath.Glob(filepath.Join(env.Cfg.SystemdDir, "*.wants", "wspanel-*"))
 	for _, w := range wants {
-		out = append(out, filepath.Base(w))
+		if name := filepath.Base(w); !strings.HasPrefix(name, "wspanel-game-") && !strings.HasPrefix(name, "wspanel-games-") {
+			out = append(out, name)
+		}
 	}
 	slices.Sort(out)
 	return slices.Compact(out)

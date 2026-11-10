@@ -68,6 +68,8 @@ PUBLIC_HTTPS_PORT=443
 PUBLIC_IPV4=""       # server's public addresses for suggested DNS records; detected when empty
 PUBLIC_IPV6=""
 ROOT_LOGIN="prohibit-password"
+SSH_KEY=""          # a public key for root (added to /root/.ssh/authorized_keys)
+SSH_PASSWORD="no"   # yes: administrators (root too) also log in with a password; no: keys only
 UNENFORCED_BIND=false
 PANEL_ALLOW=""      # comma-separated IPs/CIDRs allowed to open the panel; empty = keep current (public on first install)
 DNS_SERVER="none"   # powerdns: this server is authoritative DNS for zones managed in the panel
@@ -114,7 +116,9 @@ for arg in "$@"; do
     --public-ipv4=*) PUBLIC_IPV4="${arg#*=}" ;; # behind NAT: the public address
     --public-ipv6=*) PUBLIC_IPV6="${arg#*=}" ;;
     --allow-unenforced-socket-bind) UNENFORCED_BIND=true ;; # dev containers only (no cgroup BPF)
-    --no-root-ssh) ROOT_LOGIN="no" ;; # make sure another admin account has a key first
+    --no-root-ssh) ROOT_LOGIN="no" ;; # another admin account (sudo) needs a key: checked below
+    --ssh-key=*) SSH_KEY="${arg#*=}" ;; # "ssh-ed25519 AAAA… comment": root logs in with it
+    --ssh-password=*) SSH_PASSWORD="${arg#*=}" ;; # yes: administrators with a password too (fail2ban guards it)
     --mail=*) MAIL_DEFAULT="${arg#*=}" ;;
     --dns=*) DNS_SERVER="${arg#*=}" ;;
     --panel-allow=*) PANEL_ALLOW="${arg#*=}" ;; # e.g. 10.8.0.0/24,203.0.113.7 ; "any" = public again
@@ -172,6 +176,16 @@ MAIL_NAME="$PANEL_DOMAIN"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${MAIL_NAME}"
 [[ "$MAIL_DEFAULT" == send || "$MAIL_DEFAULT" == capture ]] || die "--mail must be send or capture"
 [[ "$DNS_SERVER" == none || "$DNS_SERVER" == powerdns ]] || die "--dns must be none or powerdns"
+[[ "$SSH_PASSWORD" == yes || "$SSH_PASSWORD" == no ]] || die "--ssh-password must be yes or no"
+# Root without SSH needs another administrator who can get in: before anything changes.
+if [[ "$ROOT_LOGIN" == no ]]; then
+  ok_admin=""
+  for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
+    h="$(getent passwd "$u" | cut -d: -f6)"
+    [[ -n "$h" && -s "$h/.ssh/authorized_keys" ]] && ok_admin="$u" && break
+  done
+  [[ -n "$ok_admin" ]] || die "--no-root-ssh: no other administrator (group sudo) has an SSH key; root would be the only way in"
+fi
 [[ -z "$PUBLIC_SSH_PORT" ]] && PUBLIC_SSH_PORT="$SSH_PORT"
 [[ "$PUBLIC_SSH_PORT" =~ ^[0-9]+$ && "$PUBLIC_HTTPS_PORT" =~ ^[0-9]+$ ]] || die "invalid --public-*-port"
 # Where browsers reach the panel: its own port, or the sites' (published) HTTPS port.
@@ -842,7 +856,38 @@ install -m 0644 "$HERE/files/dbtools/dbtools-pool.conf" "/etc/php/$PANEL_PHP/fpm
 # ---------------------------------------------------------------- SSH / SFTP
 log "SSH (keys only) and fail2ban"
 install -d -m 0755 /etc/ssh/authorized_keys /etc/panel-sites/bin
-sed -e "s|__ROOT_LOGIN__|$ROOT_LOGIN|" "$HERE/files/sshd-wspanel.conf.tmpl" > /etc/ssh/sshd_config.d/50-wspanel.conf
+SSH_KEY_RE='^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+=*( [^[:cntrl:]]*)?$'
+if [[ -n "$SSH_KEY" ]]; then
+  [[ "$SSH_KEY" =~ $SSH_KEY_RE ]] || die "--ssh-key: a public SSH key (ssh-ed25519 AAAA… comment)"
+  install -d -m 0700 /root/.ssh
+  touch /root/.ssh/authorized_keys && chmod 0600 /root/.ssh/authorized_keys
+  grep -qxF "$SSH_KEY" /root/.ssh/authorized_keys || printf '%s\n' "$SSH_KEY" >> /root/.ssh/authorized_keys
+fi
+# has_key <user>: an SSH key in the user's authorized_keys.
+has_key() {
+  local home
+  home="$(getent passwd "$1" | cut -d: -f6)"
+  [[ -n "$home" && -f "$home/.ssh/authorized_keys" ]] && grep -Eq "$SSH_KEY_RE" "$home/.ssh/authorized_keys"
+}
+sudo_with_key=""
+for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
+  has_key "$u" && sudo_with_key="$u" && break
+done
+# Never lock the administrator out: keys only when an administrator has one.
+# With --ssh-password=yes administrators keep their passwords by choice.
+ROOT_PASSWORD=0
+if [[ "$SSH_PASSWORD" == yes ]]; then
+  [[ "$ROOT_LOGIN" == no ]] || ROOT_LOGIN="yes"
+elif [[ "$ROOT_LOGIN" == no ]]; then
+  [[ -n "$sudo_with_key" ]] || die "--no-root-ssh: no other administrator (group sudo) has an SSH key; root would be the only way in"
+elif ! has_key root && [[ -z "$sudo_with_key" ]]; then
+  ROOT_PASSWORD=1
+  ROOT_LOGIN="yes"
+fi
+sed -e "s|__ROOT_LOGIN__|$ROOT_LOGIN|" -e "s|__PASSWORD__|$SSH_PASSWORD|" "$HERE/files/sshd-wspanel.conf.tmpl" > /etc/ssh/sshd_config.d/50-wspanel.conf
+if ((ROOT_PASSWORD)); then
+  printf '\n# No administrator has an SSH key yet: root keeps its password (add a key\n# to /root/.ssh/authorized_keys and run the installer again).\nMatch User root\n\tPasswordAuthentication yes\n' >> /etc/ssh/sshd_config.d/50-wspanel.conf
+fi
 if [[ "$SSH_PORT" != 22 ]]; then
   echo "Port $SSH_PORT" > /etc/ssh/sshd_config.d/40-wspanel-port.conf
 fi
@@ -928,6 +973,11 @@ printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
 chmod 0600 /etc/wspanel/install.flags
 
 log "Done. Panel: $PANEL_URL"
+if ((ROOT_PASSWORD)); then
+  printf '\n\033[1;33mSSH:\033[0m no administrator has an SSH key, so root still logs in with its password.\n'
+  printf '     Safer: put your public key into /root/.ssh/authorized_keys (or install --ssh-key="ssh-ed25519 …")\n'
+  printf '     and run the installer again: then SSH takes keys only.\n'
+fi
 # What to set at the registrar or DNS provider, checked in public DNS now.
 (cd /srv/panel/current && runuser -u panel -- php artisan panel:dns-records 2>/dev/null) || true
 if [[ -n "$PANEL_SOURCE" && -z "${WSPANEL_ADMIN_BY_INSTALLER:-}" ]] && [[ "$(runuser -u panel -- php /srv/panel/current/artisan tinker --execute 'echo App\Models\User::count();' 2>/dev/null | tail -1)" == 0 ]]; then

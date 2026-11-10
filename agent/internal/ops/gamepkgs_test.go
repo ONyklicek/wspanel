@@ -180,3 +180,21 @@ func TestCatalogPackagesNeedWSPanelsSignature(t *testing.T) {
 		t.Errorf("one package from two places: %v", err)
 	}
 }
+
+// Game servers are not in the server's backup: their units are not either
+// (a restore would enable units whose files it never brings back).
+func TestServerBackupLeavesGameUnitsOut(t *testing.T) {
+	env, _ := gameTestEnv(t)
+	wants := filepath.Join(env.Cfg.SystemdDir, "multi-user.target.wants")
+	if err := os.MkdirAll(wants, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []string{"wspanel-web_a-app.service", "wspanel-game-3.service", "wspanel-games-rcon.service"} {
+		if err := os.WriteFile(filepath.Join(wants, u), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := enabledUnits(env); strings.Join(got, ",") != "wspanel-web_a-app.service" {
+		t.Errorf("enabled units in the backup: %v", got)
+	}
+}
