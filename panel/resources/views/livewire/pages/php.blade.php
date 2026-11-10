@@ -3,6 +3,7 @@
     $franken = $status['frankenphp'] ?? [];
 @endphp
 <div class="space-y-6">
+    @include('partials.background-jobs')
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Stav PHP se nepodařilo načíst')">{{ $error }}</x-wire::callout>
     @endif

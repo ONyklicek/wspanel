@@ -2,10 +2,11 @@
 
 namespace App\Actions\Sites;
 
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -16,7 +17,6 @@ class ManageXhprof
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     public function installed(): bool
@@ -25,12 +25,21 @@ class ManageXhprof
     }
 
     /** @throws AgentException */
-    public function install(): bool
+    public function install(): AgentTask
     {
         $job = $this->agent->call('xhprof.install');
         Cache::forget('xhprof.installed');
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 900) !== null : true;
+        return AgentTasks::start($job, 'xhprof.install', [
+            'title' => __('Instalace XHProf + XHGui'),
+            'done' => __('XHProf nainstalován'),
+            'body' => __('Zapnete ho u webu v menu Nastavení → Výkon a ladění → XHProf.'),
+        ], self::class.'@installedNow', key: 'xhprof');
+    }
+
+    public function installedNow(AgentTask $task): void
+    {
+        Cache::forget('xhprof.installed');
     }
 
     /**

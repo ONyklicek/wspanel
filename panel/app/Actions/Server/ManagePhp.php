@@ -2,9 +2,10 @@
 
 namespace App\Actions\Server;
 
+use App\Models\AgentTask;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Cache;
  */
 class ManagePhp
 {
-    public function __construct(private readonly AgentClient $agent, private readonly AgentJobs $jobs) {}
+    public function __construct(private readonly AgentClient $agent) {}
 
     /**
      * @return array{versions: list<array{version: string, installed: bool, default: bool, extensions: list<string>, available: list<string>}>, installable: list<string>, frankenphp: array<string, mixed>}
@@ -26,26 +27,35 @@ class ManagePhp
     }
 
     /**
-     * Installs or removes an extension; waits a while for apt.
-     *
-     * @return bool true when finished, false while it still runs in the background
+     * Installs or removes an extension (apt), in the background.
      *
      * @throws AgentException
      */
-    public function extension(string $version, string $extension, string $action): bool
+    public function extension(string $version, string $extension, string $action): AgentTask
     {
         $job = $this->agent->call('php.extension', ['version' => $version, 'extension' => $extension, 'action' => $action]);
 
-        return $this->jobs->await($job['job_id'], 40) !== null;
+        return AgentTasks::start($job, 'php.extension', [
+            'title' => $action === 'install' ? __('PHP :version: instalace :extension', ['version' => $version, 'extension' => $extension])
+                : __('PHP :version: odebrání :extension', ['version' => $version, 'extension' => $extension]),
+            'done' => "PHP {$version}: {$extension} ".($action === 'install' ? __('nainstalováno') : __('odebráno')),
+        ], key: 'php');
     }
 
     /** @throws AgentException */
-    public function install(string $version): bool
+    public function install(string $version): AgentTask
     {
         $job = $this->agent->call('php.install', ['version' => $version]);
-        $done = $this->jobs->await($job['job_id'], 40) !== null;
-        Cache::forget('agent.sys.versions');
 
-        return $done;
+        return AgentTasks::start($job, 'php.install', [
+            'title' => __('Instalace PHP :version', ['version' => $version]),
+            'done' => __('PHP :version nainstalováno', ['version' => $version]),
+            'body' => __('Weby ho zvolí v Nastavení → Běh a PHP → Verze.'),
+        ], self::class.'@versionsChanged', key: 'php');
+    }
+
+    public function versionsChanged(AgentTask $task): void
+    {
+        Cache::forget('agent.sys.versions');
     }
 }

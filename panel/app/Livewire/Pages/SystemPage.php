@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\System\ManagePackages;
 use App\Actions\System\ManageSystem;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
@@ -16,6 +17,7 @@ use NyonCode\WirePanels\Pages\Page;
 class SystemPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.system';
 
@@ -43,6 +45,17 @@ class SystemPage extends Page
     public ?array $disks = null;
 
     public ?string $error = null;
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['packages'];
+    }
+
+    /** A job of this page ended: the page as it is now. */
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->load();
+    }
 
     public function mount(): void
     {
@@ -77,9 +90,7 @@ class SystemPage extends Page
     public function installSmart(): void
     {
         try {
-            app(ManagePackages::class)->install('smartmontools')
-                ? Toast::success(__('Sledování disků nainstalováno'), __('smartd navíc hlídá disky na pozadí a závady hlásí poštou rootovi.'))
-                : Toast::warning(__('Instalace ještě běží'), __('Obnovte stránku za chvíli.'));
+            app(ManagePackages::class)->install('smartmontools');
         } catch (AgentException $e) {
             Toast::error(__('Instalace selhala'), $e->getMessage());
         }

@@ -51,8 +51,12 @@ class PhpPageTest extends TestCase
     {
         $this->agent->shouldReceive('call')->once()->with('php.extension', ['version' => '8.4', 'extension' => 'imagick', 'action' => 'install'])->andReturn(['job_id' => 'j1']);
 
+        // In the background: the page says so, then how it ended.
         $this->pageAction(Livewire::test(PhpPage::class), 'addExtension_8_4', ['extension' => 'imagick'])
             ->assertHasNoErrors()
+            ->assertNotified('Spuštěno na pozadí')
+            ->assertSee('PHP 8.4: instalace imagick')
+            ->call('pollBackgroundJobs')
             ->assertNotified('PHP 8.4: imagick nainstalováno');
     }
 
@@ -70,6 +74,8 @@ class PhpPageTest extends TestCase
 
         $this->pageAction(Livewire::test(PhpPage::class), 'installVersion', ['version' => '8.5'])
             ->assertHasNoErrors()
+            ->assertNotified('Spuštěno na pozadí')
+            ->call('pollBackgroundJobs')
             ->assertNotified('PHP 8.5 nainstalováno');
     }
 }

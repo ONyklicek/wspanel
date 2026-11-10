@@ -12,6 +12,8 @@ use App\Livewire\Mail\ListMailDomains;
 use App\Livewire\Mail\MailboxTable;
 use App\Livewire\Mail\ViewMailDomain;
 use App\Livewire\Sites\SiteMail;
+use App\Livewire\TaskIndicator;
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\DnsZone;
 use App\Models\Mailbox;
@@ -487,6 +489,8 @@ class MailHostingTest extends TestCase
         $this->agent->shouldReceive('call')->with('job.status', Mockery::any())->andReturn(['status' => 'done', 'output' => ['filters' => []]]);
 
         $this->headerTableAction(Livewire::test(ListMailDomains::class), 'filters', ['greylist' => true, 'antivirus' => true])
-            ->assertHasNoErrors()->assertNotified('Ochrana pošty uložena');
+            ->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
+        Livewire::test(TaskIndicator::class)->assertDontSee('úloha běží');
+        $this->assertSame('done', AgentTask::sole()->status);
     }
 }

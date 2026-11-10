@@ -67,9 +67,7 @@ class ListMailDomains extends ListPage
                 ->action(function (array $data) {
                     abort_unless(Gate::allows('admin'), 403);
                     try {
-                        app(ManageMailHosting::class)->setFilters((bool) $data['greylist'], (bool) $data['antivirus'])
-                            ? Toast::success(__('Ochrana pošty uložena'))
-                            : Toast::warning(__('Ještě se nastavuje'), __('Instalace ClamAV pokračuje na pozadí.'));
+                        app(ManageMailHosting::class)->setFilters((bool) $data['greylist'], (bool) $data['antivirus']);
                     } catch (AgentException $e) {
                         Toast::error(__('Ochranu pošty se nepodařilo uložit'), $e->getMessage());
                     }

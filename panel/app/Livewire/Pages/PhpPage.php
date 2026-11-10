@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\Server\ManagePhp;
 use App\Enums\SiteMode;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -20,6 +21,7 @@ use NyonCode\WirePanels\Pages\Page;
 class PhpPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.php';
 
@@ -42,6 +44,17 @@ class PhpPage extends Page
     public array $status = [];
 
     public ?string $error = null;
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['php'];
+    }
+
+    /** A job of this page ended: the page as it is now. */
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->refreshStatus();
+    }
 
     public function mount(): void
     {
@@ -85,13 +98,11 @@ class PhpPage extends Page
                     ->options(collect($installable)->mapWithKeys(fn ($v) => [$v => "PHP {$v}"])->all())])
                 ->action(function (array $data) {
                     try {
-                        app(ManagePhp::class)->install($data['version'])
-                            ? Toast::success(__('PHP :version nainstalováno', ['version' => $data['version']]))
-                            : Toast::success(__('Instalace PHP :version běží na pozadí', ['version' => $data['version']]), __('Obnovte stránku za pár minut.'));
+                        app(ManagePhp::class)->install($data['version']);
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
-                    $this->refreshStatus();
+                    $this->loadBackgroundJobs();
                 }),
         ];
     }
@@ -152,14 +163,10 @@ class PhpPage extends Page
     private function runExtension(string $version, string $extension, string $action): void
     {
         try {
-            $done = app(ManagePhp::class)->extension($version, $extension, $action);
-            $verb = $action === 'install' ? __('nainstalováno') : __('odebráno');
-            $done
-                ? Toast::success("PHP {$version}: {$extension} {$verb}")
-                : Toast::success(__('PHP :version: :extension se zpracovává na pozadí', ['version' => $version, 'extension' => $extension]), __('Obnovte stránku za chvíli.'));
+            app(ManagePhp::class)->extension($version, $extension, $action);
         } catch (AgentException $e) {
             Toast::error(__('Změna rozšíření selhala'), $e->getMessage());
         }
-        $this->refreshStatus();
+        $this->loadBackgroundJobs();
     }
 }

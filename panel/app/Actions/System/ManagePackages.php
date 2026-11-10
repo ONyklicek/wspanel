@@ -2,16 +2,16 @@
 
 namespace App\Actions\System;
 
+use App\Models\AgentTask;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 
 /** Debian packages, through the agent (Server → Balíčky). */
 class ManagePackages
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -47,19 +47,19 @@ class ManagePackages
     }
 
     /**
-     * true when installed, false while still running.
+     * Installs a package (and what it needs), in the background.
      *
      * @throws AgentException
      */
-    public function install(string $name): bool
+    public function install(string $name): AgentTask
     {
-        return $this->run('pkg.install', $name);
+        return $this->run('pkg.install', $name, __('Instalace balíčku :name', ['name' => $name]), __(':name nainstalován', ['name' => $name]));
     }
 
     /** @throws AgentException */
-    public function remove(string $name): bool
+    public function remove(string $name): AgentTask
     {
-        return $this->run('pkg.remove', $name);
+        return $this->run('pkg.remove', $name, __('Odebrání balíčku :name', ['name' => $name]), __(':name odebrán', ['name' => $name]));
     }
 
     /** @throws AgentException */
@@ -69,10 +69,10 @@ class ManagePackages
     }
 
     /** @throws AgentException */
-    private function run(string $op, string $name): bool
+    private function run(string $op, string $name, string $title, string $done): AgentTask
     {
         $job = $this->agent->call($op, ['name' => $name]);
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 600) !== null : true;
+        return AgentTasks::start($job, $op, ['title' => $title, 'done' => $done], key: 'packages');
     }
 }

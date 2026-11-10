@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\System\ManagePackages;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use Illuminate\Support\Str;
@@ -13,6 +14,7 @@ use NyonCode\WirePanels\Pages\Page;
 class PackagesPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.packages';
 
@@ -52,6 +54,17 @@ class PackagesPage extends Page
     public ?array $pending = null;
 
     public ?string $error = null;
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['packages'];
+    }
+
+    /** A job of this page ended: the page as it is now. */
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->load();
+    }
 
     public function mount(): void
     {
@@ -114,10 +127,7 @@ class PackagesPage extends Page
         ['action' => $action, 'name' => $name] = $this->pending;
         $this->pending = null;
         try {
-            $done = $action === 'install' ? app(ManagePackages::class)->install($name) : app(ManagePackages::class)->remove($name);
-            $done
-                ? Toast::success($action === 'install' ? __(':name nainstalován', ['name' => $name]) : __(':name odebrán', ['name' => $name]))
-                : Toast::warning(__('Ještě to běží'), __('Obnovte stránku za chvíli.'));
+            $action === 'install' ? app(ManagePackages::class)->install($name) : app(ManagePackages::class)->remove($name);
         } catch (AgentException $e) {
             Toast::error($action === 'install' ? __('Instalace selhala') : __('Odebrání selhalo'), $e->getMessage());
         }

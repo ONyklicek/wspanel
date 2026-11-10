@@ -2,6 +2,7 @@
 
 namespace App\Actions\Mail;
 
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\MailAlias;
 use App\Models\Mailbox;
@@ -9,7 +10,7 @@ use App\Models\MailDomain;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use App\Support\CurrentClient;
 use App\Support\DomainOwnership;
 use App\Support\Limits;
@@ -26,7 +27,6 @@ class ManageMailHosting
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /** @return array<string, mixed> */
@@ -64,17 +64,24 @@ class ManageMailHosting
 
     /**
      * Greylisting and the antivirus. Switching ClamAV on installs and starts
-     * it first (a job that may take minutes); false when it did not finish.
+     * it first (minutes), in the background.
      *
      * @throws AgentException
      */
-    public function setFilters(bool $greylist, bool $antivirus): bool
+    public function setFilters(bool $greylist, bool $antivirus): AgentTask
     {
         $job = $this->agent->call('mail.filters.set', ['greylist' => $greylist, 'antivirus' => $antivirus]);
-        $done = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 900) !== null : true;
         Cache::forget('mail.hosting.status');
 
-        return $done;
+        return AgentTasks::start($job, 'mail.filters.set', [
+            'title' => $antivirus ? __('Ochrana pošty (instalace ClamAV)') : __('Ochrana pošty'),
+            'done' => __('Ochrana pošty uložena'),
+        ], self::class.'@filtersSet', key: 'mail-filters');
+    }
+
+    public function filtersSet(AgentTask $task): void
+    {
+        Cache::forget('mail.hosting.status');
     }
 
     public function installed(): bool

@@ -7,12 +7,12 @@ use App\Enums\SiteMode;
 use App\Livewire\Pages\ModulesPage;
 use App\Livewire\Sites\CreateSitePage as CreateSite;
 use App\Livewire\Sites\ListSites;
+use App\Models\AgentTask;
 use App\Models\Service;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -219,25 +219,24 @@ class RuntimeModesTest extends TestCase
     public function test_python_is_installed_from_the_modules_page(): void
     {
         $this->agent->shouldReceive('call')->once()->with('python.install', ['version' => '3.14'])->andReturn(['job_id' => 'j1']);
-        $jobs = Mockery::mock(AgentJobs::class);
-        $jobs->shouldReceive('await')->once()->with('j1', 120)->andReturn(['version' => '3.14', 'changed' => true]);
-        $this->app->instance(AgentJobs::class, $jobs);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'j1'])->andReturn(['status' => 'done', 'output' => ['version' => '3.14', 'changed' => true]]);
 
         Livewire::test(ModulesPage::class)
             ->assertSee('Python 3.13')
             ->call('mountAction', 'installPython')
             ->assertSet('mountedActions.0.data.version', '3.14')
             ->call('callMountedAction')
-            ->assertHasNoErrors();
+            ->assertHasNoErrors()
+            ->assertSee('Instalace Pythonu 3.14')
+            ->call('pollBackgroundJobs')
+            ->assertRedirect();
     }
 
     public function test_python_is_upgraded_to_its_newest_patch_from_the_modules_page(): void
     {
         $this->agent->shouldReceive('call')->once()->with('python.upgrade', ['version' => '3.13'])->andReturn(['job_id' => 'j2']);
-        $jobs = Mockery::mock(AgentJobs::class);
-        $jobs->shouldReceive('await')->once()->with('j2', 120)
-            ->andReturn(['version' => '3.13', 'from' => '3.13.5', 'to' => '3.13.18', 'changed' => true, 'restarted' => ['wspanel-web_a-app.service']]);
-        $this->app->instance(AgentJobs::class, $jobs);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'j2'])->andReturn(['status' => 'done',
+            'output' => ['version' => '3.13', 'from' => '3.13.5', 'to' => '3.13.18', 'changed' => true, 'restarted' => ['wspanel-web_a-app.service']]]);
 
         Livewire::test(ModulesPage::class)
             ->assertSee('Python 3.13.5')
@@ -245,7 +244,10 @@ class RuntimeModesTest extends TestCase
             ->assertSet('mountedActions.0.data.version', '3.13')
             ->call('callMountedAction')
             ->assertHasNoErrors()
-            ->assertNotified();
+            ->assertNotified('Spuštěno na pozadí')
+            ->call('pollBackgroundJobs');
+        $this->assertSame('Python aktualizován na 3.13.18', AgentTask::sole()->done_title);
+        $this->assertNotNull(AgentTask::sole()->notified_at);
     }
 
     public function test_a_celery_worker_takes_the_sites_celery_app(): void

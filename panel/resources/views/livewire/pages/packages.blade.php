@@ -1,5 +1,6 @@
 @php($size = fn ($b) => \Illuminate\Support\Number::fileSize((int) $b, 1))
 <div class="space-y-6">
+    @include('partials.background-jobs')
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif

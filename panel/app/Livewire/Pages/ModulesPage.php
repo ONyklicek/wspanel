@@ -14,7 +14,6 @@ use App\Models\Setting;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Features;
-use App\Support\Lang;
 use App\Support\Toast;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Radio;
@@ -116,10 +115,10 @@ class ModulesPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['mail-install'];
+        return ['mail-install', 'python', 'xhprof'];
     }
 
-    /** The menu gains Pošta: a fresh page load shows it. */
+    /** The menu gains Pošta, a module its card: a fresh page load shows it. */
     protected function backgroundJobFinished(string $key, bool $ok): void
     {
         if ($ok) {
@@ -177,13 +176,11 @@ class ModulesPage extends Page
                 ])
                 ->action(function (array $data) {
                     try {
-                        app(ManagePython::class)->install((string) $data['version'])
-                            ? Toast::success(__('Python :version nainstalován', ['version' => $data['version']]), __('Při zakládání webu zvolte režim Python.'))
-                            : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
+                        app(ManagePython::class)->install((string) $data['version']);
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
-                    $this->redirect(self::url());
+                    $this->loadBackgroundJobs();
                 }),
             Action::make('upgradePython')
                 ->label(__('Aktualizovat Python'))
@@ -199,20 +196,11 @@ class ModulesPage extends Page
                 ])
                 ->action(function (array $data) {
                     try {
-                        $out = app(ManagePython::class)->upgrade((string) $data['version']);
-                        match (true) {
-                            $out === null => Toast::warning(__('Aktualizace ještě běží'), __('Stav se ukáže za chvíli.')),
-                            ! ($out['changed'] ?? false) => Toast::success(__('Python je aktuální'), __('Python :version je na nejnovějším opravném vydání.', ['version' => $out['from'] ?? $data['version']])),
-                            default => Toast::success(
-                                __('Python aktualizován na :version', ['version' => $out['to'] ?? '']),
-                                ($out['restarted'] ?? []) === [] ? __('Žádný web na této verzi neběží.')
-                                    : __('Restartované služby:').' '.Lang::count(count($out['restarted']), ':count služba', ':count služby', ':count služeb'),
-                            ),
-                        };
+                        app(ManagePython::class)->upgrade((string) $data['version']);
                     } catch (AgentException $e) {
                         Toast::error(__('Aktualizace selhala'), $e->getMessage());
                     }
-                    $this->redirect(self::url());
+                    $this->loadBackgroundJobs();
                 }),
             Action::make('installXhprof')
                 ->label(__('Nainstalovat XHProf + XHGui'))
@@ -222,13 +210,11 @@ class ModulesPage extends Page
                 ->modalDescription(__('Profilování PHP: rozšíření XHProf pro všechny verze PHP a XHGui pro prohlížení výsledků. Zapíná se u každého webu zvlášť (Nastavení → Výkon a ladění → XHProf), načte se jen do poolu webů, které ho mají zapnuté.'))
                 ->action(function () {
                     try {
-                        app(ManageXhprof::class)->install()
-                            ? Toast::success(__('XHProf nainstalován'), __('Zapnete ho u webu v menu Nastavení → Výkon a ladění → XHProf.'))
-                            : Toast::warning(__('Instalace ještě běží'), __('Stav se ukáže za chvíli.'));
+                        app(ManageXhprof::class)->install();
                     } catch (AgentException $e) {
                         Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
-                    $this->redirect(self::url());
+                    $this->loadBackgroundJobs();
                 }),
             Action::make('twoFactor')
                 ->label(__('Dvoufázové přihlášení'))
