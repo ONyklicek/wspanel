@@ -330,6 +330,22 @@ if [[ $mode != lan ]] && whiptail --title "$TITLE" $nat_default --yesno "Je serv
   say "Za NATem: veřejná adresa $pub4, HTTPS $pub_https, SSH $pub_ssh"
 fi
 
+# The panel's domain must point here before Let's Encrypt issues its
+# certificate: what to set, said now, not after the installation.
+if [[ ${domain:-} && $mode != lan && ! $domain =~ $INTERNAL_RE ]]; then
+  want4="${pub4:-$ip4}"
+  ip6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+  [[ $ip6 =~ ^(fe80|fc|fd) ]] && ip6=""
+  have4="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | paste -sd ' ' -)"
+  have6="$(getent ahostsv6 "$domain" 2>/dev/null | awk '$1 !~ /^::ffff:/ {print $1}' | sort -u | paste -sd ' ' -)"
+  records="  A     $domain  →  $want4   $([[ " $have4 " == *" $want4 "* ]] && echo '✓ nastaveno' || echo "✗ teď: ${have4:-žádný}")"
+  [[ -n $ip6 ]] && records+="\n  AAAA  $domain  →  $ip6   $([[ " $have6 " == *" $ip6 "* ]] && echo '✓ nastaveno' || echo "✗ teď: ${have6:-žádný}")"
+  if [[ -n $want4 && " $have4 " != *" $want4 "* ]]; then
+    W --msgbox "Doména $domain zatím neukazuje na tento server.\n\nU registrátora nebo poskytovatele DNS nastavte:\n\n$records\n\nInstalace proběhne i tak; certifikát Let's Encrypt se vydá, jakmile záznam začne platit (zkouší se znovu). Záznamy se vypíšou i na konci instalace." 18 76 || true
+  fi
+  say "DNS: $(printf '%b' "$records" | sed 's/^ *//' | paste -sd ';' - | sed 's/;/; /g')"
+fi
+
 # ---------------------------------------------------------------- SSH
 cur_ssh="$(sshd -T 2>/dev/null | awk '$1 == "port" {print $2; exit}' || true)"; [[ -n "$cur_ssh" ]] || cur_ssh=22
 ssh_port=$(ask_valid "Port SSH serveru (správa serveru i SFTP webů):" "$cur_ssh" '^[0-9]{2,5}$' "Port je číslo 10–65535.")
