@@ -36,5 +36,15 @@ http://{{.Domain}} {
 		env SERVER_PORT 443
 		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
 	}
-	file_server
+{{- if eq .Framework "laravel"}}
+
+	# Vite's build output carries a hash in every name: a browser keeps it for
+	# a year without asking again; a new build has new names.
+	@wsp_hashed path /build/assets/*
+	header @wsp_hashed Cache-Control "public, max-age=31536000, immutable"
+{{- end}}
+	# A .br / .zst / .gz next to a file (a build step's output) is sent as it is.
+	file_server {
+		precompressed zstd br gzip
+	}
 }

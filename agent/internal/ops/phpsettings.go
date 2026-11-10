@@ -227,3 +227,26 @@ func applyPHPRuntime(ctx context.Context, env *Env, l siteLayout) error {
 	}
 	return protocol.Invalid("mode " + l.Mode)
 }
+
+// RequestTerminateTimeout is the pool's wall-clock limit of one request.
+// max_execution_time counts only the script's own time, not a wait for the
+// database, an API or a lock, so without it one hung call pins a worker for
+// good and a few of them leave the site without workers. It is the site's
+// max_execution_time with a margin, at least 300 s (uploads, exports), and
+// one hour when the site turned the PHP limit off (0).
+func (l siteLayout) RequestTerminateTimeout() int {
+	for _, v := range l.PHPValues {
+		if v.Key != "max_execution_time" {
+			continue
+		}
+		n, err := strconv.Atoi(v.Value)
+		switch {
+		case err != nil:
+		case n == 0:
+			return 3600
+		default:
+			return max(n+60, 300)
+		}
+	}
+	return 300
+}

@@ -104,10 +104,24 @@
 		# on 127.0.0.1 directly, so its HTTP API (/apps) is not exposed.
 		@reverb path /app /app/*
 		handle @reverb {
-			reverse_proxy 127.0.0.1:{{.ReverbPort}}
+			reverse_proxy 127.0.0.1:{{.ReverbPort}} {
+			# Any site's change reloads the edge: open WebSockets and event
+			# streams stay up to 5 minutes and reconnect spread out, not all
+			# sites' clients at once.
+			stream_close_delay 5m
+		}
 		}
 {{- end}}
-		reverse_proxy {{.Upstream}}
+		reverse_proxy {{.Upstream}} {
+			# An app being restarted (a deploy, a crash) is waited for up to
+			# 10 s: the visitor gets the page a moment later, not a 502.
+			lb_try_duration 10s
+			lb_try_interval 250ms
+			# Any site's change reloads the edge: open WebSockets and event
+			# streams stay up to 5 minutes and reconnect spread out, not all
+			# sites' clients at once.
+			stream_close_delay 5m
+		}
 	}
 	# Per-site access log (the panel's traffic stats read it).
 	log {

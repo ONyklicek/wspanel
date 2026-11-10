@@ -409,6 +409,10 @@ fi
 # Units and wrappers name /usr/bin/frankenphp; sites set up by 1.2.0 release
 # candidates still name /usr/local/bin/frankenphp until they are saved again.
 ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
+# Worker-mode sites run FrankenPHP's own PHP (/etc/php-zts): the same tuning
+# as PHP-FPM, or they keep the package's 128 MB OPcache and memory_limit.
+install -d -m 0755 /etc/php-zts/conf.d
+install -C -m 0644 "$HERE/files/90-wspanel.ini" /etc/php-zts/conf.d/90-wspanel.ini
 # Its fixes with the daily unattended upgrades too (when those are on).
 cat > /etc/apt/apt.conf.d/52wspanel-frankenphp <<'CONF'
 // Managed by the WSPanel installer: FrankenPHP and PHP fixes from its
