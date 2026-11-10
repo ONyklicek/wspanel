@@ -170,9 +170,9 @@ PHP
 chmod 644 "$W/db.php"
 dbq() { runuser -u web_shop_localhost -- php8.4 "$W/db.php" /srv/sites/shop.localhost/shared/.env "$1" 2>&1; }
 expect "site connects with its credentials and writes" "$(dbq write)" "1"
-php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); app(App\\Actions\\Databases\\ManageDatabases::class)->backupNow(\$db);" >/dev/null
+php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); App\\Support\\AgentTasks::wait(app(App\\Actions\\Databases\\ManageDatabases::class)->backupNow(\$db), 120);" >/dev/null
 expect "data deleted" "$(dbq delete)" "0"
-php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); \$b = \$db->backups()->where('file','not like','%pre-restore%')->first(); app(App\\Actions\\Databases\\ManageDatabases::class)->restore(\$b);" >/dev/null
+php "\$db = App\\Models\\Database::where('name','shop_db')->sole(); \$b = \$db->backups()->where('file','not like','%pre-restore%')->first(); App\\Support\\AgentTasks::wait(app(App\\Actions\\Databases\\ManageDatabases::class)->restore(\$b), 120);" >/dev/null
 expect "restore brings the data back" "$(dbq count)" "1"
 check "pre-restore snapshot exists" bash -c 'ls /var/backups/wspanel/mariadb/shop_db/ | grep -q pre-restore'
 expect "dumps are root:panel 0640" "$(stat -c '%U:%G %a' "$(ls -d /var/backups/wspanel/mariadb/shop_db/* | head -1)")" "root:panel 640"
@@ -485,9 +485,9 @@ php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) 
 contains "worker site gets php_ini and its worker count" "$(cat /etc/panel-sites/web_worker_localhost.Caddyfile)" "php_ini memory_limit 512M"
 php '$s = App\Models\Site::where("domain","worker.localhost")->first(); if ($s) app(App\Actions\Sites\ManagePhpSettings::class)->set($s, []);' >/dev/null
 contains "PHP status lists FrankenPHP's extensions" "$(php 'echo json_encode(app(App\Actions\Server\ManagePhp::class)->status()["frankenphp"]);')" '"pdo_mysql"'
-expect "an extension installs" "$(php 'var_export(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "install"));' | tail -1)" "true"
+expect "an extension installs" "$(php 'echo App\Support\AgentTasks::wait(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "install"), 300)->status;' | tail -1)" "done"
 contains "and is loaded by PHP-FPM 8.4" "$(php8.4 -m 2>/dev/null)" "tidy"
-php 'app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "remove");' >/dev/null
+php 'App\Support\AgentTasks::wait(app(App\Actions\Server\ManagePhp::class)->extension("8.4", "tidy", "remove"), 300);' >/dev/null
 expect "and is removed again" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-tidy 2>/dev/null)" "config-files"
 contains "an extension others need is not removed" "$(php 'try { app(App\Actions\Server\ManagePhp::class)->extension("8.4", "igbinary", "remove"); echo "REMOVED"; } catch (Throwable $e) { echo $e->getMessage(); }')" "redis"
 expect "and redis stays" "$(dpkg-query -W -f '${db:Status-Status}' php8.4-redis 2>/dev/null)" "installed"
@@ -551,7 +551,7 @@ check "archive holds the release, shared and the dump" bash -c "tar -tzf '$sbdir
 # Change files and data after the backup.
 runuser -u web_shop_localhost -- bash -c 'echo after > /srv/sites/shop.localhost/shared/after-backup.txt'
 expect "data deleted after the backup" "$(dbq delete)" "0"
-sbout=$(sb "echo json_encode(\$m->restore(\$s, '$sbfile', true, true));")
+sbout=$(sb "echo json_encode(App\\Support\\AgentTasks::wait(\$m->restore(\$s, '$sbfile', true, true), 300)->output);")
 contains "restore reports a healthy new release" "$sbout" '"healthy":true'
 expect "restore brings the database back" "$(dbq count)" "1"
 check "files from after the backup are gone from shared" test ! -e /srv/sites/shop.localhost/shared/after-backup.txt
@@ -574,7 +574,8 @@ pkill -f dev-fake-s3 2>/dev/null
 /opt/wspanel/build/dev-fake-s3-linux-$(dpkg --print-architecture) -listen 127.0.0.1:9000 >"$W/fake-s3.log" 2>&1 &
 fakes3=$!
 sleep 1
-off() { php "try { echo json_encode(app(App\\Actions\\Server\\ManageOffsite::class)->$1); } catch (Throwable \$e) { echo 'ERR '.\$e->getMessage(); }" | tail -1; }
+# A transfer runs in the background (an AgentTask): waited for, its error said as before.
+off() { php "try { \$r = app(App\\Actions\\Server\\ManageOffsite::class)->$1; if (\$r instanceof App\\Models\\AgentTask) { \$r = App\\Support\\AgentTasks::wait(\$r, 300); if (\$r->status === 'failed') { throw new RuntimeException((string) \$r->error); } \$r = \$r->output; } echo json_encode(\$r); } catch (Throwable \$e) { echo 'ERR '.\$e->getMessage(); }" | tail -1; }
 offcfg="'enabled' => true, 'endpoint' => 'http://127.0.0.1:9000', 'region' => 'us-east-1', 'bucket' => 'e2e', 'prefix' => 'srv', 'path_style' => true, 'keep_days' => 30"
 contains "wrong credentials are refused by the test upload" "$(off "save([$offcfg, 'access_key' => 'WRONG', 'secret_key' => 'x'])")" "Přístup odepřen"
 off "save([$offcfg, 'access_key' => 'E2EKEY', 'secret_key' => 'e2e-secret'])" >/dev/null
@@ -1034,7 +1035,7 @@ runuser -u web_imp_localhost -- bash -c 'cd /srv/sites/imp.localhost/tmp && rm -
   && echo "<?php echo \"imported-from-cpanel\";" > cp/cpmove-jan/homedir/public_html/index.php \
   && printf "CREATE TABLE kv (k VARCHAR(10)); INSERT INTO kv VALUES (\x27moved\x27);\n" > cp/cpmove-jan/mysql/jan_app.sql \
   && tar -czf cpmove-jan.tar.gz -C cp cpmove-jan && rm -rf cp'
-contains "the import finds the dump and restores it" "$(php '$s = App\Models\Site::where("domain","imp.localhost")->sole(); echo json_encode(app(App\Actions\Sites\ImportSite::class)->import($s, "cpmove-jan.tar.gz"));' 2>&1 | tail -1)" '"jan_app"'
+contains "the import finds the dump and restores it" "$(php '$s = App\Models\Site::where("domain","imp.localhost")->sole(); echo json_encode(App\Support\AgentTasks::wait(app(App\Actions\Sites\ImportSite::class)->import($s, "cpmove-jan.tar.gz"), 900)->output);' 2>&1 | tail -1)" '"jan_app"'
 contains "  … the site serves the imported files" "$(https imp.localhost /)" "imported-from-cpanel"
 contains "  … and its database has the data" "$(mariadb -N -e 'SELECT k FROM jan_app.kv' 2>&1)" "moved"
 contains "  … imported as its own account, locked afterwards" "$(mariadb -N -e "SHOW CREATE USER 'jan_app-def'@'localhost'" 2>&1)" "ACCOUNT LOCK"

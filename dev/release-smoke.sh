@@ -185,14 +185,15 @@ done
 [[ "$(on 'systemctl list-units --state=active --no-legend "wspanel-web_dj_localhost-celery@*" | wc -l')" == 1 ]] || fail "the old Celery worker did not stop after the deploy"
 on 'journalctl -u "wspanel-web_dj_localhost-celery@*" --no-pager | grep -q "ready"' || fail "the Celery worker never got ready"
 # Python's patch update: just installed, so already the newest (the uv call itself is what is checked).
-out=$(tinker 'echo json_encode(app(App\Actions\Server\ManagePython::class)->upgrade("3.13"));')
+# Long operations run in the background (AgentTasks): the test waits for them.
+out=$(tinker '$t = App\Support\AgentTasks::wait(app(App\Actions\Server\ManagePython::class)->upgrade("3.13"), 300); echo json_encode($t->output ?? ["status" => $t->status, "error" => $t->error]);')
 [[ $out == *'"changed":false'* ]] || fail "python.upgrade: $out"
 [[ ${slots[0]} != "${slots[1]}" && ${slots[1]} =~ ^wspanel-web_dj_localhost-appb?\.service$ ]] || fail "the deploys did not alternate the slots: ${slots[*]}"
 on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "the Django project was not found in manage.py"
 
 log "Game server: Minecraft (Paper, the newest version, its Java from Debian)"
 game_call() { tinker '$m = app(App\Actions\Games\ManageGameServers::class); $g = App\Models\GameServer::query()->first(); '"$1"; }
-out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::Minecraft, "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); echo $s->status, " ", $v;')
+out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::Minecraft, "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); App\Support\AgentTasks::wait(App\Models\AgentTask::where("subject_id", $s->id)->where("op", "game.create")->latest("id")->first(), 900); echo $s->fresh()->status, " ", $v;')
 [[ $out == active* ]] || fail "game.create: $out"
 echo "  Paper ${out#active }"
 for _ in $(seq 90); do on 'journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' && break; sleep 2; done
@@ -208,7 +209,7 @@ rcon=$(on 'grep -o "\"rcon_port\": *[0-9]*" /var/lib/panel-agent/games/1.json | 
 on "su -s /bin/bash -c 'timeout 3 bash -c \"echo > /dev/tcp/127.0.0.1/$rcon\"' nobody 2>/dev/null" \
   && fail "a user other than root reached the RCON port"
 [[ "$(on 'stat -c %a /etc/systemd/system/wspanel-game-1.service')" == 600 ]] || fail "the game unit (RCON password) is readable by others"
-out=$(game_call 'echo json_encode($m->backup($g));')
+out=$(game_call '$t = App\Support\AgentTasks::wait($m->backup($g), 600); echo json_encode($t->output ?? ["status" => $t->status, "error" => $t->error]);')
 [[ $out == *'"file":"game-1-'* ]] || fail "game.backup: $out"
 on 'test "$(tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -c "^data/world/level.dat$")" = 1' || fail "the backup has no world"
 on '! tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -q "^data/libraries/"' || fail "the backup holds Paper's libraries"
@@ -252,7 +253,7 @@ out=$(pkg_call 'echo json_encode($p->search("htop"));')
 [[ $out == *'"name":"htop"'* ]] || fail "pkg.search: ${out:0:300}"
 out=$(pkg_call 'echo json_encode($p->preview("htop", "install"));')
 [[ $out == *'"install":["htop"'* ]] || fail "pkg.preview: $out"
-[[ "$(pkg_call 'echo $p->install("htop") ? "done" : "running";')" == done ]] || fail "pkg.install"
+[[ "$(pkg_call 'echo App\Support\AgentTasks::wait($p->install("htop"), 600)->status;')" == done ]] || fail "pkg.install"
 on 'dpkg -s htop >/dev/null 2>&1' || fail "htop was not installed"
 pkg_call '$p->hold("htop", true); echo "ok";' >/dev/null
 on 'apt-mark showhold | grep -qx htop' || fail "htop is not held"
@@ -263,7 +264,7 @@ out=$(pkg_call 'echo json_encode($p->preview("postfix", "remove"));')
 [[ $out == *'"allowed":false'* ]] || fail "removing postfix must be refused: $out"
 out=$(pkg_call 'try { $p->remove("libsasl2-modules"); echo "removed"; } catch (Throwable $e) { echo "refused"; }')
 on 'dpkg -s postfix >/dev/null 2>&1' || fail "a removal took postfix along ($out)"
-[[ "$(pkg_call 'echo $p->remove("htop") ? "done" : "running";')" == done ]] || fail "pkg.remove"
+[[ "$(pkg_call 'echo App\Support\AgentTasks::wait($p->remove("htop"), 600)->status;')" == done ]] || fail "pkg.remove"
 on '! dpkg -s htop 2>/dev/null | grep -q "Status: install ok installed"' || fail "htop was not removed"
 
 log "Mail: a mailbox receives"
@@ -321,7 +322,7 @@ if [[ $MODE == bundle ]]; then
     || { tinker '$s = App\Models\Site::query()->where("domain", "app.localhost")->first(); app(App\Actions\Databases\ManageDatabases::class)->create("mariadb", "smokedb", $s); echo "ok";' >/dev/null
          on 'mariadb -e "CREATE TABLE x(v INT); INSERT INTO x VALUES (42)" smokedb' || fail "a table in the site's database"; }
   # Every site backed up (a site without a backup would come back empty).
-  [[ "$(tinker '$ok = App\Models\Site::query()->get()->every(fn ($s) => app(App\Actions\Sites\ManageSiteBackups::class)->backupNow($s)); echo $ok ? "done" : "running";')" == "done" ]] \
+  [[ "$(tinker '$ok = App\Models\Site::query()->get()->every(fn ($s) => App\Support\AgentTasks::wait(app(App\Actions\Sites\ManageSiteBackups::class)->backupNow($s), 600)->status === "done"); echo $ok ? "done" : "running";')" == "done" ]] \
     || fail "the site backups did not finish"
   key=$(tinker 'echo app(App\Actions\Server\ManageOffsite::class)->signingKey();')
   [[ $key =~ ^[0-9a-f]{64}$ ]] || fail "no recovery key: $key"

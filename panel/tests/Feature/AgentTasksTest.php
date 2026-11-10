@@ -78,6 +78,18 @@ class AgentTasksTest extends TestCase
         Livewire::test(TaskIndicator::class)->assertSee('2 úlohy běží')->assertSee('Záloha webu alice.cz');
     }
 
+    public function test_a_failed_job_says_why_in_czech(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->app->make(AgentClient::class)->shouldReceive('call')->with('job.status', ['id' => 'j7'])
+            ->andReturn(['status' => 'failed', 'error' => 'local DNS (PowerDNS) is not installed on this server']);
+        $task = AgentTasks::start(['job_id' => 'j7'], 'dns.zone', ['title' => 'Zóna', 'done' => 'Zóna hotová']);
+
+        AgentTasks::settleAll();
+
+        $this->assertStringStartsWith('Lokální DNS (PowerDNS) není na serveru nainstalované', (string) $task->fresh()->error);
+    }
+
     public function test_a_job_the_agent_forgot_ends_as_done_with_a_warning(): void
     {
         $this->actingAs(User::factory()->create());

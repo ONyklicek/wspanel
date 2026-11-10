@@ -136,7 +136,7 @@ final class AgentTasks
         if ($job['lost'] ?? false) {
             $output['lost'] = true;
         }
-        self::finish($task, $status === 'done' ? AgentTask::DONE : AgentTask::FAILED, $output, $status === 'done' ? null : (string) ($job['error'] ?? __('Úloha selhala.')));
+        self::finish($task, $status === 'done' ? AgentTask::DONE : AgentTask::FAILED, $output, $status === 'done' ? null : (string) AgentMessages::cs((string) ($job['error'] ?? __('Úloha selhala.'))));
 
         return $task->refresh();
     }

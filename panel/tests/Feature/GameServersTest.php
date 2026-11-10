@@ -105,7 +105,7 @@ class GameServersTest extends TestCase
         $status['j2'] = ['status' => 'failed', 'error' => 'download failed'];
         AgentTasks::settleAll();
         $this->assertSame('failed', GameServer::where('name', 'Second')->sole()->status);
-        $this->assertSame('download failed', AgentTask::latest('id')->first()->error);
+        $this->assertSame('Selhalo: download.', AgentTask::latest('id')->first()->error); // the agent's message, in Czech
     }
 
     public function test_a_failed_install_leaves_no_record(): void
