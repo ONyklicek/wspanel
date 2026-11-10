@@ -59,7 +59,7 @@ class GameServerSettings extends ViewPage
 
     public function load(): void
     {
-        if ($this->server()->game === Game::Factorio) {
+        if ($this->server()->game->is('factorio')) {
             $this->loadFactorio();
 
             return;

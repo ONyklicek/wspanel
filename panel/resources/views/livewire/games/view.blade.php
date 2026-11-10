@@ -56,7 +56,7 @@
         </div>
     </x-wire::section>
 
-    <x-wire::section :heading="__('Konzole')" :description="$server->game === \App\Enums\Game::Minecraft ? __('Příkazy serveru, např. list, say Ahoj, op Jmeno, whitelist add Jmeno.') : __('Příkazy serveru, např. /players, /admins, /promote Jmeno.')">
+    <x-wire::section :heading="__('Konzole')" :description="$server->game->is('minecraft') ? __('Příkazy serveru, např. list, say Ahoj, op Jmeno, whitelist add Jmeno.') : __('Příkazy serveru, např. /players, /admins, /promote Jmeno.')">
         <div class="max-h-80 overflow-y-auto rounded-lg bg-gray-950 p-3 font-mono text-xs text-gray-100">
             @forelse ($console as $c)
                 <div class="text-emerald-400">&gt; {{ $c['command'] }}</div>

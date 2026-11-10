@@ -118,7 +118,7 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
             Limits::forCurrentUser() === null && Features::clients() ? SiteFields::client()->helperText(__('Klient server uvidí ve svém panelu a počítá se mu do limitů balíčku.')) : null,
             Checkbox::make('eula')
                 ->label(__('Souhlasím s licenčními podmínkami Minecraftu (EULA, aka.ms/MinecraftEULA)'))
-                ->visibleWhen('game', Game::Minecraft->value)
+                ->visible(fn ($get) => (bool) Game::tryFrom((string) $get('game'))?->is('minecraft'))
                 ->rules(['accepted'])
                 ->validationMessages(['accepted' => __('Server Minecraftu se bez souhlasu s EULA nespustí.')]),
         ]));

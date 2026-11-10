@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Enums\Game;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Livewire\Features\SupportTesting\Testable;
 
@@ -10,6 +11,8 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // The games the packages make are remembered per process: each test anew.
+        Game::flush();
 
         if (! Testable::hasMacro('assertNotified')) {
             /*

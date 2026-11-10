@@ -65,6 +65,9 @@ jobs:
           fi
       - name: Update the repository
         run: provision/apt-repo.sh site/apt provision/files/wspanel-archive-keyring.asc dist/*.deb
+      # The game packages WSPanel offers (Server → Herní balíčky), signed alike.
+      - name: The game catalog
+        run: provision/game-catalog.sh games/catalog site/games
       - name: Publish
         run: |
           touch site/.nojekyll

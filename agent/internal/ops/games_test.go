@@ -24,6 +24,10 @@ func fakePublishers(t *testing.T) {
 		switch r.URL.Path {
 		case "/paper":
 			fmt.Fprint(w, `{"versions":{"1.21":["1.21.10","1.21.11-rc1"],"1.20":["1.20.4","1.20.6"],"26.3":["26.3"]}}`)
+		case "/folia":
+			fmt.Fprint(w, `{"versions":{"1.21":["1.21.8"]}}`)
+		case "/folia/versions/1.21.8/builds/latest":
+			fmt.Fprint(w, `{"id":12,"downloads":{"server:default":{"checksums":{"sha256":"`+strings.Repeat("f", 64)+`"},"size":5,"url":"https://example.test/folia.jar"}}}`)
 		case "/paper/versions/1.21.10/builds/latest":
 			fmt.Fprint(w, `{"id":130,"downloads":{"server:default":{"checksums":{"sha256":"`+strings.Repeat("a", 64)+`"},"size":5,"url":"https://example.test/paper.jar"}}}`)
 		case "/mojang":
@@ -47,11 +51,11 @@ func fakePublishers(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	old := []string{paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos}
-	paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos = srv.URL+"/paper", srv.URL+"/mojang", srv.URL, srv.URL+"/fabric", srv.URL+"/forge/promotions_slim.json"
+	old := []string{paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos}
+	paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos = srv.URL, srv.URL+"/mojang", srv.URL, srv.URL+"/fabric", srv.URL+"/forge/promotions_slim.json"
 	catalogCache.data = nil
 	t.Cleanup(func() {
-		paperAPI, mojangManifest, factorioAPI, fabricMeta, forgePromos = old[0], old[1], old[2], old[3], old[4]
+		paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos = old[0], old[1], old[2], old[3], old[4]
 		catalogCache.data = nil
 	})
 }
@@ -62,6 +66,7 @@ func gameTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.GamesRoot = filepath.Join(root, "srv/games")
 	env.Cfg.GameBackupDir = filepath.Join(root, "backups")
 	env.Cfg.JavaDir = filepath.Join(root, "jvm")
+	env.Cfg.GamePackagesDir = filepath.Join(root, "etc/wspanel/games.d")
 	return env, dr
 }
 
@@ -91,19 +96,19 @@ func TestMinecraftJavaByVersion(t *testing.T) {
 
 func TestGameDownloadsCarryTheirChecksums(t *testing.T) {
 	fakePublishers(t)
-	d, err := resolveGameDownload(context.Background(), "minecraft", "paper", "1.21.10")
+	d, err := resolveGameDownload(context.Background(), gameSource{Type: "papermc", Project: "paper"}, "1.21.10")
 	if err != nil || d.Build != "130" || d.Sum != strings.Repeat("a", 64) || d.Java != 21 {
 		t.Errorf("paper: %+v %v", d, err)
 	}
-	d, err = resolveGameDownload(context.Background(), "minecraft", "vanilla", "26.3")
+	d, err = resolveGameDownload(context.Background(), gameSource{Type: "mojang"}, "26.3")
 	if err != nil || d.Sum != "sha1:"+strings.Repeat("b", 40) || d.Java != 25 {
 		t.Errorf("vanilla: %+v %v", d, err)
 	}
-	d, err = resolveGameDownload(context.Background(), "factorio", "stable", "2.1.24")
+	d, err = resolveGameDownload(context.Background(), gameSource{Type: "factorio"}, "2.1.24")
 	if err != nil || d.Sum != strings.Repeat("c", 64) || !strings.HasSuffix(d.URL, "/get-download/2.1.24/headless/linux64") {
 		t.Errorf("factorio: %+v %v", d, err)
 	}
-	if _, err := resolveGameDownload(context.Background(), "factorio", "stable", "2.1.99"); err == nil {
+	if _, err := resolveGameDownload(context.Background(), gameSource{Type: "factorio"}, "2.1.99"); err == nil {
 		t.Error("a version without a published checksum must not be downloaded")
 	}
 }
@@ -280,7 +285,7 @@ func TestRconAndPlayers(t *testing.T) {
 	if _, err := rconExec(context.Background(), port, "wrong", "list"); err == nil || !strings.Contains(err.Error(), "wrong password") {
 		t.Errorf("wrong password: %v", err)
 	}
-	p, err := gamePlayers(context.Background(), gameState{Game: "minecraft", RconPort: port, RconPassword: "secret"})
+	p, err := gamePlayers(context.Background(), "minecraft", gameState{Game: "minecraft", RconPort: port, RconPassword: "secret"})
 	if err != nil || p["online"] != 2 || p["max"] != 20 || strings.Join(p["names"].([]string), ",") != "Alice,Bob" {
 		t.Errorf("players: %v %v", p, err)
 	}
@@ -494,11 +499,11 @@ func TestFabricAndForgeComeFromTheirInstallers(t *testing.T) {
 	if cmd := gameExecStart(env, g); !strings.HasSuffix(cmd, "-jar "+gameHome(env, 7)+"/data/fabric-server-launch.jar nogui") {
 		t.Errorf("fabric: %s", cmd)
 	}
-	if addonLoaders(g)[0] != "fabric" || !strings.HasSuffix(addonDir(env, g), "/data/mods") {
+	if addonLoaders(env, g)[0] != "fabric" || !strings.HasSuffix(addonDir(env, g), "/data/mods") {
 		t.Error("fabric loads mods from data/mods")
 	}
 	g.Flavor = "vanilla"
-	if addonLoaders(g) != nil {
+	if addonLoaders(env, g) != nil {
 		t.Error("vanilla loads nothing")
 	}
 }

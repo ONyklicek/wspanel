@@ -105,6 +105,11 @@ type Config struct {
 	CloudCfgDir  string `json:"cloud_cfg_dir"`  // cloud-init: keep a hostname set in the panel
 
 	GamesRoot string `json:"games_root"` // game servers' homes (/srv/games/<id>)
+	// The administrator's own game packages (manifests, also uploaded through
+	// the panel); WSPanel's catalog for more, signed with ArchiveKeyring.
+	GamePackagesDir string `json:"game_packages_dir"`
+	GameCatalogURL  string `json:"game_catalog_url"`
+	ArchiveKeyring  string `json:"archive_keyring"`
 	// Dedicated database servers of single sites: data (<root>/<id>), the
 	// socket directory each site reaches (<run>/<id>) and their configs.
 	DBInstancesRoot string `json:"db_instances_root"`
@@ -243,6 +248,9 @@ func Defaults() Config {
 		SysctlDir:         "/etc/sysctl.d",
 		CloudCfgDir:       "/etc/cloud/cloud.cfg.d",
 		GamesRoot:         "/srv/games",
+		GamePackagesDir:   "/etc/wspanel/games.d",
+		GameCatalogURL:    "https://onyklicek.github.io/wspanel/games/catalog.json",
+		ArchiveKeyring:    "/usr/share/keyrings/wspanel-archive-keyring.asc",
 		DBInstancesRoot:   "/var/lib/wspanel-db",
 		DBInstancesRun:    "/run/wspanel-db",
 		DBInstancesConf:   "/etc/wspanel/db",

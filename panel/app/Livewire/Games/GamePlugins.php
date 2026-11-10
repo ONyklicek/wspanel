@@ -50,25 +50,31 @@ class GamePlugins extends ViewPage
 
     public function factorio(): bool
     {
-        return $this->server()->game->value === 'factorio';
+        return $this->server()->game->is('factorio');
     }
 
-    /** Plugins (Paper) or mods (Fabric, Forge) from the Minecraft catalogues. */
+    /** What the variant loads, as its package says (plugins, mods, or nothing). */
+    private function addons(): ?array
+    {
+        return $this->server()->game->addons($this->server()->flavor);
+    }
+
+    /** Plugins (Paper, Folia) or mods (Fabric, Forge) from the Minecraft catalogues. */
     public function paper(): bool
     {
-        return $this->server()->game->value === 'minecraft' && in_array($this->server()->flavor, ['paper', 'fabric', 'forge'], true);
+        return $this->server()->game->is('minecraft') && $this->addons() !== null;
     }
 
-    /** Paper's plugins come from Modrinth and Hangar; Fabric's and Forge's mods from Modrinth. */
+    /** Paper's plugins come from Modrinth and Hangar; the others' from Modrinth. */
     public function hangar(): bool
     {
-        return $this->server()->flavor === 'paper';
+        return (bool) ($this->addons()['hangar'] ?? false);
     }
 
-    /** "Módy" for the mod loaders and Factorio, "Pluginy" for Paper. */
+    /** "Módy" for the mod loaders and Factorio, "Pluginy" for Paper and Folia. */
     public function mods(): bool
     {
-        return $this->factorio() || in_array($this->server()->flavor, ['fabric', 'forge'], true);
+        return $this->factorio() || ($this->addons()['kind'] ?? null) === 'mods';
     }
 
     public function load(bool $check = false): void

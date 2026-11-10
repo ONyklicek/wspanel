@@ -81,7 +81,7 @@ func minecraftGame(env *Env, raw json.RawMessage, v any, id *int) (gameState, er
 	if err != nil {
 		return g, err
 	}
-	if g.Game != "minecraft" {
+	if gameEngine(env, g) != "minecraft" {
 		return g, protocol.Invalid("id: a Minecraft server")
 	}
 	return g, nil

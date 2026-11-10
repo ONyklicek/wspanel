@@ -260,10 +260,10 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     }
                 }),
             Action::make('upgrade')->label(__('Aktualizovat'))->icon('outline:arrow-path')->color('gray')
-                ->modalDescription(fn () => $server()->game === Game::Minecraft
+                ->modalDescription(fn () => $server()->game->is('minecraft')
                     ? __('Stáhne nejnovější sestavení zvolené verze (nebo novější verzi). Server se na chvíli zastaví. Svět se na novější verzi převede a zpět už nejde: zálohu udělejte předem.')
                     : __('Stáhne nejnovější stabilní Factorio. Server se na chvíli zastaví, mapa zůstane.'))
-                ->form(fn () => $server()->game === Game::Minecraft ? [
+                ->form(fn () => $server()->game->is('minecraft') ? [
                     Select::make('version')->label(__('Verze'))->required()
                         ->options(collect(app(ManageGameServers::class)->versions($server()->game, $server()->flavor))
                             ->filter(fn ($v) => version_compare($v, $server()->version, '>='))->mapWithKeys(fn ($v) => [$v => $v])->all())

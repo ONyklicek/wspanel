@@ -5,7 +5,7 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    @if ($server->game !== \App\Enums\Game::Minecraft)
+    @if (! $server->game->is('minecraft'))
         <x-wire::callout color="info" :heading="__('Hráči Factoria')">{{ __('Správci a bany Factoria nastavíte v konzoli: /promote Jméno, /ban Jméno, /whitelist add Jméno.') }}</x-wire::callout>
     @else
         @unless ($running)

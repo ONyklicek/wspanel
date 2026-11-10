@@ -33,13 +33,33 @@ class ManageGameServers
      */
     public function catalog(): array
     {
+        $out = $this->catalogRaw();
+        unset($out['games']);
+
+        return array_filter($out, 'is_array');
+    }
+
+    /**
+     * The games the installed packages add (the agent's description of each),
+     * empty while the agent does not answer.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function catalogGames(): array
+    {
+        $games = $this->catalogRaw()['games'] ?? [];
+
+        return is_array($games) ? $games : [];
+    }
+
+    /** @return array<string, mixed> */
+    private function catalogRaw(): array
+    {
         try {
-            $out = Cache::remember('games.catalog', 600, fn () => $this->agent->call('games.catalog'));
+            return (array) Cache::remember('games.catalog', 600, fn () => $this->agent->call('games.catalog'));
         } catch (AgentException) {
             return [];
         }
-
-        return array_intersect_key($out, array_flip(array_column(Game::cases(), 'value')));
     }
 
     /** @return list<string> */

@@ -6,7 +6,7 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
-    @if ($server->game === \App\Enums\Game::Factorio)
+    @if ($server->game->is('factorio'))
         @if ($exists)
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('Nastavení ze souboru data/server-settings.json. Ostatní volby souboru zůstanou, jak jsou. Změny platí po restartu serveru.') }}</p>
             <form wire:submit="saveFactorio" class="space-y-6">

@@ -29,7 +29,7 @@ func factorioGame(env *Env, raw json.RawMessage, v any, id *int) (gameState, err
 	if err != nil {
 		return g, err
 	}
-	if g.Game != "factorio" {
+	if gameEngine(env, g) != "factorio" {
 		return g, protocol.Invalid("id: a Factorio server")
 	}
 	return g, nil

@@ -1,0 +1,24 @@
+{
+  "id": "minecraft",
+  "name": "Minecraft Java",
+  "version": "1.0.0",
+  "description": "Minecraft Java Edition: Paper (pluginy), oficiální server, Fabric a Forge (módy).",
+  "game": {
+    "id": "minecraft",
+    "label": "Minecraft Java",
+    "engine": "minecraft",
+    "proto": "tcp",
+    "default_port": 25565,
+    "min_memory_mb": 1024,
+    "arch": ["amd64", "arm64"]
+  },
+  "flavors": [
+    {"id": "paper", "label": "Paper (pluginy, výkon)", "source": {"type": "papermc", "project": "paper"},
+     "addons": {"kind": "plugins", "modrinth_loaders": ["paper", "spigot", "bukkit"], "hangar": true}},
+    {"id": "vanilla", "label": "Vanilla (oficiální server)", "source": {"type": "mojang"}},
+    {"id": "fabric", "label": "Fabric (módy)", "source": {"type": "fabric"},
+     "addons": {"kind": "mods", "modrinth_loaders": ["fabric"]}},
+    {"id": "forge", "label": "Forge (módy)", "source": {"type": "forge"},
+     "addons": {"kind": "mods", "modrinth_loaders": ["forge"]}}
+  ]
+}

@@ -28,22 +28,9 @@ import (
 // CPU its package allows, binds only its own ports, and is reached by the
 // panel over RCON on 127.0.0.1, which nothing but root may connect to.
 //
-// A game is a recipe below: where its server comes from (verified by the
-// checksum its publisher gives), what it needs (Java), how it starts.
-
-type gameRecipe struct {
-	Name        string
-	Proto       string // the game port's protocol (opened in the firewall)
-	DefaultPort int
-	MinMemoryMB int
-	Flavors     []string
-	Arch        []string // runtime.GOARCH values it runs on
-}
-
-var gameRecipes = map[string]gameRecipe{
-	"minecraft": {Name: "Minecraft Java", Proto: "tcp", DefaultPort: 25565, MinMemoryMB: 1024, Flavors: []string{"paper", "vanilla", "fabric", "forge"}, Arch: []string{"amd64", "arm64"}},
-	"factorio":  {Name: "Factorio", Proto: "udp", DefaultPort: 34197, MinMemoryMB: 1024, Flavors: []string{"stable"}, Arch: []string{"amd64"}},
-}
+// What a game is comes from its package (gamepkgs.go): its engine (how the
+// agent runs it), port, memory and variants, each variant's server from a
+// source verified by the checksum its publisher gives.
 
 // gameState is what the agent keeps of a game server.
 type gameState struct {
@@ -51,6 +38,7 @@ type gameState struct {
 	Name         string `json:"name"`
 	Game         string `json:"game"`
 	Flavor       string `json:"flavor"`
+	Proto        string `json:"proto,omitempty"` // the game port's protocol, from its package
 	Version      string `json:"version"`
 	Build        string `json:"build,omitempty"` // Paper's build number
 	Java         int    `json:"java,omitempty"`  // Java major (Minecraft)
@@ -69,7 +57,6 @@ type gameState struct {
 
 func (g gameState) user() string       { return "wsg_" + strconv.Itoa(g.ID) }
 func (g gameState) unit() string       { return "wspanel-game-" + strconv.Itoa(g.ID) + ".service" }
-func (g gameState) proto() string      { return gameRecipes[g.Game].Proto }
 func gameHome(env *Env, id int) string { return filepath.Join(env.Cfg.GamesRoot, strconv.Itoa(id)) }
 func gameStateDir(env *Env) string     { return filepath.Join(env.Cfg.StateDir, "games") }
 func gameStatePath(env *Env, id int) string {
@@ -117,7 +104,7 @@ func allGames(env *Env) []gameState {
 var (
 	gameUserAgent = func() string { return "WSPanel/" + Version + " (https://github.com/ONyklicek/wspanel)" }
 	// The publishers' APIs (tests point them at a local server).
-	paperAPI       = "https://fill.papermc.io/v3/projects/paper"
+	paperAPIBase   = "https://fill.papermc.io/v3/projects" // + /<project> (paper, folia)
 	fabricMeta     = "https://meta.fabricmc.net/v2"
 	forgeMaven     = "https://maven.minecraftforge.net/net/minecraftforge/forge"
 	forgePromos    = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
@@ -187,86 +174,132 @@ func mcJava(version string) int {
 	return 0
 }
 
-// gameCatalog: the versions that can be installed now (an hour's cache).
+// gameCatalog: the games the packages add and the versions each variant can
+// install now (each source asked once an hour).
 func gameCatalog(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := decode(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
+	defs, _, _ := gameRegistry(env)
+	out := map[string]any{}
+	games := map[string]any{}
+	for id, d := range defs {
+		versions := map[string][]string{}
+		flavors := []map[string]any{}
+		for _, f := range d.Flavors {
+			v := []string{}
+			if d.available() {
+				v = sourceVersions(ctx, f.Source)
+			}
+			versions[f.ID] = v
+			flavors = append(flavors, map[string]any{"id": f.ID, "label": f.Label, "package": f.Package, "addons": f.Addons})
+		}
+		out[id] = versions
+		games[id] = map[string]any{"name": d.Label, "engine": d.Engine, "proto": d.Proto, "default_port": d.DefaultPort,
+			"min_memory_mb": d.MinMemoryMB, "available": d.available(), "package": d.Package, "flavors": flavors}
+	}
+	out["games"] = games
+	return out, nil
+}
+
+// sourceVersions: the versions a source offers (an hour's cache per source;
+// a source that does not answer offers nothing until it does).
+func sourceVersions(ctx context.Context, src gameSource) []string {
+	key := src.Type + "/" + src.Project
 	catalogCache.Lock()
 	defer catalogCache.Unlock()
-	if catalogCache.data != nil && time.Since(catalogCache.at) < time.Hour {
-		return catalogCache.data, nil
+	if catalogCache.data == nil {
+		catalogCache.data = map[string]any{}
 	}
-	out := map[string]any{}
-	var paper struct {
-		Versions map[string][]string `json:"versions"`
+	if c, ok := catalogCache.data[key].(cachedVersions); ok && time.Since(c.at) < time.Hour {
+		return c.versions
 	}
-	paperVersions := []string{}
-	if err := fetchJSON(ctx, paperAPI, &paper); err == nil {
+	v, err := fetchSourceVersions(ctx, src)
+	if err != nil {
+		return []string{}
+	}
+	v = sortVersionsDesc(v)
+	if len(v) > 0 {
+		catalogCache.data[key] = cachedVersions{at: time.Now(), versions: v}
+	}
+	return v
+}
+
+type cachedVersions struct {
+	at       time.Time
+	versions []string
+}
+
+func fetchSourceVersions(ctx context.Context, src gameSource) ([]string, error) {
+	out := []string{}
+	mc := func(v string) bool { return mcVersionRe.MatchString(v) && mcJava(v) > 0 }
+	switch src.Type {
+	case "papermc":
+		var paper struct {
+			Versions map[string][]string `json:"versions"`
+		}
+		if err := fetchJSON(ctx, paperAPIBase+"/"+src.Project, &paper); err != nil {
+			return nil, err
+		}
 		for _, list := range paper.Versions {
 			for _, v := range list {
-				if mcVersionRe.MatchString(v) && mcJava(v) > 0 {
-					paperVersions = append(paperVersions, v)
+				if mc(v) {
+					out = append(out, v)
 				}
 			}
 		}
-	}
-	var mojang struct {
-		Versions []struct {
-			ID   string `json:"id"`
-			Type string `json:"type"`
-		} `json:"versions"`
-	}
-	vanilla := []string{}
-	if err := fetchJSON(ctx, mojangManifest, &mojang); err == nil {
+	case "mojang":
+		var mojang struct {
+			Versions []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"versions"`
+		}
+		if err := fetchJSON(ctx, mojangManifest, &mojang); err != nil {
+			return nil, err
+		}
 		for _, v := range mojang.Versions {
-			if v.Type == "release" && mcVersionRe.MatchString(v.ID) && mcJava(v.ID) > 0 {
-				vanilla = append(vanilla, v.ID)
+			if v.Type == "release" && mc(v.ID) {
+				out = append(out, v.ID)
 			}
 		}
-	}
-	var fabricGames []struct {
-		Version string `json:"version"`
-		Stable  bool   `json:"stable"`
-	}
-	fabric := []string{}
-	if err := fetchJSON(ctx, fabricMeta+"/versions/game", &fabricGames); err == nil {
-		for _, v := range fabricGames {
-			if v.Stable && mcVersionRe.MatchString(v.Version) && mcJava(v.Version) > 0 {
-				fabric = append(fabric, v.Version)
+	case "fabric":
+		var games []struct {
+			Version string `json:"version"`
+			Stable  bool   `json:"stable"`
+		}
+		if err := fetchJSON(ctx, fabricMeta+"/versions/game", &games); err != nil {
+			return nil, err
+		}
+		for _, v := range games {
+			if v.Stable && mc(v.Version) {
+				out = append(out, v.Version)
 			}
 		}
-	}
-	forge := []string{}
-	if promos, err := forgePromotions(ctx); err == nil {
+	case "forge":
+		promos, err := forgePromotions(ctx)
+		if err != nil {
+			return nil, err
+		}
 		for k := range promos {
-			mc, _, _ := strings.Cut(k, "-")
-			if mcVersionRe.MatchString(mc) && mcJava(mc) > 0 {
-				forge = append(forge, mc)
+			if v, _, _ := strings.Cut(k, "-"); mc(v) {
+				out = append(out, v)
 			}
 		}
-	}
-	paperVersions, vanilla = sortVersionsDesc(paperVersions), sortVersionsDesc(vanilla)
-	out["minecraft"] = map[string][]string{"paper": paperVersions, "vanilla": vanilla, "fabric": sortVersionsDesc(fabric), "forge": sortVersionsDesc(forge)}
-	var fac struct {
-		Stable struct {
-			Headless string `json:"headless"`
-		} `json:"stable"`
-	}
-	factorio := []string{}
-	if slices.Contains(gameRecipes["factorio"].Arch, runtime.GOARCH) {
-		if err := fetchJSON(ctx, factorioAPI+"/api/latest-releases", &fac); err == nil && mcVersionRe.MatchString(fac.Stable.Headless) {
-			factorio = append(factorio, fac.Stable.Headless)
+	case "factorio":
+		var fac struct {
+			Stable struct {
+				Headless string `json:"headless"`
+			} `json:"stable"`
 		}
-	}
-	out["factorio"] = map[string][]string{"stable": factorio}
-	games := map[string]any{}
-	for key, r := range gameRecipes {
-		games[key] = map[string]any{"name": r.Name, "proto": r.Proto, "default_port": r.DefaultPort, "min_memory_mb": r.MinMemoryMB, "available": slices.Contains(r.Arch, runtime.GOARCH)}
-	}
-	out["games"] = games
-	if len(paperVersions)+len(vanilla)+len(factorio) > 0 {
-		catalogCache.data, catalogCache.at = out, time.Now()
+		if err := fetchJSON(ctx, factorioAPI+"/api/latest-releases", &fac); err != nil {
+			return nil, err
+		}
+		if mcVersionRe.MatchString(fac.Stable.Headless) {
+			out = append(out, fac.Stable.Headless)
+		}
+	default:
+		return nil, fmt.Errorf("unknown source %s", src.Type)
 	}
 	return out, nil
 }
@@ -304,9 +337,9 @@ type gameDownload struct {
 	Size     int64
 }
 
-func resolveGameDownload(ctx context.Context, game, flavor, version string) (gameDownload, error) {
-	switch game + "/" + flavor {
-	case "minecraft/paper":
+func resolveGameDownload(ctx context.Context, src gameSource, version string) (gameDownload, error) {
+	switch src.Type {
+	case "papermc":
 		var b struct {
 			ID        int `json:"id"`
 			Downloads map[string]struct {
@@ -317,15 +350,15 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 				URL  string `json:"url"`
 			} `json:"downloads"`
 		}
-		if err := fetchJSON(ctx, paperAPI+"/versions/"+version+"/builds/latest", &b); err != nil {
+		if err := fetchJSON(ctx, paperAPIBase+"/"+src.Project+"/versions/"+version+"/builds/latest", &b); err != nil {
 			return gameDownload{}, err
 		}
 		d, ok := b.Downloads["server:default"]
 		if !ok || len(d.Checksums.SHA256) != 64 || !strings.HasPrefix(d.URL, "https://") {
-			return gameDownload{}, fmt.Errorf("paper %s: no server download", version)
+			return gameDownload{}, fmt.Errorf("%s %s: no server download", src.Project, version)
 		}
 		return gameDownload{URL: d.URL, Sum: d.Checksums.SHA256, Build: strconv.Itoa(b.ID), Java: mcJava(version), Size: d.Size}, nil
-	case "minecraft/fabric":
+	case "fabric":
 		// The official installer (its SHA-256 from Fabric's maven) sets the
 		// server up as the game's user, with the newest stable loader.
 		var installers, loaders []struct {
@@ -361,7 +394,7 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 			return gameDownload{}, fmt.Errorf("fabric installer %s: no published checksum", installers[inst].Version)
 		}
 		return gameDownload{URL: installers[inst].URL, Sum: strings.TrimSpace(sum)[:64], Build: loaders[load].Version, Java: mcJava(version)}, nil
-	case "minecraft/forge":
+	case "forge":
 		promos, err := forgePromotions(ctx)
 		if err != nil {
 			return gameDownload{}, err
@@ -379,7 +412,7 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 			return gameDownload{}, fmt.Errorf("forge %s-%s: no published checksum", version, build)
 		}
 		return gameDownload{URL: u, Sum: strings.TrimSpace(sum)[:64], Build: build, Java: mcJava(version)}, nil
-	case "minecraft/vanilla":
+	case "mojang":
 		var m struct {
 			Versions []struct {
 				ID, URL, SHA1 string
@@ -418,7 +451,7 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 			return gameDownload{URL: s.URL, Sum: "sha1:" + s.SHA1, Java: java, Size: s.Size}, nil
 		}
 		return gameDownload{}, protocol.Invalid("version: Minecraft " + version + " does not exist")
-	case "factorio/stable":
+	case "factorio":
 		sums, err := fetchText(ctx, factorioAPI+"/download/sha256sums/")
 		if err != nil {
 			return gameDownload{}, err
@@ -431,7 +464,7 @@ func resolveGameDownload(ctx context.Context, game, flavor, version string) (gam
 		}
 		return gameDownload{}, fmt.Errorf("factorio %s: no published checksum", version)
 	}
-	return gameDownload{}, protocol.Invalid("flavor: unknown")
+	return gameDownload{}, protocol.Invalid("flavor: unknown source " + src.Type)
 }
 
 // ---------------------------------------------------------------- RCON
@@ -649,10 +682,11 @@ func gameJava(env *Env, g gameState) string {
 
 func gameExecStart(env *Env, g gameState) string {
 	home := gameHome(env, g.ID)
-	switch g.Game {
+	switch gameEngine(env, g) {
 	case "minecraft":
 		jvm := fmt.Sprintf("%s -Xms%dM -Xmx%dM -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200", gameJava(env, g), g.MemoryMB/2, g.MemoryMB)
-		switch g.Flavor {
+		src, _ := gameSourceOf(env, g)
+		switch src.Type {
 		case "fabric":
 			return jvm + " -jar " + home + "/data/fabric-server-launch.jar nogui"
 		case "forge":
@@ -672,12 +706,13 @@ func gameExecStart(env *Env, g gameState) string {
 func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 	home := gameHome(env, g.ID)
 	memMax := g.MemoryMB
-	if g.Game == "minecraft" {
+	engine := gameEngine(env, g)
+	if engine == "minecraft" {
 		memMax = g.MemoryMB*5/4 + 256 // the heap plus the JVM's own
 	}
 	extra := []string{
 		"CapabilityBoundingSet=",
-		"SocketBindAllow=" + g.proto() + ":" + strconv.Itoa(g.Port),
+		"SocketBindAllow=" + gameProto(env, g) + ":" + strconv.Itoa(g.Port),
 		"SocketBindAllow=tcp:" + strconv.Itoa(g.RconPort),
 		"SocketBindDeny=any",
 		fmt.Sprintf("MemoryMax=%dM", memMax),
@@ -688,11 +723,11 @@ func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 	if g.CPUPercent > 0 {
 		extra = append(extra, fmt.Sprintf("CPUQuota=%d%%", g.CPUPercent))
 	}
-	if g.Game == "factorio" {
+	if engine == "factorio" {
 		extra = append(extra, "KillSignal=SIGINT") // saves the map on the way out
 	}
 	unit, err := render("unit.service.tmpl", unitData{
-		Description: fmt.Sprintf("WSPanel game server %d (%s): %s", g.ID, gameRecipes[g.Game].Name, g.Name),
+		Description: fmt.Sprintf("WSPanel game server %d (%s): %s", g.ID, gameLabel(env, g.Game), g.Name),
 		User:        g.user(), Home: home, WorkDir: filepath.Join(home, "data"),
 		ExecStart: gameExecStart(env, g), StopTimeout: 120, Extra: extra,
 	})
@@ -720,30 +755,34 @@ func placeDownload(ctx context.Context, env *Env, g gameState, d gameDownload) e
 	}
 	file, err := downloadVerified(ctx, d.URL, d.Sum, 2<<30)
 	if err != nil {
-		return fmt.Errorf("downloading %s %s failed: %w", gameRecipes[g.Game].Name, g.Version, err)
+		return fmt.Errorf("downloading %s %s failed: %w", gameLabel(env, g.Game), g.Version, err)
 	}
 	defer os.Remove(file)
 	if err := os.Chmod(file, 0o644); err != nil {
 		return err
 	}
-	switch g.Game {
-	case "minecraft":
-		switch g.Flavor {
+	src, err := gameSourceOf(env, g)
+	if err != nil {
+		return err
+	}
+	switch src.Type {
+	case "papermc", "mojang", "fabric", "forge":
+		switch src.Type {
 		case "fabric", "forge":
 			// The loader's installer, run as the game's user with its Java.
-			installer := filepath.Join(home, "server", g.Flavor+"-installer.jar")
+			installer := filepath.Join(home, "server", src.Type+"-installer.jar")
 			if err := asUser(ctx, env, g.user(), "/usr/bin/install", "-m", "0640", file, installer); err != nil {
 				return err
 			}
 			args := []string{"-jar", installer, "--installServer", filepath.Join(home, "data")}
-			if g.Flavor == "fabric" {
+			if src.Type == "fabric" {
 				args = []string{"-jar", installer, "server", "-dir", filepath.Join(home, "data"), "-mcversion", g.Version, "-loader", g.Build, "-downloadMinecraft"}
 			}
 			ictx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 			defer cancel()
 			full := append(append(userCreds(g.user()), gameJava(env, g), "-Duser.home="+filepath.Join(home, "tmp")), args...)
 			if res, err := env.Exec.RunIO(ictx, nil, nil, "setpriv", full...); err != nil {
-				return fmt.Errorf("the %s installer failed: %s", g.Flavor, tail(res.Stdout, 600))
+				return fmt.Errorf("the %s installer failed: %s", src.Type, tail(res.Stdout, 600))
 			}
 			return nil
 		}
@@ -790,7 +829,7 @@ func writeAsUser(ctx context.Context, env *Env, g gameState, path string, data [
 // the rest of the game's own configuration.
 func configureGame(ctx context.Context, env *Env, g gameState, eula bool) error {
 	data := filepath.Join(gameHome(env, g.ID), "data")
-	switch g.Game {
+	switch gameEngine(env, g) {
 	case "minecraft":
 		if eula {
 			if err := writeAsUser(ctx, env, g, filepath.Join(data, "eula.txt"),
@@ -876,19 +915,26 @@ type gameParams struct {
 }
 
 func (p *gameParams) validate(env *Env) error {
-	r, ok := gameRecipes[p.Game]
+	defs, _, _ := gameRegistry(env)
+	r := defs[p.Game]
+	flavors := []string{}
+	if r != nil {
+		for _, f := range r.Flavors {
+			flavors = append(flavors, f.ID)
+		}
+	}
 	switch {
 	case p.ID < 1 || p.ID > 1_000_000:
 		return protocol.Invalid("id: 1 to 1000000")
-	case !ok:
-		return protocol.Invalid("game: minecraft or factorio")
-	case !slices.Contains(r.Arch, runtime.GOARCH):
-		return protocol.Invalid("game: " + r.Name + " has no server for this processor (" + runtime.GOARCH + ")")
-	case !slices.Contains(r.Flavors, p.Flavor):
-		return protocol.Invalid("flavor: " + strings.Join(r.Flavors, " or "))
+	case r == nil:
+		return protocol.Invalid("game: " + strings.Join(sortedKeys(defs), " or ") + " (the installed game packages)")
+	case !r.available():
+		return protocol.Invalid("game: " + r.Label + " has no server for this processor (" + runtime.GOARCH + ")")
+	case !slices.Contains(flavors, p.Flavor):
+		return protocol.Invalid("flavor: " + strings.Join(flavors, " or "))
 	case !mcVersionRe.MatchString(p.Version):
 		return protocol.Invalid("version: e.g. 1.21.10")
-	case p.Game == "minecraft" && mcJava(p.Version) == 0:
+	case r.Engine == "minecraft" && mcJava(p.Version) == 0:
 		return protocol.Invalid("version: Minecraft before 1.20.5 needs Java 17, which Debian 13 does not ship")
 	case !gameNameRe.MatchString(p.Name):
 		return protocol.Invalid("name: 1 to 64 characters, no quotes or control characters")
@@ -896,7 +942,7 @@ func (p *gameParams) validate(env *Env) error {
 		return protocol.Invalid(fmt.Sprintf("memory_mb: %d to 262144", r.MinMemoryMB))
 	case p.CPUPercent < 0 || p.CPUPercent > 6400:
 		return protocol.Invalid("cpu_percent: 0 (no limit) to 6400")
-	case p.Game == "minecraft" && !p.EULA:
+	case r.Engine == "minecraft" && !p.EULA:
 		return protocol.Invalid("eula: Minecraft's server needs its EULA accepted")
 	}
 	if p.Group != "" {
@@ -923,21 +969,26 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if _, err := loadGame(env, p.ID); err == nil {
 		return nil, protocol.Conflict(fmt.Sprintf("game server %d already exists", p.ID))
 	}
-	if err := gamePortFree(env, p.Port, gameRecipes[p.Game].Proto, p.ID); err != nil {
+	def, _ := gameDefOf(env, p.Game)
+	if err := gamePortFree(env, p.Port, def.Proto, p.ID); err != nil {
 		return nil, err
 	}
 	rcon, err := freeRconPort(env, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	g := gameState{ID: p.ID, Name: p.Name, Game: p.Game, Flavor: p.Flavor, Version: p.Version, Port: p.Port,
+	g := gameState{ID: p.ID, Name: p.Name, Game: p.Game, Flavor: p.Flavor, Proto: def.Proto, Version: p.Version, Port: p.Port,
 		RconPort: rcon, RconPassword: randomHex(24), MemoryMB: p.MemoryMB, CPUPercent: p.CPUPercent, Group: p.Group}
-	dl, err := resolveGameDownload(ctx, g.Game, g.Flavor, g.Version)
+	src, err := gameSourceOf(env, g)
+	if err != nil {
+		return nil, err
+	}
+	dl, err := resolveGameDownload(ctx, src, g.Version)
 	if err != nil {
 		return nil, err
 	}
 	g.Build, g.Java = dl.Build, dl.Java
-	if g.Game == "minecraft" {
+	if def.Engine == "minecraft" {
 		if _, err := ensureJava(ctx, env, g.Java); err != nil {
 			return nil, err
 		}
@@ -981,7 +1032,7 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	if err = configureGame(ctx, env, g, p.EULA); err != nil {
 		return nil, err
 	}
-	if g.Game == "factorio" && !env.Cfg.DryRun {
+	if def.Engine == "factorio" && !env.Cfg.DryRun {
 		// The first map, made by the game itself.
 		if err = asUser(ctx, env, g.user(), filepath.Join(home, "server/factorio/bin/x64/factorio"),
 			"--config", filepath.Join(home, "data/config.ini"), "--create", filepath.Join(home, "data/saves/world.zip")); err != nil {
@@ -1002,8 +1053,8 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		_ = os.Remove(filepath.Join(env.Cfg.SystemdDir, g.unit()))
 		_, _ = env.Exec.Run(context.WithoutCancel(ctx), "systemctl", "daemon-reload")
 	})
-	if !ufwAllows(ctx, env, g.Port, g.proto()) {
-		if _, err = env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
+	if !ufwAllows(ctx, env, g.Port, gameProto(env, g)) {
+		if _, err = env.Exec.Run(ctx, "ufw", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)), "comment", "wspanel game "+strconv.Itoa(g.ID)); err != nil {
 			return nil, err
 		}
 		g.OwnsFirewall = true
@@ -1011,7 +1062,7 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 			return nil, err
 		}
 		rollback.add(func() {
-			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
+			_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)))
 		})
 	}
 	if _, err = env.Exec.Run(ctx, "systemctl", "enable", "--now", g.unit()); err != nil {
@@ -1024,7 +1075,7 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 func gameView(ctx context.Context, env *Env, g gameState, players bool) map[string]any {
 	out := map[string]any{
 		"id": g.ID, "name": g.Name, "game": g.Game, "flavor": g.Flavor, "version": g.Version, "build": g.Build,
-		"port": g.Port, "proto": g.proto(), "memory_mb": g.MemoryMB, "cpu_percent": g.CPUPercent, "unit": g.unit(),
+		"port": g.Port, "proto": gameProto(env, g), "memory_mb": g.MemoryMB, "cpu_percent": g.CPUPercent, "unit": g.unit(),
 	}
 	if st, err := unitStates(ctx, env, []string{g.unit()}); err == nil && len(st) == 1 {
 		out["state"], out["sub_state"] = st[0].Active, st[0].Sub
@@ -1035,7 +1086,7 @@ func gameView(ctx context.Context, env *Env, g gameState, players bool) map[stri
 		}
 	}
 	if players && out["state"] == "active" {
-		if list, err := gamePlayers(ctx, g); err == nil {
+		if list, err := gamePlayers(ctx, gameEngine(env, g), g); err == nil {
 			out["players"] = list
 		}
 	}
@@ -1045,8 +1096,8 @@ func gameView(ctx context.Context, env *Env, g gameState, players bool) map[stri
 var mcListRe = regexp.MustCompile(`(?i)there are (\d+) of a max(?:imum)? of (\d+) players online:?\s*(.*)$`)
 
 // gamePlayers: who is online (an RCON question each game words its way).
-func gamePlayers(ctx context.Context, g gameState) (map[string]any, error) {
-	switch g.Game {
+func gamePlayers(ctx context.Context, engine string, g gameState) (map[string]any, error) {
+	switch engine {
 	case "minecraft":
 		out, err := rconExec(ctx, g.RconPort, g.RconPassword, "list")
 		if err != nil {
@@ -1160,7 +1211,7 @@ func gameCommand(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if p.Command == "" || len(p.Command) > 1000 || strings.ContainsAny(p.Command, "\r\n\x00") {
 		return nil, protocol.Invalid("command: one line, at most 1000 characters")
 	}
-	if g.Game == "minecraft" {
+	if gameEngine(env, g) == "minecraft" {
 		p.Command = strings.TrimPrefix(p.Command, "/")
 	}
 	if env.Cfg.DryRun {
@@ -1242,20 +1293,25 @@ func gameUpdate(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if p.Version != "" {
 		version = p.Version
 	}
-	if !mcVersionRe.MatchString(version) || g.Game == "minecraft" && mcJava(version) == 0 {
+	engine := gameEngine(env, g)
+	if !mcVersionRe.MatchString(version) || engine == "minecraft" && mcJava(version) == 0 {
 		return nil, protocol.Invalid("version: e.g. 1.21.10")
 	}
-	if g.Game == "minecraft" && compareVersions(version, g.Version) < 0 {
+	if engine == "minecraft" && compareVersions(version, g.Version) < 0 {
 		return nil, protocol.Invalid("version: a world cannot go back to an older Minecraft")
 	}
-	dl, err := resolveGameDownload(ctx, g.Game, g.Flavor, version)
+	src, err := gameSourceOf(env, g)
 	if err != nil {
 		return nil, err
 	}
-	if version == g.Version && dl.Build == g.Build && g.Game == "minecraft" {
+	dl, err := resolveGameDownload(ctx, src, version)
+	if err != nil {
+		return nil, err
+	}
+	if version == g.Version && dl.Build == g.Build && engine == "minecraft" {
 		return map[string]any{"changed": false, "version": g.Version, "build": g.Build}, nil
 	}
-	if g.Game == "minecraft" {
+	if engine == "minecraft" {
 		if _, err := ensureJava(ctx, env, dl.Java); err != nil {
 			return nil, err
 		}
@@ -1340,7 +1396,7 @@ func gameBackup(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	name := fmt.Sprintf("game-%d-%s.tar.gz", g.ID, time.Now().UTC().Format("20060102T150405Z"))
-	if g.Game == "minecraft" {
+	if gameEngine(env, g) == "minecraft" {
 		if _, err := rconExec(ctx, g.RconPort, g.RconPassword, "save-off"); err == nil {
 			defer func() { _, _ = rconExec(context.WithoutCancel(ctx), g.RconPort, g.RconPassword, "save-on") }()
 			_, _ = rconExec(ctx, g.RconPort, g.RconPassword, "save-all flush")
@@ -1353,7 +1409,7 @@ func gameBackup(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	args := append(userCreds(g.user()), "/usr/bin/tar", "-czf", "-", "-C", gameHome(env, g.ID))
 	// What the server makes again from its own jar on start (Paper's and
 	// Mojang's bundler), and logs: not the world, and most of the size.
-	for _, ex := range gameBackupExcludes[g.Game] {
+	for _, ex := range gameBackupExcludes[gameEngine(env, g)] {
 		args = append(args, "--exclude=data/"+ex)
 	}
 	args = append(args, "data")
@@ -1482,7 +1538,7 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	// Servers from before OwnsFirewall (1.2.0-rc10): the rule is the panel's
 	// when it carries the panel's comment for this server.
 	if g.OwnsFirewall || ufwHasGameRule(ctx, env, g) {
-		_, _ = env.Exec.Run(ctx, "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, g.proto()))
+		_, _ = env.Exec.Run(ctx, "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)))
 	}
 	if !env.Cfg.DryRun {
 		_ = killAllProcesses(ctx, env, g.user())

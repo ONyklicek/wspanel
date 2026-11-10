@@ -29,7 +29,6 @@ var (
 	// Where the files may come from.
 	pluginHosts = []string{"cdn.modrinth.com", "hangarcdn.papermc.io"}
 	// What Paper loads: its own plugins and Bukkit/Spigot ones.
-	paperLoaders  = []string{"paper", "spigot", "bukkit"}
 	pluginFileRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+()\[\] -]{0,126}\.jar$`)
 	pluginProjRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	pluginSources = []string{"modrinth", "hangar"}
@@ -68,28 +67,30 @@ func paperGame(env *Env, raw json.RawMessage, v any, id *int) (gameState, error)
 	if err != nil {
 		return g, err
 	}
-	if addonLoaders(g) == nil {
-		return g, protocol.Invalid("id: plugins need a Paper server (Vanilla loads none)")
+	if addonLoaders(env, g) == nil {
+		return g, protocol.Invalid("id: this variant loads no plugins or mods (Vanilla loads none)")
 	}
 	return g, nil
 }
 
-// addonLoaders: what the server loads (Modrinth's loader names).
-func addonLoaders(g gameState) []string {
-	switch g.Flavor {
-	case "paper":
-		return paperLoaders
-	case "fabric":
-		return []string{"fabric"}
-	case "forge":
-		return []string{"forge"}
+// addonLoaders: what the server loads (Modrinth's loader names), as its
+// variant's package says; nil when it loads no plugins or mods.
+func addonLoaders(env *Env, g gameState) []string {
+	if a := gameAddons(env, g); a != nil {
+		return a.ModrinthLoaders
 	}
 	return nil
 }
 
-// addonDir: plugins/ for Paper, mods/ for the mod loaders.
+// addonHangar: whether the variant takes Paper's plugins from Hangar.
+func addonHangar(env *Env, g gameState) bool {
+	a := gameAddons(env, g)
+	return a != nil && a.Hangar
+}
+
+// addonDir: plugins/ for plugin servers (Paper, Folia), mods/ for the mod loaders.
 func addonDir(env *Env, g gameState) string {
-	if g.Flavor == "paper" {
+	if a := gameAddons(env, g); a != nil && a.Kind == "plugins" {
 		return filepath.Join(gameHome(env, g.ID), "data", "plugins")
 	}
 	return filepath.Join(gameHome(env, g.ID), "data", "mods")
@@ -129,7 +130,7 @@ func gamePluginSearch(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 	switch p.Source {
 	case "modrinth":
 		cats := []string{}
-		for _, l := range addonLoaders(g) {
+		for _, l := range addonLoaders(env, g) {
 			cats = append(cats, "categories:"+l)
 		}
 		facets, _ := json.Marshal([][]string{cats, {"versions:" + g.Version}})
@@ -153,7 +154,7 @@ func gamePluginSearch(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 				Author: h.Author, Downloads: h.Downloads, Icon: h.Icon, URL: "https://modrinth.com/plugin/" + h.Slug})
 		}
 	case "hangar":
-		if g.Flavor != "paper" {
+		if !addonHangar(env, g) {
 			return nil, protocol.Invalid("source: Hangar has Paper plugins only; mods come from Modrinth")
 		}
 		var r struct {
@@ -330,7 +331,7 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(pluginSources, p.Source) || p.Source == "hangar" && g.Flavor != "paper" {
+	if !slices.Contains(pluginSources, p.Source) || p.Source == "hangar" && !addonHangar(env, g) {
 		return nil, protocol.Invalid("source: modrinth or hangar (Hangar for Paper only)")
 	}
 	list := loadPlugins(env, g.ID)
@@ -345,7 +346,7 @@ func gamePluginInstall(ctx context.Context, env *Env, raw json.RawMessage) (any,
 			continue
 		}
 		seen[project] = true
-		rel, err := resolvePlugin(ctx, p.Source, project, g.Version, addonLoaders(g))
+		rel, err := resolvePlugin(ctx, p.Source, project, g.Version, addonLoaders(env, g))
 		if err != nil {
 			if project == p.Project {
 				return nil, err
@@ -431,7 +432,7 @@ func gamePlugins(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 			if ip, ok := byFile[e.Name()]; ok {
 				row["source"], row["project"], row["name"], row["version"] = ip.Source, ip.Project, ip.Name, ip.Version
 				if p.Check {
-					if rel, err := resolvePlugin(ctx, ip.Source, ip.Project, g.Version, addonLoaders(g)); err == nil && rel.Version != ip.Version {
+					if rel, err := resolvePlugin(ctx, ip.Source, ip.Project, g.Version, addonLoaders(env, g)); err == nil && rel.Version != ip.Version {
 						row["update"] = rel.Version
 					}
 				}

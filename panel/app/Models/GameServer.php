@@ -45,7 +45,7 @@ class GameServer extends Model
     /** "Paper 1.21.10 #130", "Factorio 2.1.24". */
     public function versionLabel(): string
     {
-        $name = $this->game === Game::Minecraft ? ucfirst($this->flavor) : $this->game->label();
+        $name = $this->game->is('minecraft') ? ucfirst($this->flavor) : $this->game->label();
 
         return trim($name.' '.$this->version.($this->build ? ' #'.$this->build : ''));
     }

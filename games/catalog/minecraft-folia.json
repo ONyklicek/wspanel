@@ -1,0 +1,11 @@
+{
+  "id": "minecraft-folia",
+  "name": "Folia pro Minecraft",
+  "version": "1.0.0",
+  "description": "Folia od PaperMC: vícevláknový server pro velké světy a mnoho hráčů. Pluginy jen ty, které Folii podporují (Modrinth).",
+  "extends": "minecraft",
+  "flavors": [
+    {"id": "folia", "label": "Folia (vícevláknový, velké servery)", "source": {"type": "papermc", "project": "folia"},
+     "addons": {"kind": "plugins", "modrinth_loaders": ["folia"]}}
+  ]
+}

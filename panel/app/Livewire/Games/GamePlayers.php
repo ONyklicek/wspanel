@@ -3,7 +3,6 @@
 namespace App\Livewire\Games;
 
 use App\Actions\Games\ManageGameServers;
-use App\Enums\Game;
 use App\Livewire\Games\Concerns\IsGameTab;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -45,7 +44,7 @@ class GamePlayers extends ViewPage
 
     public function load(): void
     {
-        if ($this->server()->game !== Game::Minecraft) {
+        if (! $this->server()->game->is('minecraft')) {
             return;
         }
         $games = app(ManageGameServers::class);

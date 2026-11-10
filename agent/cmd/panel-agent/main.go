@@ -273,6 +273,8 @@ func binaries(cfg config.Config) map[string]string {
 		"unattended-upgrade": "/usr/bin/unattended-upgrade",
 		"fail2ban-client":    "/usr/bin/fail2ban-client",
 		"smbclient":          "/usr/bin/smbclient",
+		"gpg":                "/usr/bin/gpg",         // dearmor WSPanel's key only (the game catalog)
+		"gpgv":               "/usr/bin/gpgv",        // the game catalog's signature
 		"rclone":             "/usr/bin/rclone",      // obscure only (a mount's password, on stdin)
 		"ssh-keyscan":        "/usr/bin/ssh-keyscan", // an SFTP disk's host key, when it is added
 		"journalctl":         "/usr/bin/journalctl",
