@@ -256,6 +256,14 @@ if [[ -s /etc/wspanel/install.flags && "$(user_count)" != 0 ]]; then
     keep   "Aktualizovat se stávajícím nastavením" \
     change "Projít průvodce a nastavení změnit" 3>&1 1>&2 2>&3) || { echo "Zrušeno."; exit 1; }
   if [[ $choice == keep ]]; then
+    # Saved before the installer asked how administrators log in over SSH:
+    # asked once now (otherwise keys only would be kept).
+    if ! printf '%s\n' "${saved[@]}" | grep -q '^--ssh-password='; then
+      auth=$(whiptail --title "$TITLE" --default-item heslo --menu "Jak se správci (root) přihlašují přes SSH?\n\n(Nová volba: stávající nastavení ji ještě neobsahuje.)" 15 76 2 \
+        heslo "Heslem i klíčem (heslo hlídá fail2ban)" \
+        klic  "Jen SSH klíčem (bezpečnější; jen když správce klíč má)" 3>&1 1>&2 2>&3) || auth=heslo
+      [[ $auth == heslo ]] && saved+=("--ssh-password=yes") || saved+=("--ssh-password=no")
+    fi
     clear 2>/dev/null || true
     run_install "${saved[@]}" "${PASS[@]}"
     url="$(grep '^APP_URL=' /srv/panel/shared/.env | cut -d= -f2-)"
@@ -377,8 +385,8 @@ auth=$(W --default-item heslo --menu "Jak se správci (root) přihlašují přes
 if [[ $auth == heslo ]]; then
   flags+=("--ssh-password=yes"); root_ssh="správci heslem i klíčem"
 fi
-if ((! have_key)); then
-  # Keys only needs a key; with the password, one is welcome but optional.
+if ((! have_key)) && [[ $auth == klic ]]; then
+  # Keys only needs a key (with the password none is asked for).
   while :; do
     if [[ $auth == klic ]]; then
       msg="Jen klíčem: root zatím žádný klíč nemá, bez něj by se na server nedalo přihlásit.\n\nVložte veřejný klíč pro root (ssh-ed25519 AAAA… z ~/.ssh/id_ed25519.pub, z Termiusu apod.)."
@@ -397,7 +405,7 @@ if ((! have_key)); then
       auth=$(W --default-item heslo --menu "Jak se správci (root) přihlašují přes SSH?" 13 76 2 \
         heslo "Heslem i klíčem (heslo hlídá fail2ban)" \
         klic  "Jen SSH klíčem (bezpečnější)") || auth=heslo
-      if [[ $auth == heslo ]]; then flags+=("--ssh-password=yes"); root_ssh="správci heslem i klíčem"; fi
+      if [[ $auth == heslo ]]; then flags+=("--ssh-password=yes"); root_ssh="správci heslem i klíčem"; break; fi
     else
       W --msgbox "To není veřejný SSH klíč. Začíná ssh-ed25519, ssh-rsa nebo ecdsa-sha2-… a má jeden řádek." 9 72 || true
     fi
