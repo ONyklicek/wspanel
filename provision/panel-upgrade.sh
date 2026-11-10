@@ -22,9 +22,11 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "WSPANEL-UPGRADE start $version (${method:-bundle})"
 if [[ $method == apt ]] && command -v wspanel-update >/dev/null; then
-  pre=()
-  [[ $version == *-* ]] && pre=(--pre)
-  wspanel-update "${pre[@]}" --yes </dev/null
+  # The channel of the version asked for: a release candidate's, or stable
+  # (from a release candidate to a release, too).
+  channel=--stable
+  [[ $version == *-* ]] && channel=--pre
+  wspanel-update "$channel" --yes </dev/null
 else
   [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "no release repository (PANEL_RELEASE_REPO)" >&2; exit 2; }
   tmp="$(mktemp -d)"

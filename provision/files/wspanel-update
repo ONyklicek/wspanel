@@ -29,5 +29,7 @@ fi
 
 sed -i -E "s/^Suites: .*/Suites: $channel/" "$SRC"
 apt-get update -q
-apt-get install -y -q wspanel wspanel-agent
+# Waits for another apt (unattended upgrades, an update started by hand)
+# instead of failing on its lock.
+apt-get install -y -q -o DPkg::Lock::Timeout=900 wspanel wspanel-agent
 exec wspanel-install "${args[@]}"

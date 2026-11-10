@@ -229,6 +229,11 @@ ARCH="$(uname -m)"
 [[ $ARCH == x86_64 || $ARCH == aarch64 ]] || die "unsupported architecture: $ARCH"
 
 export DEBIAN_FRONTEND=noninteractive
+# Every apt-get of the installer (and of the scripts it runs: exported) waits
+# for another apt (unattended upgrades, an update started by hand) instead of
+# failing on its lock. Only here: the server's own apt stays as it is.
+apt-get() { command apt-get -o DPkg::Lock::Timeout=900 "$@"; }
+export -f apt-get
 
 # apt-get update that a WSPanel repository out of reach (GitHub Pages down)
 # does not stop: it is retried without that one source.

@@ -136,7 +136,7 @@ rollback() {
   if [[ $method == apt ]]; then
     debver="${from/-/\~}"
     apt-get update -q || true
-    apt-get install -y -q --allow-downgrades "wspanel=$debver" "wspanel-agent=$debver" \
+    apt-get install -y -q -o DPkg::Lock::Timeout=900 --allow-downgrades "wspanel=$debver" "wspanel-agent=$debver" \
       || die "apt cannot install $debver any more; install $from again (get.sh with WSPANEL_VERSION=$from)"
     WSPANEL_ROLLBACK=1 exec /usr/sbin/wspanel-install --yes
   fi
