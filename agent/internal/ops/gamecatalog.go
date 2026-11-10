@@ -192,6 +192,7 @@ func gamePackageInstall(ctx context.Context, env *Env, raw json.RawMessage) (any
 	if err := writeGamePkg(env, "catalog", pkg, files[p.ID]); err != nil {
 		return nil, err
 	}
+	pkg.Origin = "catalog"
 	return map[string]any{"installed": pkgView(pkg)}, nil
 }
 
@@ -216,6 +217,7 @@ func gamePackageUpload(ctx context.Context, env *Env, raw json.RawMessage) (any,
 	if err := writeGamePkg(env, "local", pkg, buf.Bytes()); err != nil {
 		return nil, err
 	}
+	pkg.Origin = "local"
 	return map[string]any{"installed": pkgView(pkg)}, nil
 }
 

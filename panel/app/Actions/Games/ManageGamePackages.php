@@ -5,6 +5,7 @@ namespace App\Actions\Games;
 use App\Enums\Game;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\AgentMessages;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -23,7 +24,13 @@ class ManageGamePackages
      */
     public function list(bool $catalog = false): array
     {
-        return $this->agent->call('games.packages', $catalog ? ['catalog' => true] : []);
+        $out = $this->agent->call('games.packages', $catalog ? ['catalog' => true] : []);
+        // Not an exception: the agent's words, in the panel's language.
+        if (isset($out['catalog_error'])) {
+            $out['catalog_error'] = AgentMessages::cs((string) $out['catalog_error']);
+        }
+
+        return $out;
     }
 
     /** @throws AgentException */

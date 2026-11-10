@@ -44,6 +44,13 @@ dev/        dev kontejner, e2e test, demo aplikace
 docs/       tato dokumentace (v panelu v menu Dokumentace)
 ```
 
+## Přidání hry nebo varianty herního serveru
+
+Hra nebo varianta, kterou umí existující engine a zdroj, je jen manifest
+herního balíčku (`games/catalog/<id>.json` pro katalog WSPanelu). Nový engine
+nebo zdroj (třeba SteamCMD pro Counter-Strike 2) se přidává do agenta:
+[Herní balíčky → Nový engine nebo zdroj](herni-balicky.md#nový-engine-nebo-zdroj-pro-vývojáře).
+
 ## Přidání operace agenta
 
 1. Handler v `agent/internal/ops/*.go`. Parametry dekódovat přes `decode()`

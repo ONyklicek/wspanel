@@ -13,6 +13,7 @@ certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
 | nahrát obyčejný PHP web (třeba WordPress) | [Weby → Čisté PHP](weby.md#čisté-php-wordpress-vlastní-skripty) |
 | hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |
 | provozovat server Minecraftu nebo Factoria | [Herní servery](herni-servery.md) |
+| přidat hru nebo variantu (Folia…), vlastní herní balíček, jeho API | [Herní balíčky](herni-balicky.md) |
 | nasazovat aplikaci z Gitu | [Deploy](deploy.md) |
 | nasazovat přes GitHub Releases / Actions | [Deploy → Release a CI](deploy.md#nasazení-releasů-a-z-ci-github-actions) |
 | napojit repozitář z GitHubu jedním kliknutím (jako Zerops) | [GitHub → Návod krok za krokem](github.md#návod-první-deploy-z-githubu-krok-za-krokem) |

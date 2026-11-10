@@ -6,8 +6,13 @@ a samotný server hry se stáhnou až s prvním herním serverem.
 
 | Hra | Varianty | Port (výchozí) |
 |---|---|---|
-| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric a Forge (módy) | 25565/tcp |
+| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric a Forge (módy); s balíčkem z katalogu Folia (vícevláknový) | 25565/tcp |
 | Factorio | stabilní vydání (jen procesory x86-64) | 34197/udp |
+
+Které hry a varianty jdou spustit, určují **herní balíčky**
+(**Server → Herní balíčky**): Minecraft a Factorio jsou vestavěné, další
+přicházejí z podepsaného katalogu WSPanelu (Folia) nebo jako vlastní balíček
+správce. Formát, katalog a API: [Herní balíčky](herni-balicky.md).
 
 ## Nový server
 
@@ -62,6 +67,9 @@ a port; výchozí port Minecraftu se nepíše).
   z katalogu Modrinth (Hangar má jen pluginy pro Paper), módy pro daný
   loader a verzi Minecraftu, do `data/mods`; povinné závislosti (třeba
   Fabric API) se nainstalují s módem. Hráči potřebují stejné módy u sebe.
+- **Pluginy a módy → Pluginy** (Folia): jako u Paperu, ale jen z Modrinthu
+  a jen pluginy, které Folii podporují (loader `folia`); Hangar nabízí
+  pluginy pro Paper, které na Folii často nefungují.
 - **Pluginy a módy → Pluginy** (Paper): hledání v katalozích **Modrinth** a **Hangar**
   (PaperMC), jen verze pro Minecraft serveru, instalace jedním tlačítkem,
   seznam nainstalovaných (se zdrojem a verzí), *Zkontrolovat aktualizace*,

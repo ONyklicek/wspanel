@@ -26,6 +26,15 @@ v JSON. Limit 120 požadavků za minutu. Formální popis je v
 | GET | `/databases` | databáze |
 | GET | `/mail/domains` | poštovní domény (počet schránek, webmail) |
 | GET | `/dns/zones` | DNS zóny |
+| GET | `/games` | hry, varianty a verze herních serverů |
+| GET | `/game-servers`, `/game-servers/{id}` | herní servery |
+| GET | `/game-packages`, `/game-packages/catalog` | herní balíčky, katalog WSPanelu (správce) |
+| POST | `/game-packages` | nahraje vlastní herní balíček, tělo = manifest (správce) |
+| POST | `/game-packages/{id}/install` | herní balíček z katalogu (správce) |
+| DELETE | `/game-packages/{id}` | odebere herní balíček (správce) |
+
+Herní endpointy existují jen se zapnutým modulem Herní servery; balíčky
+podrobně, s příklady odpovědí: [Herní balíčky → REST API](herni-balicky.md#rest-api).
 
 Cizí web vrací 404 stejně jako neexistující. Token jen ke čtení dostane
 u POST odpověď 403.
@@ -49,6 +58,9 @@ wspanel deploy example.com v1.4.0 --wait         # počká na výsledek
 wspanel deploys example.com
 wspanel restart example.com
 wspanel databases | wspanel mail | wspanel dns
+wspanel games | wspanel game-servers
+wspanel game-packages | wspanel game-catalog          # herní balíčky (správce)
+wspanel game-package upload balicek.json | install <id> | remove <id>
 wspanel sites --json                             # odpověď API, jak přišla
 ```
 

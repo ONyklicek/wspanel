@@ -39,6 +39,115 @@ components:
         started: { type: [string, "null"] }
         finished: { type: [string, "null"] }
         error: { type: [string, "null"] }
+    Addons:
+      type: [object, "null"]
+      description: Plugins or mods a variant loads (null = none)
+      properties:
+        kind: { type: string, enum: [plugins, mods] }
+        modrinth_loaders: { type: array, items: { type: string } }
+        hangar: { type: boolean }
+    Game:
+      type: object
+      description: A game as the installed game packages make it
+      properties:
+        id: { type: string, example: minecraft }
+        name: { type: string, example: Minecraft Java }
+        engine: { type: string, enum: [minecraft, factorio] }
+        proto: { type: string, enum: [tcp, udp] }
+        default_port: { type: integer }
+        min_memory_mb: { type: integer }
+        available: { type: boolean, description: "runs on this server's processor" }
+        flavors:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, example: folia }
+              label: { type: string }
+              package: { type: string, description: the package that adds the variant }
+              addons: { $ref: "#/components/schemas/Addons" }
+              versions: { type: array, items: { type: string }, description: versions installable now }
+    GameServer:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        game: { type: string }
+        flavor: { type: string }
+        version: { type: string }
+        build: { type: [string, "null"] }
+        status: { type: string, enum: [installing, active, failed] }
+        address: { type: string, description: what players connect to }
+        port: { type: integer }
+        memory_mb: { type: integer }
+        cpu_percent: { type: integer }
+    GamePackage:
+      type: object
+      properties:
+        id: { type: string, example: minecraft-folia }
+        name: { type: string }
+        version: { type: string, example: 1.0.0 }
+        description: { type: string }
+        origin: { type: string, enum: [builtin, catalog, local] }
+        game: { type: string, description: the game it adds (or absent) }
+        game_label: { type: string }
+        engine: { type: string }
+        arch: { type: array, items: { type: string } }
+        extends: { type: string, description: the game it extends (or empty) }
+        flavors:
+          type: array
+          items: { type: object, properties: { id: { type: string }, label: { type: string } } }
+        servers: { type: array, items: { type: integer }, description: game servers using it (installed packages) }
+        installed: { type: string, description: the installed version, empty when not installed (catalog entries) }
+    GamePackageManifest:
+      type: object
+      description: "A game package manifest; full reference in docs/herni-balicky.md. Exactly one of game and extends."
+      required: [id, name, version, flavors]
+      additionalProperties: false
+      properties:
+        id: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,40}$" }
+        name: { type: string, maxLength: 64 }
+        version: { type: string, pattern: "^\\d{1,4}(\\.\\d{1,4}){0,2}$" }
+        description: { type: string, maxLength: 300 }
+        extends: { type: string, pattern: "^[a-z][a-z0-9]{1,31}$" }
+        game:
+          type: object
+          additionalProperties: false
+          required: [id, label, engine, proto, default_port, min_memory_mb, arch]
+          properties:
+            id: { type: string, pattern: "^[a-z][a-z0-9]{1,31}$" }
+            label: { type: string, maxLength: 64 }
+            engine: { type: string, enum: [minecraft, factorio] }
+            proto: { type: string, enum: [tcp, udp] }
+            default_port: { type: integer, minimum: 1024, maximum: 65535 }
+            min_memory_mb: { type: integer, minimum: 256, maximum: 65536 }
+            arch: { type: array, items: { type: string, enum: [amd64, arm64] }, minItems: 1 }
+        flavors:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, label, source]
+            properties:
+              id: { type: string, pattern: "^[a-z][a-z0-9-]{0,31}$" }
+              label: { type: string, maxLength: 64 }
+              source:
+                type: object
+                additionalProperties: false
+                required: [type]
+                properties:
+                  type: { type: string, enum: [papermc, mojang, fabric, forge, factorio] }
+                  project: { type: string, description: "papermc only: paper, folia" }
+              addons:
+                type: object
+                additionalProperties: false
+                required: [kind, modrinth_loaders]
+                properties:
+                  kind: { type: string, enum: [plugins, mods] }
+                  modrinth_loaders: { type: array, minItems: 1, maxItems: 10, items: { type: string } }
+                  hangar: { type: boolean, description: papermc only }
   responses:
     Unauthenticated:
       description: Missing, unknown or expired token (or a suspended client)
@@ -147,3 +256,102 @@ paths:
     get:
       summary: DNS zones
       responses: { "200": { description: OK } }
+  /games:
+    get:
+      summary: Games, their variants and installable versions (the game servers module)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Game" } } } }
+        "404": { description: The game servers module is off }
+  /game-servers:
+    get:
+      summary: Game servers (a client's token sees its own)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/GameServer" } } } }
+  /game-servers/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: A game server
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: "#/components/schemas/GameServer" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /game-packages:
+    get:
+      summary: Installed game packages and those not in effect (administrators)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/GamePackage" } }
+                  problems:
+                    type: array
+                    items: { type: object, properties: { id: { type: string }, origin: { type: string }, file: { type: string }, error: { type: string } } }
+        "404": { description: Not an administrator, or the game servers module is off }
+    post:
+      summary: Upload an own game package (administrators); the request body is the manifest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GamePackageManifest" }
+      responses:
+        "201":
+          description: Installed into /etc/wspanel/games.d
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: "#/components/schemas/GamePackage" } } }
+        "403": { $ref: "#/components/responses/ReadOnly" }
+        "409": { description: Clashes with an installed package (its id, game or a variant) }
+        "422": { description: Not a valid manifest (the error says which field) }
+  /game-packages/catalog:
+    get:
+      summary: What WSPanel's signed catalog offers (administrators)
+      responses:
+        "200":
+          description: OK (error is set when the catalog cannot be fetched or its signature does not match)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/GamePackage" } }
+                  error: { type: string }
+  /game-packages/{id}/install:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Install (or update) a package from WSPanel's catalog (administrators)
+      responses:
+        "201":
+          description: Installed
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: "#/components/schemas/GamePackage" } } }
+        "403": { $ref: "#/components/responses/ReadOnly" }
+        "404": { description: The catalog has no such package }
+        "409": { description: Clashes with an installed package }
+        "502": { description: The catalog is not reachable or its signature does not match }
+  /game-packages/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete:
+      summary: Remove a catalog or own package while no game server uses it (administrators)
+      responses:
+        "200": { description: Removed }
+        "403": { $ref: "#/components/responses/ReadOnly" }
+        "404": { description: No such package }
+        "409": { description: Game servers use it, or another package extends its game }
+        "422": { description: A built-in package stays }

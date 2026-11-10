@@ -40,8 +40,12 @@ func TestBuiltinPackagesAddMinecraftAndFactorio(t *testing.T) {
 func TestFoliaExtendsMinecraftThroughAPackage(t *testing.T) {
 	fakePublishers(t)
 	env, _ := gameTestEnv(t)
-	if _, err := call(t, env, gamePackageUpload, map[string]string{"manifest": foliaPkg}); err != nil {
+	up, err := call(t, env, gamePackageUpload, map[string]string{"manifest": foliaPkg})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if up.(map[string]any)["installed"].(map[string]any)["origin"] != "local" {
+		t.Errorf("an uploaded package is the administrator's own: %v", up)
 	}
 	if !fileExists(filepath.Join(env.Cfg.GamePackagesDir, "minecraft-folia.json")) {
 		t.Fatal("the package is kept in games.d")

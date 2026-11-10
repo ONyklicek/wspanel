@@ -2933,5 +2933,6 @@
     "Čas serveru": "Server time",
     ":count úloha běží": ":count task running",
     ":count úlohy běží": ":count tasks running",
-    ":count úloh běží": ":count tasks running"
+    ":count úloh běží": ":count tasks running",
+    "Z katalogu Modrinth, jen pluginy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; povinné závislosti se nainstalují s ním.": "From the Modrinth catalog, plugins for :loader and Minecraft :v only. The file is downloaded from the catalog and checked against its checksum; required dependencies are installed with it."
 }

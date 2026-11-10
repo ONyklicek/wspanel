@@ -55,7 +55,8 @@
 
         <x-wire::section :heading="$this->mods() ? __('Přidat mód') : __('Přidat plugin')" :description="$factorio
             ? __('Z mod portálu Factoria, jen verze pro Factorio :v. Soubor se ověří otiskem (SHA-1) z portálu; povinné závislosti se nainstalují s ním.', ['v' => implode('.', array_slice(explode('.', $server->version), 0, 2))])
-            : ($this->mods() ? __('Z katalogu Modrinth, jen módy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem (SHA-512); povinné závislosti (třeba Fabric API) se nainstalují s ním.', ['loader' => ucfirst($server->flavor), 'v' => $server->version]) : __('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version]))">
+            : ($this->mods() ? __('Z katalogu Modrinth, jen módy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem (SHA-512); povinné závislosti (třeba Fabric API) se nainstalují s ním.', ['loader' => ucfirst($server->flavor), 'v' => $server->version]) : ($this->hangar() ? __('Z katalogů Modrinth a Hangar (PaperMC), jen verze pro Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; plugin, který katalog jen odkazuje jinam, panel neinstaluje. Povinné závislosti z Modrinthu se nainstalují s ním.', ['v' => $server->version])
+                : __('Z katalogu Modrinth, jen pluginy pro :loader a Minecraft :v. Soubor se stáhne z katalogu a ověří otiskem; povinné závislosti se nainstalují s ním.', ['loader' => $server->game->flavors()[$server->flavor] ?? $server->flavor, 'v' => $server->version])))">
             <form wire:submit="findPlugins" class="flex flex-wrap items-center gap-2">
                 @if ($this->hangar())
                     <select wire:model="source" class="rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">

@@ -101,4 +101,13 @@ class ApiGamesTest extends TestCase
         $this->postJson('/api/v1/game-packages/minecraft-folia/install', [], ['Authorization' => $w])->assertCreated();
         $this->deleteJson('/api/v1/game-packages/minecraft-folia', [], ['Authorization' => $w])->assertStatus(409)->assertJsonPath('error', 'Balíček Folia pro Minecraft používají herní servery (#9): nejdřív je smažte.');
     }
+
+    public function test_a_catalog_whose_signature_does_not_match_says_so_in_czech(): void
+    {
+        $this->agent->shouldReceive('call')->with('games.packages', ['catalog' => true])
+            ->andReturn(['packages' => [], 'problems' => [], 'catalog' => [], 'catalog_error' => "the catalog's signature does not match WSPanel's key: refused"]);
+
+        $this->getJson('/api/v1/game-packages/catalog', $this->bearer(User::factory()->create()))->assertOk()
+            ->assertJsonPath('data', [])->assertJsonPath('error', 'Podpis katalogu nesedí s klíčem WSPanelu: odmítnuto.');
+    }
 }
