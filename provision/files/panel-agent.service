@@ -7,6 +7,10 @@ Type=simple
 ExecStart=/usr/sbin/panel-agent -config /etc/panel-agent/agent.json
 Restart=on-failure
 RestartSec=2s
+# Kept in RAM under memory pressure: a swapped-out agent stalls every
+# action of the panel. Its own priority for the OOM killer stays default,
+# because the commands it starts (as site users) inherit it.
+MemoryLow=64M
 User=root
 StateDirectory=panel-agent
 StateDirectoryMode=0700

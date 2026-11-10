@@ -11,6 +11,11 @@ ExecReload=/usr/bin/frankenphp reload --config /etc/panel-web/Caddyfile --adapte
 Restart=on-failure
 TimeoutStopSec=5s
 LimitNOFILE=1048576
+# Every site depends on it: under memory pressure the kernel keeps it in RAM
+# (MemoryLow) and kills it last (OOMScoreAdjust), never a swapped-out edge
+# answering in tens of seconds while a game server eats the RAM.
+MemoryLow=128M
+OOMScoreAdjust=-800
 Environment=XDG_DATA_HOME=/var/lib/panel-web XDG_CONFIG_HOME=/var/lib/panel-web/config
 StateDirectory=panel-web
 StateDirectoryMode=0700

@@ -277,6 +277,20 @@ func copyPHPSetup(env *Env, from, to string) error {
 		return err
 	}
 	_ = os.Remove(filepath.Join(poolDir, "www.conf"))
+	// The unit's drop-in (kept in RAM, taken late by the OOM killer); the
+	// restart that follows applies it, after a daemon-reload.
+	dropIn := func(v string) string {
+		return filepath.Join(env.Cfg.SystemdDir, config.ForVersion(env.Cfg.FPMUnit, v)+".d", "wspanel.conf")
+	}
+	if b, err := os.ReadFile(dropIn(from)); err == nil {
+		if err := env.FS.MkdirAll(filepath.Dir(dropIn(to)), 0o755, fsx.Root); err != nil {
+			return err
+		}
+		if err := env.FS.WriteFile(dropIn(to), b, 0o644, fsx.Root); err != nil {
+			return err
+		}
+		_, _ = env.Exec.Run(context.Background(), "systemctl", "daemon-reload")
+	}
 	return nil
 }
 

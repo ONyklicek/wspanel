@@ -330,7 +330,10 @@ for v in "${PHP_LIST[@]}"; do
   # Debian's default www pool is replaced by an idle pool (FPM needs >= 1 pool).
   rm -f "/etc/php/$v/fpm/pool.d/www.conf"
   sed "s|\$pool|$v|" "$HERE/files/00-wspanel-idle.conf" > "/etc/php/$v/fpm/pool.d/00-wspanel-idle.conf"
+  install -d -m 0755 "/etc/systemd/system/php$v-fpm.service.d"
+  install -m 0644 "$HERE/files/php-fpm-wspanel.conf" "/etc/systemd/system/php$v-fpm.service.d/wspanel.conf"
 done
+systemctl daemon-reload
 
 # ---------------------------------------------------------------- databases
 for engine in "${DB_ENGINES[@]}"; do

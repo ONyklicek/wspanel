@@ -109,6 +109,11 @@ func TestPHPInstallAddsAVersion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	dropIn := filepath.Join(env.Cfg.SystemdDir, "php8.4-fpm.service.d", "wspanel.conf")
+	_ = os.MkdirAll(filepath.Dir(dropIn), 0o755)
+	if err := os.WriteFile(dropIn, []byte("[Service]\nMemoryLow=256M\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := call(t, env, phpInstall, map[string]string{"version": "7.4"}); code(err) != protocol.CodeInvalidParams {
 		t.Fatal("an unsupported version accepted")
 	}
@@ -133,6 +138,9 @@ func TestPHPInstallAddsAVersion(t *testing.T) {
 		t.Fatal("FPM not enabled")
 	}
 	etc82 := filepath.Join(filepath.Dir(etc), "8.2")
+	if b, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "php8.2-fpm.service.d", "wspanel.conf")); !strings.Contains(string(b), "MemoryLow=256M") {
+		t.Fatalf("the FPM unit's drop-in not copied: %q", b)
+	}
 	if b, _ := os.ReadFile(filepath.Join(etc82, "fpm/conf.d/90-wspanel.ini")); string(b) != "expose_php = Off\n" {
 		t.Fatal("php.ini additions not copied")
 	}
