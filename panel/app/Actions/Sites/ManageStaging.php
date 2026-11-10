@@ -80,10 +80,11 @@ class ManageStaging
         $production = Site::query()->findOrFail($staging->staging_of);
         // The safety copy has to exist before anything of production is
         // overwritten: the push waits for it, and a failed one stops it.
+        // Up to 15 minutes, so the push still fits the job's hour.
         // (backupNow only starts the backup; the copy used to begin while
         // the backup was still dumping the databases it overwrote.)
         $backup = app(ManageSiteBackups::class)->backupNow($production);
-        if ($backup->job_id !== null && $this->jobs->await($backup->job_id, 1800) === null) {
+        if ($backup->job_id !== null && $this->jobs->await($backup->job_id, 900) === null) {
             throw new AgentException('timeout', __('Záloha produkce ještě běží, nic se nepřepsalo. Zkuste to za chvíli.'), 'panel');
         }
         if ($databases) {

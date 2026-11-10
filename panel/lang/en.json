@@ -1847,7 +1847,7 @@
     "klíč serveru (ověřte u správce serveru): :keys": "server key (check with the server's administrator): :keys",
     "klíč v DNS odpovídá serveru": "the key in DNS matches the server",
     "klíčem domény odesílatele.": "with the sender domain's key.",
-    "klíčem, který zná jen tento server. Panel stáhne zpět jen kopii s platným podpisem, takže podvrženou nebo pozměněnou zálohu z úložiště neobnoví. Klíč si uložte (tlačítko": "with a key only this server knows. The panel downloads back only a copy with a valid signature, so it never restores a forged or altered backup from the storage. Keep the key (button",
+    "klíčem, který zná jen tento server. Panel stáhne zpět jen kopii s platným podpisem, takže podvrženou nebo pozměněnou zálohu z úložiště neobnoví. Klíč si uložte (na serveru ho vypíše": "with a key only this server knows. The panel downloads back only a copy with a valid signature, so it never restores a forged or altered backup from the storage. Keep the key (on the server it is printed by",
     "kontrola odpovídá za ": "the check answers in ",
     "mariadb -h :host -P :port -u <název databáze> -p --ssl <název databáze>": "mariadb -h :host -P :port -u <database name> -p --ssl <database name>",
     "minuta hodina den měsíc den-v-týdnu, např. */15 * * * * nebo 0 3 * * 1-5": "minute hour day month day-of-week, e.g. */15 * * * * or 0 3 * * 1-5",

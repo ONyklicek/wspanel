@@ -154,6 +154,11 @@ rollback() {
   rm -f /srv/panel/shared/database.sqlite-wal /srv/panel/shared/database.sqlite-shm
   install -m 0600 -o panel -g panel "$snap/env" /srv/panel/shared/.env
   [[ -f "$snap/install.flags" ]] && install -m 0600 "$snap/install.flags" /etc/wspanel/install.flags
+  # The installer of an older version may not write release.conf: it says
+  # the version rolled back to, or the next snapshot would carry the wrong one.
+  if [[ -f /etc/wspanel/release.conf ]]; then
+    sed -i "s|^PANEL_VERSION=.*|PANEL_VERSION=$from|" /etc/wspanel/release.conf
+  fi
   if [[ $method == apt ]]; then
     debver="${from/-/\~}"
     apt-get update -q || true

@@ -333,6 +333,12 @@ for v in "${PHP_LIST[@]}"; do
   install -d -m 0755 "/etc/systemd/system/php$v-fpm.service.d"
   install -C -m 0644 "$HERE/files/php-fpm-wspanel.conf" "/etc/systemd/system/php$v-fpm.service.d/wspanel.conf"
 done
+# A unit's MemoryLow protects it only as far as its slice is protected:
+# system.slice (the edge, the web tier, PHP-FPM, the databases, the agent)
+# against the games' own slice. Protection takes nothing away until memory
+# runs short; then the kernel reclaims from the games first.
+install -d -m 0755 /etc/systemd/system/system.slice.d
+install -C -m 0644 "$HERE/files/system-slice-wspanel.conf" /etc/systemd/system/system.slice.d/wspanel.conf
 systemctl daemon-reload
 
 # ---------------------------------------------------------------- databases
@@ -809,7 +815,8 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env MAIL_FROM_NAME "\"WSPanel\""
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite
   # Documentation shown in the panel (Nápověda).
-  if [[ -d "$HERE/../docs" ]]; then rsync -a --delete "$HERE/../docs/" "$release/resources/docs/"; fi
+  # The panel user's, like the rest of the release (it removes old releases).
+  if [[ -d "$HERE/../docs" ]]; then rsync -a --delete --chown=panel:panel "$HERE/../docs/" "$release/resources/docs/"; fi
   ln -sfn /srv/panel/shared/.env "$release/.env"
   rm -rf "$release/storage" && ln -sfn /srv/panel/shared/storage "$release/storage"
   chown -h panel:panel "$release/.env" "$release/storage"
@@ -836,7 +843,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   find /srv/panel/releases -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{14}' -printf '%f\n' |
     sort -r | tail -n +6 | while IFS= read -r old_release; do
       [[ "$old_release" =~ ^[0-9]{14}$ && "$old_release" != "$current_release" ]] || continue
-      runuser -u panel -- rm -rf -- "/srv/panel/releases/$old_release"
+      # Best effort: a release left by an older installer may hold files of
+      # root's (its docs), which stay; the upgrade goes on either way.
+      runuser -u panel -- rm -rf -- "/srv/panel/releases/$old_release" 2>/dev/null \
+        || log "old panel release $old_release not fully removed (files of root's in it); it can be deleted by hand"
     done
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
   install -m 0644 "$HERE/files/panel-queue.service" /etc/systemd/system/panel-queue.service
@@ -973,7 +983,7 @@ refresh_unit() {
   [[ $exe == *" (deleted)" ]] && changed=1
   started="$(date -d "$(systemctl show -p ActiveEnterTimestamp --value "$unit")" +%s 2>/dev/null || echo 0)"
   for f in $(systemctl show -p FragmentPath -p DropInPaths --value "$unit"); do
-    [[ -f $f && $(stat -c %Y "$f") -gt $started ]] && changed=1
+    [[ -f $f && $(stat -c %Y "$f") -ge $started ]] && changed=1
   done
   if ((changed)); then
     systemctl restart "$unit"
