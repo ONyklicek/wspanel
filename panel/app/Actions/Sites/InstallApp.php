@@ -8,8 +8,8 @@ use App\Enums\SiteStatus;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
 use App\Services\Agent\SystemInfo;
+use App\Support\AgentTasks;
 use Illuminate\Support\Str;
 
 /**
@@ -33,7 +33,6 @@ class InstallApp
         private readonly ManageDatabases $databases,
         private readonly ManageDeploys $deploys,
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -66,9 +65,13 @@ class InstallApp
 
         if ($app === 'wordpress') {
             $job = $this->agent->call('site.app_install', ['domain' => $site->domain, 'app' => 'wordpress']);
-            $done = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) !== null : true;
+            AgentTasks::start($job, 'site.app_install', [
+                'title' => __('WordPress na :domain', ['domain' => $site->domain]),
+                'done' => __('WordPress na :domain je připravený', ['domain' => $site->domain]),
+                'body' => __('Otevřete web a dokončete instalaci WordPressu (název, účet správce).'),
+            ], subject: $site);
 
-            return ['site' => $site, 'note' => $done ? __('Otevřete web a dokončete instalaci WordPressu (název, účet správce).') : __('WordPress se ještě rozbaluje, za chvíli otevřete web.')];
+            return ['site' => $site, 'note' => __('WordPress se rozbaluje na pozadí; až bude hotový, dáme vědět.')];
         }
 
         $this->appEnv($site, $app);

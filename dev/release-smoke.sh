@@ -89,7 +89,7 @@ fi
 on "grep -q '^Password:' /root/$([[ -n $FROM ]] && echo install-from.log || echo install.log)" || fail "no admin account was created"
 
 log "Services"
-for unit in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-fpm mariadb postgresql postfix opendkim dovecot rspamd pdns fail2ban; do
+for unit in panel-agent panel-proxy panel-web panel-scheduler panel-queue php8.3-fpm php8.4-fpm mariadb postgresql postfix opendkim dovecot rspamd pdns fail2ban; do
   on "systemctl is-active --quiet $unit" || fail "$unit is not running"
 done
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units"

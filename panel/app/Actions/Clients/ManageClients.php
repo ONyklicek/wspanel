@@ -196,7 +196,8 @@ class ManageClients
         }
         // Files and processes move to the client's group (its disk quota).
         $job = $this->agent->call('site.set_group', ['domain' => $site->domain, 'group' => $client?->linux_group ?? '']);
-        if (isset($job['job_id']) && $this->jobs->await($job['job_id'], 300) === null) {
+        // Run by the queue worker (AgentTasks::queue): waiting here keeps nobody waiting.
+        if (isset($job['job_id']) && $this->jobs->await($job['job_id'], 3000) === null) {
             throw new AgentException('timeout', __('Přesun souborů webu ještě běží, zkontrolujte ho za chvíli.'), 'site.set_group');
         }
         $this->agent->call('site.limits', ['domain' => $site->domain, 'fpm_children' => (int) ($client?->limit('fpm_children') ?? 0)]);

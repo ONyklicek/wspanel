@@ -2,10 +2,11 @@
 
 namespace App\Actions\Server;
 
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use Illuminate\Support\Carbon;
 
 /**
@@ -40,7 +41,6 @@ class ManageOffsite
 
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -164,18 +164,25 @@ class ManageOffsite
     }
 
     /** @throws AgentException */
-    public function uploadSiteBackup(Site $site, string $file): bool
+    public function uploadSiteBackup(Site $site, string $file): AgentTask
     {
         $job = $this->agent->call('offsite.upload', ['domain' => $site->domain, 'file' => $file]);
 
-        return $this->jobs->await($job['job_id'], 60) !== null;
+        return AgentTasks::start($job, 'offsite.upload', [
+            'title' => __('Nahrávání zálohy :file mimo server', ['file' => $file]),
+            'done' => __('Záloha nahrána mimo server'),
+        ], subject: $site);
     }
 
     /** @throws AgentException */
-    public function fetchSiteBackup(Site $site, string $file, bool $unverified = false): bool
+    public function fetchSiteBackup(Site $site, string $file, bool $unverified = false): AgentTask
     {
         $job = $this->agent->call('offsite.fetch', array_filter(['domain' => $site->domain, 'file' => $file, 'unverified' => $unverified]));
 
-        return $this->jobs->await($job['job_id'], 60) !== null;
+        return AgentTasks::start($job, 'offsite.fetch', [
+            'title' => __('Stahování zálohy :file na server', ['file' => $file]),
+            'done' => __('Záloha je zpět na serveru'),
+            'body' => __('Teď ji můžete obnovit.'),
+        ], subject: $site);
     }
 }

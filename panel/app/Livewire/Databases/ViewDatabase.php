@@ -4,12 +4,14 @@ namespace App\Livewire\Databases;
 
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\SyncDatabases;
+use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\Database;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
-use NyonCode\WireCore\Actions\Action;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
@@ -17,6 +19,15 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
 
 class ViewDatabase extends ViewPage
 {
+    use WatchesAgentTasks;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        $database = $this->nativeRecord();
+
+        return $database instanceof Database ? $database : null;
+    }
+
     protected static ?string $resource = DatabaseResource::class;
 
     public function mount(mixed $record = null): void
@@ -44,8 +55,7 @@ class ViewDatabase extends ViewPage
                 ->icon('outline:archive-box-arrow-down')
                 ->action(function (Database $record) {
                     try {
-                        $done = app(ManageDatabases::class)->backupNow($record);
-                        Toast::success($done ? __('Záloha hotová') : __('Záloha běží na pozadí'));
+                        app(ManageDatabases::class)->backupNow($record);
                     } catch (AgentException $e) {
                         Toast::error(__('Záloha selhala'), $e->getMessage());
                     }

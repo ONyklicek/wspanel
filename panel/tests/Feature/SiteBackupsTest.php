@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Livewire\Sites\BackupList;
+use App\Models\AgentTask;
 use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -74,7 +76,8 @@ class SiteBackupsTest extends TestCase
             ->with('site.backup', ['domain' => 'app.example.com', 'databases' => [['engine' => 'mariadb', 'name' => 'app']]])
             ->andReturn(['job_id' => 'j1']);
 
-        $this->headerTableAction($this->list(), 'backupNow', ['databases' => true])->assertNotified('Záloha vytvořena');
+        $this->headerTableAction($this->list(), 'backupNow', ['databases' => true])->assertNotified('Spuštěno na pozadí');
+        $this->assertSame('Záloha webu app.example.com', AgentTask::sole()->title);
     }
 
     public function test_restore_needs_the_domain_typed_and_reports_the_result(): void
@@ -91,7 +94,12 @@ class SiteBackupsTest extends TestCase
         ]]);
 
         $this->tableAction($this->list(), self::FILE, 'restore', ['files' => true, 'databases' => true, 'confirm' => 'app.example.com'])
-            ->assertHasNoErrors()->assertNotified('Záloha obnovena');
+            ->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
+        AgentTasks::settleAll();
+        $task = AgentTask::sole();
+        $this->assertSame('done', $task->status);
+        $this->assertStringContainsString('Nový release 20261107T100000Z, web odpovídá.', (string) $task->body);
+        $this->assertStringContainsString('app.example.com-20261107T100000Z-pre-restore.tar.gz', (string) $task->body);
     }
 
     public function test_schedule_is_saved_with_the_databases(): void
@@ -135,10 +143,11 @@ class SiteBackupsTest extends TestCase
             ->assertSeeHtml('act-'.self::FILE.'-restore')->assertDontSeeHtml('act-'.self::FILE.'-upload');
 
         $this->agent->shouldReceive('call')->once()->with('offsite.fetch', ['domain' => 'app.example.com', 'file' => $remoteOnly])->andReturn(['job_id' => 'j3']);
-        $this->tableAction($b, $remoteOnly, 'fetch')->assertNotified('Záloha je zpět na serveru');
+        $this->tableAction($b, $remoteOnly, 'fetch')->assertNotified('Spuštěno na pozadí');
 
         $this->agent->shouldReceive('call')->once()->with('offsite.fetch', ['domain' => 'app.example.com', 'file' => $remoteOnly, 'unverified' => true])->andReturn(['job_id' => 'j4']);
-        $this->tableAction($b, $remoteOnly, 'fetch', ['unverified' => true])->assertNotified('Záloha je zpět na serveru');
+        $this->tableAction($b, $remoteOnly, 'fetch', ['unverified' => true])->assertNotified('Spuštěno na pozadí');
+        $this->assertSame(2, AgentTask::where('title', 'like', 'Stahování zálohy%')->count());
     }
 
     public function test_a_broken_storage_is_reported_not_hidden(): void

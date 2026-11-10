@@ -128,7 +128,7 @@ rollback() {
     read -r -p "Continue? [y/N] " a </dev/tty || a=""
     [[ $a == [yYaA]* ]] || { echo "Zrušeno."; exit 1; }
   fi
-  systemctl stop panel-scheduler panel-web 2>/dev/null || true
+  systemctl stop panel-scheduler panel-queue panel-web 2>/dev/null || true
   install -m 0600 -o panel -g panel "$snap/database.sqlite" /srv/panel/shared/database.sqlite
   rm -f /srv/panel/shared/database.sqlite-wal /srv/panel/shared/database.sqlite-shm
   install -m 0600 -o panel -g panel "$snap/env" /srv/panel/shared/.env
@@ -207,7 +207,7 @@ restore_server() {
   newenv="$(grep -E '^(PANEL_VERSION|PANEL_INSTALL_METHOD|PANEL_RELEASE_REPO)=' /srv/panel/shared/.env || true)"
 
   printf '\033[1;34m==>\033[0m 2/3 The server backup: accounts, configuration, the panel, DNS\n'
-  systemctl stop panel-scheduler panel-web panel-agent
+  systemctl stop panel-scheduler panel-queue panel-web panel-agent
   /usr/sbin/panel-agent -server-restore "$file" || die "restoring the server backup failed (see above)"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
@@ -225,7 +225,7 @@ restore_server() {
   done
   systemctl list-unit-files 'wspanel-*' --state=enabled --no-legend | awk '{print $1}' | xargs -r systemctl start || true
   systemctl restart panel-proxy
-  systemctl start panel-agent panel-web panel-scheduler
+  systemctl start panel-agent panel-web panel-scheduler panel-queue
   (cd /srv/panel/current && runuser -u panel -- php artisan panel:sync) >/dev/null 2>&1 || true
   url="$(grep '^APP_URL=' /srv/panel/shared/.env | cut -d= -f2-)"
   printf '\nRestored. Panel: %s (the accounts of the old server)\n' "$url"

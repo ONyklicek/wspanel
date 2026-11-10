@@ -40,7 +40,7 @@ class SiteMountsTest extends TestCase
         ])->andReturn(['name' => 'nas']);
 
         $this->siteSetting($site, 'mountAdd', ['type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'path' => 'web', 'user' => 'web', 'password' => 'Tajne-heslo-1', 'name' => 'nas'])
-            ->assertHasNoErrors()->assertNotified('Disk připojen');
+            ->assertHasNoErrors()->assertNotified('Disk nas připojen');
     }
 
     public function test_encryption_needs_smb_3(): void

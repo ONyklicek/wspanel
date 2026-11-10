@@ -15,7 +15,7 @@ use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Features;
 use App\Support\Toast;
-use NyonCode\WireCore\Actions\Action;
+use App\Wire\Actions\Action;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WirePanels\Pages\Page;

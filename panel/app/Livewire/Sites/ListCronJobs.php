@@ -7,8 +7,8 @@ use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\CronJobResource;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListCronJobs extends ListPage

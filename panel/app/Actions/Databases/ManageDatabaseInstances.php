@@ -2,10 +2,11 @@
 
 namespace App\Actions\Databases;
 
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -18,7 +19,6 @@ class ManageDatabaseInstances
 
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -73,12 +73,19 @@ class ManageDatabaseInstances
      *
      * @throws AgentException
      */
-    public function update(int $id, int $memoryMb, int $cpuPercent): void
+    public function update(int $id, int $memoryMb, int $cpuPercent): AgentTask
     {
         $job = $this->agent->call('db.instance_update', ['id' => $id, 'memory_mb' => $memoryMb, 'cpu_percent' => $cpuPercent]);
-        if (isset($job['job_id'])) {
-            $this->jobs->await($job['job_id'], 90);
-        }
+        Cache::forget(self::CACHE);
+
+        return AgentTasks::start($job, 'db.instance_update', [
+            'title' => __('Změna limitů databázového serveru #:id', ['id' => $id]),
+            'done' => __('Limity databázového serveru #:id změněny', ['id' => $id]),
+        ], self::class.'@changed', key: 'db-instance');
+    }
+
+    public function changed(AgentTask $task): void
+    {
         Cache::forget(self::CACHE);
     }
 

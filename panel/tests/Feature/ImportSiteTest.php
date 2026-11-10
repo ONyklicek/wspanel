@@ -36,6 +36,7 @@ class ImportSiteTest extends TestCase
 
         $this->assertSame(['jan_WP' => 'jan_wp'], (array) $sent['databases']);
         $this->assertSame('jan_wp', $site->databases()->sole()->name);
-        $this->assertSame('updated', $out['wp_config']);
+        $this->assertSame('updated', $out->output['wp_config']);
+        $this->assertSame('Databáze: jan_wp; wp-config.php upraven.', $out->body);
     }
 }

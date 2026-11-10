@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Livewire\Databases\ListDatabases;
 use App\Livewire\Pages\DatabaseServersPage;
+use App\Models\AgentTask;
 use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Support\AgentTasks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -76,7 +78,9 @@ class DatabaseInstancesTest extends TestCase
         $page = Livewire::test(DatabaseServersPage::class);
         $this->pageAction($page, 'instanceLimits1', ['memory_mb' => 100, 'cpu_percent' => 0])->assertHasErrors();
         $this->pageAction(Livewire::test(DatabaseServersPage::class), 'instanceLimits1', ['memory_mb' => 4096, 'cpu_percent' => 0])
-            ->assertHasNoErrors()->assertNotified('Limity změněny');
+            ->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
+        AgentTasks::settleAll();
+        $this->assertSame(['done', 'Limity databázového serveru #1 změněny'], [AgentTask::sole()->status, AgentTask::sole()->done_title]);
     }
 
     public function test_a_database_goes_into_the_sites_server_and_the_tools_stay_away(): void

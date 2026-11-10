@@ -10,12 +10,12 @@ use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Countries;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\FirewallRuleResource;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
@@ -133,7 +133,6 @@ class ListFirewallRules extends ListPage
                 ->action(function (array $data) {
                     try {
                         app(ManageGeoblock::class)->set(array_values((array) ($data['countries'] ?? [])), (string) $data['scope'], request()->ip());
-                        Toast::success(($data['countries'] ?? []) === [] ? __('Blokování zemí vypnuto') : __('Blokování zemí uloženo'));
                     } catch (AgentException $e) {
                         Toast::error(__('Neuloženo'), $e->getMessage());
                     }

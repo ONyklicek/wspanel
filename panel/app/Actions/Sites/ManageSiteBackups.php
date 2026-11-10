@@ -2,11 +2,12 @@
 
 namespace App\Actions\Sites;
 
+use App\Models\AgentTask;
 use App\Models\Database;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use Illuminate\Support\Carbon;
 
 /**
@@ -20,7 +21,6 @@ class ManageSiteBackups
 
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /**
@@ -54,27 +54,27 @@ class ManageSiteBackups
     }
 
     /**
-     * Starts a backup and waits a while for it.
-     *
-     * @return bool true when finished, false when it goes on in the background
+     * A backup, in the background.
      *
      * @throws AgentException
      */
-    public function backupNow(Site $site, bool $withDatabases = true): bool
+    public function backupNow(Site $site, bool $withDatabases = true): AgentTask
     {
         $job = $this->agent->call('site.backup', ['domain' => $site->domain, 'databases' => $withDatabases ? $this->databases($site) : []]);
 
-        return $this->jobs->await($job['job_id'], 60) !== null;
+        return AgentTasks::start($job, 'site.backup', [
+            'title' => __('Záloha webu :domain', ['domain' => $site->domain]),
+            'done' => __('Záloha webu :domain vytvořena', ['domain' => $site->domain]),
+        ], subject: $site);
     }
 
     /**
-     * Restores a backup (a backup of the current state is taken first).
-     *
-     * @return array<string, mixed>|null the result, or null while it still runs
+     * Restores a backup (a backup of the current state is taken first), in
+     * the background.
      *
      * @throws AgentException
      */
-    public function restore(Site $site, string $file, bool $files, bool $databases): ?array
+    public function restore(Site $site, string $file, bool $files, bool $databases): AgentTask
     {
         // Only the site's own databases: the agent restores nothing else from
         // the archive, whatever its manifest says.
@@ -83,7 +83,37 @@ class ManageSiteBackups
             'databases' => $databases ? $this->databases($site) : [], 'confirm' => $site->domain,
         ]);
 
-        return $this->jobs->await($job['job_id'], 120);
+        return AgentTasks::start($job, 'site.restore', [
+            'title' => __('Obnova webu :domain ze zálohy', ['domain' => $site->domain]),
+            'done' => __('Web :domain obnoven ze zálohy', ['domain' => $site->domain]),
+        ], self::class.'@restored', $site);
+    }
+
+    /** What the restore did, for the message. */
+    public function restored(AgentTask $task): void
+    {
+        if ($task->status !== AgentTask::DONE || ($task->output['lost'] ?? false)) {
+            return;
+        }
+        $out = (array) $task->output;
+        $notes = [];
+        if (! empty($out['release'])) {
+            $notes[] = __('Nový release ').$out['release'].(($out['healthy'] ?? false) ? __(', web odpovídá.') : __(', ale web neodpovídá: ').($out['health_error'] ?? ''));
+        }
+        if (! empty($out['databases'])) {
+            $notes[] = __('Databáze: ').implode(', ', $out['databases']).'.';
+        }
+        if (! empty($out['skipped_databases'])) {
+            $notes[] = __('Vynechány (na serveru už nejsou): ').implode(', ', $out['skipped_databases']).'.';
+        }
+        if (! empty($out['snapshot'])) {
+            $notes[] = __('Stav před obnovou: ').$out['snapshot'].'.';
+        }
+        $task->update(['body' => implode("\n", $notes)]);
+        if (! ($out['healthy'] ?? true)) {
+            // Restored, but the site does not answer: told as a failure.
+            $task->update(['status' => AgentTask::FAILED, 'error' => implode("\n", $notes), 'title' => __('Záloha obnovena, web ale neodpovídá')]);
+        }
     }
 
     /** @throws AgentException */

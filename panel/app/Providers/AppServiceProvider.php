@@ -10,6 +10,7 @@ use App\Services\Dns\DnsPrerequisites;
 use App\Support\Features;
 use App\Support\PanelMail;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -21,6 +22,7 @@ use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Plugin\Hooks\FormConfiguringPayload;
 use NyonCode\WireCore\Core\Plugin\Hooks\TableComposingPayload;
 use NyonCode\WireCore\Core\Plugin\PluginManager;
+use NyonCode\WireCore\Core\Plugin\RenderHook;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroup;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroups;
 use NyonCode\WireCore\Foundation\Enums\Hook;
@@ -147,6 +149,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(PageChrome::class)->add('partials.locale-menu', PageChrome::USER_MENU, sort: 90);
         // What runs in the background (long agent jobs), live, on every page.
         $this->app->make(PageChrome::class)->add('partials.task-indicator', PageChrome::TOPBAR);
+        // And under a record page's heading, what runs for that record (WatchesAgentTasks).
+        RenderHook::add('panels.page.header.end', function (): ?View {
+            $component = Livewire::current();
+
+            return is_object($component) && method_exists($component, 'subjectTasks')
+                ? view('partials.subject-tasks', ['component' => $component]) : null;
+        });
         Livewire::addPersistentMiddleware([SetLocale::class]);
 
         // Menu sections. Entries name a group by key; the heading and order live here.

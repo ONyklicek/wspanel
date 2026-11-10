@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Actions\Databases\SyncDatabases;
 use App\Livewire\Databases\ListDatabases;
 use App\Livewire\Pages\DatabaseServersPage;
+use App\Models\AgentTask;
 use App\Models\Backup;
 use App\Models\Database;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Support\AgentTasks;
 use App\Wire\RelationManagers\DatabaseBackups;
 use App\Wire\Resources\DatabaseResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -142,7 +144,9 @@ class DatabasesTest extends TestCase
             ->andReturn(['status' => 'done', 'output' => ['snapshot' => 'shop-20261107T040000Z-pre-restore.sql.gz']]);
 
         $this->tableAction(Livewire::test(DatabaseBackups::class, ['ownerRecord' => $db]), $backup, 'restore', ['confirm' => 'shop'])
-            ->assertNotified('Databáze obnovena');
+            ->assertNotified('Spuštěno na pozadí');
+        AgentTasks::settleAll();
+        $this->assertSame(['done', 'Databáze shop obnovena'], [AgentTask::sole()->status, AgentTask::sole()->done_title]);
     }
 
     public function test_guests_cannot_download_backups(): void

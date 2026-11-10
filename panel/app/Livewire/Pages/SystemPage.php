@@ -8,7 +8,7 @@ use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
-use NyonCode\WireCore\Actions\Action;
+use App\Wire\Actions\Action;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WirePanels\Pages\Page;

@@ -6,8 +6,9 @@ use App\Actions\Databases\ManageDatabases;
 use App\Models\Backup;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use Illuminate\Support\Number;
-use NyonCode\WireCore\Actions\Action;
+use Livewire\Attributes\On;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireTable\Columns\TextColumn;
 use NyonCode\WireTable\RelationManagers\RelationManager;
@@ -18,6 +19,10 @@ class DatabaseBackups extends RelationManager
     protected string $relationship = 'backups';
 
     protected ?string $title = 'Zálohy';
+
+    /** A backup, restore or transfer ended (here or elsewhere): drawn again with the result. */
+    #[On('agent-task-finished')]
+    public function agentTaskEnded(): void {}
 
     public function table(Table $table): Table
     {
@@ -45,8 +50,7 @@ class DatabaseBackups extends RelationManager
                     ])
                     ->action(function (Backup $record) {
                         try {
-                            $done = app(ManageDatabases::class)->restore($record);
-                            Toast::success($done ? __('Databáze obnovena') : __('Obnova běží na pozadí'));
+                            app(ManageDatabases::class)->restore($record);
                         } catch (AgentException $e) {
                             Toast::error(__('Obnova selhala'), $e->getMessage());
                         }

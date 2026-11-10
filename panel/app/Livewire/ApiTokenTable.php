@@ -4,9 +4,9 @@ namespace App\Livewire;
 
 use App\Models\ApiToken;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -46,10 +46,12 @@ class ApiTokenTable extends Component
                     }),
             ])
             ->actions([
-                Action::make('revoke')->label(__('Zrušit'))->icon('outline:trash')->color('danger')->requiresConfirmation()
+                Action::make('revoke')->label(__('Zneplatnit'))->icon('outline:trash')->color('danger')->requiresConfirmation()
+                    ->modalHeading(fn (ApiToken $record) => __('Zneplatnit token :name?', ['name' => $record->name]))
+                    ->modalDescription(__('Skripty a příkaz wspanel s tímto tokenem přestanou fungovat.'))
                     ->action(function (ApiToken $record) {
                         $record->delete();
-                        Toast::success(__('Token zrušen'));
+                        Toast::success(__('Token zneplatněn'));
                     }),
             ])
             ->emptyState(__('Zatím žádný token'), __('Vytvořte token pro skripty nebo příkaz wspanel.'), 'outline:key')

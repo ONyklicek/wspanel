@@ -30,15 +30,17 @@ class TaskIndicator extends Component
     public function settle(): void
     {
         foreach ($this->visible()->get() as $task) {
-            $was = $task->isRunning();
             $task = AgentTasks::settle($task);
+            // Ended and not yet told: an agent job settled just now, or a
+            // panel operation the queue worker finished.
+            if ($task->isRunning() || $task->notified_at !== null) {
+                continue;
+            }
             if ($task->user_id === auth()->id() || $task->user_id === null) {
                 AgentTasks::notify($task);
             }
-            if ($was && ! $task->isRunning()) {
-                $this->dispatch('agent-task-finished', key: $task->key, status: $task->status,
-                    subjectType: $task->subject_type, subjectId: $task->subject_id);
-            }
+            $this->dispatch('agent-task-finished', key: $task->key, status: $task->status,
+                subjectType: $task->subject_type, subjectId: $task->subject_id);
         }
     }
 

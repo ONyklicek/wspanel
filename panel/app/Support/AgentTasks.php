@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Jobs\RunPanelTask;
 use App\Models\AgentTask;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -65,6 +66,47 @@ final class AgentTasks
         return $task;
     }
 
+    /**
+     * A panel operation of several agent steps, run by the queue worker
+     * (RunPanelTask): class and method of an action, with its arguments.
+     *
+     * @param  array{title: string, done: string, body?: string|null}  $text
+     * @param  list<mixed>  $arguments
+     */
+    public static function queue(string $op, array $text, string $class, string $method, array $arguments = [], ?Model $subject = null, ?string $key = null): AgentTask
+    {
+        $task = AgentTask::create([
+            'key' => $key, 'op' => $op, 'job_id' => null, 'title' => $text['title'], 'done_title' => $text['done'],
+            'body' => $text['body'] ?? null, 'subject_type' => $subject?->getMorphClass(), 'subject_id' => $subject?->getKey(),
+            'user_id' => auth()->id(), 'started_at' => now(),
+        ]);
+        if (Livewire::current() instanceof Component) {
+            Toast::success(__('Spuštěno na pozadí'), __(':title – můžete pokračovat v práci, stav je vpravo nahoře.', ['title' => $task->title]));
+            Livewire::current()->dispatch('agent-task-started');
+        }
+        RunPanelTask::dispatch($task->id, $class, $method, $arguments);
+
+        return $task->refresh();
+    }
+
+    /**
+     * How a queued panel operation ended (RunPanelTask). Its output may say
+     * how: ['message' => …, 'body' => …].
+     *
+     * @param  array<string, mixed>  $output
+     */
+    public static function finishPanelTask(AgentTask $task, bool $ok, array $output, ?string $error = null): void
+    {
+        $task->forceFill(array_filter([
+            'status' => $ok ? AgentTask::DONE : AgentTask::FAILED,
+            'output' => $output,
+            'error' => $error,
+            'done_title' => is_string($output['message'] ?? null) ? $output['message'] : null,
+            'body' => is_string($output['body'] ?? null) ? $output['body'] : null,
+            'finished_at' => now(),
+        ], fn ($v) => $v !== null))->save();
+    }
+
     /** One look at a running task; settles it when the job ended. */
     public static function settle(AgentTask $task): AgentTask
     {
@@ -106,6 +148,9 @@ final class AgentTasks
         // Settling interrupted half-way (a deploy restarted the panel): once more.
         AgentTask::query()->where('status', AgentTask::SETTLING)->where('updated_at', '<', now()->subMinutes(5))
             ->update(['status' => AgentTask::RUNNING]);
+        // A panel operation whose worker was killed (power loss) ends nowhere.
+        AgentTask::query()->where('status', AgentTask::RUNNING)->whereNull('job_id')->where('started_at', '<', now()->subHours(2))
+            ->update(['status' => AgentTask::FAILED, 'error' => __('Úloha byla přerušena (restart serveru nebo panelu); zkontrolujte výsledek.'), 'finished_at' => now()]);
         AgentTask::query()->whereNotNull('finished_at')->where('finished_at', '<', now()->subDays(7))->delete();
     }
 

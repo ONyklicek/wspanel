@@ -2,7 +2,6 @@
 @php($state = $status['state'] ?? null)
 <div class="wire-resource-page space-y-4 sm:space-y-6" wire:poll.15s="refreshStatus">
     @include('wire-panels::pages.partials.header')
-    @include('partials.subject-tasks')
 
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
@@ -45,7 +44,9 @@
                 <div class="sm:col-span-4 text-xs text-gray-500">{{ $server->game->label() }} · {{ $server->versionLabel() }} · {{ __('port') }} {{ $server->port }}/{{ $server->game->proto() }}@if ($server->cpu_percent) · {{ __('CPU :n %', ['n' => $server->cpu_percent]) }}@endif</div>
             </dl>
             <div class="flex gap-2">
-                @if ($state === 'active' || $state === 'activating')
+                @if (in_array($server->status, ['installing', 'failed'], true))
+                    {{-- Nothing to start or stop until the install ends. --}}
+                @elseif ($state === 'active' || $state === 'activating')
                     <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="control('restart')">{{ __('Restartovat') }}</x-wire::button>
                     <x-wire::button size="sm" color="danger" outlined icon="outline:stop" wire:click="control('stop')" wire:confirm="{{ __('Zastavit server? Hráči se odpojí.') }}">{{ __('Zastavit') }}</x-wire::button>
                 @else

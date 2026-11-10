@@ -7,9 +7,9 @@ use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsException;
 use App\Services\Dns\LocalDns;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\DnsZoneResource;
 use Illuminate\Support\Facades\Gate;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Textarea;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 

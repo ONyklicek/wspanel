@@ -21,25 +21,30 @@ trait WatchesAgentTasks
     /** Called once a task of the record ended (reload what it changed). */
     protected function agentTaskFinished(AgentTask $task): void {}
 
-    /** @return Collection<int, AgentTask> */
-    public function subjectTasks(): Collection
+    /**
+     * What runs for the record, and what ended without anyone told yet.
+     *
+     * @return Collection<int, AgentTask>
+     */
+    public function subjectTasks(bool $withEnded = false): Collection
     {
         $subject = $this->agentTaskSubject();
         if ($subject === null) {
             return collect();
         }
 
-        return AgentTask::query()->running()->visibleTo(auth()->user())
+        return AgentTask::query()->visibleTo(auth()->user())
             ->where('subject_type', $subject->getMorphClass())->where('subject_id', $subject->getKey())
+            ->where(fn ($q) => $withEnded ? $q->running()->orWhereNull('notified_at') : $q->running())
             ->latest('id')->get();
     }
 
     /** The poll of partials.subject-tasks: settles them as they end. */
     public function settleSubjectTasks(): void
     {
-        foreach ($this->subjectTasks() as $task) {
+        foreach ($this->subjectTasks(withEnded: true) as $task) {
             $task = AgentTasks::settle($task);
-            if (! $task->isRunning()) {
+            if (! $task->isRunning() && $task->notified_at === null) {
                 AgentTasks::notify($task);
                 $this->agentTaskFinished($task);
                 $this->dispatch('agent-task-finished', key: $task->key, status: $task->status,

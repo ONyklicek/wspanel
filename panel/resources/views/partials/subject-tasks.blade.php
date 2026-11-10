@@ -1,5 +1,6 @@
-{{-- What runs in the background for this record (WatchesAgentTasks), live. --}}
-@php($subjectTasks = $this->subjectTasks())
+{{-- What runs in the background for this record (WatchesAgentTasks), live;
+     drawn under every record page's heading (AppServiceProvider). --}}
+@php($subjectTasks = $component->subjectTasks())
 @if ($subjectTasks->isNotEmpty())
     <div wire:poll.3s="settleSubjectTasks" class="space-y-2" data-testid="subject-tasks">
         @foreach ($subjectTasks as $task)

@@ -12,10 +12,10 @@ use App\Models\GameServer;
 use App\Services\Agent\AgentException;
 use App\Support\PageActions;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 use NyonCode\WireCore\Infolists\Infolist;
 use NyonCode\WireForms\Components\Radio;
@@ -98,6 +98,13 @@ class ViewGameServer extends ViewPage
 
     public function refreshStatus(): void
     {
+        // Still installing (or the install failed): nothing runs to ask about yet.
+        if (in_array($this->server()->fresh()?->status, ['installing', 'failed'], true)) {
+            $this->status = null;
+            $this->error = null;
+
+            return;
+        }
         try {
             $this->status = app(ManageGameServers::class)->status($this->server());
             $this->error = null;

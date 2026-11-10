@@ -50,6 +50,7 @@ class Service extends Model
     /** The server's other services, as people know them. */
     public const SYSTEM_LABELS = [
         'panel-scheduler' => 'Plánovač panelu',
+        'panel-queue' => 'Úlohy panelu na pozadí',
         'postfix' => 'Postfix (odesílání a příjem pošty)',
         'postsrsd' => 'PostSRSd (přeposílaná pošta)',
         'opendkim' => 'OpenDKIM (podpis pošty)',

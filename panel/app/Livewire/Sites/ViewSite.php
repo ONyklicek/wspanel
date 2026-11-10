@@ -9,16 +9,18 @@ use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\Framework;
 use App\Enums\SshAccess;
+use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\Database;
 use App\Models\Deployment;
 use App\Models\MailDomain;
 use App\Models\Site;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use App\Wire\Sites\SiteActions;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Number;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Infolists\Components\TextEntry;
@@ -31,6 +33,15 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
  */
 class ViewSite extends ViewPage
 {
+    use WatchesAgentTasks;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        $site = $this->nativeRecord();
+
+        return $site instanceof Site ? $site : null;
+    }
+
     protected static ?string $resource = SiteResource::class;
 
     public function mount(mixed $record = null): void

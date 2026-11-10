@@ -3,10 +3,11 @@
 namespace App\Actions\Firewall;
 
 use App\Actions\ManagePanelAccess;
+use App\Models\AgentTask;
 use App\Models\Setting;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 
 /**
  * Blocking whole countries (agent: nftables, ipdeny.com ranges). The
@@ -17,7 +18,7 @@ class ManageGeoblock
 {
     public const SETTING = 'geoblock';
 
-    public function __construct(private readonly AgentClient $agent, private readonly AgentJobs $jobs) {}
+    public function __construct(private readonly AgentClient $agent) {}
 
     /** @return array{countries: list<string>, scope: string, updated: ?string} */
     public function current(): array
@@ -41,20 +42,30 @@ class ManageGeoblock
         $this->apply(['action' => 'set', 'countries' => array_values($countries), 'scope' => $scope, 'allow' => array_values(array_unique($allow))]);
     }
 
-    /** Downloads the ranges again (weekly, from the scheduler). */
+    /** Downloads the ranges again (weekly, from the scheduler, which waits for it). */
     public function refresh(): void
     {
         if ($this->current()['countries'] !== []) {
-            $this->apply(['action' => 'refresh']);
+            AgentTasks::wait($this->apply(['action' => 'refresh']), 300);
         }
     }
 
     /** @param  array<string, mixed>  $params */
-    private function apply(array $params): void
+    private function apply(array $params): AgentTask
     {
         $job = $this->agent->call('fw.geoblock', $params);
-        $out = isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
-        if (is_array($out) && array_key_exists('countries', $out)) {
+
+        return AgentTasks::start($job, 'fw.geoblock', [
+            'title' => __('Blokování zemí (stažení rozsahů adres)'),
+            'done' => ($params['countries'] ?? null) === [] ? __('Blokování zemí vypnuto') : __('Blokování zemí uloženo'),
+        ], self::class.'@applied', key: 'geoblock');
+    }
+
+    /** The agent's answer is what the firewall now does. */
+    public function applied(AgentTask $task): void
+    {
+        $out = $task->output;
+        if ($task->status === AgentTask::DONE && is_array($out) && array_key_exists('countries', $out)) {
             Setting::put(self::SETTING, ['countries' => $out['countries'] ?? [], 'scope' => $out['scope'] ?? 'all', 'updated' => $out['updated'] ?? null]);
         }
     }

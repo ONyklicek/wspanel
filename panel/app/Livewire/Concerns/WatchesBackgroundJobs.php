@@ -61,12 +61,8 @@ trait WatchesBackgroundJobs
     public function pollBackgroundJobs(): void
     {
         foreach ($this->backgroundJobKeys() as $key) {
-            $job = BackgroundJobs::running($key);
-            if ($job === null) {
-                continue;
-            }
             $state = BackgroundJobs::check($key);
-            if ($state['status'] === 'running') {
+            if (in_array($state['status'], ['running', 'none'], true)) {
                 continue;
             }
             // BackgroundJobs::check told the person (once, whoever noticed first).

@@ -5,8 +5,8 @@ namespace App\Livewire\Clients;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Package;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\PackageResource;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListPackages extends ListPage

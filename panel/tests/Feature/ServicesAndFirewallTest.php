@@ -15,6 +15,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -212,7 +213,8 @@ class ServicesAndFirewallTest extends TestCase
             ->andReturn(['status' => 'done', 'output' => ['countries' => ['cn', 'ru'], 'scope' => 'admin', 'updated' => '2026-11-08T14:00:00Z']]);
 
         $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'geoblock', ['countries' => ['cn', 'ru'], 'scope' => 'admin'])
-            ->assertHasNoErrors()->assertNotified('Blokování zemí uloženo');
+            ->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
+        AgentTasks::settleAll();
         $this->assertSame(['cn', 'ru'], app(ManageGeoblock::class)->current()['countries']);
 
         $this->headerTableAction(Livewire::test(ListFirewallRules::class), 'geoblock', ['countries' => ['xx'], 'scope' => 'admin'])->assertHasErrors();

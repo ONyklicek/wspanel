@@ -12,11 +12,11 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Checkbox;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WireForms\Components\Radio;
@@ -134,7 +134,7 @@ class DatabaseServersPage extends Page
             ->action(function (array $data) use ($id) {
                 try {
                     app(ManageDatabaseInstances::class)->update($id, (int) $data['memory_mb'], (int) $data['cpu_percent']);
-                    Toast::success(__('Limity změněny'));
+                    $this->loadBackgroundJobs();
                 } catch (AgentException $e) {
                     Toast::error(__('Změna selhala'), $e->getMessage());
                 }

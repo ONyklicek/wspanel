@@ -2,13 +2,14 @@
 
 namespace App\Actions\Databases;
 
+use App\Models\AgentTask;
 use App\Models\Backup;
 use App\Models\Client;
 use App\Models\Database;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 use App\Support\CurrentClient;
 use App\Support\Limits;
 
@@ -16,7 +17,6 @@ class ManageDatabases
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
         private readonly SyncDatabases $sync,
     ) {}
 
@@ -89,30 +89,39 @@ class ManageDatabases
     }
 
     /**
-     * Starts a dump; waits briefly for it to finish.
-     *
-     * @return bool true when finished, false when still running in the background
+     * A dump, in the background; the backups are listed again when it ends.
      *
      * @throws AgentException
      */
-    public function backupNow(Database $database): bool
+    public function backupNow(Database $database): AgentTask
     {
         $job = $this->agent->call('db.backup', $database->agentParams());
-        $done = $this->jobs->await($job['job_id']);
-        $this->sync->syncBackups($database);
 
-        return $done !== null;
+        return AgentTasks::start($job, 'db.backup', [
+            'title' => __('Záloha databáze :name', ['name' => $database->name]),
+            'done' => __('Záloha databáze :name hotová', ['name' => $database->name]),
+        ], self::class.'@backupsChanged', $database);
     }
 
     /** @throws AgentException */
-    public function restore(Backup $backup): bool
+    public function restore(Backup $backup): AgentTask
     {
         $database = $backup->database;
         $job = $this->agent->call('db.restore', $database->agentParams() + ['backup' => $backup->file, 'confirm' => $database->name]);
-        $done = $this->jobs->await($job['job_id'], 60);
-        $this->sync->syncBackups($database);
 
-        return $done !== null;
+        return AgentTasks::start($job, 'db.restore', [
+            'title' => __('Obnova databáze :name', ['name' => $database->name]),
+            'done' => __('Databáze :name obnovena', ['name' => $database->name]),
+        ], self::class.'@backupsChanged', $database);
+    }
+
+    /** A dump or a restore (which takes a snapshot first) ended: the backups as they are. */
+    public function backupsChanged(AgentTask $task): void
+    {
+        $database = Database::query()->withoutGlobalScopes()->find($task->subject_id);
+        if ($database !== null) {
+            $this->sync->syncBackups($database);
+        }
     }
 
     /** @throws AgentException */

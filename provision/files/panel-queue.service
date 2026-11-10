@@ -1,0 +1,26 @@
+[Unit]
+Description=WSPanel queue worker (long panel operations: staging, moving a site)
+After=panel-agent.service
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/srv/panel/current
+# One operation at a time, each up to an hour; a new release restarts it
+# (queue:restart after the deploy of the panel).
+ExecStart=/usr/bin/php8.4 artisan queue:work --sleep=1 --tries=1 --timeout=3600 --max-time=86400
+Restart=always
+# A stop (an upgrade) lets the running operation finish first.
+TimeoutStopSec=15min
+RestartSec=5s
+Environment=HOME=/srv/panel/tmp
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/panel/shared /srv/panel/tmp
+InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/lib/panel-proxy
+
+[Install]
+WantedBy=multi-user.target

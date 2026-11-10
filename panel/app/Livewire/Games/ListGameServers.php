@@ -7,8 +7,8 @@ use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Limits;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\GameServerResource;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListGameServers extends ListPage
@@ -23,6 +23,7 @@ class ListGameServers extends ListPage
     {
         return [
             Action::make('create')->label(__('Nový server'))->icon('outline:plus')
+                ->modalHeading(__('Nový herní server'))->modalSubmitActionLabel(__('Vytvořit'))
                 ->visible(fn () => app(Limits::class)->canAdd(Limits::forCurrentUser(), 'games'))
                 ->modalDescription(__('Server se stáhne od vydavatele hry (s kontrolou otisku) a spustí; Minecraft si napoprvé vygeneruje svět, to trvá minutu až dvě.'))
                 ->form(fn () => GameServerResource::createFields())

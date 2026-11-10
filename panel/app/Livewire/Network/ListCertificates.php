@@ -7,8 +7,8 @@ use App\Actions\SyncCertificatesAndTasks;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\CertificateResource;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Display\Placeholder;
 use NyonCode\WirePanels\Resources\Pages\ListPage;
 

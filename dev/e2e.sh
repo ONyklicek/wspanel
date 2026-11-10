@@ -63,7 +63,7 @@ wait_deploy() { # wait_deploy DOMAIN RELEASE -> final status
 
 # ----------------------------------------------------------------------------
 section "Services"
-for u in panel-agent panel-proxy panel-web panel-scheduler php8.3-fpm php8.4-fpm mariadb postgresql ssh fail2ban; do
+for u in panel-agent panel-proxy panel-web panel-scheduler panel-queue php8.3-fpm php8.4-fpm mariadb postgresql ssh fail2ban; do
 	check "$u active" systemctl is-active --quiet "$u"
 done
 check "ufw active" bash -c 'ufw status | grep -q "Status: active"'

@@ -32,20 +32,28 @@ final class BackgroundJobs
     }
 
     /**
-     * One look at the job: 'running', 'done' or 'failed' (with the error).
+     * One look at the job: 'running', 'done' or 'failed' (with the error) once
+     * it ended and nobody was told yet, 'none' when there is nothing to say.
      *
      * @return array{status: string, error?: string|null}
      */
     public static function check(string $key): array
     {
-        $task = self::task($key);
+        $task = AgentTask::query()->where('key', $key)
+            ->where(fn ($q) => $q->running()->orWhereNull('notified_at'))->latest('id')->first();
         if ($task === null) {
-            return ['status' => 'done'];
+            return ['status' => 'none'];
         }
         $task = AgentTasks::settle($task);
+        if ($task->isRunning()) {
+            return ['status' => 'running'];
+        }
+        if ($task->notified_at !== null) {
+            return ['status' => 'none'];
+        }
         AgentTasks::notify($task);
 
-        return ['status' => $task->isRunning() ? 'running' : $task->status, 'error' => $task->error];
+        return ['status' => $task->status, 'error' => $task->error];
     }
 
     private static function task(string $key): ?AgentTask

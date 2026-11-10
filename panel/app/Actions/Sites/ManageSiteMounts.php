@@ -2,10 +2,11 @@
 
 namespace App\Actions\Sites;
 
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 
 /**
  * A site's network disks (SMB share, FTP/FTPS or SFTP server) mounted at
@@ -25,7 +26,6 @@ class ManageSiteMounts
 
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
     ) {}
 
     /** @return list<array{mount: array<string, mixed>, path: string, unit: string, active: string}> */
@@ -35,36 +35,49 @@ class ManageSiteMounts
     }
 
     /**
-     * Connects the disk; nothing is kept when it does not connect.
+     * Connects the disk (in the background); nothing is kept when it does not
+     * connect.
      *
      * @param  array<string, mixed>  $mount
-     * @return array<string, mixed>|null the agent's answer (not_visible_to: processes
-     *                                   to restart), null while still connecting
      *
      * @throws AgentException
      */
-    public function add(Site $site, array $mount, string $password): ?array
+    public function add(Site $site, array $mount, string $password): AgentTask
     {
-        return $this->change($site, 'add', $mount, $password);
+        return $this->change($site, 'add', $mount, $password, __('Připojení disku :name', ['name' => $mount['name'] ?? '']), __('Disk :name připojen', ['name' => $mount['name'] ?? '']));
     }
 
     /** @throws AgentException */
-    public function remove(Site $site, string $name): void
+    public function remove(Site $site, string $name): AgentTask
     {
-        $this->change($site, 'remove', ['name' => $name]);
+        return $this->change($site, 'remove', ['name' => $name], null, __('Odpojení disku :name', ['name' => $name]), __('Disk :name odpojen', ['name' => $name]));
     }
 
     /** @throws AgentException */
-    public function remount(Site $site, string $name): void
+    public function remount(Site $site, string $name): AgentTask
     {
-        $this->change($site, 'remount', ['name' => $name]);
+        return $this->change($site, 'remount', ['name' => $name], null, __('Připojení disku :name', ['name' => $name]), __('Disk :name připojen', ['name' => $name]));
+    }
+
+    /** What connecting found: processes that do not see the disk yet, the server's key. */
+    public function changed(AgentTask $task): void
+    {
+        $out = (array) $task->output;
+        if ($task->status !== AgentTask::DONE) {
+            return;
+        }
+        if (($out['not_visible_to'] ?? []) !== []) {
+            $task->update(['done_title' => __('Disk připojen, některé procesy ho ještě nevidí'),
+                'body' => __('Běžely už před připojením: :units. Do disku zapíšou až po restartu (do té doby zápis selže, nic se neuloží jinam).', ['units' => implode(', ', $out['not_visible_to'])])]);
+        } elseif (($out['host_keys'] ?? []) !== []) {
+            $task->update(['body' => __('klíč serveru (ověřte u správce serveru): :keys', ['keys' => implode(', ', $out['host_keys'])])]);
+        }
     }
 
     /**
      * @param  array<string, mixed>  $mount
-     * @return array<string, mixed>|null
      */
-    private function change(Site $site, string $action, array $mount, ?string $password = null): ?array
+    private function change(Site $site, string $action, array $mount, ?string $password, string $title, string $done): AgentTask
     {
         $params = ['domain' => $site->domain, 'action' => $action, 'mount' => $mount];
         if ($password !== null) {
@@ -73,6 +86,6 @@ class ManageSiteMounts
         unset($this->listed[$site->domain]);
         $job = $this->agent->call('site.mount', $params);
 
-        return isset($job['job_id']) ? $this->jobs->await($job['job_id'], 300) : $job;
+        return AgentTasks::start($job, 'site.mount', ['title' => $title, 'done' => $done], self::class.'@changed', $site);
     }
 }

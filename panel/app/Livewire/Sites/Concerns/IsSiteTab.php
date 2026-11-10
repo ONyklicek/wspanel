@@ -2,8 +2,10 @@
 
 namespace App\Livewire\Sites\Concerns;
 
+use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\Site;
 use App\Wire\Resources\SiteResource;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
 
 /**
@@ -12,6 +14,15 @@ use NyonCode\WireCore\Core\Resources\Navigation\NavigationItem;
  */
 trait IsSiteTab
 {
+    use WatchesAgentTasks;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        $site = $this->nativeRecord();
+
+        return $site instanceof Site ? $site : null;
+    }
+
     /** The tab's name in the trail ("Deploy", "Zálohy"). */
     abstract protected function tabLabel(): string;
 

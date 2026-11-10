@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Sites\InstallApp;
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -53,7 +54,9 @@ class InstallAppTest extends TestCase
 
         $this->assertSame('php', Site::sole()->framework->value);
         $this->assertSame(['site.create', 'db.create', 'site.app_install'], array_values(array_intersect($this->ops, ['site.create', 'db.create', 'site.app_install'])));
-        $this->assertStringContainsString('dokončete instalaci', $out['note']);
+        // The app unpacks in the background; the task tells how to finish it.
+        $this->assertStringContainsString('na pozadí', $out['note']);
+        $this->assertStringContainsString('dokončete instalaci', (string) AgentTask::sole()->body);
     }
 
     public function test_laravel_is_a_deploy_of_the_official_skeleton_with_a_fresh_key(): void

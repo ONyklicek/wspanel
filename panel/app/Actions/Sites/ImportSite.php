@@ -3,10 +3,11 @@
 namespace App\Actions\Sites;
 
 use App\Actions\Databases\ManageDatabases;
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
-use App\Services\Agent\AgentJobs;
+use App\Support\AgentTasks;
 
 /**
  * Moves a site in from a cPanel backup (cpmove-*.tar.gz) or a plain archive
@@ -17,7 +18,6 @@ class ImportSite
 {
     public function __construct(
         private readonly AgentClient $agent,
-        private readonly AgentJobs $jobs,
         private readonly ManageDatabases $databases,
     ) {}
 
@@ -32,11 +32,11 @@ class ImportSite
     }
 
     /**
-     * @return array{databases: list<string>, wp_config?: string}
+     * The databases are created at once, the unpacking runs in the background.
      *
      * @throws AgentException
      */
-    public function import(Site $site, string $file): array
+    public function import(Site $site, string $file): AgentTask
     {
         $map = [];
         foreach ($this->scan($site, $file)['dumps'] as $dump) {
@@ -44,8 +44,21 @@ class ImportSite
         }
         $job = $this->agent->call('site.import', ['domain' => $site->domain, 'file' => $file, 'databases' => (object) $map]);
 
-        return isset($job['job_id'])
-            ? ($this->jobs->await($job['job_id'], 1800) ?? throw new AgentException('timeout', __('Import ještě běží, výsledek uvidíte za chvíli.'), 'panel'))
-            : $job;
+        return AgentTasks::start($job, 'site.import', [
+            'title' => __('Import :file do :domain', ['file' => $file, 'domain' => $site->domain]),
+            'done' => __('Web :domain importován', ['domain' => $site->domain]),
+        ], self::class.'@imported', $site);
+    }
+
+    /** What the import brought, for the message. */
+    public function imported(AgentTask $task): void
+    {
+        if ($task->status !== AgentTask::DONE || ($task->output['lost'] ?? false)) {
+            return;
+        }
+        $databases = (array) ($task->output['databases'] ?? []);
+        $task->update(['body' => $databases !== []
+            ? __('Databáze: ').implode(', ', $databases).(isset($task->output['wp_config']) ? __('; wp-config.php upraven.') : '')
+            : __('Bez databází.')]);
     }
 }

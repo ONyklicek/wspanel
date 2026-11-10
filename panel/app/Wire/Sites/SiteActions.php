@@ -29,11 +29,13 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsPrerequisites;
+use App\Support\AgentTasks;
 use App\Support\Domains;
 use App\Support\Lang;
 use App\Support\Limits;
 use App\Support\Toast;
 use App\Support\WebRules\RulesConverter;
+use App\Wire\Actions\Action;
 use App\Wire\Forms\DnsGate;
 use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
@@ -41,7 +43,6 @@ use App\Wire\Resources\SiteResource;
 use Closure;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Foundation\Schema\Tab;
@@ -738,8 +739,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->rules(['regex:/^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(tar\.gz|tgz)$/'])->validationMessages(['regex' => __('Název souboru .tar.gz ve složce tmp webu.')]),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Import se nepodařil'), function () use ($record, $data) {
-                $out = app(ImportSite::class)->import($record, $data['file']);
-                Toast::success(__('Web importován'), ($out['databases'] ?? []) ? __('Databáze: ').implode(', ', $out['databases']).(isset($out['wp_config']) ? '; wp-config.php upraven.' : '') : __('Bez databází.'));
+                app(ImportSite::class)->import($record, $data['file']);
             }));
     }
 
@@ -759,12 +759,18 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                 Toggle::make('databases')->label(__('Databáze (přepíše data produkce)'))->default(false),
             ] : [])
             ->action(fn (Site $record, array $data) => self::attempt(__('Staging se nepodařil'), function () use ($record, $data) {
+                // Several steps (backup, copy, deploy): the queue worker runs them.
                 if ($record->staging_of) {
-                    app(ManageStaging::class)->push($record, (bool) ($data['files'] ?? false), (bool) ($data['databases'] ?? false));
-                    Toast::success(__('Staging je na produkci'), __('Záloha produkce z doby před nasazením je v Zálohách.'));
+                    AgentTasks::queue('staging.push', [
+                        'title' => __('Staging :domain → produkce', ['domain' => $record->domain]),
+                        'done' => __('Staging je na produkci'),
+                        'body' => __('Záloha produkce z doby před nasazením je v Zálohách.'),
+                    ], ManageStaging::class, 'push', [$record, (bool) ($data['files'] ?? false), (bool) ($data['databases'] ?? false)], $record);
                 } else {
-                    $staging = app(ManageStaging::class)->create($record);
-                    Toast::success(__('Staging běží'), $staging->url());
+                    AgentTasks::queue('staging.create', [
+                        'title' => __('Staging pro :domain', ['domain' => $record->domain]),
+                        'done' => __('Staging běží na :domain', ['domain' => ManageStaging::stagingDomain($record)]),
+                    ], ManageStaging::class, 'create', [$record], $record);
                 }
             }));
     }
@@ -831,14 +837,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->map(fn ($v) => is_string($v) ? trim($v) : $v)->filter(fn ($v) => $v !== null && $v !== '')->all()
                     + ['port' => (int) ($data['port'] ?? 0), 'read_only' => (bool) ($data['read_only'] ?? false),
                         'encrypt' => ($data['type'] ?? '') === 'smb' && (bool) ($data['encrypt'] ?? false)];
-                $out = app(ManageSiteMounts::class)->add($record, $mount, (string) ($data['password'] ?? ''));
-                match (true) {
-                    $out === null => Toast::success(__('Disk se připojuje'), __('Instalují se nástroje pro připojení, stav uvidíte za chvíli v Nastavení.')),
-                    ($out['not_visible_to'] ?? []) !== [] => Toast::warning(__('Disk připojen, některé procesy ho ještě nevidí'),
-                        __('Běžely už před připojením: :units. Do disku zapíšou až po restartu (do té doby zápis selže, nic se neuloží jinam).', ['units' => implode(', ', $out['not_visible_to'])])),
-                    default => Toast::success(__('Disk připojen'), self::homeOf($record).'/mounts/'.$mount['name']
-                        .(($out['host_keys'] ?? []) !== [] ? ' · '.__('klíč serveru (ověřte u správce serveru): :keys', ['keys' => implode(', ', $out['host_keys'])]) : '')),
-                };
+                app(ManageSiteMounts::class)->add($record, $mount, (string) ($data['password'] ?? ''));
             }));
     }
 
@@ -857,7 +856,6 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepodařilo odpojit'), function () use ($record, $data) {
                 app(ManageSiteMounts::class)->remove($record, $data['name']);
-                Toast::success(__('Disk odpojen'));
             }));
     }
 
@@ -875,7 +873,6 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Disk se nepřipojil'), function () use ($record, $data) {
                 app(ManageSiteMounts::class)->remount($record, $data['name']);
-                Toast::success(__('Disk připojen'));
             }));
     }
 
@@ -955,12 +952,12 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->action(function (Site $record, array $data) {
                 abort_unless(Gate::allows('admin'), 403);
                 $client = filled($data['client_id'] ?? null) ? Client::findOrFail($data['client_id']) : null;
-                try {
-                    app(ManageClients::class)->assignSite($record, $client);
-                    Toast::success(__('Vlastník změněn'), $client ? __('Web teď patří klientovi :name.', ['name' => $client->name]) : __('Web teď patří správci.'));
-                } catch (AgentException $e) {
-                    Toast::error(__('Vlastníka se nepodařilo změnit'), $e->getMessage());
-                }
+                // Moving the files to the client's group takes a while: the queue worker does it.
+                AgentTasks::queue('site.assign', [
+                    'title' => __('Přesun webu :domain', ['domain' => $record->domain]),
+                    'done' => __('Vlastník webu :domain změněn', ['domain' => $record->domain]),
+                    'body' => $client ? __('Web teď patří klientovi :name.', ['name' => $client->name]) : __('Web teď patří správci.'),
+                ], ManageClients::class, 'assignSite', [$record, $client], $record);
             });
     }
 

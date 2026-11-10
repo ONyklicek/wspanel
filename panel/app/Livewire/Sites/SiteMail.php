@@ -8,10 +8,10 @@ use App\Models\MailDomain;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use App\Wire\Actions\Action;
 use App\Wire\Resources\MailDomainResource;
 use App\Wire\Resources\SiteResource;
 use Illuminate\Contracts\View\View;
-use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireCore\Infolists\Infolist;
 use NyonCode\WirePanels\Resources\Pages\ViewPage;
 

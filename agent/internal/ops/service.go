@@ -23,7 +23,7 @@ var serviceTypes = []string{"php-fpm", "proxy", "web", "mariadb", "postgresql", 
 // otherUnits: the server's other services the panel shows and may restart
 // (mail, DNS, the panel's scheduler…), each only when installed here.
 var otherUnits = []string{
-	"panel-scheduler.service",
+	"panel-scheduler.service", "panel-queue.service",
 	"postfix.service", "postsrsd.service", "opendkim.service", "mailpit.service",
 	"dovecot.service", "rspamd.service", "rspamd-valkey.service", "clamav-daemon.service", "clamav-freshclam.service",
 	"pdns.service", "fail2ban.service",

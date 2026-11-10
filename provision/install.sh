@@ -798,6 +798,7 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   # Keep the last 5 releases.
   ls -1dt /srv/panel/releases/*/ | tail -n +6 | xargs -r rm -rf
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
+  install -m 0644 "$HERE/files/panel-queue.service" /etc/systemd/system/panel-queue.service
 fi
 
 # ---------------------------------------------------------------- phpMyAdmin + Adminer
@@ -892,6 +893,14 @@ systemctl restart panel-web panel-proxy panel-agent
 if [[ -f /etc/systemd/system/panel-scheduler.service ]]; then
   systemctl enable panel-scheduler
   systemctl restart panel-scheduler
+fi
+# Long panel operations (a staging copy, moving a site) run here, not in a
+# request; a restart lets the running one finish first (queue:work stops
+# between jobs on SIGTERM, up to its timeout).
+if [[ -f /etc/systemd/system/panel-queue.service ]]; then
+  systemctl daemon-reload
+  systemctl enable panel-queue
+  systemctl restart panel-queue
 fi
 # The webmail calls the panel over the edge; with its own CA (local certs,
 # an IP address) it trusts that root. The CA exists once the proxy ran,
