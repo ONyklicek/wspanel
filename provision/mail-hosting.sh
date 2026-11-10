@@ -558,8 +558,21 @@ else
   runuser -u webmail -- php /usr/share/roundcube/bin/updatedb.sh --package=roundcube --dir=/usr/share/roundcube/SQL >/dev/null
 fi
 chmod 0600 /var/lib/wspanel-webmail/db/roundcube.db
-# Debian's cleanup timer runs as www-data, which cannot read this setup.
-systemctl disable --now roundcube-gc.timer >/dev/null 2>&1 || true
+# Debian's cleanup timer (expired sessions, caches, temp files) runs as
+# www-data, which cannot read this setup: here as webmail, which can. A
+# package upgrade or a restored server enabling the timer then still works.
+install -d -m 0755 /etc/systemd/system/roundcube-gc.service.d
+cat >/etc/systemd/system/roundcube-gc.service.d/wspanel.conf <<'UNIT'
+# Managed by WSPanel (mail-hosting.sh): Roundcube runs as webmail here.
+[Service]
+User=webmail
+Group=webmail
+ReadWritePaths=
+ReadWritePaths=/var/lib/wspanel-webmail
+UNIT
+systemctl daemon-reload
+systemctl reset-failed roundcube-gc.service >/dev/null 2>&1 || true
+systemctl enable --now roundcube-gc.timer >/dev/null 2>&1 || true
 sed "s/__PHP__/$PHP/g" "$FILES/webmail/webmail-pool.conf" > "/etc/php/$PHP/fpm/pool.d/webmail.conf"
 sed "s/__PHP__/$PHP/g" "$FILES/webmail/webmail.caddy" > /etc/panel-web/webmail.caddy
 "php-fpm$PHP" -t 2>/dev/null
