@@ -101,9 +101,7 @@ class DnsAdvisor
     /** @return list<string> */
     private static function lookup(string $name, int $type, string $field): array
     {
-        $records = @dns_get_record($name, $type) ?: [];
-
-        return array_values(array_filter(array_map(fn ($r) => $r[$field] ?? null, $records)));
+        return app(Resolver::class)->records($name, $type, $field);
     }
 
     /**

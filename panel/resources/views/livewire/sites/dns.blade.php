@@ -28,7 +28,7 @@
                 <li>{{ __('Název je vůči doméně: „@“ znamená doménu samotnou; když formulář chce prázdné pole nebo celý název, zadejte to tak (celý název je ve druhém řádku buňky).') }}</li>
                 <li>{{ __('Hodnotu TXT vložte bez uvozovek. Cíl u MX, CNAME a SRV je celý název; některé formuláře chtějí tečku na konci, jiné ne.') }}</li>
                 <li>{{ __('Když už stejný název a typ existuje (třeba A záznam parkovací stránky nebo jiné SPF), upravte ho, nepřidávejte druhý. SPF smí být jen jedno: má-li doména jiné odesílatele, sloučte je do jednoho záznamu.') }}</li>
-                <li>{{ __('Pak klikněte na Zkontrolovat znovu. Změny se šíří podle TTL, obvykle minuty až hodiny.') }}</li>
+                <li>{{ __('Pak klikněte na Zkontrolovat znovu: panel se ptá přímo DNS serverů domény, takže nový záznam uvidí hned. Návštěvníkům se projeví podle TTL, obvykle do hodiny.') }}</li>
             </ol>
         </x-wire::section>
     @endunless
@@ -51,7 +51,13 @@
                 </p>
             </div>
             <div class="flex shrink-0 flex-wrap gap-2">
-                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="$refresh">{{ __('Zkontrolovat znovu') }}</x-wire::button>
+                @if ($checkedAt)
+                    <span class="self-center text-xs text-gray-500">{{ __('zkontrolováno v :time', ['time' => $checkedAt]) }}</span>
+                @endif
+                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="recheck" wire:loading.attr="disabled" wire:target="recheck">
+                    <span wire:loading.remove wire:target="recheck">{{ __('Zkontrolovat znovu') }}</span>
+                    <span wire:loading wire:target="recheck">{{ __('Ptám se DNS…') }}</span>
+                </x-wire::button>
                 @if ($zone && $missingInZone > 0)
                     <x-wire::button size="sm" icon="outline:sparkles" wire:click="fillDns">{{ __('Doplnit chybějící (:n)', ['n' => $missingInZone]) }}</x-wire::button>
                 @endif

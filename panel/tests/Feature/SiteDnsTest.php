@@ -157,7 +157,8 @@ class SiteDnsTest extends TestCase
 
         Livewire::test(SiteDns::class, ['record' => $site->id])
             ->assertSee('Jak nastavit DNS u registrátora')->assertSee('Co nastavit v DNS domény firma.cz')
-            ->assertDontSee('Doplnit chybějící');
+            ->assertDontSee('Doplnit chybějící')
+            ->call('recheck')->assertNotified()->assertSee('zkontrolováno v'); // the button says what came back
     }
 
     public function test_a_site_without_a_zone_gets_one_from_its_tab(): void

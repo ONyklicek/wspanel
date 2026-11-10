@@ -2753,7 +2753,6 @@
     "Název je vůči doméně: „@“ znamená doménu samotnou; když formulář chce prázdné pole nebo celý název, zadejte to tak (celý název je ve druhém řádku buňky).": "The name is relative to the domain: \"@\" means the domain itself; when the form wants an empty field or the full name, enter that (the full name is on the second line of the cell).",
     "Hodnotu TXT vložte bez uvozovek. Cíl u MX, CNAME a SRV je celý název; některé formuláře chtějí tečku na konci, jiné ne.": "Paste TXT values without quotes. The target of MX, CNAME and SRV is a full name; some forms want a dot at the end, others do not.",
     "Když už stejný název a typ existuje (třeba A záznam parkovací stránky nebo jiné SPF), upravte ho, nepřidávejte druhý. SPF smí být jen jedno: má-li doména jiné odesílatele, sloučte je do jednoho záznamu.": "When the same name and type exists already (a parking page's A record, another SPF), edit it instead of adding a second one. There may be one SPF only: with other senders, merge them into one record.",
-    "Pak klikněte na Zkontrolovat znovu. Změny se šíří podle TTL, obvykle minuty až hodiny.": "Then click Check again. Changes spread by TTL, usually minutes to hours.",
     "Co nastavit v DNS domény :domain": "What to set in the DNS of :domain",
     "Sloupec Stav ukazuje, co už veřejné DNS vrací.": "The Status column shows what public DNS returns already.",
     "Všechno je nastavené.": "Everything is set.",
@@ -3009,5 +3008,11 @@
     "build :build": "build :build",
     "nejnovější": "newest",
     "nejnovější (aktualizuje se ze Steamu)": "newest (updated from Steam)",
-    "ponechat současné": "keep the current one"
+    "ponechat současné": "keep the current one",
+    "Pak klikněte na Zkontrolovat znovu: panel se ptá přímo DNS serverů domény, takže nový záznam uvidí hned. Návštěvníkům se projeví podle TTL, obvykle do hodiny.": "Then click Check again: the panel asks the domain's own DNS servers, so it sees a new record at once. Visitors get it by TTL, usually within an hour.",
+    "zkontrolováno v :time": "checked at :time",
+    "Ptám se DNS…": "Asking DNS…",
+    "DNS je nastavené": "DNS is set",
+    "Všechny záznamy webu už jsou v DNS domény.": "All the site's records are in the domain's DNS.",
+    "V DNS ještě chybí :n": "Still missing in DNS: :n"
 }

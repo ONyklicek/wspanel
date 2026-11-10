@@ -110,6 +110,20 @@ class SiteDns extends ViewPage
         ];
     }
 
+    /** When public DNS was last asked, shown beside the button. */
+    public ?string $checkedAt = null;
+
+    /** Asks the domain's nameservers again and says what came back. */
+    public function recheck(): void
+    {
+        $records = app(ManageSiteDns::class)->status($this->site())['records'];
+        $this->checkedAt = now()->format('H:i:s');
+        $pending = collect($records)->whereIn('public', ['missing', 'differs']);
+        $pending->isEmpty()
+            ? Toast::success(__('DNS je nastavené'), __('Všechny záznamy webu už jsou v DNS domény.'))
+            : Toast::warning(__('V DNS ještě chybí :n', ['n' => $pending->count()]), $pending->map(fn (array $r) => $r['type'].' '.$r['name'])->unique()->implode(', '));
+    }
+
     public function render(): View
     {
         $status = app(ManageSiteDns::class)->status($this->site());
