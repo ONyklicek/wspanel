@@ -34,6 +34,44 @@ type Executor interface {
 // DefaultTimeout bounds every command.
 const DefaultTimeout = 2 * time.Minute
 
+// MaxCaptured is the most output a command may leave in a Result (stdout and
+// stderr each). The agent runs as root and many commands read what a site
+// user controls: a file made a link to /dev/zero would otherwise fill the
+// agent's memory until the kernel killed it, and every job with it. Past the
+// limit the pipe is closed, the command ends (SIGPIPE) and Run reports it.
+const MaxCaptured = 32 << 20
+
+// waitDelay bounds how long Wait waits for the output pipes once the command
+// was killed or exited: a child that handed the pipe on (systemd-run --pipe,
+// a forked process) must not hold the caller past its timeout.
+const waitDelay = 10 * time.Second
+
+// ErrOutputLimit is returned when a command's output passed its limit.
+var ErrOutputLimit = errors.New("the command's output is too large")
+
+// LimitedBuffer collects up to Max bytes; a write beyond it fails. The
+// buffer is a named field, not embedded: an embedded bytes.Buffer would lend
+// it ReadFrom, and io.Copy (which os/exec uses) would read through that
+// past the limit without ever calling Write.
+type LimitedBuffer struct {
+	buf bytes.Buffer
+	Max int
+}
+
+func (b *LimitedBuffer) Write(p []byte) (int, error) {
+	room := b.Max - b.buf.Len()
+	if len(p) > room {
+		if room > 0 {
+			b.buf.Write(p[:room])
+		}
+		return max(room, 0), ErrOutputLimit
+	}
+	return b.buf.Write(p)
+}
+
+func (b *LimitedBuffer) Len() int       { return b.buf.Len() }
+func (b *LimitedBuffer) String() string { return b.buf.String() }
+
 // Real executes commands on the host.
 type Real struct {
 	bins map[string]string // logical name -> absolute path
@@ -58,6 +96,7 @@ func (r *Real) RunLog(ctx context.Context, w io.Writer, name string, args ...str
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = r.env
 	cmd.Dir = "/"
+	cmd.WaitDelay = waitDelay
 	cmd.Stdout, cmd.Stderr = w, w
 	err := cmd.Run()
 	res := Result{}
@@ -81,7 +120,8 @@ func (r *Real) RunIO(ctx context.Context, stdin io.Reader, out io.Writer, name s
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = r.env
 	cmd.Dir = "/"
-	var stdout, stderr bytes.Buffer
+	cmd.WaitDelay = waitDelay
+	stdout, stderr := LimitedBuffer{Max: MaxCaptured}, LimitedBuffer{Max: MaxCaptured}
 	cmd.Stdin = stdin
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if out != nil {

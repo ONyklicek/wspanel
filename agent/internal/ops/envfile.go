@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -9,14 +10,29 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"wspanel/agent/internal/executor"
 )
+
+// maxSiteFile is the most readSiteFile reads (a .env, a composer.json).
+const maxSiteFile = 4 << 20
 
 // readSiteFile reads a file inside the site home as the site user, so a
 // planted symlink cannot make root disclose another file. Missing = "".
+//
+// The user controls what is at path: at most maxSiteFile bytes are read (a
+// link to /dev/zero would otherwise fill root's agent's memory), and for at
+// most 30 s (a FIFO there would block the read, often under the agent's lock).
 func readSiteFile(ctx context.Context, env *Env, l siteLayout, path string) (string, error) {
-	var out strings.Builder
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out := executor.LimitedBuffer{Max: maxSiteFile}
 	res, err := env.Exec.RunIO(ctx, nil, &out, "setpriv", "--reuid="+l.User, "--regid="+primaryGroup(l.User), "--init-groups", "--reset-env", "--",
 		"/usr/bin/cat", path)
+	if errors.Is(err, executor.ErrOutputLimit) || out.Len() >= maxSiteFile {
+		return "", fmt.Errorf("%s: larger than %d MB, not read", filepath.Base(path), maxSiteFile>>20)
+	}
 	if err != nil {
 		if strings.Contains(res.Stderr, "No such file") {
 			return "", nil
