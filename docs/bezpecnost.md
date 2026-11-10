@@ -14,6 +14,8 @@ neznamenala kompromitaci serveru ani ostatních webů.
 - Před každým reloadem ověří config (`php-fpm -t`, `frankenphp validate`).
   Když selže, provedené kroky se vrátí zpět.
 - Každá operace se zapíše do `/var/log/panel-agent/audit.log` (JSON lines).
+  Rotuje ho logrotate (`/etc/logrotate.d/wspanel-agent`): měsíčně nebo po
+  100 MB, starší soubory se drží 24 rotací (`audit.log.1`, `audit.log.2.gz`…).
 - Každý web má vlastního systémového uživatele, `open_basedir`, FPM pool a
   `disable_functions` (včetně `proc_open` a `putenv`).
 - Proxy má dvě vrstvy, protože Caddy `file_server` následuje symlinky i mimo root:

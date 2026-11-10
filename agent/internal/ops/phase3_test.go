@@ -62,7 +62,7 @@ func TestWorkerModeSite(t *testing.T) {
 		}
 	}
 	unit := read(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-"+user+"-app.service"))
-	if !strings.Contains(unit, "User="+user) || !strings.Contains(unit, "/usr/local/bin/frankenphp run --config "+env.Cfg.SiteConfigDir+"/"+user+".Caddyfile") ||
+	if !strings.Contains(unit, "User="+user) || !strings.Contains(unit, "/usr/bin/frankenphp run --config "+env.Cfg.SiteConfigDir+"/"+user+".Caddyfile") ||
 		!strings.Contains(unit, "ReadWritePaths="+home+" "+env.Cfg.SiteRunDir+"/"+user) {
 		t.Errorf("app unit:\n%s", unit)
 	}

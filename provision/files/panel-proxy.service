@@ -9,8 +9,8 @@ User=panel-proxy
 Group=panel-proxy
 # Membership in panel-web grants access to the web tier's socket directory.
 SupplementaryGroups=panel-web
-ExecStart=/usr/local/bin/frankenphp run --config /etc/panel-proxy/Caddyfile --adapter caddyfile
-ExecReload=/usr/local/bin/frankenphp reload --config /etc/panel-proxy/Caddyfile --adapter caddyfile --address unix//run/panel-proxy/admin.sock --force
+ExecStart=/usr/bin/frankenphp run --config /etc/panel-proxy/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/frankenphp reload --config /etc/panel-proxy/Caddyfile --adapter caddyfile --address unix//run/panel-proxy/admin.sock --force
 Restart=on-failure
 TimeoutStopSec=5s
 LimitNOFILE=1048576

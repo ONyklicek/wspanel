@@ -44,7 +44,7 @@ func TestDeployRotatesWorkersWithoutMixingCode(t *testing.T) {
 	}
 	// A template written by an older agent (FrankenPHP's php-cli) is rewritten by the deploy.
 	queueTpl := filepath.Join(env.Cfg.SystemdDir, "wspanel-web_rot_example_com-queue@.service")
-	if err := os.WriteFile(queueTpl, []byte("[Service]\nExecStart=/usr/local/bin/frankenphp php-cli artisan queue:work\n"), 0o644); err != nil {
+	if err := os.WriteFile(queueTpl, []byte("[Service]\nExecStart=/usr/bin/frankenphp php-cli artisan queue:work\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := len(dr.Calls())

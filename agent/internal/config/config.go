@@ -200,7 +200,7 @@ func Defaults() Config {
 		WebSitesDir:   "/etc/panel-web/sites",
 		XhguiDir:      "/usr/share/wspanel-xhgui",
 		WebSocket:     "/run/panel-web/web.sock",
-		FrankenPHPBin: "/usr/local/bin/frankenphp",
+		FrankenPHPBin: "/usr/bin/frankenphp",
 		FrankenPHPCLI: "/usr/bin/php-zts",
 		DefaultPHPVer: "8.4",
 

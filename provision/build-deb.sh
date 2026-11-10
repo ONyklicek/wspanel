@@ -25,6 +25,8 @@ install -D -m 0755 "$CLI" "$ROOT/usr/bin/wspanel"
 install -d -m 0755 "$ROOT/usr/lib/systemd/system"
 sed -e '/^Description=/a Documentation=man:panel-agent(8)' -e '/^\[Unit\]/a ConditionPathExists=/etc/panel-agent/agent.json' "$FILES/panel-agent.service" > "$ROOT/usr/lib/systemd/system/panel-agent.service"
 chmod 0644 "$ROOT/usr/lib/systemd/system/panel-agent.service"
+# Rotation of the audit log (a conffile: local changes survive upgrades).
+install -D -m 0644 "$FILES/logrotate-wspanel-agent" "$ROOT/etc/logrotate.d/wspanel-agent"
 deb_man "$ROOT" 8 "$FILES/man/panel-agent.8"
 deb_man "$ROOT" 1 "$FILES/man/wspanel.1"
 deb_doc wspanel-agent "$ROOT" "$CHANGES" "$DEBVER"
@@ -34,12 +36,15 @@ deb_overrides wspanel-agent "$ROOT" \
   "wspanel-agent: statically-linked-binary [usr/sbin/panel-agent]"
 
 install -d -m 0755 "$ROOT/DEBIAN"
+printf '/etc/logrotate.d/wspanel-agent\n' > "$ROOT/DEBIAN/conffiles"
+chmod 0644 "$ROOT/DEBIAN/conffiles"
 cat > "$ROOT/DEBIAN/control" <<CONTROL
 Package: wspanel-agent
 Version: $DEBVER
 Architecture: $ARCH
 Maintainer: $DEB_MAINTAINER
 Depends: init-system-helpers (>= 1.54~)
+Suggests: logrotate
 Recommends: wspanel-archive-keyring
 Section: admin
 Priority: optional

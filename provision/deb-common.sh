@@ -27,7 +27,15 @@ deb_doc() {
   {
     printf '%s (%s) unstable; urgency=medium\n\n' "$pkg" "$ver"
     if [[ -n "$changes" && -s "$changes" ]]; then
-      sed -e 's/^- //' -e 's/^/  * /' "$changes" | head -200
+      # One entry per line, wrapped at 80 columns (Debian's changelog width).
+      sed -e 's/^- //' "$changes" | head -200 | awk '{
+        line = "  *"; n = split($0, w, " ")
+        for (i = 1; i <= n; i++) {
+          if (length(line) + 1 + length(w[i]) > 80 && line != "  *" && line != "   ") { print line; line = "   " }
+          line = line " " w[i]
+        }
+        print line
+      }'
     else
       printf '  * Release %s.\n' "$ver"
     fi

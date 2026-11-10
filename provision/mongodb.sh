@@ -15,15 +15,19 @@ umask 022
 PW_FILE=${1:?usage: mongodb.sh <admin password file> <php version>...}
 shift
 VER=8.0
-KEY=/usr/share/keyrings/mongodb-server-$VER.asc
+# A key downloaded by hand: /etc/apt/keyrings (/usr/share/keyrings is for
+# keyring packages).
+KEY=/etc/apt/keyrings/mongodb-server-$VER.asc
 . /etc/os-release
 SUITE=${VERSION_CODENAME:-trixie}
 
 if [[ ! -s $KEY ]]; then
+  install -d -m 0755 /etc/apt/keyrings
   curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o "$KEY.tmp" "https://pgp.mongodb.com/server-$VER.asc"
   grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$KEY.tmp" || { echo "the MongoDB key is not a PGP key" >&2; exit 1; }
   mv "$KEY.tmp" "$KEY"
 fi
+rm -f /usr/share/keyrings/mongodb-server-$VER.asc # where 1.2.0 release candidates put it
 write_source() {
   cat >/etc/apt/sources.list.d/mongodb-org-$VER.sources <<EOF
 # Managed by WSPanel (mongodb.sh).
@@ -70,6 +74,7 @@ systemLog:
   destination: file
   logAppend: true
   path: /var/log/mongodb/mongod.log
+  logRotate: reopen
 net:
   port: 27017
   bindIp: $1
@@ -92,6 +97,26 @@ wait_mongod() { # $1: connection string
   exit 1
 }
 systemctl enable mongod >/dev/null 2>&1
+
+# MongoDB's packages rotate nothing: logrotate renames the log, SIGUSR1 has
+# mongod reopen it (logRotate: reopen above).
+cat >/etc/logrotate.d/wspanel-mongodb <<'ROT'
+# Managed by WSPanel (mongodb.sh).
+/var/log/mongodb/mongod.log {
+	weekly
+	maxsize 100M
+	rotate 8
+	compress
+	delaycompress
+	missingok
+	notifempty
+	create 0600 mongodb mongodb
+	sharedscripts
+	postrotate
+		systemctl kill --signal=SIGUSR1 --kill-whom=main mongod.service >/dev/null 2>&1 || true
+	endscript
+}
+ROT
 
 # Every run starts on the private socket first and only opens 127.0.0.1 once
 # the administrator provably exists: the password file is only a hint (an

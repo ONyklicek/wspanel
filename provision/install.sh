@@ -237,15 +237,28 @@ log "Base packages"
 apt_update
 apt-get install -y -q --no-install-recommends \
   ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw nftables \
-  openssh-server fail2ban mc nano xz-utils iproute2 quota
+  openssh-server fail2ban mc nano xz-utils iproute2 quota logrotate
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
-if [[ ! -f /etc/apt/sources.list.d/php.list ]]; then
-  curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
-  dpkg -i /tmp/debsuryorg-archive-keyring.deb
-  echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" \
-    > /etc/apt/sources.list.d/php.list
+# The keyring is sury's own package (updated through apt); the source is a
+# deb822 file like every other (installs before 1.2.0 wrote php.list).
+SURY_SRC=/etc/apt/sources.list.d/php.sources
+if [[ ! -f $SURY_SRC ]]; then
+  if ! dpkg-query -W -f='${Status}' debsuryorg-archive-keyring 2>/dev/null | grep -q 'ok installed'; then
+    curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb
+    dpkg -i /tmp/debsuryorg-archive-keyring.deb
+    rm -f /tmp/debsuryorg-archive-keyring.deb
+  fi
+  cat > "$SURY_SRC" <<EOF
+# Managed by WSPanel (install.sh): PHP from packages.sury.org.
+Types: deb
+URIs: https://packages.sury.org/php/
+Suites: $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}")
+Components: main
+Signed-By: /usr/share/keyrings/debsuryorg-archive-keyring.gpg
+EOF
+  rm -f /etc/apt/sources.list.d/php.list
   apt_update
 fi
 PHP_PKGS=()
@@ -330,16 +343,16 @@ for attempt in 1 2 3 4; do
   apt_update || true
 done
 systemctl mask frankenphp.service >/dev/null 2>&1 || true
-# Where WSPanel's units and timers (also those written before) run it from.
-ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
 # 1.2.0-rc5 shipped its own FrankenPHP package: replaced by the above, and
 # unused from now on. The wspanel package of 1.2.0-rc5 still depends on it
 # (until apt brings the new one): then it stays until the next run.
 if dpkg-query -W -f='${Status}' wspanel-frankenphp 2>/dev/null | grep -q 'ok installed'; then
   dpkg --purge wspanel-frankenphp >/dev/null 2>&1 \
     || log "wspanel-frankenphp (unused) stays until the wspanel package is updated"
-  ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
 fi
+# Units and wrappers name /usr/bin/frankenphp; sites set up by 1.2.0 release
+# candidates still name /usr/local/bin/frankenphp until they are saved again.
+ln -sfn /usr/bin/frankenphp /usr/local/bin/frankenphp
 # Its fixes with the daily unattended upgrades too (when those are on).
 cat > /etc/apt/apt.conf.d/52wspanel-frankenphp <<'CONF'
 // Managed by the WSPanel installer: FrankenPHP and PHP fixes from its

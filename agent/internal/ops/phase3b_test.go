@@ -172,7 +172,7 @@ func TestToolLinks(t *testing.T) {
 	if _, err := call(t, env, siteSwitchMode, map[string]string{"domain": "tl.example.com", "mode": "worker", "framework": "laravel"}); err != nil {
 		t.Fatal(err)
 	}
-	if w := read(t, filepath.Join(dir, "php")); !strings.Contains(w, "exec /usr/local/bin/frankenphp php-cli \"$@\"") {
+	if w := read(t, filepath.Join(dir, "php")); !strings.Contains(w, "exec /usr/bin/frankenphp php-cli \"$@\"") {
 		t.Errorf("worker php wrapper:\n%s", w)
 	}
 }

@@ -353,8 +353,8 @@ Panel, vstupní proxy a weby v režimu FrankenPHP běží na
 repozitář `/etc/apt/sources.list.d/frankenphp.sources` (klíč ověří podle otisku)
 a nainstaluje:
 
-- `frankenphp` (`/usr/bin/frankenphp`; odkaz `/usr/local/bin/frankenphp`
-  používají služby WSPanelu),
+- `frankenphp` (`/usr/bin/frankenphp`, odkud ho spouštějí služby WSPanelu;
+  odkaz `/usr/local/bin/frankenphp` zůstává pro weby z dřívějších verzí),
 - PHP 8.5 ve variantě ZTS a jeho rozšíření `php-zts-*` (stejná sada, jakou
   měla dřívější statická binárka: databáze, Redis, intl, gd, imagick, zip…).
   Konfigurace je v `/etc/php-zts` (`php.ini`, `conf.d/`). Další rozšíření:

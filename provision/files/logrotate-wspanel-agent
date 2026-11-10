@@ -1,0 +1,12 @@
+# The agent's audit log: one JSON line per operation. The agent starts a new
+# file by itself after the rename (no signal, no copytruncate: no line lost).
+/var/log/panel-agent/audit.log {
+	monthly
+	maxsize 100M
+	rotate 24
+	compress
+	delaycompress
+	missingok
+	notifempty
+	nocreate
+}
