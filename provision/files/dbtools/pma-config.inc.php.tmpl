@@ -31,3 +31,7 @@ $cfg['SendErrorReports'] = 'never';
 $cfg['ZeroConf'] = false;
 $cfg['CheckConfigurationPermissions'] = false;
 $cfg['ThemeDefault'] = 'pmahomme';
+$cfg['ExecTimeLimit'] = 1800;           // imports and exports of whole databases
+// The configuration storage (pmadb) needs a permanent control user; logins
+// here are temporary users, so it stays off, without the warning.
+$cfg['PmaNoRelation_DisableWarning'] = true;

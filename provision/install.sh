@@ -840,6 +840,12 @@ install -m 0644 "$HERE/files/dbtools/token.php" /etc/wspanel-dbtools/token.php
 if [[ ! -f /etc/wspanel-dbtools/pma.config.inc.php ]]; then
   sed "s|__BLOWFISH_HEX__|$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')|" "$HERE/files/dbtools/pma-config.inc.php.tmpl" > /etc/wspanel-dbtools/pma.config.inc.php
 fi
+# Settings added after a server's config was written (it is never rewritten:
+# it holds the server's blowfish secret).
+for setting in "ExecTimeLimit'] = 1800" "PmaNoRelation_DisableWarning'] = true"; do
+  grep -qF "\$cfg['${setting%%\'*}']" /etc/wspanel-dbtools/pma.config.inc.php \
+    || printf "\$cfg['%s;\n" "$setting" >> /etc/wspanel-dbtools/pma.config.inc.php
+done
 chown root:dbtools /etc/wspanel-dbtools/pma.config.inc.php && chmod 0640 /etc/wspanel-dbtools/pma.config.inc.php
 install -m 0644 "$HERE/files/dbtools/dbtools-pool.conf" "/etc/php/$PANEL_PHP/fpm/pool.d/dbtools.conf"
 
