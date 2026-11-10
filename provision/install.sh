@@ -826,15 +826,17 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   # -P: a symlink the build left in public/ is not followed (root sets the ACL).
   setfacl -R -P -m u:panel-web:rX,d:u:panel-web:rX "$release/public"
   ln -sfn "$release" /srv/panel/current.tmp && mv -Tf /srv/panel/current.tmp /srv/panel/current
-  # Keep the last 5 releases. The directory is the panel user's: only real
-  # directories are pruned (find -type d lists no symlink), each named
-  # without a trailing slash, so rm removes a link in its place and never
-  # what a link points to. "ls releases/*/ | xargs rm -rf" followed a planted
-  # link to /etc or /usr and emptied it.
-  current_release="$(readlink -f /srv/panel/current)"
-  find /srv/panel/releases -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | tail -n +6 | cut -d' ' -f2- |
-    while IFS= read -r old_release; do
-      [[ "$old_release" != "$current_release" ]] && rm -rf -- "$old_release"
+  # Keep the last 5 releases. /srv/panel is the panel user's, so root deletes
+  # nothing there by path: a name with a newline, or releases/ swapped for a
+  # symlink between the listing and the rm, would aim root's rm -rf anywhere
+  # ("ls releases/*/ | xargs rm -rf" followed a planted link to /usr). The
+  # panel user removes its own old releases, which it could do anyway; only
+  # names the installer gives (a UTC timestamp) are considered.
+  current_release="$(basename "$(readlink -f /srv/panel/current)")"
+  find /srv/panel/releases -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{14}' -printf '%f\n' |
+    sort -r | tail -n +6 | while IFS= read -r old_release; do
+      [[ "$old_release" =~ ^[0-9]{14}$ && "$old_release" != "$current_release" ]] || continue
+      runuser -u panel -- rm -rf -- "/srv/panel/releases/$old_release"
     done
   install -m 0644 "$HERE/files/panel-scheduler.service" /etc/systemd/system/panel-scheduler.service
   install -m 0644 "$HERE/files/panel-queue.service" /etc/systemd/system/panel-queue.service
