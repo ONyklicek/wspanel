@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 	"wspanel/agent/internal/validate"
 )
@@ -199,23 +198,7 @@ func sitePHP(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 func applyPHPRuntime(ctx context.Context, env *Env, l siteLayout) error {
 	switch l.Mode {
 	case "classic":
-		pool, err := render("fpm-pool.conf.tmpl", l)
-		if err != nil {
-			return err
-		}
-		old, err := os.ReadFile(l.PoolFile)
-		if err != nil {
-			return err
-		}
-		if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
-			return err
-		}
-		if err := validateFPM(ctx, env, l.PHPVersion); err != nil {
-			_ = env.FS.WriteFile(l.PoolFile, old, 0o644, fsx.Root)
-			return err
-		}
-		_, err = env.Exec.Run(ctx, "systemctl", "reload", strings.ReplaceAll(env.Cfg.FPMUnit, "{version}", l.PHPVersion))
-		return err
+		return rewritePool(ctx, env, l)
 	case "worker":
 		cfg, err := render("instance.caddy.tmpl", l)
 		if err != nil {

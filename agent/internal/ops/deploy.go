@@ -1006,22 +1006,7 @@ func siteOpcache(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	pool, err := render("fpm-pool.conf.tmpl", l)
-	if err != nil {
-		return nil, err
-	}
-	old, err := os.ReadFile(l.PoolFile)
-	if err != nil {
-		return nil, err
-	}
-	if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
-		return nil, err
-	}
-	if err := validateFPM(ctx, env, l.PHPVersion); err != nil {
-		_ = env.FS.WriteFile(l.PoolFile, old, 0o644, fsx.Root)
-		return nil, err
-	}
-	if _, err := env.Exec.Run(ctx, "systemctl", "reload", strings.ReplaceAll(env.Cfg.FPMUnit, "{version}", l.PHPVersion)); err != nil {
+	if err := rewritePool(ctx, env, l); err != nil {
 		return nil, err
 	}
 	if err := saveSiteState(env, st); err != nil {

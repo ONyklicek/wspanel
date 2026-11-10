@@ -138,3 +138,25 @@ func layoutFor(t *testing.T, env *Env, domain string) (siteLayout, siteState) {
 	}
 	return l, st
 }
+
+// One FPM master runs every site's pool: saving the same settings again must
+// not reload it (a reload empties OPcache and APCu for all sites).
+func TestUnchangedPHPSettingsDoNotReloadFPM(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "same.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]any{"domain": "same.example.com", "settings": map[string]string{"memory_limit": "512M"}}
+	if _, err := call(t, env, sitePHP, set); err != nil {
+		t.Fatal(err)
+	}
+	n := len(dr.Calls())
+	if _, err := call(t, env, sitePHP, set); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range dr.Calls()[n:] {
+		if strings.Contains(c.String(), "reload php8.4-fpm") {
+			t.Fatalf("FPM reloaded for an unchanged pool: %v", c)
+		}
+	}
+}

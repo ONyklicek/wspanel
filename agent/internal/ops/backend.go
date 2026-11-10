@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -122,6 +123,9 @@ func writePool(ctx context.Context, env *Env, l siteLayout, rb *undo) error {
 	pool, err := render("fpm-pool.conf.tmpl", l)
 	if err != nil {
 		return err
+	}
+	if old, err := os.ReadFile(l.PoolFile); err == nil && bytes.Equal(old, pool) {
+		return nil // the same pool: no reload of the FPM master all sites share
 	}
 	if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
 		return err

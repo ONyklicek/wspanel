@@ -193,19 +193,7 @@ func siteMail(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err er
 		return nil, err
 	}
 	if l.Mode == "classic" && l.PoolFile != "" {
-		old, _ := os.ReadFile(l.PoolFile)
-		pool, err := render("fpm-pool.conf.tmpl", l)
-		if err != nil {
-			return nil, err
-		}
-		if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
-			return nil, err
-		}
-		if err := validateFPM(ctx, env, l.PHPVersion); err != nil {
-			_ = env.FS.WriteFile(l.PoolFile, old, 0o644, fsx.Root)
-			return nil, err
-		}
-		if _, err := env.Exec.Run(ctx, "systemctl", "reload", config.ForVersion(env.Cfg.FPMUnit, l.PHPVersion)); err != nil {
+		if err := rewritePool(ctx, env, l); err != nil {
 			return nil, err
 		}
 	}

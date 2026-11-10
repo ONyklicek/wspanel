@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -110,7 +111,9 @@ func siteXhprof(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 }
 
 // rewritePool renders a classic site's pool, checks it with php-fpm -t (the
-// old one comes back on failure) and reloads FPM.
+// old one comes back on failure) and reloads FPM. An unchanged pool is left
+// alone: one FPM master runs every site's pool, and a reload empties OPcache
+// and APCu for all of them and replaces their idle workers.
 func rewritePool(ctx context.Context, env *Env, l siteLayout) error {
 	pool, err := render("fpm-pool.conf.tmpl", l)
 	if err != nil {
@@ -119,6 +122,9 @@ func rewritePool(ctx context.Context, env *Env, l siteLayout) error {
 	old, err := os.ReadFile(l.PoolFile)
 	if err != nil {
 		return err
+	}
+	if bytes.Equal(old, pool) {
+		return nil
 	}
 	if err := env.FS.WriteFile(l.PoolFile, pool, 0o644, fsx.Root); err != nil {
 		return err
