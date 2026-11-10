@@ -9,6 +9,9 @@
 	# Internal-TLS sites use the edge's local CA; it is distributed to clients
 	# by the operator (SSL → Kořenový certifikát), never installed system-wide.
 	skip_install_trust
+	# A stop or a reload lets requests in flight finish for up to 10 s
+	# (systemd waits 15 s) instead of cutting them off.
+	grace_period 10s
 	servers {
 		protocols h1 h2 h3
 	}

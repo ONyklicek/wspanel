@@ -9,7 +9,7 @@ Group=panel-web
 ExecStart=/usr/bin/frankenphp run --config /etc/panel-web/Caddyfile --adapter caddyfile
 ExecReload=/usr/bin/frankenphp reload --config /etc/panel-web/Caddyfile --adapter caddyfile --address unix//run/panel-web/admin.sock --force
 Restart=on-failure
-TimeoutStopSec=5s
+TimeoutStopSec=15s
 LimitNOFILE=1048576
 # Every site depends on it: under memory pressure the kernel keeps it in RAM
 # (MemoryLow) and kills it last (OOMScoreAdjust), never a swapped-out edge

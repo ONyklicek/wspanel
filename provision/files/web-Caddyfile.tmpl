@@ -6,6 +6,9 @@
 	admin unix//run/panel-web/admin.sock
 	auto_https off
 	default_bind unix//run/panel-web/web.sock|0220
+	# A stop or a reload lets requests in flight finish for up to 10 s
+	# (systemd waits 15 s) instead of cutting them off.
+	grace_period 10s
 	servers {
 		protocols h1
 	}

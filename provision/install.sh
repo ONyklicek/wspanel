@@ -331,7 +331,7 @@ for v in "${PHP_LIST[@]}"; do
   rm -f "/etc/php/$v/fpm/pool.d/www.conf"
   sed "s|\$pool|$v|" "$HERE/files/00-wspanel-idle.conf" > "/etc/php/$v/fpm/pool.d/00-wspanel-idle.conf"
   install -d -m 0755 "/etc/systemd/system/php$v-fpm.service.d"
-  install -m 0644 "$HERE/files/php-fpm-wspanel.conf" "/etc/systemd/system/php$v-fpm.service.d/wspanel.conf"
+  install -C -m 0644 "$HERE/files/php-fpm-wspanel.conf" "/etc/systemd/system/php$v-fpm.service.d/wspanel.conf"
 done
 systemctl daemon-reload
 
@@ -720,8 +720,8 @@ if [[ $LOCAL_CERTS -eq 1 ]]; then
   sed -i 's|^\temail .*|\tlocal_certs|' /etc/panel-proxy/Caddyfile
 fi
 cp "$HERE/files/web-Caddyfile.tmpl" /etc/panel-web/Caddyfile
-install -m 0644 "$HERE/files/panel-proxy.service" /etc/systemd/system/panel-proxy.service
-install -m 0644 "$HERE/files/panel-web.service" /etc/systemd/system/panel-web.service
+install -C -m 0644 "$HERE/files/panel-proxy.service" /etc/systemd/system/panel-proxy.service
+install -C -m 0644 "$HERE/files/panel-web.service" /etc/systemd/system/panel-web.service
 install -m 0644 "$HERE/files/panel-pool.conf" "/etc/php/$PANEL_PHP/fpm/pool.d/panel.conf"
 
 # ---------------------------------------------------------------- panel app
@@ -923,10 +923,34 @@ ufw --force enable >/dev/null
 # ---------------------------------------------------------------- start
 log "Starting services"
 systemctl daemon-reload
+# refresh_unit starts a stopped unit. A running one is reloaded (FPM and the
+# Caddy tiers re-read their configuration and keep serving), and restarted
+# only when its program or its unit file changed since it started: a restart
+# of FPM or of the edge drops every site's requests in flight, and an
+# upgrade used to do that each time.
+refresh_unit() {
+  local unit=$1 pid exe started f changed=0
+  if ! systemctl is-active --quiet "$unit"; then
+    systemctl restart "$unit"
+    return
+  fi
+  pid="$(systemctl show -p MainPID --value "$unit")"
+  exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+  [[ $exe == *" (deleted)" ]] && changed=1
+  started="$(date -d "$(systemctl show -p ActiveEnterTimestamp --value "$unit")" +%s 2>/dev/null || echo 0)"
+  for f in $(systemctl show -p FragmentPath -p DropInPaths --value "$unit"); do
+    [[ -f $f && $(stat -c %Y "$f") -gt $started ]] && changed=1
+  done
+  if ((changed)); then
+    systemctl restart "$unit"
+  else
+    systemctl reload "$unit"
+  fi
+}
 for v in "${PHP_LIST[@]}"; do
   "php-fpm$v" -t
   systemctl enable "php$v-fpm"
-  systemctl restart "php$v-fpm"
+  refresh_unit "php$v-fpm.service"
 done
 # No shared Valkey: every site gets its own (Další → Valkey), with its own
 # port, password and memory. The package stays for the binaries only.
@@ -935,7 +959,9 @@ systemctl mask valkey-server >/dev/null 2>&1 || true
 frankenphp validate --config /etc/panel-web/Caddyfile --adapter caddyfile
 frankenphp validate --config /etc/panel-proxy/Caddyfile --adapter caddyfile
 systemctl enable panel-web panel-proxy panel-agent
-systemctl restart panel-web panel-proxy panel-agent
+refresh_unit panel-web.service
+refresh_unit panel-proxy.service
+systemctl restart panel-agent
 if [[ -f /etc/systemd/system/panel-scheduler.service ]]; then
   systemctl enable panel-scheduler
   systemctl restart panel-scheduler
