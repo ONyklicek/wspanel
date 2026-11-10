@@ -78,6 +78,23 @@ class AgentTasksTest extends TestCase
         Livewire::test(TaskIndicator::class)->assertSee('2 úlohy běží')->assertSee('Záloha webu alice.cz');
     }
 
+    public function test_a_started_task_is_running_until_its_job_ends(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $status = 'running';
+        $this->app->make(AgentClient::class)->shouldReceive('call')->with('job.status', ['id' => 'j5'])
+            ->andReturnUsing(function () use (&$status) {
+                return ['status' => $status, 'output' => ['file' => 'b.tar.gz']];
+            });
+
+        $task = AgentTasks::start(['job_id' => 'j5'], 'site.backup', ['title' => 'Záloha', 'done' => 'Záloha hotová']);
+        $this->assertTrue($task->isRunning(), 'the returned task, not only the database row');
+        $this->assertTrue(AgentTasks::wait($task, 1)->isRunning());
+
+        $status = 'done';
+        $this->assertSame(['file' => 'b.tar.gz'], AgentTasks::wait($task, 5)->output);
+    }
+
     public function test_a_failed_job_says_why_in_czech(): void
     {
         $this->actingAs(User::factory()->create());

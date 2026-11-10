@@ -38,6 +38,7 @@ final class AgentTasks
             'key' => $key,
             'op' => $op,
             'job_id' => isset($job['job_id']) ? (string) $job['job_id'] : null,
+            'status' => AgentTask::RUNNING, // in the returned model too, not only in the database
             'title' => $text['title'],
             'done_title' => $text['done'],
             'body' => $text['body'] ?? null,
@@ -76,7 +77,7 @@ final class AgentTasks
     public static function queue(string $op, array $text, string $class, string $method, array $arguments = [], ?Model $subject = null, ?string $key = null): AgentTask
     {
         $task = AgentTask::create([
-            'key' => $key, 'op' => $op, 'job_id' => null, 'title' => $text['title'], 'done_title' => $text['done'],
+            'key' => $key, 'op' => $op, 'job_id' => null, 'status' => AgentTask::RUNNING, 'title' => $text['title'], 'done_title' => $text['done'],
             'body' => $text['body'] ?? null, 'subject_type' => $subject?->getMorphClass(), 'subject_id' => $subject?->getKey(),
             'user_id' => auth()->id(), 'started_at' => now(),
         ]);
