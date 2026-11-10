@@ -89,7 +89,8 @@ Opravy agenta přicházejí i přes apt: instalace z vydání nainstaluje agenta
 jako balíček `wspanel-agent` a přidá apt repozitář WSPanelu
 (`/etc/apt/sources.list.d/wspanel.sources`, podepsaný klíčem
 `/etc/apt/keyrings/wspanel.asc`). Repozitář má kanál pro každou řadu verzí
-(`1.2` pro 1.2.x, `1.2-pre` pro předběžné verze), takže `apt upgrade`
+(`1.2` pro 1.2.x, `1.2-pre` i s předběžnými verzemi; vždy poslední dvě
+verze řady), takže `apt upgrade`
 a automatické aktualizace (Zabezpečení → Aktualizace) přinesou jen opravy
 agenta téže řady. Na vyšší řadu (1.3) se přechází instalátorem, s panelem
 stejné verze. Když repozitář není dostupný, instalace ani aktualizace

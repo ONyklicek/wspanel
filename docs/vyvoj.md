@@ -161,7 +161,9 @@ CI je v `.github/workflows/`:
   Po vydání job **Apt repository** přidá balíčky
   do apt repozitáře na GitHub Pages (větev
   `gh-pages`, složka `apt/`, `provision/apt-repo.sh`): kanál pro každou
-  řadu verzí, nejnovějších 5 verzí v kanálu, indexy podepsané klíčem
+  řadu verzí (`1.4`, s předběžnými verzemi `1.4-pre`), nejnovější 2 verze
+  v kanálu (`APT_KEEP`; starší zůstávají ve vydáních na GitHubu, web na Pages
+  tak neroste), indexy podepsané klíčem
   z tajné proměnné `APT_SIGNING_KEY`. Servery mu věří podle veřejného klíče
   `provision/files/wspanel-archive-keyring.asc` (otisk
   `51525652EBC466696C479E9DEECED19A06101F1F`); výměna klíče = nový pár,
