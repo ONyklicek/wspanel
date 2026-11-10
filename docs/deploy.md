@@ -216,8 +216,11 @@ klíče, které tam ještě nejsou. První deploy tak začne z toho, co aplikace
 - Vývojové hodnoty se nahradí produkčními: `APP_ENV=production`,
   `APP_DEBUG=false`, `APP_URL=https://<doména>`, `NODE_ENV=production`,
   `DEBUG=False`, `FLASK_DEBUG=0`.
-- `APP_KEY`, `APP_SECRET` ani `SECRET_KEY` se nepřebírají nikdy: z repozitáře
-  jsou veřejné. Vygeneruje je deploy.
+- Klíče, které vypadají jako tajemství (název obsahuje `KEY`, `SECRET`,
+  `TOKEN`, `PASSWORD`, `PASS`, `SALT`, `PRIVATE`, `CREDENTIAL` nebo `DSN`), se
+  nepřebírají nikdy: hodnota v repozitáři je veřejná (`REVERB_APP_SECRET=my-secret`).
+  `APP_KEY` / `APP_SECRET` vygeneruje deploy, ostatní log deploye vypíše
+  k nastavení v `.env` webu.
 - Řádky se kopírují, jak jsou napsané, takže `"${APP_NAME}"` dál funguje.
   Doplněné klíče jsou v `.env` pod komentářem `# From .env.example` a log
   deploye je vypíše.

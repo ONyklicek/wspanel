@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -28,12 +29,15 @@ func exampleOverrides(domain string) map[string]string {
 	}
 }
 
-// exampleSecrets: never copied, even with a value: one committed to a
-// repository is public. The framework's own is generated (ensureAppSecrets).
-var exampleSecrets = map[string]bool{"APP_KEY": true, "APP_SECRET": true, "SECRET_KEY": true}
+// exampleSecretRe: keys never copied, even with a value: a value committed
+// to a repository is public ("REVERB_APP_SECRET=my-secret", "JWT_SECRET=
+// changeme"). The framework's own is generated (ensureAppSecrets); the rest
+// the deploy log names for the operator to set.
+var exampleSecretRe = regexp.MustCompile(`(?i)(KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|SALT|PRIVATE|CREDENTIAL|DSN)`)
 
-// envFromExample returns the lines to add to the site's env file and their keys.
-func envFromExample(example, current string, managed map[string]bool, domain string) (lines, keys []string) {
+// envFromExample returns the lines to add to the site's env file and their
+// keys, and the secret-looking keys with a value it left for the operator.
+func envFromExample(example, current string, managed map[string]bool, domain string) (lines, keys, secrets []string) {
 	have := parseDotenv(current)
 	overrides := exampleOverrides(domain)
 	seen := map[string]bool{}
@@ -44,11 +48,17 @@ func envFromExample(example, current string, managed map[string]bool, domain str
 		}
 		k, v, ok := strings.Cut(line, "=")
 		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
-		if !ok || !envKeyRe.MatchString(k) || seen[k] || managed[k] || exampleSecrets[k] {
+		if !ok || !envKeyRe.MatchString(k) || seen[k] || managed[k] {
 			continue
 		}
 		seen[k] = true
 		if _, there := have[k]; there {
+			continue
+		}
+		if exampleSecretRe.MatchString(k) {
+			if parseDotenv(line)[k] != "" && k != "APP_KEY" && k != "APP_SECRET" {
+				secrets = append(secrets, k)
+			}
 			continue
 		}
 		if o, ok := overrides[k]; ok {
@@ -64,7 +74,7 @@ func envFromExample(example, current string, managed map[string]bool, domain str
 		}
 		lines, keys = append(lines, k+"="+v), append(keys, k)
 	}
-	return lines, keys
+	return lines, keys, secrets
 }
 
 // envFromExampleFile adds what the release's .env.example has and the
@@ -91,11 +101,20 @@ func (d *deployment) envFromExampleFile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	lines, keys := envFromExample(example, current, panelManagedKeys(d.env, l, st, parseDotenv(current)), l.Domain)
+	lines, keys, secrets := envFromExample(example, current, panelManagedKeys(d.env, l, st, parseDotenv(current)), l.Domain)
+	if len(keys) == 0 && len(secrets) == 0 {
+		return nil
+	}
+	d.logf("\n==> .env.example\n")
+	if len(keys) > 0 {
+		d.logf("%d keys the shared .env did not have: %s\n", len(keys), strings.Join(keys, ", "))
+	}
+	if len(secrets) > 0 {
+		d.logf("not copied (a value in the repository is public), set them in the site's .env: %s\n", strings.Join(secrets, ", "))
+	}
 	if len(keys) == 0 {
 		return nil
 	}
-	d.logf("\n==> .env.example\n%d keys the shared .env did not have: %s\n", len(keys), strings.Join(keys, ", "))
 	out := strings.TrimRight(current, "\n")
 	if out != "" {
 		out += "\n\n"

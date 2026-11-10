@@ -22,12 +22,15 @@ func TestEnvExampleFillsWhatIsMissingAndNeverWhatIsThere(t *testing.T) {
 		`PRIVATE_KEY="-----BEGIN`,
 		"-----END-----\"",
 		"export PULSE_ENABLED=true",
+		"REVERB_APP_SECRET=my-secret",
+		"JWT_SECRET=changeme",
+		"STRIPE_KEY=",
 		"APP_NAME=Twice",
 	}, "\n")
 	current := "SESSION_DRIVER=redis\nDB_CONNECTION=mysql\n"
 	managed := map[string]bool{"DB_CONNECTION": true, "DB_PASSWORD": true}
 
-	lines, keys := envFromExample(example, current, managed, "devet.example.cz")
+	lines, keys, secrets := envFromExample(example, current, managed, "devet.example.cz")
 
 	want := []string{
 		"APP_NAME=Intranet",
@@ -41,9 +44,12 @@ func TestEnvExampleFillsWhatIsMissingAndNeverWhatIsThere(t *testing.T) {
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Errorf("lines:\n%s\nwant:\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
 	}
+	if strings.Join(secrets, ",") != "PRIVATE_KEY,REVERB_APP_SECRET,JWT_SECRET" {
+		t.Errorf("committed secrets are named for the operator, never copied: %v", secrets)
+	}
 	for _, k := range keys {
 		switch k {
-		case "APP_KEY":
+		case "APP_KEY", "REVERB_APP_SECRET", "JWT_SECRET":
 			t.Error("a key committed to the repository is public: never copied")
 		case "SESSION_DRIVER", "DB_CONNECTION", "DB_PASSWORD", "AWS_ACCESS_KEY_ID", "PRIVATE_KEY":
 			t.Errorf("%s: already there, the panel's, empty or cut in half", k)
