@@ -304,7 +304,7 @@ jobs:
       - run: npm ci && npm run build
       - run: tar --exclude=.git --exclude=node_modules -czf /tmp/build.tar.gz .
       - run: |
-          curl -fsS -H "Authorization: Bearer ${{ secrets.WSPANEL_TOKEN }}" \
+          curl -sS --fail-with-body -H "Authorization: Bearer ${{ secrets.WSPANEL_TOKEN }}" \
             -F artifact=@/tmp/build.tar.gz -F ref=${{ github.ref_name }} -F commit=${{ github.sha }} \
             https://panel.example.com/api/deploy/<id>/artifact
 ```

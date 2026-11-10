@@ -30,12 +30,13 @@ jobs:
           URL: {{ $base ?? 'https://…/api/deploy/…' }}
           TOKEN: {{ '${{ secrets.WSPANEL_TOKEN }}' }}
         run: |
-          status_url=$(curl -fsS -X POST "$URL" -H "Authorization: Bearer $TOKEN" \
-            -H 'Content-Type: application/json' -d '{"ref":"{{ '${{ github.event.release.tag_name }}' }}"}' | jq -r .status_url)
+          resp=$(curl -sS --fail-with-body -X POST "$URL" -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' -d '{"ref":"{{ '${{ github.event.release.tag_name }}' }}"}') || { echo "panel: $resp"; exit 1; }
+          status_url=$(echo "$resp" | jq -r .status_url)
           for i in $(seq 120); do
-            s=$(curl -fsS "$status_url" -H "Authorization: Bearer $TOKEN" | jq -r .status)
-            echo "deploy: $s"; [ "$s" = success ] && exit 0
-            [ "$s" = running ] || exit 1; sleep 5
+            st=$(curl -sS --fail-with-body "$status_url" -H "Authorization: Bearer $TOKEN") || { echo "panel: $st"; exit 1; }
+            s=$(echo "$st" | jq -r .status); echo "deploy: $s"; [ "$s" = success ] && exit 0
+            [ "$s" = running ] || { echo "$st" | jq -r '.error // empty'; exit 1; }; sleep 5
           done; exit 1</pre>
     </div>
 
@@ -70,12 +71,13 @@ jobs:
           URL: {{ $base ? $base.'/artifact' : 'https://…/api/deploy/…/artifact' }}
           TOKEN: {{ '${{ secrets.WSPANEL_TOKEN }}' }}
         run: |
-          status_url=$(curl -fsS -X POST "$URL" -H "Authorization: Bearer $TOKEN" \
-            -F artifact=@/tmp/build.tar.gz -F ref={{ '${{ github.ref_name }}' }} -F commit={{ '${{ github.sha }}' }} | jq -r .status_url)
+          resp=$(curl -sS --fail-with-body -X POST "$URL" -H "Authorization: Bearer $TOKEN" \
+            -F artifact=@/tmp/build.tar.gz -F ref={{ '${{ github.ref_name }}' }} -F commit={{ '${{ github.sha }}' }}) || { echo "panel: $resp"; exit 1; }
+          status_url=$(echo "$resp" | jq -r .status_url)
           for i in $(seq 120); do
-            s=$(curl -fsS "$status_url" -H "Authorization: Bearer $TOKEN" | jq -r .status)
-            echo "deploy: $s"; [ "$s" = success ] && exit 0
-            [ "$s" = running ] || exit 1; sleep 5
+            st=$(curl -sS --fail-with-body "$status_url" -H "Authorization: Bearer $TOKEN") || { echo "panel: $st"; exit 1; }
+            s=$(echo "$st" | jq -r .status); echo "deploy: $s"; [ "$s" = success ] && exit 0
+            [ "$s" = running ] || { echo "$st" | jq -r '.error // empty'; exit 1; }; sleep 5
           done; exit 1</pre>
     </div>
     <p class="text-gray-500">{{ __('Bez releasů? Místo') }} <code>on: release</code> {{ __('použijte') }} <code>on: push: branches: [main]</code> {{ __('a pošlete') }} <code>{"ref":"{{ '${{ github.sha }}' }}"}</code>{{ __('. Bez workflow stačí v okně Webhook zvolit „Nový release nebo tag“ a nastavit webhook v GitHubu.') }}</p>
