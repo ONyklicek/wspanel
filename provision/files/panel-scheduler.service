@@ -16,6 +16,12 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/srv/panel/shared /srv/panel/tmp
+# The panel's mail (alerts, password resets) goes to Postfix through sendmail,
+# whose postdrop is setgid postdrop: NoNewPrivileges ignores that, so the
+# group comes from here, and the read-only system needs the maildrop
+# writable. Without it every message failed (and postdrop kept retrying).
+SupplementaryGroups=postdrop
+ReadWritePaths=-/var/spool/postfix/maildrop
 InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/lib/panel-proxy
 
 [Install]
