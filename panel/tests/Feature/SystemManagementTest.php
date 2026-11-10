@@ -121,6 +121,22 @@ class SystemManagementTest extends TestCase
             ->call('confirmPending')->assertSet('pending', null)->assertNotified();
     }
 
+    public function test_installed_packages_are_searched_without_riding_the_component_state(): void
+    {
+        $this->agent->shouldReceive('call')->once()->with('pkg.list')->andReturn(['packages' => [
+            ['name' => 'htop', 'version' => '3.4', 'summary' => 'process viewer', 'size' => 1, 'manual' => true, 'held' => false, 'protected' => false],
+            ['name' => 'libfoo', 'version' => '1', 'summary' => 'dependency', 'size' => 1, 'manual' => false, 'held' => false, 'protected' => false],
+        ]]);
+
+        $page = Livewire::test(PackagesPage::class)->assertSet('installedTotal', 2);
+        $this->assertStringNotContainsString('process viewer', json_encode($page->snapshot['data']));
+
+        $page->set('filter', 'LIBF')->assertDontSee('libfoo') // only manual ones by default…
+            ->assertSee('Hledat ve všech')
+            ->set('manualOnly', false)->assertSee('libfoo')->assertDontSee('process viewer')
+            ->set('filter', 'viewer')->assertSee('process viewer')->assertDontSee('dependency');    // the summary is searched too; pkg.list asked once
+    }
+
     public function test_a_removal_the_panel_needs_is_not_offered(): void
     {
         $this->agent->shouldReceive('call')->once()->with('pkg.preview', ['name' => 'libfoo', 'action' => 'remove'])->andReturn(['install' => [], 'remove' => ['libfoo', 'postfix'], 'allowed' => false, 'reason' => 'name: the server or the panel needs postfix (it would be removed too)']);

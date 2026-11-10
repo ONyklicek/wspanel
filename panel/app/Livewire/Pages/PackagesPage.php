@@ -7,6 +7,7 @@ use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use NyonCode\WirePanels\Pages\Page;
 
@@ -39,8 +40,13 @@ class PackagesPage extends Page
 
     public int $foundTotal = 0;
 
-    /** @var list<array<string, mixed>> */
-    public array $installed = [];
+    /** How many shown rows at most: a filter narrows the rest. */
+    public const SHOWN = 200;
+
+    /** The whole list stays on the server (cached), not in the component state: it is hundreds of packages. */
+    private const CACHE_KEY = 'packages.installed';
+
+    public int $installedTotal = 0;
 
     public string $filter = '';
 
@@ -74,7 +80,9 @@ class PackagesPage extends Page
     public function load(): void
     {
         try {
-            $this->installed = app(ManagePackages::class)->installed();
+            $installed = app(ManagePackages::class)->installed();
+            Cache::put(self::CACHE_KEY, $installed, 600);
+            $this->installedTotal = count($installed);
             $this->error = null;
         } catch (AgentException $e) {
             $this->error = $e->getMessage();
@@ -92,12 +100,18 @@ class PackagesPage extends Page
         }
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<array<string, mixed>> what the filter and the checkbox leave (all of it; the view shows SHOWN) */
     public function shownInstalled(): array
     {
         $term = Str::lower(trim($this->filter));
+        $installed = Cache::get(self::CACHE_KEY) ?? rescue(function () {
+            $list = app(ManagePackages::class)->installed();
+            Cache::put(self::CACHE_KEY, $list, 600);
 
-        return collect($this->installed)
+            return $list;
+        }, [], report: false);
+
+        return collect($installed)
             ->filter(fn ($p) => (! $this->manualOnly || $p['manual'] || $p['held']) && ($term === '' || Str::contains(Str::lower($p['name'].' '.$p['summary']), $term)))
             ->values()->all();
     }

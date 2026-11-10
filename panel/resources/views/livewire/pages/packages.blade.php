@@ -70,11 +70,31 @@
 
     <x-wire::section :heading="__('Nainstalované')" :description="__('Podržet = zmrazit verzi: aktualizace systému (ruční i automatické bezpečnostní) balíček přeskočí, dokud ho neuvolníte. Hodí se, když nová verze něco rozbije. Odebrat jde jen to, co server ani panel nepotřebují; konfigurace balíčku zůstane.')">
         <div class="mb-3 flex flex-wrap items-center gap-4">
-            <input type="search" wire:model.live.debounce.300ms="filter" placeholder="{{ __('Filtrovat') }}" class="w-full rounded-lg sm:max-w-xs border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+            <div class="relative w-full sm:max-w-xs">
+                <input type="search" wire:model.live.debounce.250ms="filter" x-on:keydown.escape="$wire.set('filter', '')"
+                       placeholder="{{ __('Hledat název nebo popis') }}" autocomplete="off" spellcheck="false"
+                       class="w-full rounded-lg border-gray-300 pe-8 text-sm dark:border-white/10 dark:bg-white/5">
+                <span wire:loading wire:target="filter,manualOnly" class="pointer-events-none absolute inset-y-0 end-2 flex items-center">{!! icon('outline:arrow-path', 'h-4 w-4 animate-spin text-gray-400') !!}</span>
+            </div>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" wire:model.live="manualOnly" class="rounded border-gray-300">{{ __('Jen nainstalované ručně a podržené') }}</label>
-            <span class="text-xs text-gray-500">{{ \App\Support\Lang::count(count($installed), ':count balíček celkem', ':count balíčky celkem', ':count balíčků celkem') }}</span>
+            @php($matching = $this->shownInstalled())
+            <span class="text-xs text-gray-500">
+                @if (trim($filter) !== '' || $manualOnly)
+                    {{ __(':shown z :total', ['shown' => count($matching), 'total' => $installedTotal]) }}
+                @else
+                    {{ \App\Support\Lang::count($installedTotal, ':count balíček celkem', ':count balíčky celkem', ':count balíčků celkem') }}
+                @endif
+            </span>
         </div>
-        @php($shown = array_slice($this->shownInstalled(), 0, 500))
+        @php($shown = array_slice($matching, 0, \App\Livewire\Pages\PackagesPage::SHOWN))
+        @if ($shown === [])
+            <p class="py-6 text-center text-sm text-gray-500">
+                {{ trim($filter) !== '' ? __('Žádný nainstalovaný balíček neodpovídá „:term“.', ['term' => trim($filter)]) : __('Žádné balíčky nainstalované ručně ani podržené.') }}
+                @if ($manualOnly)
+                    <button type="button" wire:click="$set('manualOnly', false)" class="ms-1 text-primary-600 hover:underline dark:text-primary-400">{{ __('Hledat ve všech') }}</button>
+                @endif
+            </p>
+        @endif
         <div class="-mx-4 sm:-mx-6">
             <div class="hidden grid-cols-[minmax(0,14rem)_minmax(0,10rem)_5rem_minmax(0,1fr)_auto] gap-x-3 border-b border-gray-100 px-4 pb-1 text-xs text-gray-500 md:grid sm:px-6 dark:border-white/5">
                 <span>{{ __('Balíček') }}</span><span>{{ __('Verze') }}</span><span>{{ __('Velikost') }}</span><span>{{ __('Popis') }}</span><span></span>
@@ -99,5 +119,8 @@
                 @endforeach
             </ul>
         </div>
+        @if (count($matching) > count($shown))
+            <p class="mt-2 text-xs text-gray-500">{{ __('Zobrazeno prvních :shown z :count, upřesněte hledání.', ['shown' => count($shown), 'count' => count($matching)]) }}</p>
+        @endif
     </x-wire::section>
 </div>
