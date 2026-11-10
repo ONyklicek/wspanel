@@ -148,6 +148,8 @@ class AppServiceProvider extends ServiceProvider
         // Language switch in the user menu; component round trips keep the language.
         $this->app->make(PageChrome::class)->add('partials.locale-menu', PageChrome::USER_MENU, sort: 90);
         // What runs in the background (long agent jobs), live, on every page.
+        // The server's time, live (in the server's time zone).
+        $this->app->make(PageChrome::class)->add('partials.server-clock', PageChrome::TOPBAR, sort: -10);
         $this->app->make(PageChrome::class)->add('partials.task-indicator', PageChrome::TOPBAR);
         // And under a record page's heading, what runs for that record (WatchesAgentTasks).
         RenderHook::add('panels.page.header.end', function (): ?View {

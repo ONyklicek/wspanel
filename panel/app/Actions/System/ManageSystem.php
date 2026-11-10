@@ -4,6 +4,7 @@ namespace App\Actions\System;
 
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The server itself, through the agent: restart, name, time, swap, processes,
@@ -57,6 +58,20 @@ class ManageSystem
     public function setTimezone(string $timezone): void
     {
         $this->agent->call('sys.timezone', ['timezone' => $timezone]);
+        Cache::forget(self::TIMEZONE);
+    }
+
+    private const TIMEZONE = 'system.timezone';
+
+    /**
+     * The server's time zone (the clock in the top bar), asked once an hour;
+     * the panel's when the agent does not answer.
+     */
+    public function timezone(): string
+    {
+        $zone = Cache::remember(self::TIMEZONE, 3600, fn () => rescue(fn () => (string) ($this->settings()['timezone'] ?? ''), '', report: false));
+
+        return in_array($zone, timezone_identifiers_list(), true) ? $zone : (string) config('app.timezone');
     }
 
     /** @throws AgentException */
