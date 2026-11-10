@@ -84,6 +84,8 @@ class GitHubAppTest extends TestCase
         $raw = (string) DB::table('settings')->where('key', GitHubApp::SETTING)->value('value');
         $this->assertStringNotContainsString('shh-secret', $raw);
         $this->assertStringNotContainsString('PRIVATE KEY', $raw);
+        // GitHub refuses the JSON body "[]" ("[] is not a null or object").
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/conversions') && $request->body() === '');
     }
 
     public function test_a_busy_github_is_retried_while_handing_over_the_keys(): void

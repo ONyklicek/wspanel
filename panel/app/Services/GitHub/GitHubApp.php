@@ -261,7 +261,9 @@ class GitHubApp
     private static function send(PendingRequest $http, string $method, string $url, array $data = [], bool $allowMissing = false): array
     {
         try {
-            $response = $http->timeout(15)->{$method}($url, $data);
+            // An empty array would go out as the JSON body "[]", which GitHub
+            // refuses on POST ("[] is not a null or object"): no body at all.
+            $response = $data === [] ? $http->timeout(15)->send(strtoupper($method), $url) : $http->timeout(15)->{$method}($url, $data);
         } catch (ConnectionException $e) {
             throw new GitHubException(__('GitHub není dostupný: :error', ['error' => $e->getMessage()]));
         }

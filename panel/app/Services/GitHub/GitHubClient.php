@@ -169,7 +169,8 @@ class GitHubClient
     private function send(string $method, string $path, array $data = [], bool $allowMissing = false): array
     {
         try {
-            $response = $this->http()->{$method}($path, $data);
+            // No body rather than the JSON "[]" GitHub refuses on POST.
+            $response = $data === [] ? $this->http()->send(strtoupper($method), $path) : $this->http()->{$method}($path, $data);
         } catch (ConnectionException $e) {
             throw new GitHubException(__('GitHub není dostupný: :error', ['error' => $e->getMessage()]));
         }
