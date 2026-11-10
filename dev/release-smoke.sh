@@ -300,9 +300,11 @@ code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:1
 if [[ $MODE == bundle ]]; then
   log "Upgrade to a newer version, then wspanel-rollback"
   v=$(on 'cat /root/wspanel/VERSION')
-  on "rm -rf /root/next && cp -a /root/wspanel /root/next && echo '$v.next' > /root/next/VERSION \
-      && cd /root/next && ./install --yes > /root/upgrade-next.log 2>&1" || fail "the upgrade to $v.next failed"
-  [[ "$(on 'sed -n "s/^PANEL_VERSION=//p" /srv/panel/shared/.env')" == "$v.next" ]] || fail "the panel is not on $v.next"
+  # A version the installer accepts: 1.2.0-rc1 -> 1.2.0-rc1.next, 1.2.0 -> 1.2.1.
+  if [[ $v == *-* ]]; then next="$v.next"; else next="${v%.*}.$((${v##*.} + 1))"; fi
+  on "rm -rf /root/next && cp -a /root/wspanel /root/next && echo '$next' > /root/next/VERSION \
+      && cd /root/next && ./install --yes > /root/upgrade-next.log 2>&1" || fail "the upgrade to $next failed"
+  [[ "$(on 'sed -n "s/^PANEL_VERSION=//p" /srv/panel/shared/.env')" == "$next" ]] || fail "the panel is not on $next"
   on 'wspanel-rollback --yes > /root/rollback.log 2>&1' || fail "wspanel-rollback failed (see /root/rollback.log)"
   [[ "$(on 'sed -n "s/^PANEL_VERSION=//p" /srv/panel/shared/.env')" == "$v" ]] || fail "after the rollback the panel is not on $v"
   [[ "$(tinker 'echo App\Models\User::count();')" == 1 ]] || fail "the rollback changed the accounts"
