@@ -104,6 +104,18 @@ přepne web do režimu FrankenPHP (worker) a release `v1.1.0` nasadí stejně.
 
 ## Vydání verze
 
+Čísla verzí se řídí [sémantickým verzováním](https://semver.org/lang/cs/):
+
+| Změna od posledního vydání | Verze | Příklad |
+|---|---|---|
+| jen opravy chyb | patch | 1.3.0 → 1.3.1 |
+| nová funkce, zpětně kompatibilní (stránka, endpoint API, modul, varianta hry) | minor | 1.3.1 → 1.4.0 |
+| nekompatibilní změna (odebraný nebo změněný endpoint API, formát herního balíčku, ruční zásah při upgradu) | major | 1.4.0 → 2.0.0 |
+
+Předběžná verze (`v1.4.0-rc1`) jen tehdy, když ji má někdo vyzkoušet před
+vydáním. Apt repozitář má kanál pro každou řadu (`1.3`): server dostává přes
+apt opravy své řady, na novou řadu přejde `wspanel-update`.
+
 CI je v `.github/workflows/`:
 
 - **CI** (`ci.yml`) při každém push na `main` a pull requestu: agent (gofmt,
@@ -112,7 +124,7 @@ CI je v `.github/workflows/`:
 - **Release** (`release.yml`) po pushnutí tagu:
 
   ```
-  git tag v1.2.0 && git push origin v1.2.0      # v1.2.0-rc1 = předběžná verze
+  git tag v1.3.0 && git push origin v1.3.0      # v1.3.0-rc1 = předběžná verze
   ```
 
   Spustí kontroly z CI, sestaví balíčky pro amd64 a arm64, každý nainstaluje
