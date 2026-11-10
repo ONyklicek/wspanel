@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -173,8 +174,10 @@ func applySSHAccess(ctx context.Context, env *Env, user, access string, keys []s
 			return err
 		}
 	}
-	// Supplementary groups are exactly the SSH group (or none); site users have no others.
-	if _, err := env.Exec.Run(ctx, "usermod", "--groups", group, "--shell", shell, user); err != nil {
+	// The SSH and SFTP groups change; every other supplementary group stays
+	// (a dedicated database server's wsd_N gives the site its socket, and
+	// usermod --groups alone used to drop it).
+	if _, err := env.Exec.Run(ctx, "usermod", "--groups", strings.Join(sshGroupsFor(user, group, env.Cfg.SSHGroup, env.Cfg.SFTPGroup), ","), "--shell", shell, user); err != nil {
 		return err
 	}
 	// Password: set through chpasswd's stdin (never argv), or locked.
@@ -193,4 +196,42 @@ func applySSHAccess(ctx context.Context, env *Env, user, access string, keys []s
 		return fmt.Errorf("access set, but ending existing sessions failed: %w", err)
 	}
 	return nil
+}
+
+// sshGroupsFor is the user's supplementary groups with the SSH and SFTP
+// groups replaced by want (none when want is empty).
+func sshGroupsFor(user, want, sshGroup, sftpGroup string) []string {
+	out := []string{}
+	for _, g := range supplementaryGroups(user) {
+		if g != sshGroup && g != sftpGroup && g != want {
+			out = append(out, g)
+		}
+	}
+	if want != "" {
+		out = append(out, want)
+	}
+	return out
+}
+
+// supplementaryGroups lists the groups the user is a member of besides its
+// primary group, by name (tests replace it).
+var supplementaryGroups = func(name string) []string {
+	u, err := user.Lookup(name)
+	if err != nil {
+		return nil
+	}
+	ids, err := u.GroupIds()
+	if err != nil {
+		return nil
+	}
+	out := []string{}
+	for _, id := range ids {
+		if id == u.Gid {
+			continue
+		}
+		if g, err := user.LookupGroupId(id); err == nil {
+			out = append(out, g.Name)
+		}
+	}
+	return out
 }

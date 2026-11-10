@@ -94,3 +94,15 @@ func TestDeploySandboxNamesNoGroup(t *testing.T) {
 		t.Fatalf("sandbox: %s", args)
 	}
 }
+
+func TestSSHAccessKeepsTheSitesOtherGroups(t *testing.T) {
+	prev := supplementaryGroups
+	supplementaryGroups = func(string) []string { return []string{"wspanel-sftp", "wsd_3"} }
+	t.Cleanup(func() { supplementaryGroups = prev })
+	if got := strings.Join(sshGroupsFor("web_x", "wspanel-ssh", "wspanel-ssh", "wspanel-sftp"), ","); got != "wsd_3,wspanel-ssh" {
+		t.Errorf("shell: %s", got)
+	}
+	if got := strings.Join(sshGroupsFor("web_x", "", "wspanel-ssh", "wspanel-sftp"), ","); got != "wsd_3" {
+		t.Errorf("off: %s", got)
+	}
+}
