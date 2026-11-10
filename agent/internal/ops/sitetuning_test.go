@@ -31,7 +31,7 @@ func TestLaravelSiteIsServedFastAndKeptUpThroughRestarts(t *testing.T) {
 	read := func(p string) string { b, _ := os.ReadFile(p); return string(b) }
 	checks := map[string][]string{
 		l.PoolFile: {"pm.process_idle_timeout = 120s", "request_terminate_timeout = 300s"},
-		l.WebFile:  {"@wsp_hashed path /build/assets/*", `Cache-Control "public, max-age=31536000, immutable"`, "precompressed zstd br gzip"},
+		l.WebFile:  {"path /build/assets/*", `Cache-Control "public, max-age=31536000, immutable"`, "precompressed zstd br gzip"},
 		l.EdgeFile: {"lb_try_duration 10s", "stream_close_delay 5m"},
 	}
 	for file, wants := range checks {

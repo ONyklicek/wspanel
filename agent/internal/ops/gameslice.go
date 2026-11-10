@@ -104,11 +104,27 @@ func gamesSliceUnit(budgetMB int) string {
 	return b.String()
 }
 
+// gamesSliceMB is the slice's limit: the budget, but never less than the
+// largest single game's own limit, so a server that ran before the budget
+// existed (one Minecraft with most of a small server's RAM) still starts.
+// Several games over the budget then share it, and the kernel takes a game,
+// not a site, when they all want their full limit.
+func gamesSliceMB(env *Env) int {
+	budget := gamesBudgetMB()
+	if budget == 0 {
+		return 0
+	}
+	for _, g := range allGames(env) {
+		budget = max(budget, gameUnitMemoryMB(env, g))
+	}
+	return budget
+}
+
 // writeGamesSlice installs the slice when its rendering changed; it reports
 // whether systemd needs a daemon-reload.
 func writeGamesSlice(env *Env) (bool, error) {
 	path := filepath.Join(env.Cfg.SystemdDir, gamesSlice)
-	unit := []byte(gamesSliceUnit(gamesBudgetMB()))
+	unit := []byte(gamesSliceUnit(gamesSliceMB(env)))
 	if old, err := os.ReadFile(path); err == nil && string(old) == string(unit) {
 		return false, nil
 	}
@@ -126,6 +142,9 @@ func RenderGameUnitsOnStart(ctx context.Context, env *Env, logf func(string, ...
 	games := allGames(env)
 	if len(games) == 0 {
 		return
+	}
+	if budget, sum := gamesBudgetMB(), gamesReservedMB(env); budget > 0 && sum > budget {
+		logf("game servers reserve %d MB together, over the %d MB this server leaves them: they share it, lower their memory in the panel", sum, budget)
 	}
 	_ = withMutate(env, func() error {
 		n := 0
@@ -145,4 +164,13 @@ func RenderGameUnitsOnStart(ctx context.Context, env *Env, logf func(string, ...
 		}
 		return nil
 	})
+}
+
+// gamesReservedMB is what all game servers' limits add up to.
+func gamesReservedMB(env *Env) int {
+	total := 0
+	for _, g := range allGames(env) {
+		total += gameUnitMemoryMB(env, g)
+	}
+	return total
 }

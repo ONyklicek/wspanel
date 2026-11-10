@@ -172,7 +172,9 @@ func pythonEntry(l siteLayout) (entry string, argv []string) {
 	case "fastapi":
 		return ".venv/bin/uvicorn", []string{py, "-m", "uvicorn", "--host", "127.0.0.1", "--port", port,
 			"--workers", workers, "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1",
-			"--timeout-keep-alive", "125", "--timeout-graceful-shutdown", "25", "--no-access-log",
+			// (No --timeout-graceful-shutdown: uvicorn before 0.24, which a
+			// project may pin, refuses it; systemd's stop timeout bounds it.)
+			"--timeout-keep-alive", "125", "--no-access-log",
 			pythonApp(l.Framework, l.PythonApp)}
 	default: // python: the app listens on $HOST:$PORT itself
 		return "app.py", []string{py, "app.py"}

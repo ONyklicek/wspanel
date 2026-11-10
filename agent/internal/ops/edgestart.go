@@ -3,6 +3,7 @@ package ops
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"sort"
 
@@ -151,13 +152,16 @@ func renderPools(ctx context.Context, env *Env) (int, error) {
 	}
 	sort.Strings(versions)
 	total := 0
+	var errs []error
 	for _, v := range versions {
+		// One version refusing its pools does not keep the others back.
 		n, err := applyRendered(ctx, env, byVersion[v], func(ctx context.Context, env *Env) error { return validateFPM(ctx, env, v) },
 			config.ForVersion(env.Cfg.FPMUnit, v))
 		if err != nil {
-			return total, err
+			errs = append(errs, err)
+			continue
 		}
 		total += n
 	}
-	return total, nil
+	return total, errors.Join(errs...)
 }

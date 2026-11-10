@@ -116,3 +116,29 @@ func TestCronTaskUnitIsAOneshotWithoutRestartOrInstall(t *testing.T) {
 		}
 	}
 }
+
+// Games run in wspanel.slice/wspanel-games.slice (systemd nests by the dash):
+// ending a game user's SFTP sessions must not kill its server there.
+func TestAGameServerInTheSliceIsNotASessionProcess(t *testing.T) {
+	env, _ := gameTestEnv(t)
+	m := managedCgroups(env.Cfg, "", "wsg_4")
+	for _, p := range []string{"/wspanel.slice/wspanel-games.slice/wspanel-game-4.service", "/system.slice/wspanel-game-4.service"} {
+		if !m[p] {
+			t.Errorf("%s counted as a session process", p)
+		}
+	}
+}
+
+// The slice never caps below the largest game: one Minecraft that ran with
+// most of a small server's RAM before the budget existed still starts.
+func TestGamesSliceIsNeverBelowTheLargestGame(t *testing.T) {
+	fakePublishers(t)
+	env, _ := gameTestEnv(t)
+	withHostMemory(t, 4096) // budget 2560 MB
+	if err := saveGame(env, gameState{ID: 1, Game: "minecraft", Flavor: "paper", MemoryMB: 2048}); err != nil {
+		t.Fatal(err)
+	}
+	if got := gamesSliceMB(env); got != 2816 {
+		t.Fatalf("slice %d MB, want the game's own 2816", got)
+	}
+}

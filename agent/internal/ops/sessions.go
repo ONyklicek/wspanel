@@ -34,9 +34,13 @@ func managedCgroups(cfg config.Config, root, username string) map[string]bool {
 	for _, t := range WorkerTypes {
 		m[root+"/system.slice/"+legacyWorkerUnit(username, t)] = true
 	}
-	// A game server's user: its server keeps running when its SFTP sessions end.
+	// A game server's user: its server keeps running when its SFTP sessions
+	// end. It runs in the games' slice, which systemd nests by the dash in its
+	// name (wspanel.slice/wspanel-games.slice); one not restarted since the
+	// upgrade still runs in system.slice.
 	if id, ok := strings.CutPrefix(username, "wsg_"); ok {
 		m[root+"/system.slice/wspanel-game-"+id+".service"] = true
+		m[root+"/wspanel.slice/"+gamesSlice+"/wspanel-game-"+id+".service"] = true
 	}
 	for _, id := range siteCronIDs(cfg, username) {
 		m[root+"/system.slice/"+cronUnitBase(username, id)+".service"] = true
