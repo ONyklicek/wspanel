@@ -193,7 +193,7 @@ on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "th
 
 log "Game server: Minecraft (Paper, the newest version, its Java from Debian)"
 game_call() { tinker '$m = app(App\Actions\Games\ManageGameServers::class); $g = App\Models\GameServer::query()->first(); '"$1"; }
-out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::Minecraft, "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); App\Support\AgentTasks::wait(App\Models\AgentTask::where("subject_id", $s->id)->where("op", "game.create")->latest("id")->first(), 900); echo $s->fresh()->status, " ", $v;')
+out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::from("minecraft"), "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); App\Support\AgentTasks::wait(App\Models\AgentTask::where("subject_id", $s->id)->where("op", "game.create")->latest("id")->first(), 900); echo $s->fresh()->status, " ", $v;')
 [[ $out == active* ]] || fail "game.create: $out"
 echo "  Paper ${out#active }"
 for _ in $(seq 90); do on 'journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' && break; sleep 2; done
