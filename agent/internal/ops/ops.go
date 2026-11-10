@@ -113,7 +113,6 @@ func Registry() map[string]Op {
 		{"site.restore", false, siteRestore}, // async; locks Mutate only to switch
 		{"offsite.get", false, offsiteGet},
 		{"offsite.set", true, offsiteSet},
-		{"offsite.signing_key", false, offsiteSigningKey},
 		{"offsite.list", false, offsiteList},
 		{"offsite.upload", false, offsiteUpload},
 		{"offsite.fetch", false, offsiteFetch},

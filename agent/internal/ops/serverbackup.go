@@ -574,11 +574,19 @@ func tarPath(tw *tar.Writer, path string, fi os.FileInfo, names idNames) error {
 	if !fi.Mode().IsRegular() {
 		return tw.WriteHeader(hdr)
 	}
-	src, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	src, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil // gone since the walk
 	}
 	defer src.Close()
+	// The file opened must be the one the walk saw. Files are read after
+	// the whole walk, and some backed-up trees belong to other users (the
+	// panel's storage/app): one who swapped a directory for a symlink in the
+	// meantime would have root copy /etc/shadow into the backup under that
+	// name. O_NOFOLLOW guards only the last component of the path.
+	if !sameFile(src, fi) {
+		return nil
+	}
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
@@ -743,4 +751,16 @@ func accountNames() idNames {
 		}
 	}
 	return n
+}
+
+// sameFile reports whether the open file f is the regular file that fi (an
+// Lstat from earlier) described: the same device and inode.
+func sameFile(f *os.File, fi os.FileInfo) bool {
+	now, err := f.Stat()
+	if err != nil || !now.Mode().IsRegular() {
+		return false
+	}
+	a, ok1 := now.Sys().(*syscall.Stat_t)
+	b, ok2 := fi.Sys().(*syscall.Stat_t)
+	return ok1 && ok2 && a.Dev == b.Dev && a.Ino == b.Ino
 }

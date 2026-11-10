@@ -189,21 +189,31 @@ func TestAFetchedCopyMustBeSignedByThisServer(t *testing.T) {
 
 	// A new server verifies the old server's copies once it has its key.
 	fake.Objects[b.Offsite] = original
-	k, _ := call(t, env, offsiteSigningKey, nil)
-	oldKey := k.(map[string]any)["signing_key"].(string)
+	oldKey, err := RecoveryKey(env)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = os.Remove(signingKeyPath(env))
 	if _, err := call(t, env, offsiteFetch, map[string]any{"domain": "app.example.com", "file": b.File}); err == nil {
 		t.Fatal("verified with a different key")
 	}
-	if _, err := setOffsite(t, env, url, map[string]any{"signing_key": oldKey}); err != nil {
+	if err := ImportRecoveryKey(env, oldKey+"\n"); err != nil {
 		t.Fatal(err)
 	}
 	res, err = call(t, env, offsiteFetch, map[string]any{"domain": "app.example.com", "file": b.File})
 	if err != nil || res.(map[string]any)["verified"] != true {
 		t.Fatalf("%v %v", res, err)
 	}
-	if _, err := setOffsite(t, env, url, map[string]any{"signing_key": "abc"}); code(err) != protocol.CodeInvalidParams {
+	if err := ImportRecoveryKey(env, "abc"); err == nil {
 		t.Fatal("a broken key was imported")
+	}
+	// The panel can neither read the key nor set its own: whoever holds it
+	// decrypts server backups (root-only secrets) and signs copies.
+	if _, err := setOffsite(t, env, url, map[string]any{"signing_key": oldKey}); code(err) != protocol.CodeInvalidParams {
+		t.Fatal("the panel imported a recovery key")
+	}
+	if _, ok := Registry()["offsite.signing_key"]; ok {
+		t.Fatal("the recovery key is handed out over the socket")
 	}
 }
 

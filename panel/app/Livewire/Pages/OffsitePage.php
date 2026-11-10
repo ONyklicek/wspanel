@@ -113,15 +113,10 @@ class OffsitePage extends Page
                 ->icon('outline:key')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalHeading(__('Zobrazit klíč pro obnovu?'))
-                ->modalDescription(__('Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Uložte si ho bezpečně mimo server (správce hesel); na novém serveru ho zadáte při obnově (wspanel-restore). Kdo klíč zná, přečte zálohu serveru a dokáže podepsat podvrženou zálohu.'))
-                ->action(function () {
-                    try {
-                        Toast::secret(__('Klíč pro obnovu'), app(ManageOffsite::class)->signingKey());
-                    } catch (AgentException $e) {
-                        Toast::error(__('Klíč se nepodařilo načíst'), $e->getMessage());
-                    }
-                }),
+                ->modalHeading(__('Klíč pro obnovu'))
+                ->modalDescription(__('Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Panel ho nezobrazí: záloha serveru obsahuje i to, co panel číst nesmí (klíče certifikátů, DKIM, přístupy k poště). Na serveru ho jako root vypíše příkaz sudo panel-agent -recovery-key. Uložte si ho bezpečně mimo server (správce hesel). Na novém serveru ho zadáte při obnově (wspanel-restore), zálohy jiného serveru ověří po sudo panel-agent -import-recovery-key.'))
+                ->modalSubmitActionLabel(__('Rozumím'))
+                ->action(fn () => Toast::secret(__('Klíč pro obnovu vypíše na serveru'), 'sudo panel-agent -recovery-key')),
             Action::make('configure')
                 ->label($this->status['configured'] ? __('Upravit úložiště') : __('Nastavit úložiště'))
                 ->icon('outline:cog-6-tooth')
@@ -153,7 +148,6 @@ class OffsitePage extends Page
                         'smb_encrypt' => $configured && ($c['type'] ?? '') === 'smb' ? (bool) ($c['smb_encrypt'] ?? false) : true,
                         'prefix' => (string) ($c['prefix'] ?? ''),
                         'keep_days' => (int) ($c['keep_days'] ?? 30),
-                        'signing_key' => '',
                     ];
                 })
                 ->form([
@@ -215,9 +209,6 @@ class OffsitePage extends Page
                         ->helperText(__('Hodí se, když jedno úložiště sdílí víc serverů.')),
                     TextInput::make('keep_days')->label(__('Uchovávat kopie (dní)'))->numeric()->required()->rules(['required', 'integer', 'min:1', 'max:3650'])
                         ->helperText(__('Starší kopie se mažou po každém nahrání; nejnovější kopie zůstává vždy.')),
-                    TextInput::make('signing_key')->label(__('Klíč pro ověření záloh z jiného serveru'))->password()->revealable()
-                        ->rules(['nullable', 'regex:/^[0-9a-fA-F]{64}$/'])
-                        ->helperText(__('Jen při obnově na novém serveru: vložte klíč starého serveru, aby šlo jeho zálohy ověřit. Jinak nechte prázdné.')),
                 ])
                 ->modalSubmitActionLabel(__('Otestovat a uložit'))
                 ->action(function (array $data) {

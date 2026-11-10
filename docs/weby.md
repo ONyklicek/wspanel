@@ -201,9 +201,12 @@ jinak ho zadejte znovu.
 klíčem, který zná jen tento server). Podpis zahrnuje i web či databázi a
 název zálohy, takže zálohu jednoho webu nejde vydávat za zálohu jiného. Zpět na server se stáhne jen kopie
 s platným podpisem. Kdo má přístup k úložišti, tedy nemůže podstrčit
-pozměněnou zálohu, která by se pak obnovila. Tlačítkem **Klíč pro obnovu**
-si klíč zobrazíte; uložte si ho mimo server (správce hesel). Na novém
-serveru ho vložte do nastavení úložiště a staré zálohy půjde ověřit. Kopii bez
+pozměněnou zálohu, která by se pak obnovila. Klíč vypíše na serveru jako
+root příkaz `sudo panel-agent -recovery-key`; uložte si ho mimo server
+(správce hesel). Panel ho nezobrazí ani nepřijme, protože záloha serveru obsahuje i to, co
+panel číst nesmí (klíče certifikátů, DKIM, přístupy k poště). Na novém serveru
+ho nahrajete příkazem `sudo panel-agent -import-recovery-key` (klíč na
+standardní vstup) a staré zálohy půjde ověřit. Kopii bez
 platného podpisu stáhnete jen výslovně (*Přijmout i kopii bez platného
 podpisu*).
 
@@ -269,8 +272,8 @@ nepovedlo je v `/var/log/wspanel-restore.log`. Pak přepněte DNS (A/AAAA) na
 nový server; certifikáty Let's Encrypt si server obnoví sám.
 
 Záloha se obnovuje jen na **prázdný** server a instalátorem stejné nebo novější
-verze. Klíč pro obnovu (*Zálohy mimo server → Klíč pro obnovu*) si uložte mimo
-server: bez něj zálohu serveru otevřít nejde.
+verze. Klíč pro obnovu (`sudo panel-agent -recovery-key` na starém serveru) si
+uložte mimo server: bez něj zálohu serveru otevřít nejde.
 
 ## Domény a přístup
 

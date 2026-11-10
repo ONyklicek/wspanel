@@ -600,8 +600,6 @@
     "Klíč GitHub aplikace nejde použít.": "The GitHub App's key cannot be used.",
     "Klíč pro obnovu": "Recovery key",
     "Klíč pro ověření záloh": "Backup verification key",
-    "Klíč pro ověření záloh z jiného serveru": "Key to verify backups from another server",
-    "Klíč se nepodařilo načíst": "Could not load the key",
     "Klíče aplikace nejdou použít": "The app's keys cannot be used",
     "Klíče existující GitHub aplikace": "Keys of an existing GitHub App",
     "Kolik požadavků měřit (%)": "How many requests to profile (%)",
@@ -1423,7 +1421,6 @@
     "Typ úložiště": "Storage type",
     "Tyto názvy zadáte u registrátora. Musí mířit na IP tohoto serveru (u registrátora jako „glue“ záznamy, je-li NS ve stejné doméně).": "Enter these names at the registrar. They must point to this server's IP (as “glue” records at the registrar when the NS is in the same domain).",
     "Téma (topic) na ntfy.sh": "Topic on ntfy.sh",
-    "Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Uložte si ho bezpečně mimo server (správce hesel); na novém serveru ho zadáte při obnově (wspanel-restore). Kdo klíč zná, přečte zálohu serveru a dokáže podepsat podvrženou zálohu.": "The server backup is encrypted and every off-site copy signed with this key. Without it the server cannot be restored after a disaster. Keep it safe outside the server (a password manager); on a new server you give it to the restore (wspanel-restore). Whoever knows the key can read the server backup and sign a forged backup.",
     "Týdně": "Weekly",
     "Týdně (v neděli kolem 3:00)": "Weekly (Sundays around 3:00)",
     "U registrátora nastavte": "At the registrar, set",
@@ -1695,7 +1692,6 @@
     "Změnit vlastníka": "Change owner",
     "Změny v DNS se šíří podle TTL, obvykle minuty až hodiny. Kontrola používá DNS resolver serveru.": "DNS changes spread according to the TTL, usually minutes to hours. The check uses the server's DNS resolver.",
     "Změněno": "Changed",
-    "Zobrazit klíč pro obnovu?": "Show the recovery key?",
     "Zobrazit klíč pro ověření záloh?": "Show the backup verification key?",
     "Zobrazovat chyby (display_errors)": "Display errors (display_errors)",
     "Zobrazí se jednou po uložení.": "Shown once after saving.",
@@ -3056,5 +3052,8 @@
     ":count serverů ho používá": ":count servers use it",
     ":count dní": ":count days",
     "Dokumentace je zatím jen česky": "The documentation is in Czech for now",
-    "Celé rozhraní panelu je přeložené; tyto stránky ne. Překlad stránky v prohlížeči (např. Chrome → Přeložit) je čte dobře.": "The whole panel is translated; these pages are not yet. Your browser's page translation (e.g. Chrome → Translate) reads them well."
+    "Celé rozhraní panelu je přeložené; tyto stránky ne. Překlad stránky v prohlížeči (např. Chrome → Přeložit) je čte dobře.": "The whole panel is translated; these pages are not yet. Your browser's page translation (e.g. Chrome → Translate) reads them well.",
+    "Klíč pro obnovu vypíše na serveru": "The recovery key is printed on the server by",
+    "Rozumím": "Got it",
+    "Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Panel ho nezobrazí: záloha serveru obsahuje i to, co panel číst nesmí (klíče certifikátů, DKIM, přístupy k poště). Na serveru ho jako root vypíše příkaz sudo panel-agent -recovery-key. Uložte si ho bezpečně mimo server (správce hesel). Na novém serveru ho zadáte při obnově (wspanel-restore), zálohy jiného serveru ověří po sudo panel-agent -import-recovery-key.": "Server backups are encrypted with this key and every off-site copy is signed with it; without it the server cannot be restored after a failure. The panel does not show it: a server backup holds what the panel may never read (certificate keys, DKIM, mail logins). On the server, root prints it with sudo panel-agent -recovery-key. Keep it safe off the server (a password manager). On a new server you enter it during the restore (wspanel-restore); backups of another server verify after sudo panel-agent -import-recovery-key."
 }

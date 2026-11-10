@@ -362,7 +362,7 @@ func offsiteGet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 func offsiteSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
 		offsiteConfig
-		SigningKey string `json:"signing_key,omitempty"` // import the key of another server
+		SigningKey string `json:"signing_key,omitempty"` // refused: see ImportRecoveryKey
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -382,13 +382,8 @@ func offsiteSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
-	var importKey []byte
 	if p.SigningKey != "" {
-		k, err := hex.DecodeString(strings.TrimSpace(p.SigningKey))
-		if err != nil || len(k) != 32 {
-			return nil, protocol.Invalid("signing_key: 64 hexadecimal characters")
-		}
-		importKey = k
+		return nil, protocol.Invalid("signing_key: imported on the server only (panel-agent -import-recovery-key)")
 	}
 	if c.Type == "smb" {
 		if err := ensureSMBClient(ctx, env); err != nil {
@@ -404,22 +399,37 @@ func offsiteSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := env.FS.WriteFile(offsitePath(env), b, 0o600, fsx.Root); err != nil {
 		return nil, err
 	}
-	if importKey != nil {
-		if err := env.FS.WriteFile(signingKeyPath(env), []byte(hex.EncodeToString(importKey)+"\n"), 0o600, fsx.Root); err != nil {
-			return nil, err
-		}
-	}
 	return offsiteGet(ctx, env, nil)
 }
 
-// offsiteSigningKey hands out the signing key, to be kept somewhere safe
-// for restoring on a new server.
-func offsiteSigningKey(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
+// The recovery key leaves and enters only through root's own command
+// (panel-agent -recovery-key, -import-recovery-key), never the socket. It
+// signs the off-site copies and is what server backups are encrypted with,
+// and a server backup holds what the panel user may never read (the agent's
+// state, every site's TLS key, DKIM keys, the mail logins). A panel that
+// could read it or set its own could decrypt all of that, or have backups
+// made under a key it knows.
+
+// RecoveryKey returns the key (hexadecimal), creating it once.
+func RecoveryKey(env *Env) (string, error) {
 	k, err := signingKey(env)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return map[string]any{"signing_key": hex.EncodeToString(k)}, nil
+	return hex.EncodeToString(k), nil
+}
+
+// ImportRecoveryKey replaces the key with another server's, for restoring
+// that server's backups here.
+func ImportRecoveryKey(env *Env, key string) error {
+	k, err := hex.DecodeString(strings.TrimSpace(key))
+	if err != nil || len(k) != 32 {
+		return errors.New("the recovery key is 64 hexadecimal characters")
+	}
+	if err := env.FS.MkdirAll(env.Cfg.StateDir, 0o700, fsx.Root); err != nil {
+		return err
+	}
+	return env.FS.WriteFile(signingKeyPath(env), []byte(hex.EncodeToString(k)+"\n"), 0o600, fsx.Root)
 }
 
 // ensureSMBClient installs Samba's client when SMB is chosen.

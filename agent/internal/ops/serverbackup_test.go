@@ -191,3 +191,44 @@ func TestARestoreWritesOnlyWhereWSPanelKeepsItsFiles(t *testing.T) {
 		t.Errorf("not reported: %+v", rep)
 	}
 }
+
+// A directory swapped for a symlink between the walk and the read must not
+// make root copy the link's target into the backup under the old name.
+func TestServerBackupReadsOnlyTheFileTheWalkSaw(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app", "d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	walked := filepath.Join(dir, "app", "d", "secret")
+	if err := os.WriteFile(walked, []byte("planted"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Lstat(walked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After the walk: d becomes a link to a directory holding another file
+	// of the same name and size.
+	other := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "secret"), []byte("shadow!"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "app", "d")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, filepath.Join(dir, "app", "d")); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tarPath(tw, walked, fi, idNames{}); err != nil {
+		t.Fatal(err)
+	}
+	_ = tw.Close()
+	if bytes.Contains(buf.Bytes(), []byte("shadow!")) {
+		t.Fatal("the swapped-in file went into the backup")
+	}
+}

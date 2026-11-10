@@ -106,20 +106,7 @@ class ManageOffsite
                 ? ['ftp_tls' => (string) ($data['ftp_tls'] ?? 'explicit'), 'tls_pin' => trim((string) ($data['tls_pin'] ?? ''))]
                 : ['share' => trim((string) ($data['share'] ?? '')), 'smb_domain' => trim((string) ($data['smb_domain'] ?? '')), 'smb_encrypt' => (bool) ($data['smb_encrypt'] ?? true)];
         }
-        if (trim((string) ($data['signing_key'] ?? '')) !== '') {
-            $params['signing_key'] = trim((string) $data['signing_key']);
-        }
         $this->agent->call('offsite.set', $params);
-    }
-
-    /**
-     * The key backups are signed with: keep it to verify them on a new server.
-     *
-     * @throws AgentException
-     */
-    public function signingKey(): string
-    {
-        return (string) ($this->agent->call('offsite.signing_key')['signing_key'] ?? '');
     }
 
     /**

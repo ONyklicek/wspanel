@@ -94,11 +94,11 @@ class OffsitePageTest extends TestCase
             ->assertNotified('AB:CD:EF');
     }
 
-    public function test_the_signing_key_can_be_shown_to_keep_it(): void
+    public function test_the_recovery_key_is_never_asked_from_the_agent(): void
     {
-        $this->agent->shouldReceive('call')->once()->with('offsite.signing_key')->andReturn(['signing_key' => str_repeat('ab', 32)]);
+        $this->agent->shouldNotReceive('call')->with('offsite.signing_key');
 
-        $this->pageAction(Livewire::test(OffsitePage::class), 'signingKey')->assertNotified(str_repeat('ab', 32));
+        $this->pageAction(Livewire::test(OffsitePage::class), 'signingKey')->assertNotified('sudo panel-agent -recovery-key');
     }
 
     public function test_server_backups_are_listed_and_made_on_request(): void

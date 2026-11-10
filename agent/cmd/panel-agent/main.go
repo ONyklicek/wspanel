@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -42,7 +43,16 @@ func main() {
 	restoreData := flag.String("server-restore-data", "", "after -server-restore: restore the sites, databases and mail of that server backup")
 	pythonInstall := flag.String("python-install", "", "install these CPython versions (comma-separated, e.g. 3.13) with uv and exit (install.sh --python)")
 	backupsDir := flag.String("backups", "", "with -server-restore-data: a copy of the old server's /var/backups/wspanel instead of the off-site storage")
+	printKey := flag.Bool("recovery-key", false, "print the recovery key (signs off-site copies, encrypts server backups) and exit; root only")
+	importKey := flag.Bool("import-recovery-key", false, "replace the recovery key with another server's, read from stdin, and exit; root only")
 	flag.Parse()
+	if *printKey || *importKey {
+		if err := runRecoveryKey(*cfgPath, *importKey); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *mountBind != "" || *mountUnbind != "" {
 		cfg, err := config.Load(*cfgPath)
 		if err == nil {
@@ -406,4 +416,34 @@ func runServerRestore(cfgPath, manifestOf, statePath, dataPath, backupsDir strin
 	defer src.Close()
 	rep := ops.RestoreServerData(ctx, env, man, src, func(f string, a ...any) { fmt.Printf("==> "+f+"\n", a...) })
 	return report(rep)
+}
+
+// runRecoveryKey prints or imports the recovery key. Only root gets it: the
+// panel asks for it nowhere (see ops.RecoveryKey).
+func runRecoveryKey(cfgPath string, importing bool) error {
+	if os.Geteuid() != 0 {
+		return errors.New("the recovery key is root's: run this as root")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	env := &ops.Env{Cfg: cfg, FS: &fsx.FS{DryRun: cfg.DryRun}}
+	if !importing {
+		k, err := ops.RecoveryKey(env)
+		if err != nil {
+			return err
+		}
+		fmt.Println(k)
+		return nil
+	}
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return errors.New("no key on stdin")
+	}
+	if err := ops.ImportRecoveryKey(env, line); err != nil {
+		return err
+	}
+	fmt.Println("recovery key imported: backups of that server verify and decrypt here")
+	return nil
 }
