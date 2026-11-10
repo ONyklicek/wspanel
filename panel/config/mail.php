@@ -65,6 +65,12 @@ return [
             'transport' => 'resend',
         ],
 
+        // The local Postfix through PHP's mail(): works in the PHP-FPM pool,
+        // which disables proc_open (App\Mail\PhpMailTransport).
+        'local' => [
+            'transport' => 'phpmail',
+        ],
+
         'sendmail' => [
             'transport' => 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),

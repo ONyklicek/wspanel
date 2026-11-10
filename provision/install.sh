@@ -775,8 +775,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env PANEL_PUBLIC_IPV4 "$PUBLIC_IPV4"
   set_panel_env PANEL_PUBLIC_IPV6 "$PUBLIC_IPV6"
   grep -q '^APP_LOCALE=cs' /srv/panel/shared/.env || set_panel_env APP_LOCALE cs
-  # Notifications by e-mail go through the local Postfix (sendmail as the panel user).
-  set_panel_env MAIL_MAILER sendmail
+  # Notifications by e-mail go through the local Postfix: PHP mail() runs
+  # sendmail as the panel user (the FPM pool disables proc_open, which
+  # Symfony's sendmail transport needs).
+  set_panel_env MAIL_MAILER local
   set_panel_env MAIL_FROM_ADDRESS "\"wspanel@$MAIL_NAME\""
   set_panel_env MAIL_FROM_NAME "\"WSPanel\""
   [[ -f /srv/panel/shared/database.sqlite ]] || install -m 0600 -o panel -g panel /dev/null /srv/panel/shared/database.sqlite

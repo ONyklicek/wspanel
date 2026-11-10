@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Sites\ManageSiteMounts;
 use App\Http\Middleware\SetLocale;
+use App\Mail\PhpMailTransport;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Dns\DnsPrerequisites;
@@ -13,6 +14,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Number;
@@ -77,6 +79,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Mail::extend('phpmail', fn () => new PhpMailTransport);
+
         // The web tier receives the panel under an internal host name: every
         // link and redirect is built from APP_URL, the address users open.
         if (filled(config('app.url')) && ! $this->app->runningUnitTests()) {
