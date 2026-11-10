@@ -1,19 +1,19 @@
 Package: wspanel-agent
 Architecture: arm64
-Version: 1.4.0
+Version: 1.5.0
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 16088
+Installed-Size: 16216
 Depends: init-system-helpers (>= 1.54~)
 Recommends: wspanel-archive-keyring
 Suggests: logrotate
-Filename: pool/main/w/wspanel-agent/wspanel-agent_1.4.0_arm64.deb
-Size: 4251216
-MD5sum: bc3e2c7f057aabfcbb73133c4629440f
-SHA1: fd1344f93382d314ea2d52faa673597b68e45f9b
-SHA256: 6ba990af2e9cc15eec0a476f2a986de94ba976d0e06734024a47cb8fd6dcdd14
-SHA512: 98fb6a7cdd2c2025afcbddac0ba5119e1b4d62f04477e6b48f98edcde158d031f128e3a1595c13954aa5ef9a55119c7e4562b42fc3ade0f53fcbd114b5b00b01
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.5.0_arm64.deb
+Size: 4278652
+MD5sum: 92d186056d9b756db8305dba2950ea9d
+SHA1: cd98d67e7e610f718fdc2c2be74221e84afc8f48
+SHA256: b5ff8c67b3e66dccd1461220d349a00fd92f62a22611107e0af132e21ed0db30
+SHA512: fd73a6ac5b52d96a308c973df25a6da965b244442fd4c990c19286136f5f6432e777588c157c264d4628a2cdaeab2779f13d657ad1cbd7388a060dea22ee81c2
 Homepage: https://github.com/ONyklicek/wspanel
 Description: privileged agent and command line tool of the WSPanel hosting panel
  The agent (panel-agent) is the only part of the WSPanel hosting panel that
@@ -26,17 +26,17 @@ Description: privileged agent and command line tool of the WSPanel hosting panel
 
 Package: wspanel-archive-keyring
 Architecture: all
-Version: 1.4.0
+Version: 1.5.0
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
 Installed-Size: 52
-Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.4.0_all.deb
-Size: 3516
-MD5sum: 924cde521145406baa4d51e2227f0e9a
-SHA1: cf4c998a0813a104876701e78f97069468197924
-SHA256: 4dc897de9db1f9c71f84ca2aec9289ae050be17922d0015750d9f20ed4c148d1
-SHA512: c519a3d83f6596559befedebaa73d2d13c7033ae73e089693a3e165a4f77254d0d8b5b1a2aaacd29f03c8691f8c4fad3077eff12ce216dc00d81d3838e107394
+Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.5.0_all.deb
+Size: 3652
+MD5sum: 1d291c3eab9843681d680a25155f5fac
+SHA1: 9d8d5940afff5ffff85215b5ececb25a32074ac6
+SHA256: 0acf4d5354b243e3a8077ec99c9530886e408adae9acd1d6b45ee865263903d1
+SHA512: 132dedd3f3e92a325e126e23be80265642be4ac7a7fd0ed654c6c5d08f1a00b30d0239f9e933d7d52e5b3f79937594c75bc36731665045a52a78480a17847150
 Homepage: https://github.com/ONyklicek/wspanel
 Description: apt repository of the WSPanel hosting panel and its key
  Sets apt up for the WSPanel repository: the key its indexes are signed
@@ -49,18 +49,18 @@ Description: apt repository of the WSPanel hosting panel and its key
 
 Package: wspanel
 Architecture: all
-Version: 1.4.0
+Version: 1.5.0
 Priority: optional
 Section: admin
 Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
-Installed-Size: 8328
-Depends: wspanel-agent (= 1.4.0), wspanel-archive-keyring, ca-certificates, curl
-Filename: pool/main/w/wspanel/wspanel_1.4.0_all.deb
-Size: 1235284
-MD5sum: 25fbb679445209264ac08187fb94ffc5
-SHA1: 0946389b1b40084ca61a7fddad67674bd93388fb
-SHA256: d6e6d552d38ce99844c787736bce80217b12615c36bb2b6bc8b60f4f3a9e1c12
-SHA512: 280321d28392d0b898e301705eb42c032d115ef5ed0998ab203acb36a3cdb9bfe7ac7a3e0321c2c74dfe0bb3417d2a503f71095c36460788f625042bdab80c06
+Installed-Size: 8452
+Depends: wspanel-agent (= 1.5.0), wspanel-archive-keyring, ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.5.0_all.deb
+Size: 1254012
+MD5sum: 8c47d38395f90d7e98ad9034bb82ef44
+SHA1: f490e788f8f854b979270625ed5453bd8768fe53
+SHA256: 70adfc03aa3341a6086c8c5cfba2002e8c2c4aabe7907ff3908565a4adfb2f35
+SHA512: 72d72244c004a9e2bcc9a3486b2d1ee0785a03bac21beb7f707bed833526784816fc93d05bfec1644e81acd677dd773df2a3a218e7a35c91165f93ad2b73a2e4
 Homepage: https://github.com/ONyklicek/wspanel
 Description: hosting panel for one Debian server (installer and panel)
  WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
