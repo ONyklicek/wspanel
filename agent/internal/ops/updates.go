@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"wspanel/agent/internal/executor"
 	"wspanel/agent/internal/fsx"
@@ -37,7 +38,9 @@ func sysUpdates(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 	if p.Refresh {
-		if _, err := env.Exec.Run(ctx, "apt-get", "update", "-q"); err != nil {
+		uctx, cancel := context.WithTimeout(ctx, 10*time.Minute) // slow mirrors: past the executor's 2 minutes
+		defer cancel()
+		if _, err := env.Exec.RunIO(uctx, nil, nil, "apt-get", "update", "-q"); err != nil {
 			return nil, err
 		}
 	}
@@ -92,26 +95,40 @@ func sysUpgrade(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		res executor.Result
 		err error
 	)
-	keepConf := []string{"-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"}
+	keepConf := []string{"-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "-o", "DPkg::Lock::Timeout=300"}
 	if len(p.Packages) > 0 {
 		// --only-upgrade: a name that is not installed is skipped, never installed.
 		args := append([]string{"install", "-y", "-q", "--only-upgrade", "--no-install-recommends"}, keepConf...)
-		res, err = env.Exec.Run(ctx, "apt-get", append(append(args, "--"), p.Packages...)...)
+		res, err = upgradeRun(ctx, env, "/usr/bin/apt-get", append(append(args, "--"), p.Packages...)...)
 	} else if p.SecurityOnly {
 		if !env.Cfg.DryRun {
-			if _, err := env.Exec.Run(ctx, "apt-get", "install", "-y", "-q", "--no-install-recommends", "unattended-upgrades"); err != nil {
+			if _, err := aptRun(ctx, env, "--no-install-recommends", "install", "unattended-upgrades"); err != nil {
 				return nil, err
 			}
 		}
-		res, err = env.Exec.Run(ctx, "unattended-upgrade", "-v")
+		res, err = upgradeRun(ctx, env, "/usr/bin/unattended-upgrade", "-v")
 	} else {
 		// Keep changed config files (a package's new default never overwrites ours).
-		res, err = env.Exec.Run(ctx, "apt-get", append(append([]string{"-y", "-q"}, keepConf...), "dist-upgrade")...)
+		res, err = upgradeRun(ctx, env, "/usr/bin/apt-get", append(append([]string{"-y", "-q"}, keepConf...), "dist-upgrade")...)
 	}
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"upgraded": true, "reboot_required": fsx.Exists("/run/reboot-required"), "log": tail(res.Stdout, 4000)}, nil
+}
+
+// upgradeRun runs an upgrade in a transient unit of its own: an upgrade of
+// the server takes minutes (no executor default timeout, only the job's), and
+// it may upgrade wspanel-agent, whose restart stops everything in the agent's
+// cgroup. dpkg killed half-way leaves the system half-configured; in its own
+// unit it finishes even when the agent restarts under it.
+func upgradeRun(ctx context.Context, env *Env, bin string, args ...string) (executor.Result, error) {
+	unit := fmt.Sprintf("wspanel-upgrade-%d", time.Now().UnixNano())
+	full := append([]string{"--wait", "--pipe", "--collect", "--quiet", "--service-type=exec",
+		"--unit=" + unit, "--description=WSPanel: server update",
+		"--setenv=DEBIAN_FRONTEND=noninteractive", "--setenv=PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+		"--", bin}, args...)
+	return env.Exec.RunIO(ctx, nil, nil, "systemd-run", full...)
 }
 
 // sysAutoUpdates switches the daily automatic security updates.
@@ -123,7 +140,7 @@ func sysAutoUpdates(ctx context.Context, env *Env, raw json.RawMessage) (any, er
 		return nil, err
 	}
 	if p.Enabled && !env.Cfg.DryRun {
-		if _, err := env.Exec.Run(ctx, "apt-get", "install", "-y", "-q", "--no-install-recommends", "unattended-upgrades"); err != nil {
+		if _, err := aptRun(ctx, env, "--no-install-recommends", "install", "unattended-upgrades"); err != nil {
 			return nil, err
 		}
 	}

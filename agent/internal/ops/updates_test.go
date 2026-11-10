@@ -72,7 +72,9 @@ func TestUpgradeTakesChosenPackagesOnly(t *testing.T) {
 	}
 	found := false
 	for _, c := range dr.Calls() {
-		if c.Name == "apt-get" && strings.Contains(strings.Join(c.Args, " "), "install -y -q --only-upgrade") && strings.HasSuffix(strings.Join(c.Args, " "), "-- curl libssl3t64:amd64") {
+		// In a unit of its own (systemd-run): the agent's restart does not stop it.
+		if c.Name == "systemd-run" && strings.Contains(strings.Join(c.Args, " "), "--wait --pipe") &&
+			strings.Contains(strings.Join(c.Args, " "), "-- /usr/bin/apt-get install -y -q --only-upgrade") && strings.HasSuffix(strings.Join(c.Args, " "), "-- curl libssl3t64:amd64") {
 			found = true
 		}
 	}

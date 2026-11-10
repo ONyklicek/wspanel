@@ -139,7 +139,7 @@ func TestNTPInstallsTimesyncdWhereMissing(t *testing.T) {
 	for _, c := range dr.Calls()[1:] {
 		got = append(got, c.String())
 	}
-	if strings.Join(got, "|") != "timedatectl show|apt-get install -y -q --no-install-recommends systemd-timesyncd|timedatectl set-ntp true" {
+	if strings.Join(got, "|") != "timedatectl show|apt-get -y -q -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold --no-install-recommends install systemd-timesyncd|timedatectl set-ntp true" {
 		t.Errorf("calls: %v", got)
 	}
 }

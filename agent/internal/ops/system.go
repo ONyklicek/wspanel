@@ -371,7 +371,7 @@ func sysNTP(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	if p.Enabled && timedate(ctx, env)["CanNTP"] == "no" {
-		if _, err := env.Exec.Run(ctx, "apt-get", "install", "-y", "-q", "--no-install-recommends", "systemd-timesyncd"); err != nil {
+		if _, err := aptRun(ctx, env, "--no-install-recommends", "install", "systemd-timesyncd"); err != nil {
 			return nil, err
 		}
 	}
