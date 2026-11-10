@@ -42,8 +42,8 @@ Detail webu → **Deploy**:
    ho do repozitáře jako *deploy key* jen pro čtení. GitHub: Settings → Deploy
    keys.
 3. **.env:** doplňte konfiguraci aplikace. Údaje databáze a pošty tam panel
-   zapíše sám. U Laravelu nezapomeňte na `APP_KEY`
-   (`php artisan key:generate --show`).
+   zapíše sám, `APP_KEY` (Laravel) / `APP_SECRET` (Symfony) vygeneruje první
+   deploy a chybějící klíče doplní z `.env.example` (viz níže).
 4. **Deploy:** sledujte živý log. Hotovo, když log skončí řádkem `✓ deployed`.
 
 ## Co přesně deploy udělá
@@ -201,6 +201,28 @@ Deploy → **.env** upraví sdílený soubor (`shared/.env`, u Symfony
 - Další (CI build, `.env`, `public/storage`, FrankenPHP workery):
   [Nasazení existujícího projektu → Problémy](nasazeni-projektu.md#problémy-na-které-jsme-narazili).
 
+
+## .env z .env.example
+
+Má-li repozitář `.env.example`, každý deploy z něj do `shared/.env` doplní
+klíče, které tam ještě nejsou. První deploy tak začne z toho, co aplikace
+čeká, a klíč, který přidá nová verze, přijde se svou výchozí hodnotou.
+
+- Nic, co v `shared/.env` už je, se nepřepíše (ani prázdná hodnota): úpravy
+  v panelu i hodnoty z CI vyhrávají.
+- Klíče panelu (databáze, pošta, Valkey, Reverb) zapisuje panel.
+- Prázdné hodnoty se nepřebírají: prázdná hodnota by přebila výchozí hodnotu
+  v konfiguraci aplikace, chybějící ne.
+- Vývojové hodnoty se nahradí produkčními: `APP_ENV=production`,
+  `APP_DEBUG=false`, `APP_URL=https://<doména>`, `NODE_ENV=production`,
+  `DEBUG=False`, `FLASK_DEBUG=0`.
+- `APP_KEY`, `APP_SECRET` ani `SECRET_KEY` se nepřebírají nikdy: z repozitáře
+  jsou veřejné. Vygeneruje je deploy.
+- Řádky se kopírují, jak jsou napsané, takže `"${APP_NAME}"` dál funguje.
+  Doplněné klíče jsou v `.env` pod komentářem `# From .env.example` a log
+  deploye je vypíše.
+- Symfony to nepotřebuje: jeho `.env` v repozitáři je šablona sama
+  a `shared/.env.local` ji jen doplňuje.
 
 ## .env z CI (GitHub Secrets)
 

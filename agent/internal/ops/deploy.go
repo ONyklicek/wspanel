@@ -518,6 +518,10 @@ func (d *deployment) run(ctx context.Context) (string, error) {
 		cleanup()
 		return "", err
 	}
+	if err := d.envFromExampleFile(ctx); err != nil {
+		cleanup()
+		return "", err
+	}
 	if err := d.ensureAppSecrets(ctx); err != nil {
 		cleanup()
 		return "", err
