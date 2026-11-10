@@ -77,6 +77,12 @@
                 {{ __('Kontroluje se jednou denně v :repo', ['repo' => \App\Support\PanelRelease::repo()]) }}@if ($lastCheck['checked_at'] ?? null){{ __(', naposledy :when', ['when' => \Illuminate\Support\Carbon::parse($lastCheck['checked_at'])->diffForHumans()]) }}@endif.
                 @if ($lastCheck['error'] ?? null)<span class="text-red-600">{{ $lastCheck['error'] }}</span>@endif
             </p>
+            <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span class="text-gray-600 dark:text-gray-300">{{ __('Testovací verze (release candidates):') }}
+                    <strong>{{ \App\Support\PanelRelease::preReleases() ? __('nabízejí se') : __('ne, jen stabilní verze') }}</strong></span>
+                <x-wire::button size="xs" color="gray" outlined wire:click="togglePreReleases"
+                    :wire:confirm="\App\Support\PanelRelease::preReleases() ? null : __('Nabízet i testovací verze (release candidates)? Přinášejí nové funkce dřív, ale mohou obsahovat chyby; pro produkční server je lepší jen stabilní verze.')">{{ \App\Support\PanelRelease::preReleases() ? __('Jen stabilní') : __('Nabízet i testovací') }}</x-wire::button>
+            </div>
             <details class="mt-2 text-xs text-gray-500">
                 <summary class="cursor-pointer">{{ __('Aktualizace z příkazové řádky') }}</summary>
                 <pre class="mt-1 overflow-x-auto rounded-lg bg-gray-950 px-3 py-2 font-mono text-xs text-gray-100">{{ \App\Support\PanelRelease::upgradeCommand() }}</pre>

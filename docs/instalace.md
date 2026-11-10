@@ -100,6 +100,12 @@ jednu notifikaci (kanály s událostí „Nový problém“). Panel sám nic
 neinstaluje. Vydání v soukromém repozitáři vidí jen s tokenem
 `PANEL_RELEASE_TOKEN` v `/srv/panel/shared/.env`.
 
+Nabízejí se jen stabilní verze. Testovací verze (release candidates, např.
+`1.3.0-rc1`) jen tehdy, když je správce zapne v **Zabezpečení → Aktualizace**
+(Testovací verze → Nabízet i testovací); z příkazové řádky `sudo wspanel-update
+--pre`, resp. `WSPANEL_VERSION=pre` u `get.sh`. Server, který běží na testovací
+verzi, dostane bez té volby nabídku nejbližší stabilní verze.
+
 ## Postup ze zdrojáků
 
 1. Na svém počítači sestavte agenta (Go 1.25+):

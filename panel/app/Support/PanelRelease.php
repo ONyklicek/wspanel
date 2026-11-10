@@ -10,13 +10,16 @@ use Throwable;
 /**
  * Which WSPanel this server runs and whether a newer one is out: the newest
  * release of the repository it came from (GitHub's "latest" = the newest
- * one that is not a pre-release; for a server on a release candidate, the
- * newest candidate as well), checked daily. Zabezpečení → Aktualizace
- * upgrades with one button (the agent's panel.upgrade).
+ * one that is not a pre-release; release candidates only when the
+ * administrator opted in, see preReleases()), checked daily. Zabezpečení →
+ * Aktualizace upgrades with one button (the agent's panel.upgrade).
  */
 final class PanelRelease
 {
     public const SETTING = 'panel.release';
+
+    /** Whether release candidates are offered too (off: releases only). */
+    public const PRE_RELEASES = 'panel.release_pre';
 
     private const VERSION_RE = '/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/';
 
@@ -58,8 +61,9 @@ final class PanelRelease
             if (filled(config('panel.release_token'))) {
                 $request = $request->withToken((string) config('panel.release_token'));
             }
-            // A release candidate follows newer candidates too ("latest" skips them).
-            $pre = str_contains((string) self::current(), '-');
+            // Release candidates only when opted in ("latest" skips them). A
+            // server on a candidate without the option is offered the release.
+            $pre = self::preReleases();
             $response = $request->get('https://api.github.com/repos/'.self::repo().'/releases'.($pre ? '?per_page=20' : '/latest'));
             $release = $pre ? self::newest((array) $response->json()) : (array) $response->json();
             if ($response->status() === 404 || ($response->successful() && $release === [])) {
@@ -104,6 +108,19 @@ final class PanelRelease
         return $best;
     }
 
+    /** Whether the administrator wants release candidates offered too. */
+    public static function preReleases(): bool
+    {
+        return (bool) Setting::get(self::PRE_RELEASES, false);
+    }
+
+    /** Switches release candidates on or off, and checks again with the new choice. */
+    public static function setPreReleases(bool $on): void
+    {
+        Setting::put(self::PRE_RELEASES, $on);
+        self::check();
+    }
+
     /** @return array{version: ?string, url: ?string, published_at: ?string, checked_at: string, error: ?string}|null */
     public static function last(): ?array
     {
@@ -137,9 +154,10 @@ final class PanelRelease
     {
         // Installed through apt: the packages and the installer in one step.
         if (config('panel.install_method') === 'apt') {
-            return 'sudo wspanel-update';
+            return 'sudo wspanel-update'.(self::preReleases() ? ' --pre' : '');
         }
 
-        return 'curl -fsSL https://github.com/'.(self::repo() ?? '<vlastník>/<repozitář>').'/releases/latest/download/get.sh | sudo bash';
+        return 'curl -fsSL https://github.com/'.(self::repo() ?? '<vlastník>/<repozitář>').'/releases/latest/download/get.sh | sudo '
+            .(self::preReleases() ? 'env WSPANEL_VERSION=pre bash' : 'bash');
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Livewire\Pages\UpdatesPage;
 use App\Models\Client;
 use App\Models\NotificationChannel;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Notify\Alerts;
@@ -174,9 +175,10 @@ class PanelReleaseTest extends TestCase
             ->call('upgradePanel');
     }
 
-    public function test_a_release_candidate_follows_newer_candidates(): void
+    public function test_a_release_candidate_follows_newer_candidates_when_opted_in(): void
     {
         config(['panel.version' => '1.2.0-rc9']);
+        Setting::put(PanelRelease::PRE_RELEASES, true);
         Http::fake(['api.github.com/repos/acme/wspanel/releases*' => Http::response([
             ['tag_name' => 'v1.2.0-rc10', 'html_url' => 'https://github.com/acme/wspanel/releases/tag/v1.2.0-rc10', 'draft' => false],
             ['tag_name' => 'v1.3.0-rc1', 'html_url' => 'https://github.com/acme/wspanel/releases/tag/v1.3.0-rc1', 'draft' => true],
@@ -186,6 +188,32 @@ class PanelReleaseTest extends TestCase
         PanelRelease::check();
 
         $this->assertSame('1.2.0-rc10', PanelRelease::available()['version']);
+    }
+
+    public function test_a_server_on_a_candidate_is_offered_the_release_without_the_option(): void
+    {
+        config(['panel.version' => '1.2.0-rc18']);
+        $this->github('v1.2.1');
+
+        PanelRelease::check();
+
+        $this->assertSame('1.2.1', PanelRelease::available()['version']);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'releases?per_page'));
+    }
+
+    public function test_the_administrator_switches_release_candidates_and_the_commands_follow(): void
+    {
+        config(['panel.install_method' => 'apt']);
+        $this->github('v1.2.0');
+        $this->actingAs(User::factory()->create());
+        $this->assertSame('sudo wspanel-update', PanelRelease::upgradeCommand());
+
+        Livewire::test(UpdatesPage::class)->assertSee('ne, jen stabilní verze')->call('togglePreReleases')->assertSee('nabízejí se');
+
+        $this->assertTrue(PanelRelease::preReleases());
+        $this->assertSame('sudo wspanel-update --pre', PanelRelease::upgradeCommand());
+        config(['panel.install_method' => 'bundle']);
+        $this->assertStringEndsWith('| sudo env WSPANEL_VERSION=pre bash', PanelRelease::upgradeCommand());
     }
 
     public function test_only_an_administrator_reads_the_upgrade_state(): void

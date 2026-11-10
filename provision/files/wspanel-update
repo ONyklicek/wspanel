@@ -2,7 +2,8 @@
 # WSPanel installed through apt, to the newest version:
 #
 #   sudo wspanel-update            the newest release (a newer line, 1.3, too)
-#   sudo wspanel-update --pre      the newest release candidate
+#   sudo wspanel-update --pre      the newest release candidate (opt-in: without
+#                                  it only releases, from a candidate too)
 #   sudo wspanel-update --yes      without the installer's questions (keeps the settings)
 #
 # apt otherwise follows the channel of the installed line (1.2: fixes only);
@@ -10,22 +11,18 @@
 # installer, which sets the channel of the new line again.
 set -euo pipefail
 SRC=/etc/apt/sources.list.d/wspanel.sources
-channel=""
+channel=stable
 args=()
 for arg in "$@"; do
   case "$arg" in
     --pre) channel=pre ;;
     --stable) channel=stable ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) args+=("$arg") ;;
   esac
 done
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo wspanel-update" >&2; exit 1; }
 [[ -f $SRC ]] || { echo "$SRC is missing: install WSPanel's apt repository first (see the README)" >&2; exit 1; }
-if [[ -z "$channel" ]]; then
-  # A release candidate stays on release candidates unless --stable says otherwise.
-  [[ "$(dpkg-query -W -f='${Version}' wspanel 2>/dev/null)" == *"~"* ]] && channel=pre || channel=stable
-fi
 
 sed -i -E "s/^Suites: .*/Suites: $channel/" "$SRC"
 apt-get update -q

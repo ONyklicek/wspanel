@@ -11,6 +11,7 @@ use App\Support\Lang;
 use App\Support\PanelRelease;
 use App\Support\Toast;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Actions\Action;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\TextInput;
@@ -221,6 +222,17 @@ class UpdatesPage extends Page
             : (PanelRelease::available() !== null
                 ? Toast::success(__('K dispozici je WSPanel :version', ['version' => $out['version']]))
                 : Toast::success(__('WSPanel je aktuální')));
+    }
+
+    /** Release candidates offered too, or releases only (the default). */
+    public function togglePreReleases(): void
+    {
+        abort_unless(Gate::allows('admin'), 403);
+        $on = ! PanelRelease::preReleases();
+        PanelRelease::setPreReleases($on);
+        $on
+            ? Toast::success(__('Nabízejí se i testovací verze'), __('Release candidates před vydáním: nové funkce dřív, ale mohou obsahovat chyby.'))
+            : Toast::success(__('Nabízejí se jen stabilní verze'));
     }
 
     public function toggleAuto(): void
