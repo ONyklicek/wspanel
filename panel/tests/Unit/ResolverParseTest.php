@@ -62,4 +62,13 @@ class ResolverParseTest extends TestCase
         $this->assertNull($this->parse($this->reply(7, 0x8402, 'example.cz', 1, []), 7));  // SERVFAIL
         $this->assertSame([], $this->parse($this->reply(7, 0x8400, 'example.cz', 1, []), 7)['records']); // no such record: an answer
     }
+
+    public function test_a_delegation_never_points_questions_into_a_private_network(): void
+    {
+        foreach (['127.0.0.1', '10.0.0.53', '192.168.1.1', '172.16.0.1', '169.254.169.254', '0.0.0.0', '::1', 'fd00::53', 'not-an-ip'] as $ip) {
+            $this->assertFalse(Resolver::askable($ip), $ip);
+        }
+        $this->assertTrue(Resolver::askable('193.29.206.206'));
+        $this->assertTrue(Resolver::askable('2a00:1450:4001::1'));
+    }
 }

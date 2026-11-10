@@ -20,6 +20,15 @@ class Resolver
     /** Seconds to wait for one nameserver. */
     private const TIMEOUT = 2;
 
+    /** Seconds one process may spend on direct questions; the resolver answers after that. */
+    private const BUDGET = 8.0;
+
+    /** A new budget after this many quiet seconds past the last one (a queue worker lives for hours). */
+    private const BUDGET_RENEWS = 30.0;
+
+    /** When the current budget runs out. */
+    private static ?float $deadline = null;
+
     private const TYPES = [DNS_A => 1, DNS_NS => 2, DNS_CNAME => 5, DNS_SOA => 6, DNS_MX => 15, DNS_TXT => 16, DNS_AAAA => 28, DNS_SRV => 33, DNS_CAA => 257];
 
     /** @var array<string, list<string>> zone => nameserver addresses, for this request */
@@ -54,8 +63,15 @@ class Resolver
      */
     private function authoritative(string $name, int $type): ?array
     {
+        $now = microtime(true);
+        if (self::$deadline === null || $now > self::$deadline + self::BUDGET_RENEWS) {
+            self::$deadline = $now + self::BUDGET;
+        }
         try {
             foreach ($this->zoneNameservers($name) as $ip) {
+                if (microtime(true) > self::$deadline) {
+                    return null; // slow or unreachable nameservers: no more waiting on them
+                }
                 $answer = $this->query($ip, $name, self::TYPES[$type]);
                 if ($answer === null) {
                     continue; // this one did not answer: the next
@@ -90,12 +106,16 @@ class Resolver
         $labels = explode('.', $name);
         while (count($labels) >= 2) {
             $zone = implode('.', $labels);
-            $ips = $this->nameservers[$zone] ??= Cache::remember('dns.ns.'.$zone, 3600, function () use ($zone): array {
+            $ips = $this->nameservers[$zone] ??= Cache::remember('dns.ns.v2.'.$zone, 3600, function () use ($zone): array {
                 $hosts = array_column(@dns_get_record($zone, DNS_NS) ?: [], 'target');
                 $ips = [];
                 foreach (array_slice($hosts, 0, 3) as $host) {
                     foreach (@gethostbynamel((string) $host) ?: [] as $ip) {
-                        $ips[] = $ip;
+                        // A zone's delegation is whatever its owner says: never let it
+                        // point the panel's questions at loopback or a private network.
+                        if (self::askable($ip)) {
+                            $ips[] = $ip;
+                        }
                     }
                 }
 
@@ -108,6 +128,12 @@ class Resolver
         }
 
         return [];
+    }
+
+    /** A nameserver address the panel may send a question to: public, not loopback, private or reserved. */
+    public static function askable(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
     }
 
     /**
