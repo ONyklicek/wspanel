@@ -458,7 +458,12 @@ func sandboxRunArgs(e *Env, l siteLayout, workdir string, env []string) []string
 	args := []string{
 		"--wait", "--pipe", "--quiet", "--collect", "--service-type=exec",
 		"--unit=wspanel-" + l.User + "-deploy-" + strconv.FormatInt(time.Now().UnixNano(), 36),
-		"--uid=" + l.User, "--gid=" + l.User,
+		// No --gid: systemd then takes the user's primary group and its
+		// supplementary groups. A site of a client has no group of its own
+		// (its primary group is the client's wsc_N), so --gid=<user> failed
+		// every step there; and the groups give migrations the socket of a
+		// dedicated database server (wsd_N).
+		"--uid=" + l.User,
 		"--working-directory=" + workdir,
 		"-p", "UMask=0027", "-p", "NoNewPrivileges=yes", "-p", "PrivateTmp=yes", "-p", "PrivateDevices=yes",
 		"-p", "ProtectSystem=strict", "-p", "ProtectHome=yes", "-p", "ReadWritePaths=" + l.Home,

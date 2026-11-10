@@ -84,3 +84,13 @@ func TestNodeLoadsEnvFileFromVersion22_9(t *testing.T) {
 		}
 	}
 }
+
+// A client's site has no group named after its user (its primary group is
+// the client's): the deploy sandbox must not name one.
+func TestDeploySandboxNamesNoGroup(t *testing.T) {
+	env, _ := testEnv(t)
+	args := strings.Join(sandboxRunArgs(env, siteLayout{User: "web_x", Home: "/srv/sites/x"}, "/srv/sites/x", nil), " ")
+	if strings.Contains(args, "--gid=") || !strings.Contains(args, "--uid=web_x") {
+		t.Fatalf("sandbox: %s", args)
+	}
+}
