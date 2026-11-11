@@ -26,6 +26,10 @@ __PANEL_ADDRESS__ {
 	__PANEL_TLS__
 	encode zstd gzip
 	header {
+		# Browsers come back over HTTPS only: a first http:// from a hostile
+		# network cannot be held on plain HTTP. Not for the subdomains: the
+		# panel's name is often one of the operator's own.
+		Strict-Transport-Security "max-age=31536000"
 		X-Frame-Options DENY
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin
