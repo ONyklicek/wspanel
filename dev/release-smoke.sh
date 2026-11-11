@@ -149,6 +149,13 @@ on 'u=$(stat -c %U /srv/sites/app.localhost) && cd /srv/sites/app.localhost/curr
 [[ "$(on 'curl -sk --resolve app.localhost:443:127.0.0.1 https://app.localhost/smoke.txt')" == smoke-static ]] || fail "the site's own static file is not served"
 code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/smoke-passwd.txt')
 [[ $code != 200 ]] || fail "a symlink to another owner's file was served"
+# The site's own current, repointed at a release that is not its own.
+on 'u=$(stat -c %U /srv/sites/app.localhost) && rel=$(readlink /srv/sites/app.localhost/current) \
+  && install -d -o root -g root -m 0755 /srv/sites/.smoke-other/public && echo other > /srv/sites/.smoke-other/public/other.txt \
+  && runuser -u "$u" -- ln -sfn /srv/sites/.smoke-other /srv/sites/app.localhost/current \
+  && code=$(curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/other.txt); \
+  runuser -u "$u" -- ln -sfn "$rel" /srv/sites/app.localhost/current; rm -rf /srv/sites/.smoke-other; [ "$code" != 200 ]' \
+  || fail "a repointed current served another owner's files"
 on 'cd /srv/sites/app.localhost/current/public && rm -f smoke.txt smoke-passwd.txt'
 
 log "Python: a placeholder, then a Django site with Celery deployed twice (the second through the other slot)"
