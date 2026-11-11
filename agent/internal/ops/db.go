@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 	"wspanel/agent/internal/validate"
 )
@@ -183,10 +186,17 @@ func (m mariadb) dump(ctx context.Context, env *Env, name string, w io.Writer) e
 	return err
 }
 
-// The dump's content comes from the site's database. --sandbox makes the
-// client refuse its own commands that touch the system (\!, source, ...),
-// --local-infile=0 its reading of local files (LOAD DATA LOCAL).
+// The dump's content comes from the site's database: its routines' and
+// triggers' bodies are the site's own text, which the client replays between
+// DELIMITER lines. On the shared server it runs as an account with rights on
+// that database only (restoreUntrusted), never as root. A site's own
+// instance is restored by its own root (the instance is the site's anyway).
+// --sandbox makes the client refuse its own commands that touch the system
+// (\!, source, ...), --local-infile=0 its reading of local files.
 func (m mariadb) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
+	if m.socket == "" {
+		return restoreUntrusted(ctx, env, name, r)
+	}
 	_, err := env.Exec.RunIO(ctx, r, io.Discard, "mariadb", m.args("--sandbox", "--local-infile=0", "--default-character-set=utf8mb4", name)...)
 	return err
 }
@@ -284,14 +294,46 @@ func (p postgres) dump(ctx context.Context, env *Env, name string, w io.Writer) 
 	return err
 }
 
-// The dump's content comes from the site's database (functions, index
-// expressions, ...): restore with the owner's rights (SET ROLE), never as
-// superuser, and without replaying ownership or grants.
+// The dump's content comes from the site's database: its functions run
+// during the restore (a CHECK constraint while the rows are copied). SET ROLE
+// alone is no boundary for that: a function's RESET ROLE goes back to the
+// session's user, and as superuser that was the whole cluster (COPY ... TO
+// PROGRAM). On the shared cluster the session belongs to a temporary login
+// that is a member of the database's role and nothing else; objects belong
+// to the database's role (SET ROLE), ownership and grants are not replayed.
+// A site's own cluster is restored by its own superuser.
 func (p postgres) restore(ctx context.Context, env *Env, name string, r io.Reader) error {
-	_, err := env.Exec.RunIO(ctx, r, io.Discard, "setpriv", p.as("/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
-		"--role="+name, "--dbname="+name)...)
+	if p.osUser != "" {
+		_, err := env.Exec.RunIO(ctx, r, io.Discard, "setpriv", p.as("/usr/bin/pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
+			"--role="+name, "--dbname="+name)...)
+		return err
+	}
+	login := restoreLogin(name)
+	pw := newPassword()
+	if _, err := p.psql(ctx, env, "postgres", fmt.Sprintf(`DROP ROLE IF EXISTS "%[1]s"; CREATE ROLE "%[1]s" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '%[2]s'; GRANT "%[3]s" TO "%[1]s"`,
+		login, pw, name)); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = p.psql(context.WithoutCancel(ctx), env, "postgres", fmt.Sprintf(`DROP ROLE IF EXISTS "%s"`, login))
+	}()
+	if err := env.FS.MkdirAll(env.Cfg.ArtifactDir, 0o700, fsx.Root); err != nil {
+		return err
+	}
+	pass := filepath.Join(env.Cfg.ArtifactDir, "restore-"+randomHex(6)+".pgpass")
+	if err := env.FS.WriteFile(pass, []byte(fmt.Sprintf("127.0.0.1:%d:%s:%s:%s\n", p.port(), name, login, pw)), 0o600, fsx.Root); err != nil {
+		return err
+	}
+	defer os.Remove(pass)
+	conn := fmt.Sprintf("host=127.0.0.1 port=%d dbname=%s user=%s passfile=%s", p.port(), name, login, pass)
+	_, err := env.Exec.RunIO(ctx, r, io.Discard, "pg_restore", "--clean", "--if-exists", "--exit-on-error", "--no-owner", "--no-privileges",
+		"--role="+name, "--dbname="+conn)
 	return err
 }
+
+// restoreLogin is the temporary login a restore of the database uses ("-":
+// never a database name, so never another database's own role).
+func restoreLogin(db string) string { return db + "-restore" }
 
 func parseNameSize(out string) []dbInfo {
 	var dbs []dbInfo

@@ -281,7 +281,8 @@ func binaries(cfg config.Config) map[string]string {
 		"systemd-run":        "/usr/bin/systemd-run",
 		"mariadb":            "/usr/bin/mariadb",
 		"mariadb-dump":       "/usr/bin/mariadb-dump",
-		"sqlite3":            "/usr/bin/sqlite3", // consistent copies of the panel's and PowerDNS's databases
+		"pg_restore":         "/usr/bin/pg_restore", // a restore on the shared cluster, as the database's temporary login (never the superuser)
+		"sqlite3":            "/usr/bin/sqlite3",    // consistent copies of the panel's and PowerDNS's databases
 		"apt-get":            "/usr/bin/apt-get",
 		"unattended-upgrade": "/usr/bin/unattended-upgrade",
 		"fail2ban-client":    "/usr/bin/fail2ban-client",

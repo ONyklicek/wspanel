@@ -243,16 +243,57 @@ func TestRestoreRunsWithoutSuperuserPowers(t *testing.T) {
 	if _, err := call(t, env, dbRestore, map[string]string{"engine": "postgresql", "name": "shop", "backup": out.(backupInfo).File, "confirm": "shop"}); err != nil {
 		t.Fatal(err)
 	}
-	var restore string
+	var restore executor.Call
+	var sql []string
 	for _, c := range dr.Calls() {
-		if strings.Contains(strings.Join(c.Args, " "), "pg_restore") {
-			restore = strings.Join(c.Args, " ")
+		if c.Name == "pg_restore" || strings.Contains(strings.Join(c.Args, " "), "pg_restore") {
+			restore = c
+		}
+		if c.Stdin != "" {
+			sql = append(sql, c.Stdin)
 		}
 	}
-	for _, want := range []string{"--role=shop", "--no-owner", "--no-privileges"} {
-		if !strings.Contains(restore, want) {
-			t.Errorf("pg_restore missing %s: %s", want, restore)
+	args := strings.Join(restore.Args, " ")
+	for _, want := range []string{"--role=shop", "--no-owner", "--no-privileges", "user=shop-restore", "passfile="} {
+		if !strings.Contains(args, want) {
+			t.Errorf("pg_restore missing %s: %s", want, args)
 		}
+	}
+	// A function of the site's calling RESET ROLE during the restore goes
+	// back to the session's user: never the superuser.
+	if restore.Name == "setpriv" {
+		t.Errorf("pg_restore runs as the cluster's superuser: %s", args)
+	}
+	all := strings.Join(sql, "\n")
+	for _, want := range []string{`CREATE ROLE "shop-restore" LOGIN NOSUPERUSER`, `GRANT "shop" TO "shop-restore"`, `DROP ROLE IF EXISTS "shop-restore"`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the temporary login lacks %q", want)
+		}
+	}
+	if strings.Contains(args, "PASSWORD") || strings.Contains(args, "password=") {
+		t.Error("the temporary login's password is in pg_restore's arguments")
+	}
+}
+
+// The shared MariaDB server restores a site's backup as an account with
+// rights on that database only: a routine's body could otherwise run as root.
+func TestMariaDBRestoreRunsAsTheDatabasesOwnAccount(t *testing.T) {
+	env, dr := dbEnv(t)
+	out, err := call(t, env, dbBackup, map[string]string{"engine": "mariadb", "name": "shop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, dbRestore, map[string]string{"engine": "mariadb", "name": "shop", "backup": out.(backupInfo).File, "confirm": "shop"}); err != nil {
+		t.Fatal(err)
+	}
+	var restored bool
+	for _, c := range dr.Calls() {
+		if c.Name == "mariadb" && strings.Contains(strings.Join(c.Args, " "), "--defaults-extra-file=") && strings.HasSuffix(strings.Join(c.Args, " "), " shop") {
+			restored = true
+		}
+	}
+	if !restored {
+		t.Errorf("the restore did not run as the database's own account: %v", dr.Calls())
 	}
 }
 

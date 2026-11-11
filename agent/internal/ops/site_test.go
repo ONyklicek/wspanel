@@ -28,6 +28,7 @@ func testEnv(t *testing.T) (*Env, *executor.DryRun) {
 	cfg.WebSitesDir = filepath.Join(root, "etc/panel-web/sites")
 	cfg.StateDir = filepath.Join(root, "var/lib/panel-agent")
 	cfg.SystemdDir = filepath.Join(root, "etc/systemd/system")
+	cfg.ArtifactDir = filepath.Join(root, "var/lib/wspanel-artifacts")
 	cfg.SiteConfigDir = filepath.Join(root, "etc/panel-sites")
 	cfg.SiteRunDir = filepath.Join(root, "run/wspanel-sites")
 	cfg.TmpfilesDir = filepath.Join(root, "etc/tmpfiles.d")
