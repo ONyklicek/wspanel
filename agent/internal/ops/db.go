@@ -522,6 +522,11 @@ func dbDrop(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if p.Confirm != p.Name {
 		return nil, protocol.Invalid("confirm: must equal name")
 	}
+	release, err := claimDatabase(p.Engine, p.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	if err := removeBackupSchedule(ctx, env, p.Engine, p.Name); err != nil {
 		return nil, err
 	}

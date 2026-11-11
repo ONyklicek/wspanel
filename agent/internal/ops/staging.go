@@ -158,6 +158,11 @@ func dbCopy(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	release, err := claimDatabase(p.Engine, p.To)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	tmp := filepath.Join(env.Cfg.ArtifactDir, "db-"+randomHex(8)+src.ext())
 	if err := env.FS.MkdirAll(env.Cfg.ArtifactDir, 0o700, fsx.Root); err != nil {
 		return nil, err

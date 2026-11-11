@@ -223,6 +223,11 @@ func dbRestore(ctx context.Context, env *Env, raw json.RawMessage) (any, error) 
 	if err != nil {
 		return nil, err
 	}
+	release, err := claimDatabase(p.Engine, p.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	e, _ := dbFor(env, p.Engine, p.Name)
 	snap, err := runBackup(ctx, env, p.Engine, p.Name, "-pre-restore")
 	if err != nil {

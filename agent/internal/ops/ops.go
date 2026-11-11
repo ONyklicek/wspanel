@@ -93,7 +93,7 @@ func Registry() map[string]Op {
 		{"db.backup", false, dbBackup},
 		{"db.backups", false, dbBackups},
 		{"db.backup_delete", true, dbBackupDelete},
-		{"db.restore", true, dbRestore},
+		{"db.restore", false, dbRestore}, // async; claims only the database it writes (dbclaim.go)
 		{"db.schedule", true, dbSchedule},
 		{"db.access", true, dbAccess},
 		{"db.server_status", false, dbServerStatus},
@@ -189,7 +189,7 @@ func Registry() map[string]Op {
 		{"site.app_install", true, siteAppInstall},
 		{"site.pack", true, sitePack},
 		{"site.copy_shared", true, siteCopyShared},
-		{"db.copy", true, dbCopy},
+		{"db.copy", false, dbCopy}, // async; claims only the database it writes (dbclaim.go)
 		{"site.import_scan", false, siteImportScan},
 		{"site.import", true, siteImport},
 		{"sys.updates", false, sysUpdates},

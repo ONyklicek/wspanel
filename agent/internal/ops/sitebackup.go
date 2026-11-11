@@ -671,6 +671,11 @@ func streamToUnpacker(ctx context.Context, env *Env, l siteLayout, staging strin
 }
 
 func restoreDump(ctx context.Context, env *Env, e dbEngine, name, src string) error {
+	release, err := claimDatabase(engineName(e), name)
+	if err != nil {
+		return err
+	}
+	defer release()
 	f, err := os.OpenFile(src, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return err
