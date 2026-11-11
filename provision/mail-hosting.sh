@@ -23,7 +23,7 @@ if [[ "${1:-}" == --remove ]]; then
   MAIL_HOST=${2:?usage: mail-hosting.sh --remove <mail host name>}
   export DEBIAN_FRONTEND=noninteractive
   rm -f /etc/wspanel/mail/hosting
-  systemctl disable --now dovecot rspamd rspamd-valkey postsrsd roundcube-gc.timer >/dev/null 2>&1 || true
+  systemctl disable --now dovecot rspamd rspamd-valkey postsrsd roundcube-gc.timer roundcube-cleandb.timer >/dev/null 2>&1 || true
   # Postfix: what hosting added goes, the rest is the sites' sending again.
   postconf -X virtual_mailbox_domains virtual_mailbox_maps virtual_alias_maps virtual_transport \
     smtpd_sasl_exceptions_networks smtpd_discard_ehlo_keyword_address_maps smtpd_helo_required disable_vrfy_command \
@@ -43,7 +43,7 @@ if [[ "${1:-}" == --remove ]]; then
     systemctl reload "$unit" 2>/dev/null || true
   done
   systemctl reload panel-web 2>/dev/null || true
-  rm -rf /etc/systemd/system/roundcube-gc.service.d /etc/systemd/system/rspamd-valkey.service
+  rm -rf /etc/systemd/system/roundcube-gc.service.d /etc/systemd/system/roundcube-cleandb.service.d /etc/systemd/system/rspamd-valkey.service
   systemctl daemon-reload
   # Firewall, fail2ban.
   if command -v ufw >/dev/null; then
@@ -615,11 +615,14 @@ else
   runuser -u webmail -- php /usr/share/roundcube/bin/updatedb.sh --package=roundcube --dir=/usr/share/roundcube/SQL >/dev/null
 fi
 chmod 0600 /var/lib/wspanel-webmail/db/roundcube.db
-# Debian's cleanup timer (expired sessions, caches, temp files) runs as
-# www-data, which cannot read this setup: here as webmail, which can. A
-# package upgrade or a restored server enabling the timer then still works.
-install -d -m 0755 /etc/systemd/system/roundcube-gc.service.d
-cat >/etc/systemd/system/roundcube-gc.service.d/wspanel.conf <<'UNIT'
+# Debian's cleanup timers (gc: expired sessions, caches, temp files;
+# cleandb: records marked as deleted) run as www-data, which cannot read
+# this setup: here as webmail, which can. cleandb failed every night with
+# "Failed to connect to database" before it had this too. A package upgrade
+# or a restored server enabling the timers then still works.
+for unit in roundcube-gc roundcube-cleandb; do
+  install -d -m 0755 "/etc/systemd/system/$unit.service.d"
+  cat >"/etc/systemd/system/$unit.service.d/wspanel.conf" <<'UNIT'
 # Managed by WSPanel (mail-hosting.sh): Roundcube runs as webmail here.
 [Service]
 User=webmail
@@ -627,9 +630,12 @@ Group=webmail
 ReadWritePaths=
 ReadWritePaths=/var/lib/wspanel-webmail
 UNIT
+done
 systemctl daemon-reload
-systemctl reset-failed roundcube-gc.service >/dev/null 2>&1 || true
-systemctl enable --now roundcube-gc.timer >/dev/null 2>&1 || true
+for unit in roundcube-gc roundcube-cleandb; do
+  systemctl reset-failed "$unit.service" >/dev/null 2>&1 || true
+  [[ -f "/usr/lib/systemd/system/$unit.timer" ]] && systemctl enable --now "$unit.timer" >/dev/null 2>&1 || true
+done
 sed "s/__PHP__/$PHP/g" "$FILES/webmail/webmail-pool.conf" > "/etc/php/$PHP/fpm/pool.d/webmail.conf"
 sed "s/__PHP__/$PHP/g" "$FILES/webmail/webmail.caddy" > /etc/panel-web/webmail.caddy
 "php-fpm$PHP" -t 2>/dev/null
