@@ -164,6 +164,11 @@ out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" =>
 [[ $out == active ]] || fail "Python site: $out"
 for _ in $(seq 30); do on 'curl -sk --resolve py.localhost:443:127.0.0.1 https://py.localhost/ | grep -q "Python 3.13"' && break; sleep 1; done
 on 'curl -sk --resolve py.localhost:443:127.0.0.1 https://py.localhost/ | grep -q "Python 3.13"' || fail "the Python placeholder does not answer"
+# Its own port on loopback: the edge and the site reach it, another site's user does not.
+port=$(on 'grep -o "\"port\": *[0-9]*" /var/lib/panel-agent/sites/py.localhost.json | head -1 | grep -o "[0-9]*$"')
+[[ $port =~ ^[0-9]+$ ]] || fail "no port in the Python site's state"
+on "runuser -u panel-proxy -- curl -s -o /dev/null -m 5 http://127.0.0.1:$port/" || fail "the edge's user cannot reach the Python site's port"
+on "runuser -u \$(stat -c %U /srv/sites/app.localhost) -- curl -s -o /dev/null -m 5 http://127.0.0.1:$port/" && fail "another site's user reaches the Python site's port around the edge"
 out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "dj.localhost", "mode" => "python", "framework" => "django", "python_version" => "3.13", "tls" => "internal"]); echo $s->status->value;')
 [[ $out == active ]] || fail "Django site: $out"
 # A minimal Django project, as CI would upload it (gunicorn left out: the deploy adds it).

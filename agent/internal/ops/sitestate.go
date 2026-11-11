@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -93,8 +94,19 @@ func saveSiteState(env *Env, st siteState) error {
 	if err := env.FS.MkdirAll(dir, 0o700, fsx.Root); err != nil {
 		return err
 	}
+	var old siteState
+	if b, err := os.ReadFile(siteStatePath(env.Cfg, st.Domain)); err == nil {
+		_ = json.Unmarshal(b, &old)
+	}
 	b, _ := json.MarshalIndent(st, "", "  ")
-	return env.FS.WriteFile(siteStatePath(env.Cfg, st.Domain), b, 0o600, fsx.Root)
+	if err := env.FS.WriteFile(siteStatePath(env.Cfg, st.Domain), b, 0o600, fsx.Root); err != nil {
+		return err
+	}
+	// A port taken or given up: the guard follows before the server listens.
+	if !samePorts(old, st) {
+		return applySiteGuard(context.Background(), env)
+	}
+	return nil
 }
 
 // allSiteStates reads every state file (used for port allocation).

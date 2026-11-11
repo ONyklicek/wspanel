@@ -731,6 +731,9 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		}
 	}
 	_ = os.Remove(siteStatePath(env.Cfg, p.Domain))
+	if err := applySiteGuard(ctx, env); err != nil {
+		return nil, err
+	}
 	_ = os.Remove(historyPath(env, p.Domain))
 	removeDeployLogs(env, p.Domain)
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, l.User))

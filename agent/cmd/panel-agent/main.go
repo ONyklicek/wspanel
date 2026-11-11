@@ -186,6 +186,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	go ops.RenderMailOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderEdgesOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderGameUnitsOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
+	go ops.ApplySiteGuardOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	return srv.Serve(ctx, ln)
 }
 

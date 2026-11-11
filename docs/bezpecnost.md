@@ -30,6 +30,12 @@ neznamenala kompromitaci serveru ani ostatních webů.
     `wp-config.php` jiného webu ani jeho stránku za heslem. Symlinky na
     vlastní soubory (`public/storage` Laravelu) fungují dál. PHP a tečkové
     soubory nevydá vůbec.
+- Vlastní servery webů (aplikace v Node a Pythonu a jejich druhý slot, Reverb,
+  SSR, Valkey webu) poslouchají na loopbacku. Připojit se k nim smí jen edge,
+  agent a uživatel webu (nftables, `meta skuid`). Jiný uživatel serveru, třeba
+  shell jiného webu, tak neobejde edge (heslo, IP pravidla, údržbu) a nevydává
+  se za důvěryhodnou proxy. Totéž platí pro RCON herních serverů, ten smí jen
+  agent. Pravidla se načítají při startu systému před sítí.
 - Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
   uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
   svého webu). Příkaz určuje framework, panel ho zadat nemůže.
