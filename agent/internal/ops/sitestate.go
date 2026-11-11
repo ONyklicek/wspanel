@@ -102,8 +102,9 @@ func saveSiteState(env *Env, st siteState) error {
 	if err := env.FS.WriteFile(siteStatePath(env.Cfg, st.Domain), b, 0o600, fsx.Root); err != nil {
 		return err
 	}
-	// A port taken or given up: the guard follows before the server listens.
-	if !samePorts(old, st) {
+	// A port taken or given up: the guard follows before the server listens
+	// (its failure fails the operation, and the next save tries again).
+	if !samePorts(old, st) || siteGuardStale.Load() {
 		return applySiteGuard(context.Background(), env)
 	}
 	return nil

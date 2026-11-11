@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/validate"
@@ -79,9 +80,14 @@ func siteGuardRules(env *Env) (string, error) {
 	return rules, nil
 }
 
+// siteGuardStale: the last load failed, so the rules in force may be older
+// than the ports the sites hold; every state save tries again until it works.
+var siteGuardStale atomic.Bool
+
 // applySiteGuard loads the rules now and at every boot (before the network,
 // so before any site's server starts).
-func applySiteGuard(ctx context.Context, env *Env) error {
+func applySiteGuard(ctx context.Context, env *Env) (err error) {
+	defer func() { siteGuardStale.Store(err != nil) }()
 	rules, err := siteGuardRules(env)
 	if err != nil {
 		return err
