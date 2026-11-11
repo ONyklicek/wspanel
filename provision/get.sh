@@ -108,7 +108,11 @@ KEYRING='@KEYRING@'
 FIRST_SIGNED=1.7.1
 verify_signature() {
   if [[ "$(printf '%s\n%s\n' "$FIRST_SIGNED" "${version%%-*}" | sort -V | head -1)" != "$FIRST_SIGNED" ]]; then
-    say "v$version predates signed checksums: checksum only"
+    # Never on its own: whoever could change the releases could otherwise
+    # point the newest one at an old, unsigned number.
+    [[ "${WSPANEL_VERSION#v}" == "$version" && "${WSPANEL_ALLOW_UNSIGNED:-}" == 1 ]] \
+      || die "v$version predates signed releases; to install it anyway: WSPANEL_VERSION=$version WSPANEL_ALLOW_UNSIGNED=1"
+    say "v$version predates signed checksums: checksum only (WSPANEL_ALLOW_UNSIGNED)"
     return 0
   fi
   [[ $KEYRING != @*@ ]] || die "this get.sh carries no signing key: use the one from the release"
