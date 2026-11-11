@@ -74,7 +74,11 @@ jobs:
       # Debian's own checks of all three packages: errors stop the release.
       - name: Lintian
         run: |
-          sudo apt-get install -y -q --no-install-recommends lintian >/dev/null
+          # The runner image's package index goes stale (a security update
+          # replaces the .deb it names): fresh index, and a retry.
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q --no-install-recommends lintian >/dev/null \
+            || { sleep 30; sudo apt-get update -q >/dev/null && sudo apt-get install -y -q --no-install-recommends lintian >/dev/null; }
           mkdir -p dist/lint
           tar -xzf dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz -C dist/lint --strip-components=2 --wildcards 'wspanel/bin/*.deb'
           debs=(dist/lint/*.deb)
