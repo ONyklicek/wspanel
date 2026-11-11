@@ -215,6 +215,42 @@ out=$(tinker '$t = App\Support\AgentTasks::wait(app(App\Actions\Server\ManagePyt
 [[ ${slots[0]} != "${slots[1]}" && ${slots[1]} =~ ^wspanel-web_dj_localhost-appb?\.service$ ]] || fail "the deploys did not alternate the slots: ${slots[*]}"
 on "grep -q 'shop.wsgi:application' /etc/systemd/system/${slots[1]}" || fail "the Django project was not found in manage.py"
 
+log "Inertia SSR: the site's PHP renders through its SSR server, no other site reaches it"
+# Inertia's own server (@inertiajs/core/server) as the SSR worker runs it, and
+# a page doing what Inertia's HTTP gateway does: POST the page to
+# INERTIA_SSR_URL/render, the address the panel wrote into the site's .env.
+ssrdir=$(mktemp -d)
+cat > "$ssrdir/ssr.js" <<'JS'
+import('@inertiajs/core/server').then(({ default: createServer }) =>
+  createServer((page) => ({ head: [], body: '<div id="app">rendered by SSR: ' + page.component + '</div>' }),
+    Number(process.env.INERTIA_SSR_PORT) || 13714))
+JS
+cat > "$ssrdir/ssr-probe.php" <<'PHP'
+<?php
+preg_match('/^INERTIA_SSR_URL="?([^"\n]+)"?$/m', (string) file_get_contents('/srv/sites/app.localhost/shared/.env'), $m);
+$ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => 'Content-Type: application/json', 'timeout' => 5,
+    'content' => json_encode(['component' => 'Smoke/Page', 'props' => [], 'url' => '/', 'version' => ''])]]);
+$answer = json_decode((string) @file_get_contents(rtrim($m[1] ?? '', '/').'/render', false, $ctx), true);
+echo $answer['body'] ?? 'no answer from '.($m[1] ?? 'no INERTIA_SSR_URL');
+PHP
+docker cp "$ssrdir/ssr.js" "$NAME:/root/ssr.js" && docker cp "$ssrdir/ssr-probe.php" "$NAME:/root/ssr-probe.php"; rm -rf "$ssrdir"
+# As the site user (it cannot read /root: the files come on stdin).
+on 'h=/srv/sites/app.localhost; u=$(stat -c %U $h); r=$h/current; as() { runuser -u "$u" -- env HOME=$h/tmp PATH="/etc/panel-sites/bin/$u:/usr/bin:/bin" sh -c "cd $r && $1"; }
+  as "npm install --no-audit --no-fund --silent @inertiajs/core@2 >/dev/null && mkdir -p bootstrap/ssr" \
+    && as "cat > bootstrap/ssr/ssr.js" < /root/ssr.js && as "cat > public/ssr-probe.php" < /root/ssr-probe.php' \
+  || fail "the SSR bundle could not be prepared (npm install @inertiajs/core)"
+out=$(tinker '$o = app(App\Actions\Sites\ManageWorkers::class)->create(App\Models\Site::where("domain", "app.localhost")->first(), "ssr"); echo json_encode($o);')
+[[ $out == *'"ssr"'* || $out == *port* ]] || fail "SSR worker: $out"
+for _ in $(seq 30); do on 'curl -sk --resolve app.localhost:443:127.0.0.1 https://app.localhost/ssr-probe.php | grep -q "rendered by SSR: Smoke/Page"' && break; sleep 1; done
+on 'curl -sk --resolve app.localhost:443:127.0.0.1 https://app.localhost/ssr-probe.php | grep -q "rendered by SSR: Smoke/Page"' \
+  || { on 'curl -sk --resolve app.localhost:443:127.0.0.1 https://app.localhost/ssr-probe.php; journalctl -u "wspanel-*-ssr@*" -n 15 --no-pager' >&2 || true; fail "the site's PHP got no page from its SSR server"; }
+port=$(on 'grep -o "\"ssr_port\": *[0-9]*" /var/lib/panel-agent/sites/app.localhost.json | grep -o "[0-9]*$"')
+[[ $port =~ ^[0-9]+$ ]] || fail "no SSR port in the site's state"
+on "runuser -u \$(stat -c %U /srv/sites/dj.localhost) -- curl -s -o /dev/null -m 5 -X POST http://127.0.0.1:$port/render" \
+  && fail "another site's user reaches the SSR server around the site"
+tinker 'app(App\Actions\Sites\ManageWorkers::class)->delete(App\Models\Site::where("domain", "app.localhost")->first(), "ssr"); echo "ok";' >/dev/null
+on 'h=/srv/sites/app.localhost; u=$(stat -c %U $h); runuser -u "$u" -- rm -rf $h/current/public/ssr-probe.php $h/current/bootstrap/ssr $h/current/node_modules $h/current/package.json $h/current/package-lock.json; runuser -u "$u" -- rmdir --ignore-fail-on-non-empty $h/current/bootstrap; rm -f /root/ssr.js /root/ssr-probe.php'
+
 log "Game server: Minecraft (Paper, the newest version, its Java from Debian)"
 game_call() { tinker '$m = app(App\Actions\Games\ManageGameServers::class); $g = App\Models\GameServer::query()->first(); '"$1"; }
 out=$(tinker '$m = app(App\Actions\Games\ManageGameServers::class); $v = $m->versions(App\Enums\Game::from("minecraft"), "paper")[0] ?? null; $s = $m->create(["name" => "Smoke", "game" => "minecraft", "flavor" => "paper", "version" => $v, "memory_mb" => 1024, "eula" => true]); App\Support\AgentTasks::wait(App\Models\AgentTask::where("subject_id", $s->id)->where("op", "game.create")->latest("id")->first(), 900); echo $s->fresh()->status, " ", $v;')
