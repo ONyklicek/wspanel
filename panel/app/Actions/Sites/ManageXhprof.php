@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -62,17 +63,64 @@ class ManageXhprof
         Cache::forget('xhprof.installed');
     }
 
+    /** How long profiling runs when nobody says otherwise (hours), and at most. */
+    public const DEFAULT_HOURS = 24;
+
+    public const MAX_HOURS = 168;
+
     /**
+     * Profiling slows every measured request several times over (a Livewire
+     * page with tens of thousands of calls: 3-7x on a real site) and keeps
+     * writing its profiles: it runs for a while, then switches itself off.
+     *
      * @param  int|null  $ratio  percent of requests profiled; null = off
+     * @param  int  $hours  how long it runs
      *
      * @throws AgentException
      */
-    public function set(Site $site, ?int $ratio): void
+    public function set(Site $site, ?int $ratio, int $hours = self::DEFAULT_HOURS): void
     {
         $this->agent->call('site.xhprof', $ratio === null
             ? ['domain' => $site->domain, 'enabled' => false]
             : ['domain' => $site->domain, 'enabled' => true, 'ratio' => $ratio]);
-        $site->update(['xhprof' => $ratio === null ? null : ['ratio' => $ratio]]);
+        $until = now()->addHours(min(max($hours, 1), self::MAX_HOURS))->toIso8601String();
+        $site->update(['xhprof' => $ratio === null ? null : ['ratio' => $ratio, 'until' => $until]]);
+    }
+
+    /**
+     * Switches off the profiling whose time is up (the scheduler, every few
+     * minutes). Profiling switched on before it had an end gets a day from now.
+     */
+    public function expire(): int
+    {
+        $done = 0;
+        foreach (Site::acrossClients()->whereNotNull('xhprof')->get() as $site) {
+            $until = $site->xhprof['until'] ?? null;
+            if ($until === null) {
+                $site->update(['xhprof' => $site->xhprof + ['until' => now()->addHours(self::DEFAULT_HOURS)->toIso8601String()]]);
+
+                continue;
+            }
+            if (now()->greaterThanOrEqualTo($until)) {
+                rescue(function () use ($site, &$done) {
+                    $this->set($site, null);
+                    $done++;
+                });
+            }
+        }
+
+        return $done;
+    }
+
+    /** "měří 10 % požadavků do 12. 11. 21:30" */
+    public static function describe(Site $site): string
+    {
+        $text = __('měří :ratio % požadavků', ['ratio' => $site->xhprof['ratio'] ?? 100]);
+        if (isset($site->xhprof['until'])) {
+            $text .= ' '.__('do :time', ['time' => Carbon::parse($site->xhprof['until'])->local()->format('j. n. H:i')]);
+        }
+
+        return $text;
     }
 
     /** The panel link that signs in to the site's XHGui (on the site's domain). */

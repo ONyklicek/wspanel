@@ -3061,5 +3061,11 @@
     "Web je založený, pošta zatím ne": "The site is created, its mail not yet",
     "Poštu pak přidáte v záložce Pošta webu.": "Add the mail later in the site's Mail tab.",
     "Web (směrování a FastCGI)": "Web (routing and FastCGI)",
-    "Statické soubory webů (nginx)": "Sites' static files (nginx)"
+    "Statické soubory webů (nginx)": "Sites' static files (nginx)",
+    "Každý měřený požadavek je několikrát pomalejší. Na produkci stačí pár procent.": "Every measured request is several times slower. On production a few percent are enough.",
+    "Jak dlouho měřit (hodin)": "How long to measure (hours)",
+    "Potom se profilování samo vypne.": "Then profiling switches itself off.",
+    "měří :ratio % požadavků": "measures :ratio % of requests",
+    "do :time": "until :time",
+    ", výsledky v XHGui": ", results in XHGui"
 }

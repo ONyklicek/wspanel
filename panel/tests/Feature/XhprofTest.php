@@ -41,7 +41,8 @@ class XhprofTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('site.xhprof', ['domain' => 'app.example.com', 'enabled' => false])->andReturn([]);
 
         app(ManageXhprof::class)->set($site, 10);
-        $this->assertSame(['ratio' => 10], $site->fresh()->xhprof);
+        $this->assertSame(10, $site->fresh()->xhprof['ratio']);
+        $this->assertTrue(now()->addHours(ManageXhprof::DEFAULT_HOURS)->isSameMinute($site->fresh()->xhprof['until']), 'profiling ends by itself');
 
         app(ManageXhprof::class)->set($site, null);
         $this->assertNull($site->fresh()->xhprof);

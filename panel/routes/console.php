@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Firewall\ManageGeoblock;
+use App\Actions\Sites\ManageXhprof;
 use App\Services\Notify\Heartbeat;
 use App\Support\AgentTasks;
 use App\Support\Features;
@@ -31,6 +32,8 @@ Schedule::command('panel:game-backups')
     ->when(fn () => Features::games())->withoutOverlapping();
 // DMARC aggregate reports for the hosted mail domains (from Postfix's spool).
 Schedule::command('panel:dmarc')->everyFiveMinutes()->withoutOverlapping();
+// Profiling whose time is up switches off (it slows every measured request).
+Schedule::call(fn () => app(ManageXhprof::class)->expire())->name('xhprof-expire')->everyFiveMinutes()->withoutOverlapping();
 // Blocking by country: the address ranges change, download them again weekly.
 Schedule::call(fn () => app(ManageGeoblock::class)->refresh())->name('geoblock-refresh')->weekly()->withoutOverlapping();
 // A newer WSPanel: asked once a day, at a time of this server's own so that

@@ -885,14 +885,18 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode === SiteMode::Classic && app(ManageXhprof::class)->installed())
             ->modalHeading(fn (Site $record) => __('Profilování :domain', ['domain' => $record->domain]))
             ->modalDescription(__('XHProf změří, kolik času a paměti zabraly jednotlivé funkce, a výsledky ukáže XHGui. Profily zůstávají v adresáři webu a vidí je jen ten, kdo vidí web. Profilování zpomaluje měřené požadavky, na produkci měřte jen část.'))
-            ->fillFormUsing(fn (Site $record) => ['enabled' => $record->xhprof !== null, 'ratio' => $record->xhprof['ratio'] ?? 100])
+            ->fillFormUsing(fn (Site $record) => ['enabled' => $record->xhprof !== null, 'ratio' => $record->xhprof['ratio'] ?? 10, 'hours' => ManageXhprof::DEFAULT_HOURS])
             ->form([
                 Toggle::make('enabled')->label(__('Profilovat požadavky'))->live(),
                 TextInput::make('ratio')->label(__('Kolik požadavků měřit (%)'))->integer()->visibleWhen('enabled', true)->requiredIf('enabled', true)
+                    ->helperText(__('Každý měřený požadavek je několikrát pomalejší. Na produkci stačí pár procent.'))
                     ->rules(['nullable', 'integer', 'between:1,100']),
+                TextInput::make('hours')->label(__('Jak dlouho měřit (hodin)'))->integer()->visibleWhen('enabled', true)->requiredIf('enabled', true)
+                    ->helperText(__('Potom se profilování samo vypne.'))
+                    ->rules(['nullable', 'integer', 'between:1,'.ManageXhprof::MAX_HOURS]),
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Profilování se nepodařilo nastavit'), function () use ($record, $data) {
-                app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null);
+                app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null, (int) ($data['hours'] ?? ManageXhprof::DEFAULT_HOURS));
                 Toast::success($data['enabled'] ? __('Profilování zapnuto') : __('Profilování vypnuto'), $data['enabled']
                     ? __('Otevřete web, ať vzniknou první měření. Výsledky: tlačítko Otevřít XHGui v Nastavení → Výkon a ladění, na přehledu webu nebo v menu Další.') : null);
             }));

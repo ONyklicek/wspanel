@@ -152,7 +152,7 @@ class SiteSettings extends ViewPage
                         $site->mode !== SiteMode::Classic => __('jen v režimu Classic (PHP-FPM)'),
                         ! app(ManageXhprof::class)->installed() => __('modul není nainstalovaný (Server → Moduly)'),
                         $site->xhprof === null => __('vypnuté'),
-                        default => __('měří ').($site->xhprof['ratio'] ?? 100).__(' % požadavků, výsledky v XHGui'),
+                        default => ManageXhprof::describe($site).__(', výsledky v XHGui'),
                     }),
                 ]),
             Section::make('mounts')->label(__('Síťové disky'))->icon('outline:server-stack')

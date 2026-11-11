@@ -139,7 +139,7 @@ class ViewSite extends ViewPage
                         ? [Action::make('openStaging')->label($other->domain)->icon('outline:beaker')->color('gray')->size('sm')->url(SiteResource::url('view', $other))] : []),
                 TextEntry::make('xhprof')->label(__('Profilování (XHProf)'))
                     ->visible(fn () => $site->xhprof !== null)
-                    ->state(fn () => __('měří ').($site->xhprof['ratio'] ?? 100).__(' % požadavků'))
+                    ->state(fn () => ManageXhprof::describe($site))
                     ->actions([Action::make('openXhgui')->label(__('Otevřít XHGui'))->icon('outline:chart-bar')->color('gray')->size('sm')
                         ->url(ManageXhprof::viewerUrl($site), openInNewTab: true)]),
                 TextEntry::make('mail')->label(__('Pošta'))
