@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"math/big"
@@ -93,6 +94,19 @@ func workerAppEnv(ctx context.Context, env *Env, l siteLayout, st siteState, wor
 		set("VITE_REVERB_HOST", l.Domain)
 		set("VITE_REVERB_PORT", strconv.Itoa(publicPort))
 		set("VITE_REVERB_SCHEME", "https")
+		// Web Push beside it (laravel-notification-channels/webpush): the
+		// VAPID pair as webpush:vapid makes it. Kept as a pair: a public key
+		// the browsers subscribed with never meets a new private key.
+		pub, priv := current["VAPID_PUBLIC_KEY"], current["VAPID_PRIVATE_KEY"]
+		if pub == "" || priv == "" {
+			if pub, priv, err = vapidKeys(); err != nil {
+				return err
+			}
+		}
+		set("VAPID_SUBJECT", keep("VAPID_SUBJECT", func() string { return "https://" + l.Domain }))
+		set("VAPID_PUBLIC_KEY", pub)
+		set("VAPID_PRIVATE_KEY", priv)
+		set("VITE_VAPID_PUBLIC_KEY", pub)
 	case "ssr":
 		set("INERTIA_SSR_ENABLED", "true")
 		set("INERTIA_SSR_URL", "http://127.0.0.1:"+strconv.Itoa(st.SSRPort))
@@ -111,6 +125,17 @@ func checkValkeyWorker(st siteState, worker string) error {
 		return protocol.Conflict(worker + " needs the site's Valkey (valkey.set first)")
 	}
 	return nil
+}
+
+// vapidKeys is a Web Push key pair (RFC 8292) in the form the PHP web-push
+// library reads: base64url without padding, the P-256 public point
+// uncompressed (65 bytes) and the private scalar (32 bytes).
+func vapidKeys() (public, private string, err error) {
+	k, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(k.PublicKey().Bytes()), base64.RawURLEncoding.EncodeToString(k.Bytes()), nil
 }
 
 func randomDigits(n int) string {

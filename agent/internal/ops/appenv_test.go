@@ -1,7 +1,10 @@
 package ops
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdh"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
@@ -246,5 +249,61 @@ func TestSSRHintsReadTheApp(t *testing.T) {
 	files["resources/js/ssr.tsx"] = "createServer(render, Number(process.env.INERTIA_SSR_PORT) || 13714)"
 	if h := ssrHints(context.Background(), env, l); len(h) != 0 {
 		t.Fatalf("hints for a ready app: %v", h)
+	}
+}
+
+// Web Push with Reverb: a VAPID pair the PHP web-push library accepts, its
+// public key in the frontend too, and an existing pair never broken up.
+func TestReverbSetsUpAVapidPairForWebPush(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "wp.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, workerCreate, map[string]any{"domain": "wp.example.com", "worker": "reverb"}); err != nil {
+		t.Fatal(err)
+	}
+	v := parseDotenv(lastEnvWrite(dr))
+	pub, err := base64.RawURLEncoding.DecodeString(v["VAPID_PUBLIC_KEY"])
+	if err != nil || len(pub) != 65 || pub[0] != 4 {
+		t.Fatalf("VAPID_PUBLIC_KEY %q is not an uncompressed P-256 point in base64url", v["VAPID_PUBLIC_KEY"])
+	}
+	priv, err := base64.RawURLEncoding.DecodeString(v["VAPID_PRIVATE_KEY"])
+	if err != nil || len(priv) != 32 {
+		t.Fatalf("VAPID_PRIVATE_KEY is not a 32-byte scalar in base64url")
+	}
+	k, err := ecdh.P256().NewPrivateKey(priv)
+	if err != nil || !bytes.Equal(k.PublicKey().Bytes(), pub) {
+		t.Error("the private key does not belong to the public one")
+	}
+	if v["VITE_VAPID_PUBLIC_KEY"] != v["VAPID_PUBLIC_KEY"] || v["VAPID_SUBJECT"] != "https://wp.example.com" {
+		t.Errorf("the frontend's key or the subject: %v", v)
+	}
+
+	// An existing pair stays; a public key alone is replaced with a new pair.
+	for name, c := range map[string]struct {
+		domain   string
+		file     string
+		keepPair bool
+	}{
+		"a pair":            {"wp1.example.com", "VAPID_PUBLIC_KEY=mypub\nVAPID_PRIVATE_KEY=mypriv\nVAPID_SUBJECT=mailto:me@example.com\n", true},
+		"a public key only": {"wp2.example.com", "VAPID_PUBLIC_KEY=mypub\n", false},
+	} {
+		if _, err := call(t, env, siteCreate, map[string]string{"domain": c.domain, "framework": "laravel", "php_version": "8.4"}); err != nil {
+			t.Fatal(err)
+		}
+		dr.Responder = func(call executor.Call) (executor.Result, error) {
+			if call.Name == "setpriv" && strings.Contains(call.String(), "/usr/bin/cat") {
+				return executor.Result{Stdout: c.file}, nil
+			}
+			return executor.Result{}, nil
+		}
+		if _, err := call(t, env, workerCreate, map[string]any{"domain": c.domain, "worker": "reverb"}); err != nil {
+			t.Fatal(err)
+		}
+		v := parseDotenv(lastEnvWrite(dr))
+		kept := v["VAPID_PUBLIC_KEY"] == "mypub" && v["VAPID_PRIVATE_KEY"] == "mypriv" && v["VAPID_SUBJECT"] == "mailto:me@example.com"
+		if kept != c.keepPair || (!c.keepPair && v["VAPID_PUBLIC_KEY"] == "mypub") {
+			t.Errorf("%s: %v", name, v)
+		}
 	}
 }

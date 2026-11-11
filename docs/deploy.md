@@ -240,6 +240,9 @@ Když release přinese vlastní `.env` (typicky ho sestaví GitHub Actions z
   (`REDIS_*`), kde aplikace publikuje do Reverbu a kde Reverb poslouchá,
   ovladače zvolené u Valkey/Horizonu. Klíče aplikace Reverbu (`REVERB_APP_*`)
   a `VITE_REVERB_*` vyhrávají z releasu (frontend je s nimi sestavený v CI),
+  stejně jako klíče Web Push (`VAPID_*`, `VITE_VAPID_PUBLIC_KEY`). Panel je
+  vygeneruje se zapnutím Reverbu, jen když v `.env` ještě nejsou, a vždy jako
+  pár (formát `php artisan webpush:vapid`; `VAPID_SUBJECT` = adresa webu),
 - **„Konfigurace z deploye má přednost“** (Nastavení deploye): platí `.env`
   z releasu celý; panel hlídá jen port, na kterém poslouchá Reverb.
 
