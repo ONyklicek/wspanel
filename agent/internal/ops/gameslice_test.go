@@ -12,6 +12,8 @@ import (
 // game servers is checked only where a test sets hostMemoryMB.
 func TestMain(m *testing.M) {
 	hostMemoryMB = func() int { return 0 }
+	// The app's config refresh in place, so a test sees what it ran.
+	runAppRefresh = func(f func()) { f() }
 	os.Exit(m.Run())
 }
 

@@ -312,6 +312,34 @@ func TestReverbSetsUpAVapidPairForWebPush(t *testing.T) {
 	}
 }
 
+// The app's own code (artisan) never runs inside the operation: it holds the
+// agent's lock for mutating operations, and an app that took minutes would
+// freeze every other client's panel with each change of its env file.
+func TestTheConfigRefreshRunsOutsideTheOperation(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "slow.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := layoutFor(t, env, "slow.example.com")
+	cache := filepath.Join(l.Home, "current", "bootstrap", "cache")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "config.php"), []byte("<?php return [];"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var deferred []func()
+	prev := runAppRefresh
+	runAppRefresh = func(f func()) { deferred = append(deferred, f) }
+	t.Cleanup(func() { runAppRefresh = prev })
+	if _, err := call(t, env, envSet, map[string]string{"domain": "slow.example.com", "content": "APP_NAME=x\n"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(deferred) != 1 {
+		t.Fatalf("the refresh was not handed off (%d), it ran inside the operation", len(deferred))
+	}
+}
+
 // A change the panel makes to a Laravel site's env file reaches the app
 // whose configuration is cached: the cache is written again and the queue
 // workers restart. An app that does not cache is left alone.

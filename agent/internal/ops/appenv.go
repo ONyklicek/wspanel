@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"wspanel/agent/internal/config"
 	"wspanel/agent/internal/fsx"
@@ -340,20 +341,35 @@ func refreshAppConfig(ctx context.Context, env *Env, l siteLayout) {
 	if l.Framework != "laravel" || !fsx.Exists(cached) {
 		return
 	}
-	php := filepath.Join(env.Cfg.ToolsDir, l.User, "php")
-	artisan := func(cmd string) error {
-		_, err := env.Exec.Run(ctx, "systemd-run", append(sandboxRunArgs(env, l, dir, nil), php, "artisan", cmd)...)
-		return err
-	}
-	if err := artisan("config:cache"); err != nil {
-		_ = asUser(ctx, env, l.User, "/usr/bin/rm", "-f", "--", cached)
-	}
-	// Production OPcache does not look at files again: it would keep serving
-	// the configuration it compiled before. FPM's reload starts it afresh.
-	if l.OpcacheProduction && l.Mode == "classic" && l.PHPVersion != "" {
-		if validateFPM(ctx, env, l.PHPVersion) == nil {
-			_, _ = env.Exec.Run(ctx, "systemctl", "reload", config.ForVersion(env.Cfg.FPMUnit, l.PHPVersion))
+	// The site's own code runs here (artisan boots the app), so not inside
+	// the operation: it holds the agent's lock for mutating operations, and
+	// an app that took its time (or meant to) would freeze every other
+	// client's panel. The operation returns; this follows on its own, with
+	// a deadline of its own.
+	runAppRefresh(func() {
+		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), appRefreshTimeout)
+		defer cancel()
+		php := filepath.Join(env.Cfg.ToolsDir, l.User, "php")
+		artisan := func(cmd string) error {
+			_, err := env.Exec.Run(bg, "systemd-run", append(sandboxRunArgs(env, l, dir, nil), php, "artisan", cmd)...)
+			return err
 		}
-	}
-	_ = artisan("queue:restart")
+		if err := artisan("config:cache"); err != nil {
+			_ = asUser(bg, env, l.User, "/usr/bin/rm", "-f", "--", cached)
+		}
+		// Production OPcache does not look at files again: it would keep serving
+		// the configuration it compiled before. FPM's reload starts it afresh.
+		if l.OpcacheProduction && l.Mode == "classic" && l.PHPVersion != "" {
+			if validateFPM(bg, env, l.PHPVersion) == nil {
+				_, _ = env.Exec.Run(bg, "systemctl", "reload", config.ForVersion(env.Cfg.FPMUnit, l.PHPVersion))
+			}
+		}
+		_ = artisan("queue:restart")
+	})
 }
+
+// appRefreshTimeout bounds refreshAppConfig's run of the app's own code.
+const appRefreshTimeout = 3 * time.Minute
+
+// runAppRefresh runs a refresh outside the operation (tests run it in place).
+var runAppRefresh = func(f func()) { go f() }
