@@ -323,7 +323,7 @@ if [[ $MODE == bundle ]]; then
   # Every site backed up (a site without a backup would come back empty).
   [[ "$(tinker '$ok = App\Models\Site::query()->get()->every(fn ($s) => App\Support\AgentTasks::wait(app(App\Actions\Sites\ManageSiteBackups::class)->backupNow($s), 600)->status === "done"); echo $ok ? "done" : "running";')" == "done" ]] \
     || fail "the site backups did not finish"
-  key=$(tinker 'echo app(App\Actions\Server\ManageOffsite::class)->signingKey();')
+  key=$(on '/usr/sbin/panel-agent -config /etc/panel-agent/agent.json -recovery-key')
   [[ $key =~ ^[0-9a-f]{64}$ ]] || fail "no recovery key: $key"
   on 'cd /srv/panel/current && runuser -u panel -- php artisan panel:server-backup >/dev/null' || fail "the server backup did not start"
   for _ in $(seq 1 60); do on 'ls /var/backups/wspanel/server/*.wspbak >/dev/null 2>&1 && ls /var/backups/wspanel/mail/app.localhost/*.tar.gz >/dev/null 2>&1' && break; sleep 2; done
