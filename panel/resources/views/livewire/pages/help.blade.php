@@ -7,6 +7,9 @@
             @endforeach
         </nav>
         <x-wire::section>
+            @if (app()->getLocale() !== 'cs')
+                <x-wire::callout color="info" class="mb-4" :heading="__('Dokumentace je zatím jen česky')">{{ __('Celé rozhraní panelu je přeložené; tyto stránky ne. Překlad stránky v prohlížeči (např. Chrome → Přeložit) je čte dobře.') }}</x-wire::callout>
+            @endif
             <article class="wsp-doc">{{ $this->renderedDoc() }}</article>
         </x-wire::section>
     </div>
