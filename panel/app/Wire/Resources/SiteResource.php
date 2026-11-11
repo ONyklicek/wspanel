@@ -207,6 +207,9 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     ? __('Nic nechybělo.')
                     : __('Přidáno: :list', ['list' => implode(', ', $out['added'])]).($out['kept'] === [] ? '' : ' '.__('Ponecháno (míří jinam): :list', ['list' => implode(', ', $out['kept'])])));
             }
+            if ($out['mail_error'] !== null) {
+                Toast::warning(__('Web je založený, pošta zatím ne'), $out['mail_error'].' '.__('Poštu pak přidáte v záložce Pošta webu.'));
+            }
         } catch (\Throwable $e) {
             report($e);
             Toast::warning(__('Web je založený, DNS se nepodařilo nastavit'), $e->getMessage().' '.__('Dokončíte to v záložce DNS webu.'));

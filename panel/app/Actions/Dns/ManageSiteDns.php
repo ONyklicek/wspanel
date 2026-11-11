@@ -9,6 +9,7 @@ use App\Livewire\Sites\SiteMail;
 use App\Models\DnsZone;
 use App\Models\MailDomain;
 use App\Models\Site;
+use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
@@ -320,16 +321,26 @@ class ManageSiteDns
      * so its records come along.
      *
      * @param  array{dns?: string|null, dns_zone?: string|null, cloudflare_token?: string|null, mail?: bool}  $data
-     * @return array{zone: ?string, added: list<string>, kept: list<string>, mail: bool}
+     * @return array{zone: ?string, added: list<string>, kept: list<string>, mail: bool, mail_error: ?string}
      *
      * @throws \Throwable (the site stays, the caller reports it)
      */
     public function setUpForNewSite(Site $site, array $data): array
     {
         $mail = false;
+        $mailError = null;
         if (($data['mail'] ?? false) && ! MailDomain::query()->where('domain', SiteMail::mailDomainName($site))->exists()) {
-            app(ManageMailHosting::class)->addDomain(SiteMail::mailDomainName($site), $site->client);
-            $mail = true;
+            try {
+                app(ManageMailHosting::class)->addDomain(SiteMail::mailDomainName($site), $site->client);
+                $mail = true;
+            } catch (AgentException $e) {
+                // A client's domain the public DNS does not point here yet: the
+                // zone is still set up, the mail follows once DNS says so.
+                if ($e->errorCode !== 'forbidden') {
+                    throw $e;
+                }
+                $mailError = $e->getMessage();
+            }
         }
         $mode = $data['dns'] ?? 'none';
         if (in_array($mode, [DnsProvider::Local->value, DnsProvider::Cloudflare->value], true) && self::zoneFor($site->domain) === null) {
@@ -341,9 +352,9 @@ class ManageSiteDns
             ]);
         }
         if ($mode === 'none' || self::zoneFor($site->domain) === null) {
-            return ['zone' => null, 'added' => [], 'kept' => [], 'mail' => $mail];
+            return ['zone' => null, 'added' => [], 'kept' => [], 'mail' => $mail, 'mail_error' => $mailError];
         }
 
-        return ['zone' => self::zoneFor($site->domain)->domain] + $this->fill($site) + ['mail' => $mail];
+        return ['zone' => self::zoneFor($site->domain)->domain] + $this->fill($site) + ['mail' => $mail, 'mail_error' => $mailError];
     }
 }

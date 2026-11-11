@@ -10,6 +10,7 @@ use App\Models\MailDomain;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Services\Dns\DomainProof;
 use App\Support\AgentTasks;
 use App\Support\CurrentClient;
 use App\Support\DomainOwnership;
@@ -277,8 +278,22 @@ class ManageMailHosting
         if (DomainOwnership::takenByAnother($domain, $ownerId)) {
             throw new AgentException('forbidden', __('Doména (nebo její část) patří webu, DNS zóně či poště jiného vlastníka.'), 'panel');
         }
-        if ($ownerId !== null && ! DomainOwnership::owns($domain, $ownerId)) {
+        if ($ownerId === null) {
+            return;
+        }
+        if (! DomainOwnership::owns($domain, $ownerId)) {
             throw new AgentException('forbidden', __('Poštu lze zřídit jen pro doménu vašeho webu nebo DNS zóny.'), 'panel');
+        }
+        // A site or a zone here is no proof: anybody may create one for any
+        // name. Mail delivered here is, so the public DNS has to say so.
+        if (DomainProof::isAnotherUsersMail($domain, $ownerId)) {
+            throw new AgentException('forbidden', __('Na této doméně má e-mail jiný uživatel panelu; poštu pro ni může zřídit jen správce.'), 'panel');
+        }
+        if (! app(DomainProof::class)->proven($domain, $ownerId)) {
+            $txt = DomainProof::challenge($domain, $ownerId);
+            throw new AgentException('forbidden', __('DNS zatím neukazuje, že doména :domain je vaše. Nasměrujte její MX na :mail nebo její A záznam na tento server, případně přidejte TXT záznam :name s hodnotou :value, a zkuste to znovu.', [
+                'domain' => $domain, 'mail' => self::mailHost(), 'name' => $txt['name'], 'value' => $txt['value'],
+            ]), 'panel');
         }
     }
 

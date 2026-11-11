@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
+use App\Services\Dns\DomainProof;
 use App\Services\Dns\Resolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -93,6 +94,8 @@ class MailHostingTest extends TestCase
         Site::acrossClients()->create(['domain' => 'alice.cz', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
         Site::acrossClients()->create(['domain' => 'shop.bob.cz', 'client_id' => $bob->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
         $this->actingAs(User::factory()->forClient($alice)->create());
+        $dns = ['alice.cz|'.DNS_A => ['203.0.113.7']];
+        $this->fakeDns($dns);
         $mail = app(ManageMailHosting::class);
 
         $this->assertSame($alice->id, $mail->addDomain('alice.cz')->client_id);
@@ -105,6 +108,49 @@ class MailHostingTest extends TestCase
             }
         }
         $this->assertFalse(MailDomain::acrossClients()->where('domain', 'bob.cz')->exists());
+    }
+
+    public function test_a_site_of_a_client_is_no_claim_to_mail_the_public_dns_does_not_give_them(): void
+    {
+        $alice = Client::factory()->create();
+        foreach (['gmail.com', 'firma.cz'] as $domain) {
+            Site::acrossClients()->create(['domain' => $domain, 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        }
+        $this->actingAs(User::factory()->forClient($alice)->create());
+        $dns = ['gmail.com|'.DNS_MX => ['gmail-smtp-in.l.google.com.'], 'gmail-smtp-in.l.google.com|'.DNS_A => ['142.250.1.26']];
+        $this->fakeDns($dns);
+        $mail = app(ManageMailHosting::class);
+
+        // Every message this server sends to the domain would be delivered here.
+        $txt = DomainProof::challenge('gmail.com', $alice->id);
+        try {
+            $mail->addDomain('gmail.com');
+            $this->fail('a mail provider\'s domain was taken over');
+        } catch (AgentException $e) {
+            $this->assertStringContainsString('DNS zatím neukazuje', $e->getMessage());
+            $this->assertStringContainsString($txt['name'].' s hodnotou '.$txt['value'], $e->getMessage(), 'the client is told how to prove it');
+        }
+        $this->assertFalse(MailDomain::acrossClients()->where('domain', 'gmail.com')->exists());
+
+        $dns['firma.cz|'.DNS_MX] = ['mail.hosting.cz.'];
+        $this->assertSame($alice->id, $mail->addDomain('firma.cz')->client_id, 'MX pointing here is proof');
+
+        $dns[$txt['name'].'|'.DNS_TXT] = [$txt['value']];
+        $this->assertSame($alice->id, $mail->addDomain('gmail.com')->client_id, 'so is the TXT record');
+    }
+
+    public function test_a_client_never_takes_the_mail_of_another_panel_users_domain(): void
+    {
+        User::factory()->create(['email' => 'admin@spravce.cz']);
+        $alice = Client::factory()->create();
+        Site::acrossClients()->create(['domain' => 'spravce.cz', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $this->actingAs(User::factory()->forClient($alice)->create(['email' => 'alice@alice.cz']));
+        $dns = ['spravce.cz|'.DNS_A => ['203.0.113.7']];
+        $this->fakeDns($dns);
+
+        // The administrator's password reset would land in the client's mailbox.
+        $this->expectExceptionMessage('jiný uživatel panelu');
+        app(ManageMailHosting::class)->addDomain('spravce.cz');
     }
 
     public function test_a_subdomain_site_is_no_claim_to_the_parent_domains_mail(): void

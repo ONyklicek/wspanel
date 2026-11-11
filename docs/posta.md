@@ -100,6 +100,21 @@ DNS zóně. Doménu, kterou používá web či zóna jiného vlastníka, nezří
 (ani správce: četl by jeho poštu). Při přesunu webu ke klientovi jde jeho
 pošta s ním.
 
+Klient navíc doménu prokazuje ve veřejném DNS. Pošta pro doménu zřízenou na
+serveru se doručuje sem, včetně pošty, kterou server sám odesílá (třeba reset
+hesla správce), a web nebo zónu si může založit kdokoli pro jakékoli jméno.
+Stačí jedno z toho:
+
+- MX domény míří na server pošty (nebo na jeho IP),
+- A/AAAA záznam domény míří na tento server,
+- doména je delegovaná na nameservery tohoto serveru,
+- TXT záznam `_wspanel.<doména>` s hodnotou, kterou panel ukáže v chybě při
+  přidání domény.
+
+Doménu, na které má e-mail jiný uživatel panelu (i správce), zřídí jen
+správce. Správce sám nic prokazovat nemusí. Domény bez veřejného vlastníka
+(`.test`, `.internal`, …) se neprokazují.
+
 - **Nová schránka:** adresa, heslo (prázdné = vygeneruje se a ukáže jednou),
   velikost. Heslo panel odešle na server jen jako hash (SHA512-CRYPT),
   v čitelné podobě ho neuloží nikde. Dokud MX domény nemíří na server pošty
