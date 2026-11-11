@@ -112,8 +112,9 @@ Stačí jedno z toho:
   přidání domény.
 
 Doménu, na které má e-mail jiný uživatel panelu (i správce), zřídí jen
-správce. Správce sám nic prokazovat nemusí. Domény bez veřejného vlastníka
-(`.test`, `.internal`, …) se neprokazují.
+správce. Správce sám nic prokazovat nemusí. U jmen mimo veřejné DNS
+(`.lan`, `.internal`, …) platí jen TXT záznam, jinak je klientovi zřídí
+správce.
 
 - **Nová schránka:** adresa, heslo (prázdné = vygeneruje se a ukáže jednou),
   velikost. Heslo panel odešle na server jen jako hash (SHA512-CRYPT),

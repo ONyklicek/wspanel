@@ -36,18 +36,20 @@ class DomainProof
 
     /**
      * The public DNS points the domain here or carries the owner's TXT record.
-     * A name nobody can register (.test, .internal, …) has no public owner
-     * to take it from, and nothing to prove it with.
+     * A name outside the public DNS (.lan, .internal, …) proves nothing by
+     * pointing here: it may be the network's own mail, which this server
+     * sends to as well. Only its TXT record counts; otherwise the
+     * administrator sets it up.
      */
     public function proven(string $domain, int $ownerId): bool
     {
         $domain = strtolower($domain);
-        if (! PublicAddress::host($domain)) {
-            return true;
-        }
         $challenge = self::challenge($domain, $ownerId);
         if (in_array($challenge['value'], $this->dns->records($challenge['name'], DNS_TXT, 'txt'), true)) {
             return true;
+        }
+        if (! PublicAddress::host($domain)) {
+            return false;
         }
         $mailHost = strtolower(ManageMailHosting::mailHost());
         $ips = array_values(array_filter([(string) config('panel.public_ipv4'), (string) config('panel.public_ipv6')]));

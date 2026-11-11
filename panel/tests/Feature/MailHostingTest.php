@@ -137,6 +137,12 @@ class MailHostingTest extends TestCase
 
         $dns[$txt['name'].'|'.DNS_TXT] = [$txt['value']];
         $this->assertSame($alice->id, $mail->addDomain('gmail.com')->client_id, 'so is the TXT record');
+
+        // A network's own name pointing here proves nothing.
+        Site::acrossClients()->create(['domain' => 'firma.lan', 'client_id' => $alice->id, 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active']);
+        $dns['firma.lan|'.DNS_A] = ['203.0.113.7'];
+        $this->expectExceptionMessage('DNS zatím neukazuje');
+        $mail->addDomain('firma.lan');
     }
 
     public function test_a_client_never_takes_the_mail_of_another_panel_users_domain(): void
