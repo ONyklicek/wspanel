@@ -38,7 +38,7 @@ func TestReverbConfiguresTheApp(t *testing.T) {
 	port := itoa(out.(map[string]any)["port"].(int))
 	e := lastEnvWrite(dr)
 	for _, want := range []string{
-		`BROADCAST_CONNECTION="reverb"`, `REVERB_HOST="127.0.0.1"`, `REVERB_PORT="` + port + `"`, `REVERB_SCHEME="http"`,
+		`BROADCAST_CONNECTION="reverb"`, `BROADCAST_DRIVER="reverb"`, `REVERB_HOST="127.0.0.1"`, `REVERB_PORT="` + port + `"`, `REVERB_SCHEME="http"`,
 		`REVERB_SERVER_HOST="127.0.0.1"`, `REVERB_SERVER_PORT="` + port + `"`,
 		`VITE_REVERB_HOST="rt.example.com"`, `VITE_REVERB_PORT="8443"`, `VITE_REVERB_SCHEME="https"`, `REVERB_APP_ID="`, `REVERB_APP_SECRET="`,
 	} {
@@ -83,6 +83,10 @@ func TestValkeyUseSetsLaravelDrivers(t *testing.T) {
 	v := parseDotenv(lastEnvWrite(dr))
 	if v["CACHE_STORE"] != "redis" || v["QUEUE_CONNECTION"] != "redis" || v["SESSION_DRIVER"] != "database" {
 		t.Errorf("drivers: %v", v)
+	}
+	// An app whose config/cache.php still reads the name before Laravel 11.
+	if v["CACHE_DRIVER"] != "redis" {
+		t.Errorf("CACHE_DRIVER must follow CACHE_STORE: %v", v)
 	}
 	if _, err := call(t, env, valkeySet, map[string]any{"domain": "u.example.com", "enabled": true, "maxmemory_mb": 64, "use": []string{"everything"}}); code(err) != "invalid_params" {
 		t.Errorf("unknown use: %v", err)
@@ -305,5 +309,65 @@ func TestReverbSetsUpAVapidPairForWebPush(t *testing.T) {
 		if kept != c.keepPair || (!c.keepPair && v["VAPID_PUBLIC_KEY"] == "mypub") {
 			t.Errorf("%s: %v", name, v)
 		}
+	}
+}
+
+// A change the panel makes to a Laravel site's env file reaches the app
+// whose configuration is cached: the cache is written again and the queue
+// workers restart. An app that does not cache is left alone.
+func TestAnEnvChangeReachesALaravelAppWithCachedConfiguration(t *testing.T) {
+	env, dr := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "cc.example.com", "framework": "laravel", "php_version": "8.4"}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := layoutFor(t, env, "cc.example.com")
+	artisan := func() []string {
+		var out []string
+		for _, c := range dr.Calls() {
+			if args := strings.Join(c.Args, " "); c.Name == "systemd-run" && strings.Contains(args, " artisan ") {
+				out = append(out, args[strings.Index(args, "artisan"):])
+			}
+		}
+		return out
+	}
+	if _, err := call(t, env, envSet, map[string]string{"domain": "cc.example.com", "content": "APP_NAME=x\n"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := artisan(); len(got) != 0 {
+		t.Errorf("an app without a configuration cache got one: %v", got)
+	}
+	cache := filepath.Join(l.Home, "current", "bootstrap", "cache")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "config.php"), []byte("<?php return [];"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, envSet, map[string]string{"domain": "cc.example.com", "content": "APP_NAME=y\n"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(artisan(), ", "); got != "artisan config:cache, artisan queue:restart" {
+		t.Errorf("after the change: %q, want the cache written again and the workers restarted", got)
+	}
+
+	// Production OPcache keeps what it compiled: FPM reloads to see the new cache.
+	st, _, err := loadSite(env, "cc.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.OpcacheProduction = true
+	if err := saveSiteState(env, st); err != nil {
+		t.Fatal(err)
+	}
+	before := len(dr.Calls())
+	if _, err := call(t, env, envSet, map[string]string{"domain": "cc.example.com", "content": "APP_NAME=z\n"}); err != nil {
+		t.Fatal(err)
+	}
+	var reloaded bool
+	for _, c := range dr.Calls()[before:] {
+		reloaded = reloaded || (c.Name == "systemctl" && strings.Join(c.Args, " ") == "reload php8.4-fpm.service")
+	}
+	if !reloaded {
+		t.Error("production OPcache keeps the old configuration: FPM was not reloaded")
 	}
 }

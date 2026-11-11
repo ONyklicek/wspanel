@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"wspanel/agent/internal/config"
+	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 )
 
@@ -38,6 +40,9 @@ func valkeyUseEnv(framework string, uses []string, port int, password string) ([
 			}
 		}
 		set("CACHE_STORE", "redis", "database", "cache")
+		// The name before Laravel 11, which an app's config/cache.php keeps
+		// reading when it was not brought up to date: it stayed on files.
+		set("CACHE_DRIVER", "redis", "database", "cache")
 		set("SESSION_DRIVER", "redis", "database", "session")
 		set("QUEUE_CONNECTION", "redis", "database", "queue")
 	case "symfony":
@@ -80,6 +85,7 @@ func workerAppEnv(ctx context.Context, env *Env, l siteLayout, st siteState, wor
 		secret := keep("REVERB_APP_SECRET", func() string { return randomToken(32) })
 		port := strconv.Itoa(st.ReverbPort)
 		set("BROADCAST_CONNECTION", "reverb")
+		set("BROADCAST_DRIVER", "reverb") // the name before Laravel 11 (config/broadcasting.php of older apps)
 		set("REVERB_APP_ID", id)
 		set("REVERB_APP_KEY", key)
 		set("REVERB_APP_SECRET", secret)
@@ -117,7 +123,11 @@ func workerAppEnv(ctx context.Context, env *Env, l siteLayout, st siteState, wor
 	default:
 		return nil
 	}
-	return writeSiteFile(ctx, env, l, path, mergeEnvSection(content, keys, values, "Set up by WSPanel for "+worker))
+	if err := writeSiteFile(ctx, env, l, path, mergeEnvSection(content, keys, values, "Set up by WSPanel for "+worker)); err != nil {
+		return err
+	}
+	refreshAppConfig(ctx, env, l)
+	return nil
 }
 
 func checkValkeyWorker(st siteState, worker string) error {
@@ -194,7 +204,7 @@ func panelManagedKeys(env *Env, l siteLayout, st siteState, current map[string]s
 	}
 	if st.Valkey != nil {
 		keys, _ := valkeyUseEnv(l.Framework, st.Valkey.Use, 0, "")
-		uses := map[string]string{"CACHE_STORE": "cache", "SESSION_DRIVER": "session", "QUEUE_CONNECTION": "queue", "MESSENGER_TRANSPORT_DSN": "queue"}
+		uses := map[string]string{"CACHE_STORE": "cache", "CACHE_DRIVER": "cache", "SESSION_DRIVER": "session", "QUEUE_CONNECTION": "queue", "MESSENGER_TRANSPORT_DSN": "queue"}
 		for _, k := range keys {
 			if slices.Contains(st.Valkey.Use, uses[k]) {
 				out[k] = true
@@ -313,4 +323,37 @@ func envFromRelease(in map[string]string, managed map[string]bool) (keys []strin
 	slices.Sort(keys)
 	slices.Sort(kept)
 	return keys, values, kept
+}
+
+// refreshAppConfig follows a change the panel made to a Laravel site's env
+// file. A deployed app keeps its configuration cached (artisan optimize):
+// the new values (a database's credentials, Valkey, Reverb, Prostředí) would
+// reach it only with the next deploy, and the usual way out, optimize:clear,
+// left the app reading every configuration file on every request (a third
+// slower on rc9). The cache is written again; when the app refuses, it is
+// removed (right values before speed). Queue workers keep the configuration
+// they started with, so they are asked to restart. An app that never cached
+// its configuration is left that way.
+func refreshAppConfig(ctx context.Context, env *Env, l siteLayout) {
+	dir := filepath.Join(l.Home, "current")
+	cached := filepath.Join(dir, "bootstrap", "cache", "config.php")
+	if l.Framework != "laravel" || !fsx.Exists(cached) {
+		return
+	}
+	php := filepath.Join(env.Cfg.ToolsDir, l.User, "php")
+	artisan := func(cmd string) error {
+		_, err := env.Exec.Run(ctx, "systemd-run", append(sandboxRunArgs(env, l, dir, nil), php, "artisan", cmd)...)
+		return err
+	}
+	if err := artisan("config:cache"); err != nil {
+		_ = asUser(ctx, env, l.User, "/usr/bin/rm", "-f", "--", cached)
+	}
+	// Production OPcache does not look at files again: it would keep serving
+	// the configuration it compiled before. FPM's reload starts it afresh.
+	if l.OpcacheProduction && l.Mode == "classic" && l.PHPVersion != "" {
+		if validateFPM(ctx, env, l.PHPVersion) == nil {
+			_, _ = env.Exec.Run(ctx, "systemctl", "reload", config.ForVersion(env.Cfg.FPMUnit, l.PHPVersion))
+		}
+	}
+	_ = artisan("queue:restart")
 }

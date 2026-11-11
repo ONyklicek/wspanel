@@ -140,6 +140,7 @@ func envVarsSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	if err := writeSiteFile(ctx, env, l, path, out); err != nil {
 		return nil, err
 	}
+	refreshAppConfig(ctx, env, l)
 	set := slices.DeleteFunc(append(slices.Clone(st.EnvVars), keys...), func(k string) bool { return slices.Contains(p.Unset, k) })
 	slices.Sort(set)
 	st.EnvVars = slices.Compact(set)

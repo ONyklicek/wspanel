@@ -213,6 +213,7 @@ func siteMail(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err er
 		if err := writeSiteFile(ctx, env, l, envFile, mergeEnv(old, keys, values)); err != nil {
 			return nil, err
 		}
+		refreshAppConfig(ctx, env, l)
 	}
 	if err := saveSiteState(env, st); err != nil {
 		return nil, err

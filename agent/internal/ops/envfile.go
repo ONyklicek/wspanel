@@ -119,7 +119,11 @@ func writeDBEnv(ctx context.Context, env *Env, l siteLayout, engine string, e db
 		if err != nil {
 			return err
 		}
-		return writeSiteFile(ctx, env, l, path, mergeEnv(old, keys, values))
+		if err := writeSiteFile(ctx, env, l, path, mergeEnv(old, keys, values)); err != nil {
+			return err
+		}
+		refreshAppConfig(ctx, env, l)
+		return nil
 	}
 	switch l.Framework {
 	case "laravel", "php":
@@ -168,5 +172,9 @@ func writeDBEnv(ctx context.Context, env *Env, l siteLayout, engine string, e db
 	if err != nil {
 		return err
 	}
-	return writeSiteFile(ctx, env, l, path, mergeEnv(old, keys, values))
+	if err := writeSiteFile(ctx, env, l, path, mergeEnv(old, keys, values)); err != nil {
+		return err
+	}
+	refreshAppConfig(ctx, env, l)
+	return nil
 }

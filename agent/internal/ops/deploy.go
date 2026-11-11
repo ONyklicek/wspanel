@@ -987,6 +987,7 @@ func envSet(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := writeSiteFile(ctx, env, l, path, p.Content); err != nil {
 		return nil, err
 	}
+	refreshAppConfig(ctx, env, l)
 	return map[string]any{"path": path, "bytes": len(p.Content)}, nil
 }
 

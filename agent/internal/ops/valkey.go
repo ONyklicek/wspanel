@@ -142,6 +142,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 				if err := writeSiteFile(ctx, env, l, f, mergeEnvSection(content, keys, values, "Valkey (written by WSPanel)")); err != nil {
 					return nil, err
 				}
+				refreshAppConfig(ctx, env, l)
 			}
 		}
 		if fsx.Exists(v.UnitFile) {
@@ -241,6 +242,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		if err = writeSiteFile(ctx, env, l, f, mergeEnvSection(content, keys, values, "Valkey (written by WSPanel)")); err != nil {
 			return nil, err
 		}
+		refreshAppConfig(ctx, env, l)
 	}
 	st.ValkeyPort = v.Port
 	st.Valkey = &valkeyConfig{Port: v.Port, MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist, Use: p.Use}
