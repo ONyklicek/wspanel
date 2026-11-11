@@ -45,6 +45,10 @@ on 'rm -f /usr/sbin/policy-rc.d'
 FLAGS='--yes --panel-domain=panel.localhost --local-certs --db=mariadb,postgres --php=8.3,8.4 --mail=capture --dns=powerdns --clients=yes --mail-hosting=yes --xhprof=yes --allow-unenforced-socket-bind --admin-email=admin@smoke.test'
 if [[ -n "$FROM" ]]; then
   log "The published release $FROM first (get.sh), with a site on it"
+  # get.sh of 1.7.1 checks the signature with gpgv only, which a minimal
+  # Debian 13 lacks (apt verifies with sqv); later ones take sqv.
+  on 'command -v gpgv >/dev/null || { apt-get update -q >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -q gpgv >/dev/null; }' \
+    || fail "gpgv for the get.sh of $FROM"
   on "curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors https://github.com/${SMOKE_REPO:-ONyklicek/wspanel}/releases/download/v$FROM/get.sh \
       | env WSPANEL_VERSION=$FROM bash -s -- $FLAGS > /root/install-from.log 2>&1" \
     || { on 'tail -40 /root/install-from.log' >&2; fail "installing $FROM failed"; }

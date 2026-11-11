@@ -116,10 +116,16 @@ verify_signature() {
     return 0
   fi
   [[ $KEYRING != @*@ ]] || die "this get.sh carries no signing key: use the one from the release"
-  command -v gpgv >/dev/null || die "gpgv is needed (Debian's gpgv package)"
+  # sqv: what apt itself verifies with on Debian 13, so every server has it
+  # (gpgv is not there on a minimal one); gpgv where it is not.
+  local verify
+  if command -v sqv >/dev/null; then verify=sqv
+  elif command -v gpgv >/dev/null; then verify=gpgv
+  else die "sqv or gpgv is needed to check the release's signature (apt-get install sqv)"
+  fi
   fetch SHA256SUMS.asc "$tmp/SHA256SUMS.asc"
   printf '%s' "$KEYRING" | base64 -d > "$tmp/wspanel.gpg" || die "the signing key in this get.sh is damaged"
-  gpgv --keyring "$tmp/wspanel.gpg" "$tmp/SHA256SUMS.asc" "$tmp/SHA256SUMS" >/dev/null 2>&1 \
+  "$verify" --keyring "$tmp/wspanel.gpg" "$tmp/SHA256SUMS.asc" "$tmp/SHA256SUMS" >/dev/null 2>&1 \
     || die "SHA256SUMS of v$version is not signed by WSPanel's key"
   say "Signature OK"
 }
