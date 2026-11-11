@@ -174,6 +174,9 @@ func startWorkerRelease(ctx context.Context, env *Env, l siteLayout, typ string,
 	stopOld := func(block bool) {
 		for _, u := range olds {
 			_, _ = env.Exec.Run(ctx, "systemctl", "disable", u)
+			// An old release's instance that failed would stay listed among
+			// the server's failed units for ever: it is gone, not broken.
+			_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", u)
 			args := []string{"stop", u}
 			if !block {
 				args = []string{"stop", "--no-block", u}
@@ -334,6 +337,7 @@ func stopNow(ctx context.Context, env *Env, units []string) {
 	}
 	for _, u := range units {
 		_, _ = env.Exec.Run(ctx, "systemctl", "disable", u)
+		_, _ = env.Exec.Run(ctx, "systemctl", "reset-failed", u)
 		_, _ = env.Exec.Run(ctx, "systemctl", "stop", "--no-block", u)
 	}
 	if env.Cfg.DryRun {
