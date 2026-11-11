@@ -30,6 +30,14 @@ Environment=HOME={{.Home}}/tmp
 Environment={{.}}
 {{- end}}
 UMask=0027
+# A safety net, not a quota: one site's leaking app or a fork bomb in a
+# worker must not take the whole server. Under memory pressure a site's
+# process goes before the web tier and the databases (a game server before
+# it). The lines below may set their own (a game's limit).
+MemoryHigh=50%
+MemoryMax=60%
+TasksMax=2048
+OOMScoreAdjust=300
 {{- range .Extra}}
 {{.}}
 {{- end}}
