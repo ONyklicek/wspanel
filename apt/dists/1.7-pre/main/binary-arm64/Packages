@@ -1,0 +1,73 @@
+Package: wspanel-agent
+Architecture: arm64
+Version: 1.7.0
+Priority: optional
+Section: admin
+Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
+Installed-Size: 16280
+Depends: init-system-helpers (>= 1.54~)
+Recommends: wspanel-archive-keyring
+Suggests: logrotate
+Filename: pool/main/w/wspanel-agent/wspanel-agent_1.7.0_arm64.deb
+Size: 4306892
+MD5sum: 307c5abe867e13c7aad39e3b6516462e
+SHA1: ec8c87947ce728f0cd93107a8a088d0fe70189f7
+SHA256: 861f849cc1d87f96fd988bb2c440d6f7471eddc7d8634597f6b206ff495dfeea
+SHA512: bc21d51eb722a409b9ec44b97ae87ad6c1f737aa42d092028f18524ca8a3a40f464e0bffc39080c4b7fce992553f8401ac67a088427a102892d9e9e1f36702ce
+Homepage: https://github.com/ONyklicek/wspanel
+Description: privileged agent and command line tool of the WSPanel hosting panel
+ The agent (panel-agent) is the only part of the WSPanel hosting panel that
+ runs as root: it performs a fixed list of operations the panel asks for
+ over a Unix socket, each one audited. The package also brings the wspanel
+ command line client of the panel's REST API.
+ .
+ The WSPanel installer (wspanel-install) configures the agent; updates of
+ this package bring fixes of the agent.
+
+Package: wspanel-archive-keyring
+Architecture: all
+Version: 1.7.0
+Priority: optional
+Section: admin
+Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
+Installed-Size: 52
+Filename: pool/main/w/wspanel-archive-keyring/wspanel-archive-keyring_1.7.0_all.deb
+Size: 4416
+MD5sum: 3e05ea120b6817ea63eda6ce63d1e238
+SHA1: c2ecfc350ff0e3e0597b067db14c3c41c347ee42
+SHA256: ae43f030adaeff98552911cb84972d26a107cce55e958a7de88b9076a2c26f12
+SHA512: f606ba0420d765b2918d2eb0955af8e16b09205ae3f0373216ba0a0937866e753db7eddc71714464221c98a0a15b3127c2784fad18bb23845b91722d1d8384a1
+Homepage: https://github.com/ONyklicek/wspanel
+Description: apt repository of the WSPanel hosting panel and its key
+ Sets apt up for the WSPanel repository: the key its indexes are signed
+ with (in /usr/share/keyrings) and the source in
+ /etc/apt/sources.list.d/wspanel.sources (channel "stable" until the WSPanel
+ installer sets the channel of the installed line), at
+ https://onyklicek.github.io/wspanel/apt
+ .
+ A new key comes with an update of this package.
+
+Package: wspanel
+Architecture: all
+Version: 1.7.0
+Priority: optional
+Section: admin
+Maintainer: Ondřej Nyklíček <60318239+ONyklicek@users.noreply.github.com>
+Installed-Size: 8584
+Depends: wspanel-agent (= 1.7.0), wspanel-archive-keyring, ca-certificates, curl
+Filename: pool/main/w/wspanel/wspanel_1.7.0_all.deb
+Size: 1275836
+MD5sum: c5fa70f0c9546804e7f79e32b6bb10d2
+SHA1: 2e3fa84338a521d873affe13e64e3ceaa984753d
+SHA256: f9d8f970342a2561d7550f00f41e43ac64e27b2aaeeff930ae8d0f5dbe7723f8
+SHA512: 602a2f3cb4077eedb9e6564c96d6e1cf17063161976b133e83fbadd7dd2ffb7528f7dc2ec1d2d0d3e269a1acafcdbc4b6364a4053fc969893c2f50e1718a2b81
+Homepage: https://github.com/ONyklicek/wspanel
+Description: hosting panel for one Debian server (installer and panel)
+ WSPanel manages sites (PHP, Laravel, Symfony, Node), databases, mail, DNS,
+ TLS certificates and backups of one Debian 13 server, with clients and
+ their packages.
+ .
+ This package brings the installer and the panel; run "wspanel-install" to
+ set the server up (or to apply an upgrade), and "wspanel-update" for a
+ newer release.
+

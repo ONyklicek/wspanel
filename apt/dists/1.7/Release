@@ -1,0 +1,28 @@
+Architectures: amd64 arm64
+Codename: 1.7
+Components: main
+Date: Wed, 11 Nov 2026 18:03:11 +0000
+Description: WSPanel, channel 1.7
+Label: WSPanel
+Origin: WSPanel
+Suite: 1.7
+MD5Sum:
+ 61e00f82affc9d0e8d2375888546ad8d             3310 main/binary-amd64/Packages
+ 4ffc1d8947d61ff11144232371cdc3f8             1583 main/binary-amd64/Packages.gz
+ 8f7d6a778f57c28eecda63ebcb1f9631             3310 main/binary-arm64/Packages
+ 0b055144261e7abda7791f12efe353d8             1577 main/binary-arm64/Packages.gz
+SHA1:
+ f02d11f96af37d00905d4de603206b5a0a5a56f3             3310 main/binary-amd64/Packages
+ da1d73e5b5d290974f6ac958fa6cec849b6592bd             1583 main/binary-amd64/Packages.gz
+ 15f22ed44f8e67cf3ce0bc6d30af1ba37453daf9             3310 main/binary-arm64/Packages
+ 30c6cf3ae4bb3ab6de405d62218491af8738c3a0             1577 main/binary-arm64/Packages.gz
+SHA256:
+ 15016d6c510f493df60e57f5c738f81612078ca23ab9f8ba6dec160e5fdbaf8d             3310 main/binary-amd64/Packages
+ 03b6c4b11fd2d954d02581627fa5e01a7c63fdf81b7c338b6045215ec8fb71ba             1583 main/binary-amd64/Packages.gz
+ c23b09f78b1ebc184422e7cff861083177eb104f04a5d84ed194ef517691616e             3310 main/binary-arm64/Packages
+ e992ee5f09bebda81c58d0be1661f6332aebf39e68d29d5efb61a7e88992688b             1577 main/binary-arm64/Packages.gz
+SHA512:
+ cc54ccc3a4af1aee5de6691e32747b0d37b475f5a66afa33710d1dfa163a1eb896465996ea2e829eba593e685958032418190d3d7516b502601de052514beebe             3310 main/binary-amd64/Packages
+ 8752f570a533fc9a9edaf2534393bf106a74ad11bce74ed9a6e9b4c91c21a8c6ee2e9414c4b049c069e401d5469657b2e7166bf19fa635bcf6c8102bda1ed370             1583 main/binary-amd64/Packages.gz
+ c21159448cd44deca484f3836457dbf43ffdc0b0031e53d0f7543b8e9d6040fefd90861dbe726add7ee82ac8943ef0aa6d2132ec754d304b003c80c06d7d3296             3310 main/binary-arm64/Packages
+ 302dc58bfe059da91bb8afca62cbe4d91e254154493920088dc23a2b401eea8e1928b8902b353f23c560c089dbd62bb2a8a739e17c5d86b9bfa22f559e194754             1577 main/binary-arm64/Packages.gz
