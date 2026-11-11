@@ -125,6 +125,8 @@ class SiteConsole extends ViewPage
             [$this->offset, $this->done, $this->exit] = [(int) $out['offset'], (bool) $out['done'], $out['exit']];
             if ($this->done) {
                 $this->load();
+            } elseif (! $reset) {
+                $this->skipRender(); // only output was added: nothing else on the page changed
             }
         } catch (AgentException $e) {
             [$this->done, $this->error] = [true, $e->getMessage()];
