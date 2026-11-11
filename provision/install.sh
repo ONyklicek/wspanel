@@ -769,6 +769,10 @@ if [[ -n "$PANEL_SOURCE" ]]; then
     grep -q '^DB_DATABASE=' /srv/panel/shared/.env || echo "DB_DATABASE=/srv/panel/shared/database.sqlite" >> /srv/panel/shared/.env
     grep -q '^AGENT_SOCKET=' /srv/panel/shared/.env || echo "AGENT_SOCKET=/run/panel-agent.sock" >> /srv/panel/shared/.env
   fi
+  # The panel's log: a file per day for two weeks, without debug messages
+  # (installs before 1.7 kept one file for ever, at Laravel's defaults).
+  sed -i -e "s|^LOG_STACK=single$|LOG_STACK=daily|" -e "s|^LOG_LEVEL=debug$|LOG_LEVEL=info|" /srv/panel/shared/.env
+  grep -q '^LOG_DAILY_DAYS=' /srv/panel/shared/.env || echo "LOG_DAILY_DAYS=14" >> /srv/panel/shared/.env
   # Public URL and SSH port (shown with links and SFTP logins), kept in sync.
   set_panel_env() {
     if grep -q "^$1=" /srv/panel/shared/.env; then
