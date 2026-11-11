@@ -258,11 +258,13 @@ curl -fsSL https://github.com/ONyklicek/wspanel/releases/latest/download/get.sh 
 1. nainstaluje WSPanel se stejnými volbami jako starý server,
 2. obnoví ze zálohy serveru uživatele, konfiguraci, panel, DNS a účty databází,
 3. z úložiště mimo server stáhne nejnovější zálohu každého webu (soubory i jeho
-   databáze), každé další databáze a pošty každé domény (jen s platným
-   podpisem) a obnoví je.
+   databáze), každé další databáze, pošty každé domény a dat každého herního
+   serveru (jen s platným podpisem) a obnoví je; herní servery postaví znovu
+   ([Herní servery](herni-servery.md#obnova-na-nový-server)).
 
 Bez úložiště mimo server přeneste celý `/var/backups/wspanel` starého serveru
-(třeba z kopie disku) a přidejte `--backups=<složka>`. Průběh a co se obnovit
+(třeba z kopie disku) a přidejte `--backups=<složka>`; zálohy herních serverů
+(`/var/backups/wspanel-games`) položte vedle něj. Průběh a co se obnovit
 nepovedlo je v `/var/log/wspanel-restore.log`. Pak přepněte DNS (A/AAAA) na
 nový server; certifikáty Let's Encrypt si server obnoví sám.
 

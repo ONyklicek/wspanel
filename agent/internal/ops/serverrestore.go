@@ -404,15 +404,24 @@ type dirSource struct {
 }
 
 func (s dirSource) newest(_ context.Context, t offsiteTarget) (string, error) {
-	rel, err := filepath.Rel(s.env.Cfg.BackupDir, t.local)
+	base, root := s.env.Cfg.BackupDir, s.root
+	if g := s.env.Cfg.GameBackupDir; g != "" && (t.local == g || strings.HasPrefix(t.local, g+"/")) {
+		// Game servers' backups have a folder of their own beside it
+		// (/var/backups/wspanel-games): copied next to the given folder.
+		base, root = g, filepath.Join(filepath.Dir(filepath.Clean(s.root)), filepath.Base(g))
+		if filepath.Clean(s.root) == filepath.Clean(s.env.Cfg.BackupDir) {
+			root = g
+		}
+	}
+	rel, err := filepath.Rel(base, t.local)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", errors.New("not a backup folder")
 	}
-	found := listLocal(offsiteTarget{dir: t.dir, local: filepath.Join(s.root, rel), match: t.match})
+	found := listLocal(offsiteTarget{dir: t.dir, local: filepath.Join(root, rel), match: t.match})
 	if len(found) == 0 {
 		return "", nil
 	}
-	if filepath.Clean(s.root) == filepath.Clean(s.env.Cfg.BackupDir) {
+	if filepath.Clean(root) == filepath.Clean(base) {
 		return found[0].File, nil // already in place
 	}
 	if err := os.MkdirAll(t.local, 0o750); err != nil {
@@ -531,7 +540,8 @@ func OpenBackupSource(ctx context.Context, env *Env, dir string) (backupSource, 
 	return offsiteSource{env: env, c: c, st: st}, nil
 }
 
-// RestoreServerData brings back the sites, the databases and the mail.
+// RestoreServerData brings back the sites, the databases, the mail and the
+// game servers.
 func RestoreServerData(ctx context.Context, env *Env, man serverManifest, src backupSource, logf func(string, ...any)) RestoreReport {
 	var rep RestoreReport
 	done := map[dbRef]bool{}
@@ -610,6 +620,7 @@ func RestoreServerData(ctx context.Context, env *Env, man serverManifest, src ba
 		}
 		rep.ok("mail of %s (%s)", domain, file)
 	}
+	restoreGames(ctx, env, man, src, &rep, logf)
 	return rep
 }
 

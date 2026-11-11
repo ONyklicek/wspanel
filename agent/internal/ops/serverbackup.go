@@ -82,7 +82,12 @@ type serverManifest struct {
 	Users     []sysUser  `json:"users"`
 	Groups    []sysGroup `json:"groups"`
 	Enabled   []string   `json:"enabled_units"`
-	Files     int        `json:"files"`
+	// Game servers: their state is in the archive, their data in their own
+	// backups; the restore builds each again (Games) and starts those that
+	// started with the system (GameUnits).
+	Games     []int    `json:"games,omitempty"`
+	GameUnits []string `json:"game_units,omitempty"`
+	Files     int      `json:"files"`
 }
 
 func serverBackupsDir(env *Env) string { return filepath.Join(env.Cfg.BackupDir, "server") }
@@ -142,13 +147,12 @@ func serverPaths(env *Env) []string {
 }
 
 // skipped in a server backup: spools and what other backups already hold
-// (the mail is in the mail backups, the sites' files in theirs). Game servers
-// are left out whole (their state and units without their users and worlds
-// would restore as broken units); they have backups of their own.
+// (the mail is in the mail backups, the sites' files in theirs, the game
+// servers' data in theirs). A game server's state is kept; its units are
+// written again when the restore builds it (RestoreServerData).
 func skipServerPath(env *Env, path string) bool {
 	base := filepath.Base(path)
-	if path == gameStateDir(env) || strings.HasPrefix(path, gameStateDir(env)+"/") ||
-		filepath.Dir(path) == env.Cfg.SystemdDir && (strings.HasPrefix(base, "wspanel-game-") || strings.HasPrefix(base, "wspanel-games-")) {
+	if filepath.Dir(path) == env.Cfg.SystemdDir && (strings.HasPrefix(base, "wspanel-game-") || strings.HasPrefix(base, "wspanel-games-")) {
 		return true
 	}
 	for _, dir := range []string{"/storage/app/dmarc-incoming", env.Cfg.VmailRoot, env.Cfg.SitesRoot, env.Cfg.BackupDir} {
@@ -272,6 +276,16 @@ func makeServerBackup(ctx context.Context, env *Env) (backupInfo, error) {
 		}
 	}
 	slices.Sort(man.Sites)
+	for _, g := range allGames(env) {
+		man.Games = append(man.Games, g.ID)
+		users[g.user()] = true
+		if g.Group != "" {
+			groups[g.Group] = true
+		}
+		if fsx.Exists(filepath.Join(env.Cfg.SystemdDir, "multi-user.target.wants", g.unit())) {
+			man.GameUnits = append(man.GameUnits, g.unit())
+		}
+	}
 	if st, err := loadMail(env); err == nil {
 		man.MailDomains = sortedKeys(st.Domains)
 	}
@@ -452,8 +466,8 @@ func systemAccounts(users, groups map[string]bool) ([]sysUser, []sysGroup) {
 }
 
 // enabledUnits: WSPanel's units that start with the system (the restore
-// enables them again; the symlinks are not copied). Game servers are not part
-// of the server's backup, so neither are their units (nor the RCON guard).
+// enables them again; the symlinks are not copied). A game server's unit is
+// written when it is built again, so it is enabled then (GameUnits).
 func enabledUnits(env *Env) []string {
 	var out []string
 	wants, _ := filepath.Glob(filepath.Join(env.Cfg.SystemdDir, "*.wants", "wspanel-*"))

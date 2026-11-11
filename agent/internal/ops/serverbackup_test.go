@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,13 @@ func TestServerBackupHoldsTheStateAndGoesBesideTheMail(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(msg, []byte("Subject: hi\n\nhello"), 0o600)
+	// A game server that starts with the system.
+	if err := saveGame(env, gameState{ID: 3, Name: "x", Game: "factorio", Version: "2.1.24", Port: 34197}); err != nil {
+		t.Fatal(err)
+	}
+	wants := filepath.Join(env.Cfg.SystemdDir, "multi-user.target.wants")
+	_ = os.MkdirAll(wants, 0o755)
+	_ = os.Symlink("../wspanel-game-3.service", filepath.Join(wants, "wspanel-game-3.service"))
 
 	res, err := call(t, env, serverBackup, map[string]any{})
 	if err != nil {
@@ -74,13 +82,16 @@ func TestServerBackupHoldsTheStateAndGoesBesideTheMail(t *testing.T) {
 	if strings.Join(man.Sites, ",") != "shop.cz" || strings.Join(man.MailDomains, ",") != "firma.cz" || man.Files == 0 {
 		t.Errorf("manifest: %+v", man)
 	}
+	if len(man.Games) != 1 || man.Games[0] != 3 || strings.Join(man.GameUnits, ",") != "wspanel-game-3.service" || slices.Contains(man.Enabled, "wspanel-game-3.service") {
+		t.Errorf("game servers in the manifest: %v %v (enabled %v)", man.Games, man.GameUnits, man.Enabled)
+	}
 	var names []string
 	_ = openServerArchive(path, key, func(_ *tar.Reader, h *tar.Header) (bool, error) {
 		names = append(names, h.Name)
 		return false, nil
 	})
 	all := strings.Join(names, "\n")
-	for _, want := range []string{"fs" + siteStatePath(env.Cfg, "shop.cz"), "fs" + filepath.Join(env.Cfg.StateDir, "mail.json")} {
+	for _, want := range []string{"fs" + siteStatePath(env.Cfg, "shop.cz"), "fs" + filepath.Join(env.Cfg.StateDir, "mail.json"), "fs" + gameStatePath(env, 3)} {
 		if !strings.Contains(all, want) {
 			t.Errorf("%s is not in the backup:\n%s", want, all)
 		}

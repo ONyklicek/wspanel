@@ -319,11 +319,11 @@ func TestGameRestoreTakesOnlyItsOwnBackups(t *testing.T) {
 	}
 }
 
-func TestServerBackupLeavesGameServersOut(t *testing.T) {
+func TestServerBackupKeepsGameStateButWritesItsUnitsAgain(t *testing.T) {
 	env, _ := gameTestEnv(t)
 	for path, skip := range map[string]bool{
-		gameStateDir(env):                                                 true,
-		filepath.Join(gameStateDir(env), "7.json"):                        true,
+		gameStateDir(env):                                                 false,
+		filepath.Join(gameStateDir(env), "7.json"):                        false,
 		filepath.Join(env.Cfg.SystemdDir, "wspanel-game-7.service"):       true,
 		filepath.Join(env.Cfg.SystemdDir, "wspanel-games-rcon.service"):   true,
 		filepath.Join(env.Cfg.SystemdDir, "wspanel-web_x-queue@.service"): false,
@@ -331,6 +331,63 @@ func TestServerBackupLeavesGameServersOut(t *testing.T) {
 	} {
 		if got := skipServerPath(env, path); got != skip {
 			t.Errorf("%s: skipped %v, want %v", path, got, skip)
+		}
+	}
+}
+
+func TestARestoredServerBuildsItsGameServersAgain(t *testing.T) {
+	fakePublishers(t)
+	env, dr := gameTestEnv(t)
+	env.Cfg.GameBackupDir = filepath.Join(t.TempDir(), "wspanel-games") // as on a server
+	if _, err := call(t, env, gameCreate, map[string]any{"id": 7, "name": "Survival", "game": "minecraft", "flavor": "paper", "version": "1.21.10", "memory_mb": 2048, "eula": true}); err != nil {
+		t.Fatal(err)
+	}
+	// The new server: the state came back, the unit and the files did not.
+	_ = os.Remove(filepath.Join(env.Cfg.SystemdDir, "wspanel-game-7.service"))
+	_ = os.RemoveAll(gameHome(env, 7))
+	backups := filepath.Join(t.TempDir(), "copy", "wspanel")
+	games := filepath.Join(filepath.Dir(backups), "wspanel-games", "7") // copied beside it
+	if err := os.MkdirAll(games, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"game-7-20261109T040000Z.tar.gz", "game-7-20261110T040000Z.tar.gz"} {
+		if err := os.WriteFile(filepath.Join(games, f), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := len(dr.Calls())
+	var rep RestoreReport
+	restoreGames(t.Context(), env, serverManifest{GameUnits: []string{"wspanel-game-7.service"}}, dirSource{env: env, root: backups}, &rep, func(string, ...any) {})
+
+	if len(rep.Problems) > 0 || len(rep.Restored) != 1 || !strings.Contains(rep.Restored[0], "game-7-20261110T040000Z.tar.gz") {
+		t.Fatalf("report: %+v", rep)
+	}
+	if !fileExists(filepath.Join(env.Cfg.SystemdDir, "wspanel-game-7.service")) {
+		t.Error("the unit is written again")
+	}
+	calls := []string{}
+	for _, c := range dr.Calls()[n:] {
+		calls = append(calls, c.String())
+	}
+	all := strings.Join(calls, "\n")
+	for _, want := range []string{"/usr/bin/tar -xzf - -C " + gameHome(env, 7) + " --no-same-owner --no-same-permissions data", "systemctl enable --now wspanel-game-7.service"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in:\n%s", want, all)
+		}
+	}
+
+	// One that did not start with the system stays stopped; one with no backup starts empty.
+	_ = os.Remove(filepath.Join(games, "game-7-20261109T040000Z.tar.gz"))
+	_ = os.Remove(filepath.Join(games, "game-7-20261110T040000Z.tar.gz"))
+	n = len(dr.Calls())
+	rep = RestoreReport{}
+	restoreGames(t.Context(), env, serverManifest{}, dirSource{env: env, root: backups}, &rep, func(string, ...any) {})
+	if len(rep.Problems) != 1 || !strings.Contains(rep.Problems[0], "no backup") {
+		t.Errorf("report: %+v", rep)
+	}
+	for _, c := range dr.Calls()[n:] {
+		if strings.Contains(c.String(), "enable --now") {
+			t.Errorf("it did not start with the old server: %s", c)
 		}
 	}
 }

@@ -164,11 +164,22 @@ Klient pak vidí a ovládá jen své servery. Balíček omezuje počet herních
 serverů, jejich celkovou paměť a procesor na server; s limitem procesoru
 má klientův server vždy kvótu (**Hosting → Klienti → Balíčky**).
 
+## Obnova na nový server
+
+Záloha celého serveru (Server → Zálohy mimo server) nese nastavení herních
+serverů, jejich data jsou v jejich vlastních zálohách. `install --restore` na
+novém serveru postaví každý herní server znovu: doinstaluje Javu nebo
+SteamCMD, stáhne stejnou verzi hry, nahraje nejnovější zálohu jeho dat,
+zapíše službu a pravidlo firewallu a spustí ho, pokud se spouštěl se starým
+serverem. Server bez zálohy dat začne s novým světem (zpráva o obnově to
+uvede).
+
+Zálohy dat se berou z úložiště mimo server (`games/<id>/`), nebo z kopie
+`/var/backups/wspanel-games` starého serveru vedle složky z `--backups`
+(tj. `…/wspanel` a `…/wspanel-games` vedle sebe). Hra z vlastního balíčku musí
+být na novém serveru nainstalovaná, jinak obnova napíše, který balíček chybí.
+
 ## Co zatím neumí
 
-- **Záloha a obnova celého serveru:** herní servery do noční zálohy serveru
-  (a `install --restore` na nový server) nepatří. Při přesunu založte server
-  znovu a svět přeneste ručně: záloha je archiv `.tar.gz` se složkou `data`
-  (v úložišti mimo server pod `games/<id>/`).
 - Další hry (Terraria, Valheim, hry přes steamcmd), NeoForge a Quilt pro
   Minecraft.

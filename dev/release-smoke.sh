@@ -213,8 +213,7 @@ out=$(game_call '$t = App\Support\AgentTasks::wait($m->backup($g), 600); echo js
 [[ $out == *'"file":"game-1-'* ]] || fail "game.backup: $out"
 on 'test "$(tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -c "^data/world/level.dat$")" = 1' || fail "the backup has no world"
 on '! tar -tzf /var/backups/wspanel-games/1/game-1-*.tar.gz | grep -q "^data/libraries/"' || fail "the backup holds Paper's libraries"
-game_call '$m->delete($g); echo "ok";' >/dev/null
-on '! id wsg_1 >/dev/null 2>&1 && ! test -e /srv/games/1 && ! ufw status | grep -q "wspanel game 1"' || fail "deleting the game server left its user, files or firewall rule"
+# It stays for the server backup below (rebuilt on the new server), and is deleted at the end.
 
 log "System: restart, name and time, swap, processes, disk usage, packages, network, disks"
 sys_call() { tinker '$s = app(App\Actions\System\ManageSystem::class); '"$1"; }
@@ -330,14 +329,16 @@ if [[ $MODE == bundle ]]; then
   for _ in $(seq 1 60); do on 'ls /var/backups/wspanel/server/*.wspbak >/dev/null 2>&1 && ls /var/backups/wspanel/mail/app.localhost/*.tar.gz >/dev/null 2>&1' && break; sleep 2; done
   sbk=$(on 'basename "$(ls -1 /var/backups/wspanel/server/*.wspbak | tail -1)"') || fail "no server backup"
   move=$(mktemp -d)
-  docker cp "$NAME:/var/backups/wspanel" "$move/backups" && docker cp "$NAME:/root/wspanel" "$move/wspanel"
+  docker cp "$NAME:/var/backups/wspanel" "$move/backups" && docker cp "$NAME:/root/wspanel" "$move/wspanel" \
+    && docker cp "$NAME:/var/backups/wspanel-games" "$move/wspanel-games"
 
   docker run -d --name "$NAME-new" --hostname "$NAME" --privileged --cgroupns=host \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock --tmpfs /tmp "$IMAGE" >/dev/null
   new() { docker exec "$NAME-new" bash -c "$1"; }
   for _ in $(seq 1 30); do new 'systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"' && break; sleep 1; done
   new 'rm -f /usr/sbin/policy-rc.d'
-  docker cp "$move/backups" "$NAME-new:/root/wspanel-backups" && docker cp "$move/wspanel" "$NAME-new:/root/wspanel"
+  docker cp "$move/backups" "$NAME-new:/root/wspanel-backups" && docker cp "$move/wspanel" "$NAME-new:/root/wspanel" \
+    && docker cp "$move/wspanel-games" "$NAME-new:/root/wspanel-games"
   rm -rf "$move"
   new "cd /root/wspanel && WSPANEL_RECOVERY_KEY=$key ./install --yes --restore=/root/wspanel-backups/server/$sbk --backups=/root/wspanel-backups > /root/restore.log 2>&1" \
     || { new 'tail -50 /root/restore.log' >&2; fail "the restore failed"; }
@@ -356,7 +357,17 @@ if [[ $MODE == bundle ]]; then
     || fail "the panel's accounts did not come back"
   code=$(new 'curl -sk -o /dev/null -w "%{http_code}" --resolve panel.localhost:443:127.0.0.1 https://panel.localhost/login')
   [[ $code == 200 ]] || fail "the restored panel answered $code"
+  # The game server, built again: its user, its world from its backup, running.
+  new 'id wsg_1 >/dev/null && test -f /srv/games/1/data/world/level.dat' || fail "the game server's world did not come back"
+  for _ in $(seq 90); do new 'journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' && break; sleep 2; done
+  new 'systemctl is-active --quiet wspanel-game-1 && journalctl -u wspanel-game-1 --no-pager -o cat | grep -q "Done ("' \
+    || { new 'journalctl -u wspanel-game-1 -n 30 --no-pager' >&2 || true; fail "the restored game server does not run"; }
+  new 'ufw status | grep -q "25565/tcp.*ALLOW.*wspanel game 1"' || fail "the restored game server's port is not open"
   [[ "$(new 'systemctl --failed --no-legend | wc -l')" == 0 ]] || { new 'systemctl --failed --no-legend' >&2; fail "failed units on the restored server"; }
 fi
+
+log "Game server: deleted"
+game_call '$m->delete($g); echo "ok";' >/dev/null
+on '! id wsg_1 >/dev/null 2>&1 && ! test -e /srv/games/1 && ! ufw status | grep -q "wspanel game 1"' || fail "deleting the game server left its user, files or firewall rule"
 
 log "OK: $(basename "$BUNDLE")"
