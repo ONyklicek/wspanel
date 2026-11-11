@@ -36,6 +36,9 @@ case "${1:-}" in
 launch=gsqlite3
 gsqlite3-database=$DB
 local-address=0.0.0.0, ::
+# version.bind answers nothing: the exact version only helps who looks for
+# a known hole in it.
+version-string=anonymous
 api=yes
 api-key=$key
 webserver=yes
