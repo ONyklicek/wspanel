@@ -978,6 +978,13 @@ refresh_unit() {
     systemctl restart "$unit"
     return
   fi
+  # PHP-FPM's reload executes its binary again (a PHP update included) and
+  # re-reads every pool, keeping the listening sockets; its drop-in only sets
+  # memory protection, which daemon-reload applies to the running service.
+  if [[ $unit == php*-fpm.service ]]; then
+    systemctl reload "$unit"
+    return
+  fi
   pid="$(systemctl show -p MainPID --value "$unit")"
   exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
   [[ $exe == *" (deleted)" ]] && changed=1
