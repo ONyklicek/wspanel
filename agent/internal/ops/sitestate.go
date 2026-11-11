@@ -75,6 +75,9 @@ type siteState struct {
 	Valkey *valkeyConfig `json:"valkey,omitempty"`
 	// Xhprof: classic mode, requests profiled into the site's own XHGui; nil = off.
 	Xhprof *xhprofConfig `json:"xhprof,omitempty"`
+	// StaticAccess: the version of the web tier's grant the site's files
+	// carry (staticAccessVersion); an older one is brought up at start.
+	StaticAccess int `json:"static_access,omitempty"`
 }
 
 type xhprofConfig struct {

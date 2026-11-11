@@ -7,7 +7,6 @@ http://{{.Domain}} {
 		path */.*
 		not path /.well-known/*
 	}
-	respond @hidden 404
 {{- if .Xhprof}}
 
 	# XHGui of this site (the edge lets in only a panel sign-in): XHGui's code,
@@ -29,19 +28,6 @@ http://{{.Domain}} {
 	}
 {{- end}}
 
-	php_fastcgi unix/{{.Socket}} {
-		resolve_root_symlink
-		# PHP-FPM being restarted (a PHP update, a new version of the pool's
-		# settings) is waited for: its socket is back within a second or two,
-		# and a request that could not connect was never sent, so it is
-		# retried safely, whatever its method.
-		lb_try_duration 5s
-		lb_try_interval 100ms
-		# Only the edge reaches this server; it terminates TLS.
-		env HTTPS on
-		env SERVER_PORT 443
-		env REMOTE_ADDR {http.request.header.X-Forwarded-For}
-	}
 {{- if eq .Framework "laravel"}}
 
 	# Vite's build output carries a hash in every name: a browser keeps it for
@@ -52,8 +38,41 @@ http://{{.Domain}} {
 	}
 	header @wsp_hashed Cache-Control "public, max-age=31536000, immutable"
 {{- end}}
-	# A .br / .zst / .gz next to a file (a build step's output) is sent as it is.
-	file_server {
-		precompressed zstd br gzip
+
+	# In this order (Caddy would put a reverse_proxy before php_fastcgi):
+	# hidden files, PHP to the site's pool, any other existing file to the
+	# static file server.
+	route {
+		respond @hidden 404
+
+		php_fastcgi unix/{{.Socket}} {
+			resolve_root_symlink
+			# PHP-FPM being restarted (a PHP update, a new version of the pool's
+			# settings) is waited for: its socket is back within a second or two,
+			# and a request that could not connect was never sent, so it is
+			# retried safely, whatever its method.
+			lb_try_duration 5s
+			lb_try_interval 100ms
+			# Only the edge reaches this server; it terminates TLS.
+			env HTTPS on
+			env SERVER_PORT 443
+			env REMOTE_ADDR {http.request.header.X-Forwarded-For}
+		}
+{{- if .StaticSocket}}
+		# The file itself is read by the static file server (nginx), which opens
+		# no symlink whose target is another owner's: this server only knows
+		# that it exists. A .br / .gz next to it (a build step's output) is sent
+		# as it is.
+		reverse_proxy unix/{{.StaticSocket}} {
+			header_up X-Wsp-Root {{.Home}}/current/public
+			lb_try_duration 5s
+			lb_try_interval 100ms
+		}
+{{- else}}
+		# A .br / .zst / .gz next to a file (a build step's output) is sent as it is.
+		file_server {
+			precompressed zstd br gzip
+		}
+{{- end}}
 	}
 }

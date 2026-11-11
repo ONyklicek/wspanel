@@ -3059,5 +3059,7 @@
     "Na této doméně má e-mail jiný uživatel panelu; poštu pro ni může zřídit jen správce.": "Another user of the panel has an e-mail address at this domain; only the administrator can set up its mail.",
     "DNS zatím neukazuje, že doména :domain je vaše. Nasměrujte její MX na :mail nebo její A záznam na tento server, případně přidejte TXT záznam :name s hodnotou :value, a zkuste to znovu.": "The DNS does not show yet that :domain is yours. Point its MX to :mail or its A record to this server, or add the TXT record :name with the value :value, and try again.",
     "Web je založený, pošta zatím ne": "The site is created, its mail not yet",
-    "Poštu pak přidáte v záložce Pošta webu.": "Add the mail later in the site's Mail tab."
+    "Poštu pak přidáte v záložce Pošta webu.": "Add the mail later in the site's Mail tab.",
+    "Web (směrování a FastCGI)": "Web (routing and FastCGI)",
+    "Statické soubory webů (nginx)": "Sites' static files (nginx)"
 }

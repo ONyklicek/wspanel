@@ -18,12 +18,18 @@ neznamenala kompromitaci serveru ani ostatních webů.
   100 MB, starší soubory se drží 24 rotací (`audit.log.1`, `audit.log.2.gz`…).
 - Každý web má vlastního systémového uživatele, `open_basedir`, FPM pool a
   `disable_functions` (včetně `proc_open` a `putenv`).
-- Proxy má dvě vrstvy, protože Caddy `file_server` následuje symlinky i mimo root:
+- Proxy má tři vrstvy, protože Caddy následuje symlinky i mimo root:
   - `panel-proxy` (edge) drží TLS klíče, ale `/srv` nevidí vůbec
     (`InaccessiblePaths`). Na web tier jen předává požadavky přes Unix socket.
-  - `panel-web` obsluhuje statiku a FastCGI. Nemá žádná tajemství a přes ACL
-    smí číst jen adresáře `public/`. Symlink, který si web nastrčí, tak vede
-    nanejvýš k souborům, které jsou veřejné i tak.
+  - `panel-web` (Caddy) směruje: PHP posílá do FPM poolu webu, statický soubor
+    nginxu. Nemá žádná tajemství. Adresáře `public/` číst smí (aby poznal, že
+    soubor existuje), ale žádný soubor sám nevydává.
+  - `panel-static` (nginx z Debianu, vlastní uživatel) čte `public/` webů
+    a neotevře symlink, jehož cíl patří jinému vlastníkovi
+    (`disable_symlinks if_not_owner`). Web tak přes symlink nevydá
+    `wp-config.php` jiného webu ani jeho stránku za heslem. Symlinky na
+    vlastní soubory (`public/storage` Laravelu) fungují dál. PHP a tečkové
+    soubory nevydá vůbec.
 - Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
   uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
   svého webu). Příkaz určuje framework, panel ho zadat nemůže.

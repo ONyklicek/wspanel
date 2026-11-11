@@ -1,11 +1,14 @@
 [Unit]
-Description=WSPanel web tier (static files + FastCGI routing, FrankenPHP/Caddy)
-After=network.target
+Description=WSPanel web tier (routing to PHP-FPM and to the static files, FrankenPHP/Caddy)
+After=network.target panel-static.service
+Wants=panel-static.service
 
 [Service]
 Type=notify
 User=panel-web
 Group=panel-web
+# Reaches the static file server's socket (/run/panel-static, group panel-static).
+SupplementaryGroups=panel-static
 ExecStart=/usr/bin/frankenphp run --config /etc/panel-web/Caddyfile --adapter caddyfile
 ExecReload=/usr/bin/frankenphp reload --config /etc/panel-web/Caddyfile --adapter caddyfile --address unix//run/panel-web/admin.sock --force
 Restart=on-failure

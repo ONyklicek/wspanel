@@ -22,7 +22,7 @@ enum ServiceType: string implements HasLabel
         return match ($this) {
             self::PhpFpm => 'PHP-FPM',
             self::Proxy => __('Proxy (TLS)'),
-            self::Web => 'Web (statika + FastCGI)',
+            self::Web => 'Web (směrování a FastCGI)',
             self::MariaDb => 'MariaDB',
             self::PostgreSql => 'PostgreSQL',
             self::MongoDb => 'MongoDB',

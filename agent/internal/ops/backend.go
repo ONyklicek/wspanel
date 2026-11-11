@@ -94,7 +94,7 @@ func teardownBackend(ctx context.Context, env *Env, l siteLayout, mode, next str
 		}
 		if _, err := lookupOwner(env, l.User); err == nil && fsx.Exists(l.Home) {
 			// As the site user, like the grant (see grantWebAccess).
-			if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-x", "u:"+l.WebUser, l.Home); err != nil {
+			if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-x", "u:"+l.WebUser+",u:"+l.StaticUser, l.Home); err != nil {
 				return err
 			}
 			if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-k", l.Home); err != nil {

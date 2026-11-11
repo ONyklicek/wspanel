@@ -89,7 +89,7 @@ fi
 on "grep -q '^Password:' /root/$([[ -n $FROM ]] && echo install-from.log || echo install.log)" || fail "no admin account was created"
 
 log "Services"
-for unit in panel-agent panel-proxy panel-web panel-scheduler panel-queue php8.3-fpm php8.4-fpm mariadb postgresql postfix opendkim dovecot rspamd pdns fail2ban; do
+for unit in panel-agent panel-proxy panel-static panel-web panel-scheduler panel-queue php8.3-fpm php8.4-fpm mariadb postgresql postfix opendkim dovecot rspamd pdns fail2ban; do
   on "systemctl is-active --quiet $unit" || fail "$unit is not running"
 done
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units"
@@ -142,6 +142,14 @@ for _ in $(seq 20); do
   sleep 1
 done
 [[ $code == 200 ]] || { on 'journalctl -u "php8.4-fpm" --no-pager -n 20' >&2 || true; fail "the site answered $code"; }
+
+log "Static files: the site's own, never another owner's through a symlink"
+on 'u=$(stat -c %U /srv/sites/app.localhost) && cd /srv/sites/app.localhost/current/public \
+  && runuser -u "$u" -- sh -c "echo smoke-static > smoke.txt && ln -sfn /etc/passwd smoke-passwd.txt"'
+[[ "$(on 'curl -sk --resolve app.localhost:443:127.0.0.1 https://app.localhost/smoke.txt')" == smoke-static ]] || fail "the site's own static file is not served"
+code=$(on 'curl -sk -o /dev/null -w "%{http_code}" --resolve app.localhost:443:127.0.0.1 https://app.localhost/smoke-passwd.txt')
+[[ $code != 200 ]] || fail "a symlink to another owner's file was served"
+on 'cd /srv/sites/app.localhost/current/public && rm -f smoke.txt smoke-passwd.txt'
 
 log "Python: a placeholder, then a Django site with Celery deployed twice (the second through the other slot)"
 on 'test -x /usr/local/bin/uv && ls -d /opt/uv/python/cpython-3.13.*-linux-*-gnu >/dev/null' || fail "--python=3.13 did not install uv and Python 3.13"
@@ -286,9 +294,11 @@ on 'cd /srv/panel/current && runuser -u panel -- php artisan panel:dmarc >/dev/n
 # test): the upgrade also shows that an unreachable repository stops nothing.
 log "Upgrade with the saved choices"
 if [[ $MODE == bundle ]]; then
-  on 'cd /root/wspanel && ./install --yes > /root/upgrade.log 2>&1' || fail "upgrade failed"
+  on 'cd /root/wspanel && ./install --yes > /root/upgrade.log 2>&1' \
+    || { on 'tail -40 /root/upgrade.log' >&2 || true; fail "upgrade failed"; }
 else
-  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-update --yes > /root/upgrade.log 2>&1" || fail "wspanel-update failed"
+  on "WSPANEL_APT_URI=http://127.0.0.1:8099/apt wspanel-update --yes > /root/upgrade.log 2>&1" \
+    || { on 'tail -40 /root/upgrade.log' >&2 || true; fail "wspanel-update failed"; }
 fi
 [[ "$(tinker 'echo App\Models\User::count();')" == 1 ]] || fail "the upgrade changed the accounts"
 [[ "$(on 'systemctl --failed --no-legend | wc -l')" == 0 ]] || fail "failed units after the upgrade"

@@ -51,6 +51,7 @@ class Service extends Model
     public const SYSTEM_LABELS = [
         'panel-scheduler' => 'Plánovač panelu',
         'panel-queue' => 'Úlohy panelu na pozadí',
+        'panel-static' => 'Statické soubory webů (nginx)',
         'postfix' => 'Postfix (odesílání a příjem pošty)',
         'postsrsd' => 'PostSRSd (přeposílaná pošta)',
         'opendkim' => 'OpenDKIM (podpis pošty)',

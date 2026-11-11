@@ -1,0 +1,38 @@
+[Unit]
+Description=WSPanel static files of the sites (nginx: no symlink to another owner's file)
+After=network.target
+Before=panel-web.service
+
+[Service]
+Type=exec
+User=panel-static
+Group=panel-static
+ExecStartPre=/usr/sbin/nginx -e stderr -q -t -c /etc/panel-static/nginx.conf
+ExecStart=/usr/sbin/nginx -e stderr -c /etc/panel-static/nginx.conf -g "daemon off;"
+ExecReload=/usr/sbin/nginx -e stderr -q -t -c /etc/panel-static/nginx.conf
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+TimeoutStopSec=15s
+LimitNOFILE=65536
+# Every classic site's files come from here: kept in RAM under memory
+# pressure and killed last, like the web tier.
+MemoryLow=32M
+OOMScoreAdjust=-800
+# 0750: only the web tier (group panel-static) reaches static.sock.
+RuntimeDirectory=panel-static
+RuntimeDirectoryMode=0750
+UMask=0007
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+InaccessiblePaths=-/etc/panel-agent -/var/lib/panel-agent -/var/log/panel-agent -/var/lib/panel-proxy -/etc/panel-proxy -/srv/panel -/var/lib/panel-web
+
+[Install]
+WantedBy=multi-user.target

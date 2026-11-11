@@ -51,6 +51,8 @@ type siteLayout struct {
 	Xhprof           bool
 	XhprofRatio      int
 	WebUser          string
+	StaticUser       string
+	StaticSocket     string
 	WebSocket        string
 	DisableFunctions string
 
@@ -124,6 +126,8 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		XhguiDir:         cfg.XhguiDir,
 		AccessLog:        filepath.Join(cfg.AccessLogDir, st.Domain+".log"),
 		WebUser:          cfg.WebUser,
+		StaticUser:       cfg.StaticUser,
+		StaticSocket:     staticSocketOf(cfg, st),
 		WebSocket:        cfg.WebSocket,
 		DisableFunctions: DisableFunctions,
 
@@ -263,6 +267,9 @@ func (p *siteParams) resolve(ctx context.Context, env *Env) (siteState, error) {
 		return siteState{}, err
 	}
 	st := siteState{Domain: p.Domain, Framework: p.Framework, Mode: p.Mode}
+	if staticSocket(env.Cfg) != "" {
+		st.StaticAccess = staticAccessVersion // granted as such from the start
+	}
 	if p.TLS != "" {
 		if err := validate.OneOf("tls", p.TLS, []string{"auto", "internal"}); err != nil {
 			return st, err
@@ -578,16 +585,19 @@ func currentRelease(l siteLayout) (string, error) {
 	return name, nil
 }
 
-// grantWebAccess gives the web tier exactly what it must serve: traverse
-// (x, no listing) on the path down to public/, and read on public/ itself.
-// Caddy follows symlinks, so a symlink planted by the site can only ever
-// reach files the web user may read — i.e. public files.
-// Laravel's public/storage -> shared/storage/app/public is the one other path.
+// grantWebAccess gives the web tier and the static file server exactly what
+// a site serves: traverse (x, no listing) on the path down to public/, and
+// read on public/ itself. The web tier (Caddy) follows any symlink, so it
+// only looks: its file matcher opens a file to tell a static one from a PHP
+// route, and hands the request on. With the static file server installed it
+// is nginx that sends the file, and nginx opens no symlink whose target has
+// another owner, so a site cannot serve another site's files by linking to
+// them. Laravel's public/storage -> shared/storage/app/public is the one
+// other path.
 //
 // setfacl runs as the site user: an owner may set ACLs on its own files, and a
 // planted symlink then cannot steer the grant onto anything the user does not own.
 func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string) error {
-	acl := "u:" + l.WebUser
 	traverse := []string{l.Home, filepath.Join(l.Home, "releases"), filepath.Join(l.Home, "releases", release)}
 	readable := []string{filepath.Join(l.Home, "releases", release, "public")}
 	if l.Framework == "laravel" {
@@ -596,19 +606,46 @@ func grantWebAccess(ctx context.Context, env *Env, l siteLayout, release string)
 		}
 		readable = append(readable, filepath.Join(l.Home, "shared/storage/app/public"))
 	}
-	if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", append([]string{"-m", acl + ":x"}, traverse...)...); err != nil {
+	users := []string{"u:" + l.WebUser}
+	if l.StaticSocket != "" {
+		users = append(users, "u:"+l.StaticUser)
+	}
+	var x, read []string
+	for _, u := range users {
+		x = append(x, u+":x")
+		read = append(read, u+":rX", "d:"+u+":rX")
+	}
+	if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", append([]string{"-m", strings.Join(x, ",")}, traverse...)...); err != nil {
 		return err
 	}
-	read := acl + ":rX,d:" + acl + ":rX"
 	for _, d := range readable {
 		if !fsx.Exists(d) {
 			continue
 		}
-		if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-m", read, d); err != nil {
+		if err := asUser(ctx, env, l.User, "/usr/bin/setfacl", "-R", "-P", "-m", strings.Join(read, ","), d); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// staticSocket is the static file server's socket, empty while it is not
+// installed: an agent updated through apt ahead of the installer keeps the
+// web tier serving files itself until the installer brings nginx.
+func staticSocket(cfg config.Config) string {
+	if cfg.StaticUnit == "" || !fsx.Exists(filepath.Join(cfg.SystemdDir, cfg.StaticUnit)) {
+		return ""
+	}
+	return cfg.StaticSocket
+}
+
+// staticSocketOf is the socket a site's block hands its files to: none until
+// the site's files carry the static server's grant (grantStaticAccess).
+func staticSocketOf(cfg config.Config, st siteState) string {
+	if st.StaticAccess < staticAccessVersion {
+		return ""
+	}
+	return staticSocket(cfg)
 }
 
 type siteDeleteParams struct {

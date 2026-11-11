@@ -27,6 +27,10 @@ func RenderEdgesOnStart(ctx context.Context, env *Env, logf func(string, ...any)
 		} else if changed > 0 {
 			logf("refreshed the edge of %d site(s)", changed)
 		}
+		// Before the blocks hand files to the static server: it must read them.
+		if n := grantStaticAccess(ctx, env, logf); n > 0 {
+			logf("the static file server reads the files of %d site(s)", n)
+		}
 		if n, err := renderWebBlocks(ctx, env); err != nil {
 			logf("refreshing the web tier's site blocks: %v", err)
 		} else if n > 0 {
@@ -164,4 +168,46 @@ func renderPools(ctx context.Context, env *Env) (int, error) {
 		total += n
 	}
 	return total, errors.Join(errs...)
+}
+
+// staticAccessVersion is bumped when grantWebAccess grants differently.
+// 1: the static file server reads public/, the web tier only traverses it.
+const staticAccessVersion = 1
+
+// grantStaticAccess brings the grant of each classic site's current release
+// to staticAccessVersion, once (a big site's tree takes a while): with the
+// static file server installed, the web tier stops reading the files and
+// the static server starts. A site whose grant fails keeps its old block
+// (the web tier serving its files) and is tried again at the next start.
+// It returns how many changed.
+func grantStaticAccess(ctx context.Context, env *Env, logf func(string, ...any)) int {
+	if staticSocket(env.Cfg) == "" {
+		return 0
+	}
+	n := 0
+	for _, st := range allSiteStates(env.Cfg) {
+		if st.Mode != "classic" || st.StaticAccess >= staticAccessVersion {
+			continue
+		}
+		st, l, err := loadSite(env, st.Domain)
+		if err != nil || !fsx.Exists(l.Home) {
+			continue
+		}
+		release, err := currentRelease(l)
+		if err == nil {
+			l.StaticSocket = env.Cfg.StaticSocket
+			err = grantWebAccess(ctx, env, l, release)
+		}
+		if err != nil {
+			logf("the static file server's access to %s: %v", st.Domain, err)
+			continue
+		}
+		st.StaticAccess = staticAccessVersion
+		if err := saveSiteState(env, st); err != nil {
+			logf("saving %s: %v", st.Domain, err)
+			continue
+		}
+		n++
+	}
+	return n
 }

@@ -36,13 +36,19 @@ type Config struct {
 	ProxyConfig   string `json:"proxy_config"`
 	ProxySitesDir string `json:"proxy_sites_dir"`
 
-	// Web tier: serves static files and routes PHP to FPM. Holds no secrets
-	// and may read only the public/ directories of sites (Caddy follows
-	// symlinks, so whatever this user can read, a site could expose).
-	WebUser     string `json:"web_user"`
-	WebUnit     string `json:"web_unit"`
-	WebConfig   string `json:"web_config"`
-	WebSitesDir string `json:"web_sites_dir"`
+	// Web tier: routes each request of a classic site to PHP-FPM or to the
+	// static file server. Holds no secrets and reads no site's files: it may
+	// only traverse to them (a stat tells it a static file from a PHP route).
+	WebUser string `json:"web_user"`
+	// Static files of classic sites (nginx): reads the sites' public/ and
+	// opens no symlink whose target has another owner, so a site cannot
+	// serve another site's files by linking to them (Caddy follows any).
+	StaticUser   string `json:"static_user"`
+	StaticUnit   string `json:"static_unit"`
+	StaticSocket string `json:"static_socket"`
+	WebUnit      string `json:"web_unit"`
+	WebConfig    string `json:"web_config"`
+	WebSitesDir  string `json:"web_sites_dir"`
 	// XHProf + XHGui (optional, xhprof.sh): the shared, read-only code.
 	XhguiDir      string `json:"xhgui_dir"`
 	WebSocket     string `json:"web_socket"`
@@ -206,6 +212,9 @@ func Defaults() Config {
 		ProxyConfig:   "/etc/panel-proxy/Caddyfile",
 		ProxySitesDir: "/etc/panel-proxy/sites",
 		WebUser:       "panel-web",
+		StaticUser:    "panel-static",
+		StaticUnit:    "panel-static.service",
+		StaticSocket:  "/run/panel-static/static.sock",
 		WebUnit:       "panel-web.service",
 		WebConfig:     "/etc/panel-web/Caddyfile",
 		WebSitesDir:   "/etc/panel-web/sites",

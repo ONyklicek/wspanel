@@ -289,6 +289,12 @@ apt_update
 apt-get install -y -q --no-install-recommends \
   ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw nftables \
   openssh-server fail2ban mc nano xz-utils iproute2 quota logrotate
+# Static files of the sites: nginx from Debian, run by its own unit as
+# panel-static (the package's nginx.service would take port 80 from the edge;
+# invoke-rc.d leaves a masked unit alone).
+systemctl mask nginx.service >/dev/null 2>&1 || true
+apt-get install -y -q --no-install-recommends nginx libnginx-mod-http-brotli-static
+systemctl mask nginx.service >/dev/null 2>&1 || true
 
 # ---------------------------------------------------------------- PHP (sury)
 log "PHP ${PHP_LIST[*]} (packages.sury.org)"
@@ -463,6 +469,7 @@ sysctl -q -p /etc/sysctl.d/90-wspanel.conf
 log "System users"
 id panel-proxy &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-proxy --shell /usr/sbin/nologin panel-proxy
 id panel-web &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-web --shell /usr/sbin/nologin panel-web
+id panel-static &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/panel-static --shell /usr/sbin/nologin panel-static
 id dbtools &>/dev/null || useradd --system --user-group --no-create-home --home-dir /var/lib/wspanel-dbtools --shell /usr/sbin/nologin dbtools
 getent group wspanel-ssh >/dev/null || groupadd --system wspanel-ssh
 getent group wspanel-sftp >/dev/null || groupadd --system wspanel-sftp
@@ -732,6 +739,9 @@ fi
 cp "$HERE/files/web-Caddyfile.tmpl" /etc/panel-web/Caddyfile
 install -C -m 0644 "$HERE/files/panel-proxy.service" /etc/systemd/system/panel-proxy.service
 install -C -m 0644 "$HERE/files/panel-web.service" /etc/systemd/system/panel-web.service
+install -d -m 0755 /etc/panel-static
+install -C -m 0644 "$HERE/files/static-nginx.conf" /etc/panel-static/nginx.conf
+install -C -m 0644 "$HERE/files/panel-static.service" /etc/systemd/system/panel-static.service
 install -m 0644 "$HERE/files/panel-pool.conf" "/etc/php/$PANEL_PHP/fpm/pool.d/panel.conf"
 
 # ---------------------------------------------------------------- panel app
@@ -1009,7 +1019,12 @@ systemctl disable --now valkey-server >/dev/null 2>&1 || true
 systemctl mask valkey-server >/dev/null 2>&1 || true
 frankenphp validate --config /etc/panel-web/Caddyfile --adapter caddyfile
 frankenphp validate --config /etc/panel-proxy/Caddyfile --adapter caddyfile
-systemctl enable panel-web panel-proxy panel-agent
+# The static file server first: the agent's start (below) hands it the
+# sites' files once it may read them, and the web tier reaches it from the
+# start. Its unit tests the configuration (as panel-static: a test as root
+# would leave root's temp dirs in its runtime dir) before it starts or reloads.
+systemctl enable panel-static panel-web panel-proxy panel-agent
+refresh_unit panel-static.service
 refresh_unit panel-web.service
 refresh_unit panel-proxy.service
 systemctl restart panel-agent
