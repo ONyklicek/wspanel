@@ -84,6 +84,7 @@ main() {
   say "WSPanel $version ($arch) from $repo"
   fetch "$file" "$tmp/$file"
   fetch SHA256SUMS "$tmp/SHA256SUMS"
+  verify_signature
   (cd "$tmp" && grep -E "  $file\$" SHA256SUMS | sha256sum -c --status) || die "$file does not match the release's SHA256SUMS"
   say "Checksum OK"
 
@@ -98,6 +99,25 @@ main() {
     exec "$dir/wspanel/install" "$@" </dev/tty
   fi
   exec "$dir/wspanel/install" "$@"
+}
+
+# The release's checksums are signed with the key of WSPanel's apt
+# repository (from 1.7.1 on), carried in this script (binary, base64): a
+# bundle and its SHA256SUMS changed together in a release do not pass.
+KEYRING='@KEYRING@'
+FIRST_SIGNED=1.7.1
+verify_signature() {
+  if [[ "$(printf '%s\n%s\n' "$FIRST_SIGNED" "${version%%-*}" | sort -V | head -1)" != "$FIRST_SIGNED" ]]; then
+    say "v$version predates signed checksums: checksum only"
+    return 0
+  fi
+  [[ $KEYRING != @*@ ]] || die "this get.sh carries no signing key: use the one from the release"
+  command -v gpgv >/dev/null || die "gpgv is needed (Debian's gpgv package)"
+  fetch SHA256SUMS.asc "$tmp/SHA256SUMS.asc"
+  printf '%s' "$KEYRING" | base64 -d > "$tmp/wspanel.gpg" || die "the signing key in this get.sh is damaged"
+  gpgv --keyring "$tmp/wspanel.gpg" "$tmp/SHA256SUMS.asc" "$tmp/SHA256SUMS" >/dev/null 2>&1 \
+    || die "SHA256SUMS of v$version is not signed by WSPanel's key"
+  say "Signature OK"
 }
 
 # json_lines: one "key": value per line, however GitHub formats its JSON

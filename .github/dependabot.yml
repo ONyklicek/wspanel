@@ -1,0 +1,10 @@
+# The workflows' actions are pinned to commits; this proposes the newer ones.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

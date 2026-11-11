@@ -37,7 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0 # the packages' changelog: commits since the previous tag
       - id: version
@@ -48,7 +48,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == tag ]]; then v="${GITHUB_REF_NAME#v}"; else v="${INPUT_VERSION}"; fi
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a version: $v"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
@@ -62,7 +62,7 @@ jobs:
         env:
           WSPANEL_REPO: ${{ github.repository }} # the panel looks here for newer releases
         run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bundle-${{ matrix.arch }}
           path: dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
@@ -84,7 +84,7 @@ jobs:
           debs=(dist/lint/*.deb)
           [[ "${{ matrix.arch }}" == amd64 ]] && debs+=(dist/deb/*.deb)
           lintian --fail-on error --tag-display-limit 0 "${debs[@]}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: matrix.arch == 'amd64'
         with:
           name: deb-wspanel
@@ -117,8 +117,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: bundle-${{ matrix.arch }}
           path: dist
@@ -133,7 +133,7 @@ jobs:
           prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
           if [[ -z "$prev" ]]; then echo "no published release yet: nothing to upgrade from"; exit 0; fi
           SMOKE_REPO="${GITHUB_REPOSITORY}" dev/release-smoke.sh --from "${prev#v}" dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: matrix.via == 'apt'
         with:
           name: deb-wspanel
@@ -154,26 +154,46 @@ jobs:
       id-token: write     # build provenance
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: bundle-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: deb-wspanel
           path: dist
       - name: One-command installer
-        run: sed "s|@REPO@|${GITHUB_REPOSITORY}|g" provision/get.sh > dist/get.sh
+        # It verifies the signed checksums with the apt repository's key,
+        # carried inside it (gpgv reads a binary keyring).
+        run: |
+          key=$(gpg --dearmor < provision/files/wspanel-archive-keyring.asc | base64 -w0)
+          sed -e "s|@REPO@|${GITHUB_REPOSITORY}|g" -e "s|@KEYRING@|${key}|" provision/get.sh > dist/get.sh
+          if grep -q '@KEYRING@' dist/get.sh; then echo "get.sh carries no signing key"; exit 1; fi
       - name: Agent and keyring packages (.deb) from the bundles
         run: for b in dist/wspanel-*.tar.gz; do tar -xzf "$b" -C dist --strip-components=2 --wildcards 'wspanel/bin/*.deb'; done; ls dist/*.deb
       - name: Checksums
         working-directory: dist
         run: sha256sum wspanel-*.tar.gz wspanel-agent_*.deb wspanel_*_all.deb wspanel-archive-keyring_*.deb get.sh | tee SHA256SUMS
-      - uses: actions/attest-build-provenance@v2
+      # Signed with the apt repository's key: files and SHA256SUMS changed
+      # together in the release do not pass get.sh any more.
+      - name: Signed checksums
+        working-directory: dist
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          [[ -n "$APT_SIGNING_KEY" ]] || { echo "the APT_SIGNING_KEY secret is missing"; exit 1; }
+          export GNUPGHOME="$(mktemp -d)"
+          gpg --batch --import <<<"$APT_SIGNING_KEY"
+          want=$(gpg --batch --with-colons --import-options show-only --import ../provision/files/wspanel-archive-keyring.asc | awk -F: '/^fpr/{print $10; exit}')
+          gpg --batch --list-secret-keys "$want" >/dev/null || { echo "APT_SIGNING_KEY is not the key in provision/files/wspanel-archive-keyring.asc"; exit 1; }
+          gpg --batch --yes --armor --local-user "$want" --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          gpg --dearmor < ../provision/files/wspanel-archive-keyring.asc > "$GNUPGHOME/release.gpg"
+          gpgv --keyring "$GNUPGHOME/release.gpg" SHA256SUMS.asc SHA256SUMS
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
@@ -199,7 +219,7 @@ jobs:
             echo "Tato verze: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/get.sh | sudo env WSPANEL_VERSION=${{ needs.build.outputs.version }} bash\`."
             echo "Ručně: stáhnout \`wspanel-${{ needs.build.outputs.version }}-linux-<arch>.tar.gz\`, rozbalit a spustit \`sudo ./install\`."
             echo "Aktualizace: týž příkaz na nainstalovaném serveru (nabídne aktualizaci se stávajícím nastavením)."
-            echo "Ověření: \`sha256sum -c SHA256SUMS\` a \`gh attestation verify <soubor> --repo ${GITHUB_REPOSITORY}\`."
+            echo "Ověření: \`gpgv\` podpisu \`SHA256SUMS.asc\` klíčem apt repozitáře (get.sh to dělá sám), \`sha256sum -c SHA256SUMS\` a \`gh attestation verify <soubor> --repo ${GITHUB_REPOSITORY}\`."
             echo
             echo "## Změny"
             echo
@@ -210,7 +230,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS dist/SHA256SUMS.asc \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
 
   apt:
