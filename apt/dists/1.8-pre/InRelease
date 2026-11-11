@@ -1,0 +1,38 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64 arm64
+Codename: 1.8-pre
+Components: main
+Date: Wed, 11 Nov 2026 21:23:39 +0000
+Description: WSPanel, channel 1.8-pre
+Label: WSPanel
+Origin: WSPanel
+Suite: 1.8-pre
+MD5Sum:
+ 209b83d4f19e5c556e460249c707e00b             3310 main/binary-amd64/Packages
+ 12c6c098f67958315000eccf4de6e848             1579 main/binary-amd64/Packages.gz
+ 2f5f2e5e1c4855270a963d0dab4ff7b4             3310 main/binary-arm64/Packages
+ 67ba814d0945d6d54e6a4a923ddb7629             1582 main/binary-arm64/Packages.gz
+SHA1:
+ 491982b9eb42668a89e2e54b26ccb10e94218758             3310 main/binary-amd64/Packages
+ a549a7cb01a20ce9002e0c9707f405edc07d752c             1579 main/binary-amd64/Packages.gz
+ 58b8164a6f662565188dbc64104323f19b82372b             3310 main/binary-arm64/Packages
+ 81a443a96b2404d92ab3db6de4f2d10069163e3c             1582 main/binary-arm64/Packages.gz
+SHA256:
+ ecffc18995d93209b27a41ebcf8e85b9d15ae005259b9071a4cf675886e4b477             3310 main/binary-amd64/Packages
+ 8e9d5779cb4493e808fe0cac80f1d0c40ba925052c375e706d4e086fd41e62c3             1579 main/binary-amd64/Packages.gz
+ 8c8197004556f389fd0d612f2e17ce5934dd9fccd823ddf81022b0d8bb779b00             3310 main/binary-arm64/Packages
+ d91b02b64875554d3d0ee4f3d61bcee8b6c919be800fbc8cf80cef463c577434             1582 main/binary-arm64/Packages.gz
+SHA512:
+ 786ab0e5454aa1d56afef17516d7b19448f274b0c521b9320ef7a0af30d3694b46b273f413386e827db7fd90b874cbd9e2fc85e28a9643238392061238c4c7ec             3310 main/binary-amd64/Packages
+ ee6ed0de8d89f6ff0b39bb54cccec01a375f27f91e83454fc1d3f56bef33e902b5b22068e847a830e81f43593c54d346a2111e5d20610d31ff4bf122e00fbdb6             1579 main/binary-amd64/Packages.gz
+ 27aa61b13bc8e9750852e97d010a8f485af6f30286faa4cc154c25121542cfa3fab047d0ee68bc73e4ed7a44c61099f3eefbe369953f5961cccee37c59fada3c             3310 main/binary-arm64/Packages
+ 43a09eb2efe55640eb725584b54460fd9a83a50b9b1201ec561f65e98e05d4a65b5ebfb9de3b16f78b4bac9e9114c8e904f7088e2b3b721be03aece5b0d38660             1582 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQRRUlZS68RmaWxHnp3uztGaBhAfHwUCavTc2wAKCRDuztGaBhAf
+H4dVAQCXP+iof+cYYqZGuhjVfBA4ZCR7nG5ra2nZHB12b8yyEAD/fvGT8JtrZ7XY
+6feNP4azp7DfEc24o83S7+TUJfLOlA4=
+=eD2E
+-----END PGP SIGNATURE-----

@@ -1,28 +1,28 @@
 Architectures: amd64 arm64
 Codename: 1.3
 Components: main
-Date: Wed, 11 Nov 2026 18:50:33 +0000
+Date: Wed, 11 Nov 2026 21:23:39 +0000
 Description: WSPanel, channel 1.3
 Label: WSPanel
 Origin: WSPanel
 Suite: 1.3
 MD5Sum:
  f138575079fae00236069d3a6590a60e             3310 main/binary-amd64/Packages
- a5ba6f468b76b977039c51a866113a7d             1583 main/binary-amd64/Packages.gz
+ 841087fdc55e6aec24b8b16f6c41dc90             1583 main/binary-amd64/Packages.gz
  7693b9226ba4f8222e7a0029abcd8509             3310 main/binary-arm64/Packages
- 882fdf2d039915f62f544857bc2d60e5             1579 main/binary-arm64/Packages.gz
+ 2839e0fb6b8db1f44559ee975cbc923c             1579 main/binary-arm64/Packages.gz
 SHA1:
  a2d4c08170d37e6a6c1f309dd31f8a53ebf9e8ef             3310 main/binary-amd64/Packages
- a52e74b2eaff5d8327aed2c1c9501f5bfec29011             1583 main/binary-amd64/Packages.gz
+ deeda8f468070dade836d0d33d39b5ba69917ff3             1583 main/binary-amd64/Packages.gz
  f89c12ef21ffc684998a9d23230d05b11ae54d23             3310 main/binary-arm64/Packages
- fc64b796c0f2fd852bbb2a7db9a7dc5b9963512c             1579 main/binary-arm64/Packages.gz
+ f818ba77e57b39d92d9c284e4cf4d8b60d3787e1             1579 main/binary-arm64/Packages.gz
 SHA256:
  4f08db2c53093a44d6182f700176d73c4324edcc907b8b697a206b58a54f249b             3310 main/binary-amd64/Packages
- cc39ef527651a1c065bb77e5e6b419f67d4bf34b90451c80a1dbd71accacb069             1583 main/binary-amd64/Packages.gz
+ fa3c6975be1aa240b20d30f5c3ce0a79bcaa2e75a21e71e7b6d70721cf075dbc             1583 main/binary-amd64/Packages.gz
  b2c7b0a1aa75cae7da90fa4d483b075ad8bce8a51e37ec160c95f12ec6120a86             3310 main/binary-arm64/Packages
- e1f9599aefa7929896234c508d9427fe5e236676e1c0fe8fa6a58298baf12635             1579 main/binary-arm64/Packages.gz
+ e59e30ef252dbbcceeba8b8ef11532ced1bcc6fa1c4227d1282da08721cb44ed             1579 main/binary-arm64/Packages.gz
 SHA512:
  9cbddbdfd475ca3340a28704fafdf2c35aa7c79eb2b7ddef02187d80f054a6786b8cf1379f5a41458cb4bf90ec7610e95ee1099a5bfd846fac0b00554421b99e             3310 main/binary-amd64/Packages
- 07246bef2c9bc59d6a6b84f3b90143ad7ee138954f0770abc3cbe5e033093c17a2047e7c5455c3b43dd313dfaea3f52e8ee2a616bfcc528a4710b72c9b922afc             1583 main/binary-amd64/Packages.gz
+ 60182c9e9a55cb3b35904fd6f0bff644d53a73f907a0dac7f26282dca1e3f1b0297743ec3b2f1a78d900c79f39e8a2ca8765a371d5b450e5c68e82371de34b89             1583 main/binary-amd64/Packages.gz
  e0470a8c4ee0a482938769bceb3f1854c3a34f9e840caa315cfff61165b381ff96926f77f6baaa5482268d8786669b5ac09196f2699f1471a95807ff026680c6             3310 main/binary-arm64/Packages
- b5fbf442fb5776d26dec8b8eea5a71a973850d81e44393c903d8f43db81db3a11fdfe03037243f1f7b3a33174e3208ea26b6bf3a4241eca1b50153ec953e9ffd             1579 main/binary-arm64/Packages.gz
+ 4229da4f0a9148dbc1c7e637e39b0837751c54e6c50e41f7c33ff4cb9d2e0a4ad15cedf4c7d34659a27f70c05d72b637f7eab6388c85198e0af80ad746c9f422             1579 main/binary-arm64/Packages.gz
