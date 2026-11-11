@@ -36,6 +36,13 @@ neznamenala kompromitaci serveru ani ostatních webů.
   shell jiného webu, tak neobejde edge (heslo, IP pravidla, údržbu) a nevydává
   se za důvěryhodnou proxy. Totéž platí pro RCON herních serverů, ten smí jen
   agent. Pravidla se načítají při startu systému před sítí.
+- Aplikace a workery webů mají pojistku proti vyčerpání serveru: nejvýš 60 %
+  RAM (od 50 % je jádro brzdí), 2048 procesů a vláken. Při nedostatku paměti
+  jdou na řadu dřív než webová vrstva a databáze, ale až po herních serverech.
+  Platí od dalšího deploye nebo restartu webu.
+- Obnova databáze na sdíleném serveru neběží jako superuživatel: PostgreSQL
+  přes dočasnou roli s právy jen k databázi webu, MariaDB přes účet s právy
+  jen k ní. Funkce či trigger webu tak ani při obnově nezíská víc než web sám.
 - Workery (Horizon, queue, scheduler, Messenger) běží jako systemd unity pod
   uživatelem webu se sandboxem (`ProtectSystem=strict`, zapisovat smí jen do
   svého webu). Příkaz určuje framework, panel ho zadat nemůže.
