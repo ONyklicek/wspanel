@@ -343,8 +343,8 @@ done
 # system.slice (the edge, the web tier, PHP-FPM, the databases, the agent)
 # against the games' own slice. Protection takes nothing away until memory
 # runs short; then the kernel reclaims from the games first.
-install -d -m 0755 /etc/systemd/system/system.slice.d
-install -C -m 0644 "$HERE/files/system-slice-wspanel.conf" /etc/systemd/system/system.slice.d/wspanel.conf
+# system.slice's protection (the web tier's services and the databases'
+# caches) is the agent's: panel-agent -tune-db below.
 systemctl daemon-reload
 
 # ---------------------------------------------------------------- databases
@@ -685,6 +685,15 @@ cat > /etc/panel-agent/agent.json <<JSON
 }
 JSON
 chmod 0600 /etc/panel-agent/agent.json
+# The shared database servers' memory for this server's RAM (their packages
+# size it for any machine: 128 MB, and a shop's orders then come from the
+# disk on every page). A server whose settings changed restarts once, for a
+# few seconds; afterwards only a change of the RAM restarts it again.
+mapfile -t DB_TUNED < <(/usr/sbin/panel-agent -config /etc/panel-agent/agent.json -tune-db)
+for unit in "${DB_TUNED[@]}"; do
+  log "Database server ${unit%.service}: memory sized for this server (restart)"
+  systemctl restart "$unit"
+done
 # DB admin access: on Debian both engines authenticate root/postgres over the
 # local socket (unix_socket / peer), so no admin password is stored at all.
 cat > /etc/panel-agent/db.conf <<CONF
@@ -967,7 +976,8 @@ ufw default allow outgoing >/dev/null
 ufw allow "$SSH_PORT/tcp" comment ssh >/dev/null
 ufw allow 80/tcp comment http >/dev/null
 ufw allow 443/tcp comment https >/dev/null
-ufw allow 443/udp comment http3 >/dev/null
+# HTTP/3 is off (see the edge's Caddyfile): its port closed again.
+ufw --force delete allow 443/udp >/dev/null 2>&1 || true
 if [[ $PANEL_PORT -ne 443 ]]; then
   ufw allow "$PANEL_PORT/tcp" comment panel >/dev/null
   ufw allow "$PANEL_PORT/udp" comment panel-http3 >/dev/null

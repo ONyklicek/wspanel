@@ -12,8 +12,13 @@
 	# A stop or a reload lets requests in flight finish for up to 10 s
 	# (systemd waits 15 s) instead of cutting them off.
 	grace_period 10s
+	# No HTTP/3: a reload cannot hand QUIC connections over. Caddy closes
+	# them after the grace period, and a browser that kept one open (a page
+	# with Livewire polling) got its answer cut off midway: Livewire then
+	# showed the raw JSON. HTTP/2 connections are told to finish (GOAWAY)
+	# and nothing is lost; a reload happens on every deploy and site change.
 	servers {
-		protocols h1 h2 h3
+		protocols h1 h2
 	}
 }
 

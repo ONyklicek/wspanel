@@ -45,7 +45,23 @@ func main() {
 	backupsDir := flag.String("backups", "", "with -server-restore-data: a copy of the old server's /var/backups/wspanel instead of the off-site storage")
 	printKey := flag.Bool("recovery-key", false, "print the recovery key (signs off-site copies, encrypts server backups) and exit; root only")
 	importKey := flag.Bool("import-recovery-key", false, "replace the recovery key with another server's, read from stdin, and exit; root only")
+	tuneDB := flag.Bool("tune-db", false, "size the shared database servers' memory for this server's RAM, print the units to restart, and exit (install.sh)")
 	flag.Parse()
+	if *tuneDB {
+		cfg, err := config.Load(*cfgPath)
+		if err == nil {
+			var units []string
+			units, err = ops.TuneSharedDBServers(&ops.Env{Cfg: cfg, FS: &fsx.FS{DryRun: cfg.DryRun}})
+			for _, u := range units {
+				fmt.Println(u)
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *printKey || *importKey {
 		if err := runRecoveryKey(*cfgPath, *importKey); err != nil {
 			fmt.Fprintln(os.Stderr, err)

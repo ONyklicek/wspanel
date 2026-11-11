@@ -62,6 +62,10 @@ func engineInstall(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 	if err := persistDBEngines(env); err != nil {
 		return nil, fmt.Errorf("%s installed, but saving agent.json failed: %w", p.Engine, err)
 	}
+	// Its memory for this server (nothing uses it yet: a restart costs nothing).
+	if err := tuneAndRestartDBServers(ctx, env, p.Engine); err != nil {
+		return nil, fmt.Errorf("%s installed, but sizing its memory failed: %w", p.Engine, err)
+	}
 	return map[string]any{"engine": p.Engine, "installed": true, "changed": true, "packages": pkgs}, nil
 }
 
