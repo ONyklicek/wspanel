@@ -53,6 +53,29 @@ class ModulesTest extends TestCase
         $this->get('/clients')->assertOk();
     }
 
+    public function test_each_module_says_what_memory_it_takes_and_when_nothing_uses_it(): void
+    {
+        $agent = Mockery::mock(AgentClient::class);
+        $agent->shouldReceive('call')->with('mail.hosting')->andReturn(['installed' => true]);
+        $agent->shouldReceive('call')->with('sys.versions')->andReturn(['db_engines' => ['mariadb', 'mongodb'], 'dns_local' => true, 'panel_units' => []]);
+        $agent->shouldReceive('call')->with('sys.unit_memory', Mockery::on(fn ($p) => in_array('dovecot', $p['patterns'], true) && in_array('postgresql@*', $p['patterns'], true)))->once()->andReturn([
+            'dovecot' => ['bytes' => 40 * 1024 * 1024], 'rspamd' => ['bytes' => 100 * 1024 * 1024],
+            'pdns' => ['bytes' => 3 * 1024 * 1024], 'mariadb' => ['bytes' => 127 * 1024 * 1024], 'mongod' => ['bytes' => 122 * 1024 * 1024],
+        ]);
+        $agent->shouldReceive('call')->andReturn([])->byDefault();
+        $this->app->instance(AgentClient::class, $agent);
+        DnsZone::query()->create(['domain' => 'example.cz', 'provider' => DnsProvider::Local]);
+
+        Livewire::test(ModulesPage::class)
+            ->assertSee('Jejich služby teď berou 392 MB paměti.')
+            ->assertSee('Paměť teď: 140 MB')                      // mail: Dovecot + Rspamd
+            ->assertSee('nic ho nepoužívá, odinstalováním uvolníte')  // …and no mail domain
+            ->assertSee('Paměť teď: 3 MB')                         // DNS, with a zone: in use
+            ->assertSee('MariaDB: 127 MB')
+            ->assertSee('MongoDB: 122 MB')
+            ->assertSee('nemá žádnou databázi');
+    }
+
     public function test_it_cannot_be_switched_off_while_there_are_clients(): void
     {
         Client::factory()->create();

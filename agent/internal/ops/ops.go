@@ -133,6 +133,7 @@ func Registry() map[string]Op {
 		{"site.tls", true, siteTLS},
 		{"sys.resources", false, sysResources},
 		{"sys.metrics", false, sysMetrics},
+		{"sys.unit_memory", false, sysUnitMemory},
 		{"sys.site_disk", false, sysSiteDisk},
 		{"cron.list", false, cronList},
 		{"cron.add", true, cronAdd},

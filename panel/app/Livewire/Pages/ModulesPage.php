@@ -5,13 +5,19 @@ namespace App\Livewire\Pages;
 use App\Actions\Dns\ManageDnsServer;
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Server\ManagePython;
+use App\Actions\Server\ModuleMemory;
 use App\Actions\Sites\ManageXhprof;
+use App\Enums\DatabaseEngine;
+use App\Enums\DnsProvider;
 use App\Http\Middleware\EnsureTwoFactor;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Models\AgentTask;
 use App\Models\Client;
+use App\Models\Database;
+use App\Models\DnsZone;
 use App\Models\GameServer;
+use App\Models\MailDomain;
 use App\Models\Setting;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -98,6 +104,36 @@ class ModulesPage extends Page
             ->sortDesc(SORT_NATURAL)
             ->mapWithKeys(fn (string $v) => [$v => "Python {$v}"])
             ->all();
+    }
+
+    /** Memory the part's services use now (null: the agent cannot tell). */
+    public function memory(string $part): ?int
+    {
+        return app(ModuleMemory::class)->of($part);
+    }
+
+    /** All optional parts together, for the line above the cards. */
+    public function memoryTotal(): ?int
+    {
+        $usage = app(ModuleMemory::class)->usage();
+
+        return $usage === [] ? null : array_sum($usage);
+    }
+
+    /**
+     * Installed and running, but nothing uses it: the memory it takes is
+     * what turning it off gives back.
+     */
+    public function unused(string $part): bool
+    {
+        return match ($part) {
+            'mail' => $this->mailHosting() && ! MailDomain::acrossClients()->exists(),
+            'dns' => $this->dnsLocal() && ! DnsZone::query()->where('provider', DnsProvider::Local)->exists(),
+            'games' => $this->gamesEnabled() && $this->gameCount() === 0,
+            'mariadb', 'postgresql', 'mongodb' => in_array($part, array_map(fn ($e) => $e instanceof DatabaseEngine ? $e->value : (string) $e, app(SystemInfo::class)->dbEngines()), true)
+                && ! Database::acrossClients()->where('engine', $part)->exists(),
+            default => false,
+        };
     }
 
     public function xhprof(): bool

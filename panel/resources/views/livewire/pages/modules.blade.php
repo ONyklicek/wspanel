@@ -1,6 +1,11 @@
 <div class="space-y-6">
     @include('partials.background-jobs')
-    <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('Volitelné části panelu. Základní instalace je bez nich; co zapnete, se doinstaluje jen tehdy, když je potřeba.') }}</p>
+    <p class="text-sm text-gray-500 dark:text-gray-400">
+        {{ __('Volitelné části panelu. Základní instalace je bez nich; co zapnete, se doinstaluje jen tehdy, když je potřeba.') }}
+        @if (($total = $this->memoryTotal()) !== null)
+            {{ __('Jejich služby teď berou :size paměti.', ['size' => \Illuminate\Support\Number::fileSize($total, 0)]) }}
+        @endif
+    </p>
 
     <x-panel.card :actions="[$this->moduleAction('enableClients'), $this->moduleAction('disableClients')]" :heading="__('Klienti a balíčky')" :description="__('Hostování pro víc klientů: každý klient se přihlásí jen ke svým webům, databázím a DNS, s limity podle balíčku a kvótou disku. Bez modulu je panel pro jednoho správce.')">
         <x-slot:status><x-wire::badge :color="($this->clientsEnabled()) ? 'success' : 'gray'">{{ ($this->clientsEnabled()) ? __('zapnuto') : __('vypnuto') }}</x-wire::badge></x-slot:status>
@@ -11,12 +16,14 @@
     <x-panel.card :actions="[$this->moduleAction('installMail'), $this->moduleAction('uninstallMail')]" :heading="__('Pošta: schránky (IMAP, POP3, antispam)')" :description="__('Příjem pošty pro domény webů, schránky s kvótou, aliasy, přeposílání a automatické odpovědi, odesílání z poštovních programů přes 587/465, antispam Rspamd. Odesílání pošty z webů funguje i bez toho.')">
         <x-slot:status><x-wire::badge :color="($this->mailHosting()) ? 'success' : 'gray'">{{ ($this->mailHosting()) ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge></x-slot:status>
         <p class="text-sm text-gray-600 dark:text-gray-300">@if ($this->mailHosting()){{ __('Domény a schránky spravujete v menu Pošta; poštu pro doménu zapnete i při zakládání webu. Odinstalovat jde, když nezbývá žádná doména.') }}@else{{ __('Doinstaluje Dovecot a Rspamd; instalace trvá pár minut, panel mezitím můžete dál používat.') }}@endif</p>
+        @include('partials.module-memory', ['bytes' => $this->memory('mail'), 'unused' => $this->unused('mail')])
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --mail-hosting=yes</span></x-slot:footer>
     </x-panel.card>
 
     <x-panel.card :actions="[$this->moduleAction('installDns'), $this->moduleAction('uninstallDns')]" :heading="__('DNS server (PowerDNS)')" :description="__('Zóny domén přímo na tomto serveru: panel do nich sám zapisuje záznamy webů a pošty. Bez něj jde DNS spravovat v Cloudflare, nebo u registrátora podle záložky DNS webu.')">
         <x-slot:status><x-wire::badge :color="($this->dnsLocal()) ? 'success' : 'gray'">{{ ($this->dnsLocal()) ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge></x-slot:status>
         <p class="text-sm text-gray-600 dark:text-gray-300">@if ($this->dnsLocal()){{ __('Zóny spravujete v menu Síť → DNS. Odinstalovat jde, když na serveru nezbývá žádná zóna.') }}@else{{ __('Doinstaluje PowerDNS a otevře port 53; panel mezitím můžete dál používat.') }}@endif</p>
+        @include('partials.module-memory', ['bytes' => $this->memory('dns'), 'unused' => $this->unused('dns')])
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --dns=powerdns</span></x-slot:footer>
     </x-panel.card>
 
@@ -24,6 +31,19 @@
         <x-slot:status><x-wire::badge :color="($this->dbEngines() !== []) ? 'success' : 'gray'">{{ ($this->dbEngines() !== []) ? implode(', ', $this->dbEngines()) : __('žádný') }}</x-wire::badge></x-slot:status>
         <x-slot:buttons><x-wire::button size="sm" color="gray" outlined icon="outline:arrow-right" :href="\App\Livewire\Pages\DatabaseServersPage::url()">{{ __('Databázové servery') }}</x-wire::button></x-slot:buttons>
         <p class="text-sm text-gray-600 dark:text-gray-300">{{ __('Engine jde jen přidat: odinstalace by smazala databáze webů.') }}</p>
+        <ul class="mt-2 space-y-1 text-sm">
+            @foreach (['mariadb' => 'MariaDB', 'postgresql' => 'PostgreSQL', 'mongodb' => 'MongoDB', 'dedicated' => __('Vyhrazené servery webů')] as $part => $label)
+                @if (($bytes = $this->memory($part)) > 0)
+                    <li wire:key="mem-{{ $part }}" @class(['flex flex-wrap items-center gap-x-2', 'text-gray-600 dark:text-gray-300' => ! $this->unused($part), 'text-warning-700 dark:text-warning-400' => $this->unused($part)])>
+                        {!! icon('outline:cpu-chip', 'h-4 w-4 shrink-0') !!}
+                        <span>{{ $label }}: {{ \Illuminate\Support\Number::fileSize($bytes, 0) }}</span>
+                        @if ($this->unused($part))
+                            <span>· {{ __('nemá žádnou databázi') }}</span>
+                        @endif
+                    </li>
+                @endif
+            @endforeach
+        </ul>
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --db=mariadb,postgres</span></x-slot:footer>
     </x-panel.card>
 
@@ -41,6 +61,7 @@
     <x-panel.card :actions="[$this->moduleAction('enableGames'), $this->moduleAction('disableGames')]" :heading="__('Herní servery')" :description="__('Minecraft (Paper, Vanilla, Fabric, Forge) a Factorio: každý server jako vlastní uživatel a služba s limity podle balíčku, konzole, hráči, pluginy a zálohy v panelu.')">
         <x-slot:status><x-wire::badge :color="($this->gamesEnabled()) ? 'success' : 'gray'">{{ ($this->gamesEnabled()) ? __('zapnuto') : __('vypnuto') }}</x-wire::badge></x-slot:status>
         <p class="text-sm text-gray-600 dark:text-gray-300">@if ($this->gamesEnabled()){{ __('Serverů: :n. Vypnout jde, jen když nejsou žádné herní servery.', ['n' => $this->gameCount()]) }}@else{{ __('Na server se nic neinstaluje: Java a server hry se stáhnou až s prvním herním serverem.') }}@endif</p>
+        @include('partials.module-memory', ['bytes' => $this->memory('games'), 'unused' => false])
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --games=yes</span></x-slot:footer>
     </x-panel.card>
 </div>
