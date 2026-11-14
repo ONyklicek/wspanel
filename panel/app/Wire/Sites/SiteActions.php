@@ -133,10 +133,11 @@ final class SiteActions
                 : __('Proces aplikace se zastaví a znovu spustí. Web bude pár sekund nedostupný.'))
             ->form([Toggle::make('workers')->label(__('Restartovat i workery (fronty, Horizon, Reverb…)'))->default(true)])
             ->modalSubmitActionLabel(__('Restartovat'))
-            ->action(fn (Site $record, array $data) => self::attempt(__('Restart selhal'), function () use ($record, $data) {
-                $done = app(ControlSite::class)->restart($record, (bool) ($data['workers'] ?? false));
-                Toast::success(__(':domain restartován', ['domain' => $record->domain]), implode(', ', $done) ?: null);
-            }));
+            // The app process and workers may take a while to stop: the queue worker waits, not the modal.
+            ->action(fn (Site $record, array $data) => AgentTasks::queue('site.restart', [
+                'title' => __('Restart webu :domain', ['domain' => $record->domain]),
+                'done' => __(':domain restartován', ['domain' => $record->domain]),
+            ], ControlSite::class, 'restartQueued', [$record, (bool) ($data['workers'] ?? false)], $record, 'site-restart:'.$record->id));
     }
 
     public static function disable(): Action
@@ -150,10 +151,11 @@ final class SiteActions
             ->modalHeading(fn (Site $record) => "Vypnout {$record->domain}?")
             ->modalDescription(__('Návštěvníci uvidí stránku „Web je dočasně vypnutý“ (HTTP 503). Zastaví se proces aplikace, workery i naplánované úlohy a po restartu serveru se samy nespustí. Soubory, databáze ani nastavení se nemění.'))
             ->modalSubmitActionLabel(__('Vypnout'))
-            ->action(fn (Site $record) => self::attempt(__('Vypnutí selhalo'), function () use ($record) {
-                app(ControlSite::class)->disable($record);
-                Toast::success(__(':domain je vypnutý', ['domain' => $record->domain]));
-            }));
+            // Stopping the app and its workers waits for them: the queue worker does, not the modal.
+            ->action(fn (Site $record) => AgentTasks::queue('site.disable', [
+                'title' => __('Vypnutí webu :domain', ['domain' => $record->domain]),
+                'done' => __(':domain je vypnutý', ['domain' => $record->domain]),
+            ], ControlSite::class, 'disable', [$record], $record));
     }
 
     public static function enable(): Action
@@ -163,10 +165,10 @@ final class SiteActions
             ->icon('outline:play')
             ->color('success')
             ->visible(fn (Site $record) => $record->isOperational() && ! $record->enabled)
-            ->action(fn (Site $record) => self::attempt(__('Zapnutí selhalo'), function () use ($record) {
-                app(ControlSite::class)->enable($record);
-                Toast::success(__(':domain je zapnutý', ['domain' => $record->domain]));
-            }));
+            ->action(fn (Site $record) => AgentTasks::queue('site.enable', [
+                'title' => __('Zapnutí webu :domain', ['domain' => $record->domain]),
+                'done' => __(':domain je zapnutý', ['domain' => $record->domain]),
+            ], ControlSite::class, 'enable', [$record], $record));
     }
 
     public static function switchMode(): Action
@@ -179,10 +181,7 @@ final class SiteActions
             ->modalDescription(__('Nový backend se připraví vedle starého a proxy se přepne, až bude hotový. Když něco selže, web běží dál jako dosud.'))
             ->form(fn (Site $record) => SiteFields::runtime($record->mode->value))
             ->modalWidth('2xl')
-            ->action(fn (Site $record, array $data) => self::attempt(__('Změna režimu selhala'), function () use ($record, $data) {
-                app(ChangeRuntime::class)->switchMode($record, $data);
-                Toast::success(__(':domain: režim změněn', ['domain' => $record->domain]), $record->runtimeLabel());
-            }));
+            ->action(fn (Site $record, array $data) => app(ChangeRuntime::class)->queueSwitchMode($record, $data));
     }
 
     public static function setVersion(): Action
@@ -217,10 +216,7 @@ final class SiteActions
                         ->all())
                     ->required(),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt(__('Změna verze selhala'), function () use ($record, $data) {
-                app(ChangeRuntime::class)->setVersion($record, $data['version']);
-                Toast::success("{$record->domain}: {$record->runtimeLabel()}");
-            }));
+            ->action(fn (Site $record, array $data) => app(ChangeRuntime::class)->queueSetVersion($record, (string) $data['version']));
     }
 
     public static function pythonApp(): Action
@@ -936,10 +932,11 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->icon('outline:arrow-path')
             ->color('gray')
             ->visible(fn (Site $record) => $record->valkey !== null)
-            ->action(fn (Site $record) => self::attempt(__('Valkey se nepodařilo restartovat'), function () use ($record) {
-                app(ManageValkey::class)->restart($record);
-                Toast::success(__('Valkey restartován'));
-            }));
+            // Valkey saves its data to disk before it stops: the queue worker waits for it.
+            ->action(fn (Site $record) => AgentTasks::queue('valkey.restart', [
+                'title' => __('Restart Valkey webu :domain', ['domain' => $record->domain]),
+                'done' => __('Valkey restartován'),
+            ], ManageValkey::class, 'restart', [$record], $record));
     }
 
     /** Move the site (with its databases and DNS zone) to a client or back to the administrator. */

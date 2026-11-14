@@ -138,11 +138,13 @@ class RuntimeModesTest extends TestCase
             ->with('site.switch_mode', ['domain' => 'm.example.com', 'mode' => 'worker', 'framework' => 'laravel'])
             ->andReturn(['mode' => 'worker', 'framework' => 'laravel', 'php_version' => '8.5', 'system_user' => 'web_m_example_com']);
 
+        // In the background (the test queue runs it at once).
         $this->siteSetting($site, 'switchMode', ['mode' => 'worker', 'framework' => 'laravel'])
-            ->assertHasNoErrors();
+            ->assertHasNoErrors()->assertDispatched('agent-task-started');
 
         $this->assertSame(SiteMode::Worker, $site->refresh()->mode);
         $this->assertSame('8.5', $site->php_version);
+        $this->assertSame(AgentTask::DONE, AgentTask::query()->where('op', 'site.switch_mode')->sole()->status);
     }
 
     public function test_set_version_is_hidden_for_worker_sites_and_failures_are_reported(): void
@@ -155,10 +157,14 @@ class RuntimeModesTest extends TestCase
         $setVersion = collect(SiteActions::settings())->first(fn ($a) => $a->getName() === 'setVersion');
         $this->assertTrue($setVersion->isHidden($worker));
         $this->assertFalse($setVersion->isHidden($classic));
+        // In the background (the test queue runs it at once): the task says why it failed.
         $this->siteSetting($classic, 'setVersion', ['version' => '8.4'])
-            ->assertNotified('config invalid', 'error');
+            ->assertHasNoErrors()->assertDispatched('agent-task-started');
 
         $this->assertSame('8.3', $classic->refresh()->php_version);
+        $task = AgentTask::query()->where('op', 'site.set_version')->sole();
+        $this->assertSame(AgentTask::FAILED, $task->status);
+        $this->assertStringContainsString('config invalid', (string) $task->error);
     }
 
     public function test_health_check_is_stored(): void
@@ -224,7 +230,7 @@ class RuntimeModesTest extends TestCase
         $this->agent->shouldReceive('call')->once()->with('site.python_app', ['domain' => 'p.example.com', 'app' => 'api.main:app'])
             ->andReturn(['domain' => 'p.example.com', 'app' => 'api.main:app', 'started' => true]);
 
-        $this->siteSetting($site, 'setVersion', ['version' => '3.13'])->assertHasNoErrors();
+        $this->siteSetting($site, 'setVersion', ['version' => '3.13'])->assertHasNoErrors()->assertDispatched('agent-task-started');
         $this->siteSetting($site->refresh(), 'pythonApp', ['python_app' => 'api.main:app'])->assertHasNoErrors();
 
         $site->refresh();

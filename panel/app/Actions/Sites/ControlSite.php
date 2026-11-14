@@ -68,6 +68,19 @@ class ControlSite
     }
 
     /**
+     * The restart run by the queue worker (AgentTasks::queue): a Node app
+     * switches slots and workers finish their jobs, which takes a while.
+     *
+     * @return array{body: string|null}
+     */
+    public function restartQueued(Site $site, bool $workers = false): array
+    {
+        $done = $this->restart($site, $workers);
+
+        return ['body' => $done === [] ? null : implode(', ', $done)];
+    }
+
+    /**
      * Live state of the site's app process, workers and tasks.
      *
      * @return list<array<string, mixed>>

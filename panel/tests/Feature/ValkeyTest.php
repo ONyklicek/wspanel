@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Actions\Sites\ManageValkey;
 use App\Livewire\Sites\SiteSettings;
+use App\Livewire\Sites\ViewSite;
+use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\Package;
 use App\Models\Site;
@@ -57,6 +59,21 @@ class ValkeyTest extends TestCase
             ->call('callInfolistAction', 'open_valkey')
             ->assertOk()
             ->assertSee('Zapnout Valkey pro tento web');
+    }
+
+    public function test_a_restart_runs_in_the_background(): void
+    {
+        $site = $this->site();
+        $site->update(['valkey' => ['maxmemory_mb' => 64]]);
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()->with('valkey.restart', ['domain' => 'kv.example.com'])->andReturn([]);
+
+        Livewire::test(ViewSite::class, ['record' => $site->id])
+            ->call('callInfolistAction', 'valkeyRestart')
+            ->assertDispatched('agent-task-started');
+
+        // The test queue runs it at once; in production the panel-queue worker.
+        $this->assertSame(AgentTask::DONE, AgentTask::query()->where('op', 'valkey.restart')->sole()->status);
     }
 
     public function test_disabling_forgets_it(): void

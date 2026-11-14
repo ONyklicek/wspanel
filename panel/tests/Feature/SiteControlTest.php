@@ -9,6 +9,7 @@ use App\Livewire\Sites\SiteLogs;
 use App\Livewire\Sites\SiteProcesses;
 use App\Livewire\Sites\SiteSettings;
 use App\Livewire\Sites\ViewSite;
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -71,23 +72,29 @@ class SiteControlTest extends TestCase
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()->with('site.disable', ['domain' => 'app.example.com'])->andReturn(['enabled' => false]);
 
-        $this->siteSetting($site, 'disable')->assertHasNoErrors();
+        // Both run in the background (the test queue runs them at once).
+        $this->siteSetting($site, 'disable')->assertHasNoErrors()->assertDispatched('agent-task-started');
         $this->assertFalse($site->refresh()->enabled);
         $this->assertSame('Vypnutý', $site->stateLabel());
 
         $this->agent->shouldReceive('call')->once()->with('site.enable', ['domain' => 'app.example.com'])->andReturn(['enabled' => true]);
-        $this->siteSetting($site, 'enable')->assertHasNoErrors();
+        $this->siteSetting($site, 'enable')->assertHasNoErrors()->assertDispatched('agent-task-started');
         $this->assertTrue($site->refresh()->enabled);
+        $this->assertSame([AgentTask::DONE, AgentTask::DONE], AgentTask::query()->whereIn('op', ['site.disable', 'site.enable'])->pluck('status')->all());
     }
 
-    public function test_restart_can_include_workers(): void
+    public function test_restart_runs_in_the_background_and_can_include_workers(): void
     {
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()->with('site.restart', ['domain' => 'app.example.com', 'workers' => true])
             ->andReturn(['restarted' => ['php8.4-fpm.service (reload)']]);
 
         $page = $this->pageAction(Livewire::test(ViewSite::class, ['record' => $site->id]), 'restart', ['workers' => true]);
-        $page->assertHasNoErrors()->assertNotified(type: 'success');
+        $page->assertHasNoErrors()->assertNotified(type: 'success')->assertDispatched('agent-task-started');
+
+        // The test queue runs it at once; in production the panel-queue worker.
+        $task = AgentTask::query()->where('op', 'site.restart')->sole();
+        $this->assertSame([AgentTask::DONE, 'php8.4-fpm.service (reload)', $site->id], [$task->status, $task->body, $task->subject_id]);
     }
 
     public function test_processes_are_listed_and_controlled(): void
