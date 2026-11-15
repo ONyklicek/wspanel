@@ -153,7 +153,7 @@ func TestGameCreateSetsUpASandboxedServer(t *testing.T) {
 		t.Fatalf("state: %+v %v", g, err)
 	}
 	unit := read2(t, filepath.Join(env.Cfg.SystemdDir, "wspanel-game-7.service"))
-	for _, want := range []string{"User=wsg_7", "SocketBindAllow=tcp:25565", fmt.Sprintf("SocketBindAllow=tcp:%d", g.RconPort), "SocketBindDeny=any",
+	for _, want := range []string{"User=wsg_7", "SocketBindAllow=tcp:25565", "SocketBindAllow=tcp:0", fmt.Sprintf("SocketBindAllow=tcp:%d", g.RconPort), "SocketBindDeny=any",
 		"MemoryMax=2816M", "CPUQuota=200%", "-Xmx2048M", "ReadWritePaths=" + gameHome(env, 7), "ProtectSystem=strict", "WorkingDirectory=" + gameHome(env, 7) + "/data"} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit lacks %q:\n%s", want, unit)
@@ -212,6 +212,9 @@ func TestFactorioUnitBindsUDPAndSavesOnStop(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit lacks %q", want)
 		}
+	}
+	if strings.Contains(unit, "SocketBindAllow=tcp:0") {
+		t.Error("only Java's Netty needs the ephemeral-port probe")
 	}
 }
 

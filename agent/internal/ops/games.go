@@ -748,6 +748,14 @@ func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 	if g.RconPort > 0 {
 		extra = append(extra, "SocketBindAllow=tcp:"+strconv.Itoa(g.RconPort))
 	}
+	if engine == "minecraft" {
+		// Netty tests IPv6 by binding a throwaway socket to [::1]:0. Denied,
+		// it falls back to IPv4 sockets: Paper and vanilla then listen on
+		// IPv4 only, and Forge (preferIPv6Addresses=system hands it "::")
+		// fails to bind at all with EAFNOSUPPORT. Port 0 is only ever an
+		// ephemeral port, which the firewall keeps closed from outside.
+		extra = append(extra, "SocketBindAllow=tcp:0")
+	}
 	extra = append(extra,
 		"SocketBindDeny=any",
 		fmt.Sprintf("MemoryMax=%dM", memMax),
