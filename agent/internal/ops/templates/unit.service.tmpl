@@ -1,7 +1,7 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
 [Unit]
 Description={{.Description}}
-After=network.target
+After=network.target{{range .After}} {{.}}{{end}}
 {{- if not .Oneshot}}
 # Never given up on: a process that failed while its database or the network
 # was restarting comes back on its own, after a pause that grows with each
