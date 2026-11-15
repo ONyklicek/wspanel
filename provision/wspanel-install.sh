@@ -24,6 +24,9 @@
 #
 #   ./install --restore=/root/server-20261109T021800Z.wspbak [--backups=/root/wspanel-backups]
 set -euo pipefail
+# Run as root over a non-login SSH command, PATH may lack the sbin dirs
+# (sysctl, useradd, nft, ufw): this script never depends on the caller's.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 # The agent of this bundle; installed through apt (wspanel-install), the

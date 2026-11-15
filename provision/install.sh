@@ -15,6 +15,9 @@
 # --db accepts: none | mariadb | postgres | mariadb,postgres
 # Safe to re-run: every step is idempotent.
 set -euo pipefail
+# Run as root over a non-login SSH command, PATH may lack the sbin dirs
+# (sysctl, useradd, nft, ufw): this script never depends on the caller's.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # FrankenPHP: the project's own packages (frankenphp.dev, "Linux packages"):
 # one apt repository per PHP version, signed by its own key (fingerprint

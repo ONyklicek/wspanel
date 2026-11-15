@@ -25,6 +25,9 @@
 # Best a fine-grained token for that one repository with read-only
 # "Contents" access: the server keeps nothing of it, but it passes through.
 set -euo pipefail
+# Run as root over a non-login SSH command, PATH may lack the sbin dirs
+# (sysctl, useradd, nft, ufw): this script never depends on the caller's.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Everything in a function called on the last line: piped into bash, the
 # script is read whole before anything runs (a cut-off download runs nothing).
