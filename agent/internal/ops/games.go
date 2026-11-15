@@ -752,9 +752,11 @@ func writeGameUnit(ctx context.Context, env *Env, g gameState) error {
 		// Netty tests IPv6 by binding a throwaway socket to [::1]:0. Denied,
 		// it falls back to IPv4 sockets: Paper and vanilla then listen on
 		// IPv4 only, and Forge (preferIPv6Addresses=system hands it "::")
-		// fails to bind at all with EAFNOSUPPORT. Port 0 is only ever an
-		// ephemeral port, which the firewall keeps closed from outside.
-		extra = append(extra, "SocketBindAllow=tcp:0")
+		// fails to bind at all with EAFNOSUPPORT. Since 26.x a dedicated
+		// server also always starts LanServerPinger, a UDP socket on an
+		// ephemeral port, and exits when that bind is refused. Port 0 is
+		// only ever an ephemeral port, which the firewall keeps closed.
+		extra = append(extra, "SocketBindAllow=tcp:0", "SocketBindAllow=udp:0")
 	}
 	extra = append(extra,
 		"SocketBindDeny=any",
