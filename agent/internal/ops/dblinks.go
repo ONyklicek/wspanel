@@ -148,6 +148,11 @@ func dbLinkCreate(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	// site run here, so the login never takes the published server's
 	// network hosts, even with TLS.
 	q := ""
+	for _, h := range dbLinkUserHosts(ctx, env, link.User) {
+		if !slices.Contains(dbLinkHosts, h) {
+			q += fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s'; ", link.User, h)
+		}
+	}
 	for _, h := range dbLinkHosts {
 		q += fmt.Sprintf("CREATE USER IF NOT EXISTS '%[1]s'@'%[3]s' IDENTIFIED BY '%[2]s'; ALTER USER '%[1]s'@'%[3]s' IDENTIFIED BY '%[2]s'; "+
 			"GRANT ALL PRIVILEGES ON `%[4]s`.* TO '%[1]s'@'%[3]s'; ", link.User, link.Password, h, grantPattern(p.Name))
@@ -227,16 +232,14 @@ func dropDBLinks(ctx context.Context, env *Env, match func(dbLink) bool) error {
 		}
 		// Every host the login exists on, not only those it is made with now.
 		hosts := slices.Clone(dbLinkHosts)
-		if out, err := (mariadb{}).sql(ctx, env, fmt.Sprintf("SELECT Host FROM mysql.user WHERE User = '%s'", l.User)); err == nil {
-			for _, h := range strings.Fields(out) {
-				if !slices.Contains(hosts, h) {
-					hosts = append(hosts, h)
-				}
+		for _, h := range dbLinkUserHosts(ctx, env, l.User) {
+			if !slices.Contains(hosts, h) {
+				hosts = append(hosts, h)
 			}
 		}
 		q := ""
 		for _, h := range hosts {
-			q += fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s'; ", l.User, strings.ReplaceAll(h, "'", ""))
+			q += fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s'; ", l.User, h)
 		}
 		if _, err := (mariadb{}).sql(ctx, env, q); err != nil && !env.Cfg.DryRun {
 			return err
@@ -246,4 +249,18 @@ func dropDBLinks(ctx context.Context, env *Env, match func(dbLink) bool) error {
 		return nil
 	}
 	return saveDBLinks(env, keep)
+}
+
+// dbLinkUserHosts: the hosts a login exists on now (quotes dropped: a host
+// name never has one, and it goes back into SQL).
+func dbLinkUserHosts(ctx context.Context, env *Env, user string) []string {
+	out, err := (mariadb{}).sql(ctx, env, fmt.Sprintf("SELECT Host FROM mysql.user WHERE User = '%s'", user))
+	if err != nil {
+		return nil
+	}
+	hosts := []string{}
+	for _, h := range strings.Fields(out) {
+		hosts = append(hosts, strings.NewReplacer("'", "", "\\", "").Replace(h))
+	}
+	return hosts
 }
