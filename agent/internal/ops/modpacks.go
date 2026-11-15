@@ -39,6 +39,7 @@ const (
 	modpackMaxFile    = 512 << 20
 	modpackMaxTotal   = 6 << 30
 	modpackMaxArchive = 1 << 30
+	modpackMaxEntries = 20000 // files under overrides/ and server-overrides/
 )
 
 // installedModpack: what the panel put on the server from a pack, so a
@@ -265,7 +266,10 @@ func gameModpackInstall(ctx context.Context, env *Env, raw json.RawMessage) (any
 		return nil, protocol.Invalid(fmt.Sprintf("project: %s needs another loader than this server's", rel.Name))
 	}
 	// Everything checked before anything is fetched.
-	type packFile struct{ rel, url, sum string }
+	type packFile struct {
+		rel, url, sum string
+		size          int64
+	}
 	files := []packFile{}
 	var total int64
 	for _, f := range idx.Files {
@@ -284,9 +288,15 @@ func gameModpackInstall(ctx context.Context, env *Env, raw json.RawMessage) (any
 			return nil, protocol.Invalid(fmt.Sprintf("project: %s has %s without a SHA-512 or over 512 MB", rel.Name, f.Path))
 		}
 		total += f.Size
-		files = append(files, packFile{r, u, "sha512:" + f.Hashes["sha512"]})
+		files = append(files, packFile{r, u, "sha512:" + f.Hashes["sha512"], f.Size})
 	}
-	if len(files) > modpackMaxFiles || total > modpackMaxTotal {
+	entries := 0
+	for _, zf := range zr.File {
+		if strings.HasPrefix(zf.Name, "overrides/") || strings.HasPrefix(zf.Name, "server-overrides/") {
+			entries++
+		}
+	}
+	if len(files) > modpackMaxFiles || total > modpackMaxTotal || entries > modpackMaxEntries {
 		return nil, protocol.Invalid(fmt.Sprintf("project: %s has %d files of %d MB, more than the panel installs", rel.Name, len(files), total>>20))
 	}
 	active, err := stopForChange(ctx, env, g)
@@ -295,7 +305,16 @@ func gameModpackInstall(ctx context.Context, env *Env, raw json.RawMessage) (any
 	}
 	data := filepath.Join(gameHome(env, g.ID), "data")
 	written := []string{}
+	// What is really written, downloads and overrides together, against the cap.
+	var wrote int64
 	place := func(rel, src string) error {
+		fi, err := os.Stat(src)
+		if err != nil {
+			return err
+		}
+		if wrote += fi.Size(); wrote > modpackMaxTotal {
+			return protocol.Invalid(fmt.Sprintf("project: %s unpacks to more than %d MB, more than the panel installs", rel, modpackMaxTotal>>20))
+		}
 		if err := os.Chmod(src, 0o644); err != nil {
 			return err
 		}
@@ -310,6 +329,11 @@ func gameModpackInstall(ctx context.Context, env *Env, raw json.RawMessage) (any
 			file, err := downloadVerified(ctx, f.url, f.sum, modpackMaxFile)
 			if err != nil {
 				return fmt.Errorf("downloading %s failed: %w", f.rel, err)
+			}
+			// The size the pack declared (and the cap was checked against) is the one written.
+			if fi, serr := os.Stat(file); serr != nil || f.size > 0 && fi.Size() != f.size {
+				os.Remove(file)
+				return protocol.Invalid(fmt.Sprintf("project: %s is not the size the pack declares", f.rel))
 			}
 			err = place(f.rel, file)
 			os.Remove(file)

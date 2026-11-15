@@ -53,6 +53,10 @@ func TestASharedDatabaseGivesTheGameAndTheSiteTheirOwnLogins(t *testing.T) {
 			written = c.Stdin
 		}
 	}
+	// From this server only (socket and 127.0.0.1), whatever the published server allows.
+	if n := strings.Count(sql, "CREATE USER IF NOT EXISTS '"+game["user"].(string)+"'@"); n != 2 || !strings.Contains(sql, "'"+game["user"].(string)+"'@'127.0.0.1'") {
+		t.Errorf("hosts of the game's login (%d):\n%s", n, sql)
+	}
 	if !strings.Contains(sql, "GRANT ALL PRIVILEGES ON `stats`.* TO '"+game["user"].(string)+"'@'localhost'") {
 		t.Errorf("grant on that database only:\n%s", sql)
 	}

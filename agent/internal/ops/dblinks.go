@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
@@ -76,6 +77,9 @@ func (l dbLink) view(env *Env) map[string]any {
 	return out
 }
 
+// dbLinkHosts: where a shared database's logins may connect from.
+var dbLinkHosts = []string{"localhost", "127.0.0.1"}
+
 type dbLinkParams struct {
 	Engine string `json:"engine"`
 	Name   string `json:"name"`
@@ -140,8 +144,11 @@ func dbLinkCreate(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	link := dbLink{Engine: p.Engine, DB: p.Name, User: dbLinkUser(holder, p.Name), Password: newPassword(), Game: p.Game, Domain: p.Domain, Prefix: p.Prefix}
 	// Created or given the new password; the rights on this database only.
+	// From this server alone (the socket and 127.0.0.1): a game server and a
+	// site run here, so the login never takes the published server's
+	// network hosts, even with TLS.
 	q := ""
-	for _, h := range append([]string{"localhost"}, m.netHosts(env)...) {
+	for _, h := range dbLinkHosts {
 		q += fmt.Sprintf("CREATE USER IF NOT EXISTS '%[1]s'@'%[3]s' IDENTIFIED BY '%[2]s'; ALTER USER '%[1]s'@'%[3]s' IDENTIFIED BY '%[2]s'; "+
 			"GRANT ALL PRIVILEGES ON `%[4]s`.* TO '%[1]s'@'%[3]s'; ", link.User, link.Password, h, grantPattern(p.Name))
 	}
@@ -218,9 +225,18 @@ func dropDBLinks(ctx context.Context, env *Env, match func(dbLink) bool) error {
 			keep = append(keep, l)
 			continue
 		}
+		// Every host the login exists on, not only those it is made with now.
+		hosts := slices.Clone(dbLinkHosts)
+		if out, err := (mariadb{}).sql(ctx, env, fmt.Sprintf("SELECT Host FROM mysql.user WHERE User = '%s'", l.User)); err == nil {
+			for _, h := range strings.Fields(out) {
+				if !slices.Contains(hosts, h) {
+					hosts = append(hosts, h)
+				}
+			}
+		}
 		q := ""
-		for _, h := range append([]string{"localhost"}, mariadb{}.netHosts(env)...) {
-			q += fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s'; ", l.User, h)
+		for _, h := range hosts {
+			q += fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s'; ", l.User, strings.ReplaceAll(h, "'", ""))
 		}
 		if _, err := (mariadb{}).sql(ctx, env, q); err != nil && !env.Cfg.DryRun {
 			return err
