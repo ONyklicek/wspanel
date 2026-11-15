@@ -95,6 +95,40 @@
                 @endif
             @endif
         </x-wire::section>
+
+        @if ($this->modpacks())
+            <x-wire::section :heading="__('Modpack z Modrinthu')" :description="__('Celý balík módů a jejich nastavení (třeba Create s doplňky), jen packy pro :loader a Minecraft :v. Každý soubor se ověří otiskem (SHA-512) z packu; server se na dobu instalace zastaví. Nová verze nebo jiný pack odebere, co předchozí pack přinesl; svět a ručně přidané módy zůstanou.', ['loader' => $server->game->flavors()[$server->flavor] ?? $server->flavor, 'v' => $server->version])">
+                @if ($pack)
+                    <p class="mb-3 text-sm">{{ __('Nainstalovaný pack:') }} <span class="font-medium">{{ $pack['name'] }} {{ $pack['version'] }}</span> <span class="text-gray-500">({{ __(':n souborů', ['n' => $pack['files']]) }})</span></p>
+                @endif
+                <form wire:submit="findModpacks" class="flex flex-wrap items-center gap-2">
+                    <input type="search" wire:model="packQuery" maxlength="100" placeholder="{{ __('Hledat modpack (prázdné = nejoblíbenější)') }}" class="w-full max-w-sm rounded-lg border-gray-300 text-sm dark:border-white/10 dark:bg-white/5">
+                    <x-wire::button type="submit" size="sm" icon="outline:magnifying-glass">{{ __('Hledat') }}</x-wire::button>
+                    <span wire:loading wire:target="findModpacks,installModpack" class="text-sm text-gray-500">{{ __('Probíhá…') }}</span>
+                </form>
+                @if ($packResults !== null)
+                    @if ($packResults === [])
+                        <p class="mt-3 text-sm text-gray-500">{{ __('Nic pro tuto verzi nenalezeno.') }}</p>
+                    @else
+                        <ul class="mt-3 divide-y divide-gray-100 dark:divide-white/5">
+                            @foreach ($packResults as $r)
+                                <li wire:key="pack-{{ $r['project'] }}" class="flex items-start gap-3 py-2">
+                                    @if ($r['icon'] ?? null)<img src="{{ $r['icon'] }}" alt="" class="h-9 w-9 shrink-0 rounded" loading="lazy" referrerpolicy="no-referrer">@else<div class="h-9 w-9 shrink-0 rounded bg-gray-100 dark:bg-white/5"></div>@endif
+                                    <div class="min-w-0 flex-1">
+                                        <a href="{{ $r['url'] }}" target="_blank" rel="noopener" class="font-medium text-primary-600 hover:underline dark:text-primary-400">{{ $r['name'] }}</a>
+                                        <span class="text-xs text-gray-500">{{ $r['author'] }} · {{ \Illuminate\Support\Number::abbreviate($r['downloads']) }} {{ __('stažení') }}</span>
+                                        <p class="truncate text-xs text-gray-600 dark:text-gray-400">{{ $r['description'] }}</p>
+                                    </div>
+                                    <x-wire::button size="xs" wire:click="installModpack({{ \Illuminate\Support\Js::from($r['project']) }})"
+                                        wire:confirm="{{ ($pack ? __('Nahradit pack :old packem :new?', ['old' => $pack['name'], 'new' => $r['name']]).' ' : '').__('Server se na dobu instalace zastaví.') }}">
+                                        {{ ($pack['project'] ?? null) === $r['project'] ? __('Aktualizovat') : __('Nainstalovat') }}</x-wire::button>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                @endif
+            </x-wire::section>
+        @endif
     @endif
 
     @include('wire-panels::pages.partials.action-modals')

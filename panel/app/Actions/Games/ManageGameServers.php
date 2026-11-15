@@ -12,6 +12,7 @@ use App\Models\Client;
 use App\Models\GameServer;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
+use App\Support\AgentMessages;
 use App\Support\AgentTasks;
 use App\Support\CurrentClient;
 use App\Support\Limits;
@@ -133,6 +134,13 @@ class ManageGameServers
         $task->status === AgentTask::DONE
             ? $server->update(['status' => 'active', 'build' => ($task->output['build'] ?? '') ?: null])
             : $server->update(['status' => 'failed']);
+        // Installed, but not started: it does not fit next to the servers that run.
+        if ($task->status === AgentTask::DONE && is_string($task->output['not_started'] ?? null)) {
+            $task->forceFill([
+                'done_title' => __('Herní server :name je nainstalovaný, ale nespustil se', ['name' => $server->name]),
+                'body' => (string) AgentMessages::cs($task->output['not_started']),
+            ])->save();
+        }
     }
 
     /** The game's own port when free, else the next one in the games' range. */
@@ -224,6 +232,39 @@ class ManageGameServers
             'id' => $server->id, 'values' => (object) $values, 'secrets' => $secrets === [] ? null : $secrets,
             'clear' => $clear === [] ? null : $clear, 'restart' => $restart ?: null,
         ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * How the game servers share the server with the sites: the RAM the
+     * sites keep, the budget left for games, what the running ones take,
+     * the CPU and disk priority and the CPU cap.
+     *
+     * @return array{ram_mb: int, reserve_mb: int, auto_reserve_mb: int, budget_mb: int, running_mb: int, running: list<array{id: int, name: string, unit_mb: int}>, priority: string, cpu_cores: int, cpus: int}
+     *
+     * @throws AgentException
+     */
+    public function resources(): array
+    {
+        $out = $this->agent->call('game.resources', []);
+
+        return [
+            'ram_mb' => (int) ($out['ram_mb'] ?? 0), 'reserve_mb' => (int) ($out['reserve_mb'] ?? 0),
+            'auto_reserve_mb' => (int) ($out['auto_reserve_mb'] ?? 0), 'budget_mb' => (int) ($out['budget_mb'] ?? 0),
+            'running_mb' => (int) ($out['running_mb'] ?? 0), 'running' => array_values((array) ($out['running'] ?? [])),
+            'priority' => (string) ($out['priority'] ?? 'sites'), 'cpu_cores' => (int) ($out['cpu_cores'] ?? 0), 'cpus' => (int) ($out['cpus'] ?? 1),
+        ];
+    }
+
+    /**
+     * @param  array{reserve_mb: int, priority: string, cpu_cores: int}  $policy  reserve 0 = automatic, cores 0 = no cap
+     *
+     * @throws AgentException
+     */
+    public function setResources(array $policy): void
+    {
+        $this->agent->call('game.set_resources', [
+            'reserve_mb' => (int) $policy['reserve_mb'], 'priority' => $policy['priority'], 'cpu_cores' => (int) $policy['cpu_cores'],
+        ]);
     }
 
     /** @throws AgentException */
@@ -440,6 +481,50 @@ class ManageGameServers
             'title' => __('Instalace pluginu :project', ['project' => $project]),
             'done' => __('Plugin :project nainstalován', ['project' => $project]),
         ], self::class.'@extensionInstalled', $server);
+    }
+
+    /**
+     * Modrinth's modpacks for a mod server's Minecraft and loader, and the one installed.
+     *
+     * @return array{results: list<array{source: string, project: string, name: string, description: string, author: string, downloads: int, icon?: string, url: string}>, installed: ?array{project: string, name: string, version: string, files: int}}
+     *
+     * @throws AgentException
+     */
+    public function searchModpacks(GameServer $server, string $query): array
+    {
+        $out = $this->agent->call('game.modpack_search', ['id' => $server->id, 'query' => $query]);
+
+        return ['results' => $out['results'] ?? [], 'installed' => $out['installed'] ?? null];
+    }
+
+    /**
+     * Installs a modpack (or its newer version) in the background; the
+     * server stops meanwhile and starts again when it ran.
+     *
+     * @throws AgentException
+     */
+    public function installModpack(GameServer $server, string $project, string $name): AgentTask
+    {
+        $job = $this->agent->call('game.modpack_install', ['id' => $server->id, 'project' => $project]);
+
+        return AgentTasks::start($job, 'game.modpack_install', [
+            'title' => __('Instalace modpacku :name', ['name' => $name]),
+            'done' => __('Modpack :name nainstalován', ['name' => $name]),
+        ], self::class.'@modpackInstalled', $server);
+    }
+
+    /** What the modpack brought, for the message. */
+    public function modpackInstalled(AgentTask $task): void
+    {
+        if ($task->status !== AgentTask::DONE || ! isset($task->output['name'])) {
+            return;
+        }
+        $wanted = $task->output['loader_wanted'] ?? null;
+        $task->update([
+            'done_title' => __('Nainstalováno: :name :version', ['name' => $task->output['name'], 'version' => $task->output['version'] ?? '']),
+            'body' => __(':n souborů. Hráči potřebují stejný modpack u sebe.', ['n' => (int) ($task->output['files'] ?? 0)])
+                .($wanted ? ' '.__('Pack je dělaný pro loader :v; server má svou verzi, obvykle to nevadí.', ['v' => $wanted]) : ''),
+        ]);
     }
 
     /** What a plugin or mod install brought, for the message. */

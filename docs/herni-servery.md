@@ -6,7 +6,7 @@ a samotný server hry se stáhnou až s prvním herním serverem.
 
 | Hra | Varianty | Port (výchozí) |
 |---|---|---|
-| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric a Forge (módy); s balíčkem z katalogu Folia (vícevláknový) | 25565/tcp |
+| Minecraft Java | Paper (pluginy, lepší výkon), Vanilla (oficiální server), Fabric, Forge a NeoForge (módy, modpacky); s balíčkem z katalogu Folia (vícevláknový) | 25565/tcp |
 | Factorio | stabilní vydání (jen procesory x86-64) | 34197/udp |
 | Counter-Strike 2 | balíček z Katalogu WSPanelu; ze Steamu (SteamCMD), jen x86-64, asi 60 GB na disku, nejméně 4 GB paměti | 28015/udp |
 
@@ -35,11 +35,16 @@ paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmín
   není. Javu 21 nebo 25 (podle verze) panel doinstaluje z Debianu sám.
 - **Stažení** se ověřuje otiskem, který zveřejnil vydavatel (SHA-256,
   u oficiálního serveru Mojangu SHA-1). Soubor s jiným otiskem se odmítne.
-- **Fabric a Forge** se instalují svým oficiálním instalátorem (z maven
-  úložiště Fabricu a Forge, s otiskem SHA-256 zveřejněným vedle něj),
-  spuštěným jako uživatel serveru: Fabric s nejnovějším stabilním loaderem,
-  Forge s doporučeným sestavením pro danou verzi Minecraftu (jinak
-  nejnovějším). Forge si při instalaci stáhne knihovny, trvá to pár minut.
+- **Fabric, Forge a NeoForge** se instalují svým oficiálním instalátorem
+  (z maven úložiště Fabricu, Forge a NeoForged, s otiskem SHA-256 zveřejněným
+  vedle něj), spuštěným jako uživatel serveru: Fabric s nejnovějším stabilním
+  loaderem, Forge s doporučeným sestavením pro danou verzi Minecraftu (jinak
+  nejnovějším), NeoForge s nejnovějším stabilním sestavením. Instalátor si
+  stáhne knihovny, trvá to pár minut.
+- **Create** (Create 6) je jen pro NeoForge 1.21.1: server založte ve variantě
+  NeoForge s Minecraftem 1.21.1 a Create nainstalujte v záložce Módy, nebo
+  rovnou celý modpack s Create (viz Modpacky níže). Starší Create pro
+  Forge 1.20.1 potřebuje Javu 17, kterou Debian 13 nemá.
 - **Port** se otevře ve firewallu a při smazání serveru se zase zavře
   (pravidlo, které jste pro ten port měli už předtím, panel nechá být).
   Herní servery používají porty 20000 až 40000, kromě 27000–27999 (RCON)
@@ -48,13 +53,21 @@ paměť a procesor. U Minecraftu je potřeba odsouhlasit jeho licenční podmín
 - **Paměť** je u Minecraftu velikost haldy Javy (2048 MB stačí na pár
   hráčů, s pluginy a víc hráči 4096 MB a víc). Proces dostane navíc rezervu
   pro samotnou Javu. Procesor 0 znamená bez omezení, 200 = dvě jádra.
-- **Společný rozpočet paměti:** všechny herní servery dohromady smí použít
-  RAM serveru bez čtvrtiny, ale vždy se nechává aspoň 1,5 GB pro weby, databáze
-  a panel. Na serveru s 8 GB RAM tak hrám zbývá zhruba 6 GB. Server, kvůli
-  kterému by limity her dohromady tento rozpočet přesáhly, panel nepřidá.
-  Snížit paměť jde vždy. Když se hrám paměť nedostává, jádro zastavuje hry,
-  ne weby. Server, který spadne pro nedostatek paměti, se znovu spustí
-  s prodlevou, která roste až na 5 minut.
+- **Weby mají přednost.** Herní servery dostanou RAM, kterou weby, databáze
+  a panel nechají: výchozí rezerva je čtvrtina RAM, aspoň 1,5 GB, takže na
+  serveru s 8 GB RAM zbývá hrám zhruba 6 GB. Jeden server smí mít celý tento
+  rozpočet; spustí se ale jen tehdy, když se vejde vedle těch, které už běží
+  (jinak panel napíše, které servery běží a kolik zabírají, a jeden z nich je
+  potřeba zastavit). Na 4 GB tak může běžet jeden server se 4 GB, nebo dva po
+  2 GB. Když se hrám paměť přesto nedostává, jádro zastavuje hry, ne weby.
+  Server, který spadne pro nedostatek paměti, se znovu spustí s prodlevou,
+  která roste až na 5 minut. Server, který se po instalaci vedle běžících
+  nevejde, se nainstaluje, ale nespustí.
+- **Herní servery → Zdroje** (jen správce): rezerva RAM pro weby (automaticky,
+  nebo vlastní), přednost u procesoru a disku (weby mají přednost = hry
+  dostanou výkon, který weby zrovna nepotřebují; vyrovnané; hry mají přednost)
+  a strop procesoru pro všechny hry dohromady (počet jader, 0 = bez stropu).
+  Platí hned, i pro běžící servery.
 
 Minecraft si napoprvé vygeneruje svět, to trvá minutu až dvě. Hráči se
 připojí na adresu, kterou panel ukáže na stránce serveru (doména panelu
@@ -90,10 +103,26 @@ z řádku.
 - **Hráči** (Minecraft): whitelist (zapnout, přidat, odebrat), operátoři,
   bany hráčů i IP adres, vyhození. Změny jdou do konzole běžícího serveru
   a platí hned; seznamy jsou vidět i u zastaveného serveru.
-- **Pluginy a módy → Módy** (Fabric, Forge): jako pluginy, ale jen
+- **Pluginy a módy → Módy** (Fabric, Forge, NeoForge): jako pluginy, ale jen
   z katalogu Modrinth (Hangar má jen pluginy pro Paper), módy pro daný
   loader a verzi Minecraftu, do `data/mods`; povinné závislosti (třeba
   Fabric API) se nainstalují s módem. Hráči potřebují stejné módy u sebe.
+- **Pluginy a módy → Modpack z Modrinthu** (Fabric, Forge, NeoForge): celý
+  balík módů a jejich nastavení (`.mrpack`), jen packy pro loader a verzi
+  Minecraftu serveru. Pack se stáhne z Modrinthu (otisk SHA-512), každý jeho
+  soubor jen z úložišť, která formát povoluje (Modrinth, GitHub, GitLab),
+  a ověří se otiskem z packu; mimo složku `data` serveru nic nezapíše.
+  Server se na dobu instalace zastaví a pak zase spustí. Nová verze nebo jiný
+  pack odebere, co přinesl ten předchozí; svět a ručně nahrané módy zůstanou.
+- **Databáze**: herní server může používat databázi MariaDB (LuckPerms,
+  CoreProtect, obchod…) a sdílet ji s webem stejného vlastníka. Připojit jde
+  databázi webu, nebo vytvořit novou (počítá se do balíčku) a rovnou ji
+  nasdílet webu. Herní server i web dostanou každý vlastní přihlášení jen
+  k té jedné databázi; web ho najde v `.env` pod zvolenou předponou
+  (výchozí `GAME_DB_HOST`, `_PORT`, `_DATABASE`, `_USERNAME`, `_PASSWORD`),
+  jeho vlastní `DB_*` zůstanou. Databáze na vyhrazeném serveru webu sdílet
+  nejde (ten pustí jen svůj web). Se smazáním herního serveru, webu nebo
+  databáze zmizí i jejich přihlášení.
 - **Pluginy a módy → Pluginy** (Folia): jako u Paperu, ale jen z Modrinthu
   a jen pluginy, které Folii podporují (loader `folia`); Hangar nabízí
   pluginy pro Paper, které na Folii často nefungují.
@@ -188,5 +217,4 @@ být na novém serveru nainstalovaná, jinak obnova napíše, který balíček c
 
 ## Co zatím neumí
 
-- Další hry (Terraria, Valheim, hry přes steamcmd), NeoForge a Quilt pro
-  Minecraft.
+- Další hry (Terraria, Valheim, hry přes steamcmd) a Quilt pro Minecraft.

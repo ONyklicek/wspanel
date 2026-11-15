@@ -533,6 +533,10 @@ func dbDrop(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	if err := e.drop(ctx, env, p.Name); err != nil {
 		return nil, err
 	}
+	// Those it was shared with lose their logins on it.
+	if err := dropDBLinks(ctx, env, func(l dbLink) bool { return l.Engine == p.Engine && l.DB == p.Name }); err != nil {
+		return nil, err
+	}
 	if i, ok := instanceOf(env, p.Engine, p.Name); ok {
 		i.Databases = slices.DeleteFunc(i.Databases, func(n string) bool { return n == p.Name })
 		if err := saveDBInstance(env, i); err != nil {

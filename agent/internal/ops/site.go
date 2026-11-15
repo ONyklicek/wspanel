@@ -715,6 +715,10 @@ func siteDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 			return nil, err
 		}
 	}
+	// The site's logins on databases shared with it go with it.
+	if err := dropDBLinks(ctx, env, func(dl dbLink) bool { return dl.Domain == l.Domain }); err != nil {
+		return nil, err
+	}
 	if _, err := lookupOwner(env, l.User); err == nil {
 		// Units are gone by now: end everything left (SSH sessions, finishing
 		// FPM workers); userdel refuses otherwise. Then make sure the freed uid

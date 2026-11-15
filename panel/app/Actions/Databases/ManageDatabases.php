@@ -31,9 +31,9 @@ class ManageDatabases
      *
      * @throws AgentException
      */
-    public function create(string $engine, string $name, ?Site $site, ?int $instance = null): array
+    public function create(string $engine, string $name, ?Site $site, ?int $instance = null, ?Client $for = null): array
     {
-        $owner = $site !== null ? $site->client : Client::find(CurrentClient::id());
+        $owner = $site !== null ? $site->client : ($for ?? Client::find(CurrentClient::id()));
         app(Limits::class)->assertCanAdd($owner, 'databases');
         $name = self::nameFor($owner, $name);
         $params = ['engine' => $engine, 'name' => $name];

@@ -112,6 +112,8 @@ var (
 	fabricMeta     = "https://meta.fabricmc.net/v2"
 	forgeMaven     = "https://maven.minecraftforge.net/net/minecraftforge/forge"
 	forgePromos    = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+	neoforgeMaven  = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
+	neoforgeAPI    = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 	mojangManifest = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 	factorioAPI    = "https://factorio.com"
 	mcVersionRe    = regexp.MustCompile(`^\d+\.\d+(\.\d+)?$`)
@@ -297,6 +299,16 @@ func fetchSourceVersions(ctx context.Context, src gameSource) ([]string, error) 
 				out = append(out, v)
 			}
 		}
+	case "neoforge":
+		builds, err := neoforgeBuilds(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for v := range builds {
+			if mc(v) {
+				out = append(out, v)
+			}
+		}
 	case "steamcmd":
 		// Steam has no versions to choose: the branch's newest build.
 		out = append(out, "latest")
@@ -340,6 +352,62 @@ func forgePromotions(ctx context.Context) (map[string]string, error) {
 		return nil, err
 	}
 	return p.Promos, nil
+}
+
+// neoforgeBuilds: NeoForge's newest stable build per Minecraft version. Its
+// versions name the Minecraft they are for: 21.1.215 is 1.21.1, 21.0.x 1.21,
+// 26.3.0.103 is 26.3 and 26.1.1.x 26.1.1; betas are left out.
+func neoforgeBuilds(ctx context.Context) (map[string]string, error) {
+	var m struct {
+		Versions []string `json:"versions"`
+	}
+	if err := fetchJSON(ctx, neoforgeAPI, &m); err != nil {
+		return nil, err
+	}
+	key := func(s string) []int {
+		n := []int{}
+		for _, p := range strings.Split(s, ".") {
+			i, _ := strconv.Atoi(p)
+			n = append(n, i)
+		}
+		return n
+	}
+	out := map[string]string{}
+	for _, b := range m.Versions {
+		mcv := neoforgeMC(b)
+		if mcv == "" {
+			continue
+		}
+		if cur, ok := out[mcv]; !ok || slices.Compare(key(b), key(cur)) > 0 {
+			out[mcv] = b
+		}
+	}
+	return out, nil
+}
+
+var neoforgeBuildRe = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$`)
+
+// neoforgeMC: the Minecraft version a NeoForge build is for ("" for a beta
+// or a scheme it does not know).
+func neoforgeMC(build string) string {
+	m := neoforgeBuildRe.FindStringSubmatch(build)
+	if m == nil {
+		return ""
+	}
+	major, _ := strconv.Atoi(m[1])
+	switch {
+	case major >= 26 && m[4] != "": // 26.3.0.103: year.drop.patch.build
+		if m[3] == "0" {
+			return m[1] + "." + m[2]
+		}
+		return m[1] + "." + m[2] + "." + m[3]
+	case major >= 20 && major < 26 && m[4] == "": // 21.1.215: 1.21.1, build 215
+		if m[2] == "0" {
+			return "1." + m[1]
+		}
+		return "1." + m[1] + "." + m[2]
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------- downloads
@@ -424,6 +492,21 @@ func resolveGameDownload(ctx context.Context, src gameSource, version string) (g
 		sum, err := fetchText(ctx, u+".sha256")
 		if err != nil || len(strings.TrimSpace(sum)) < 64 {
 			return gameDownload{}, fmt.Errorf("forge %s-%s: no published checksum", version, build)
+		}
+		return gameDownload{URL: u, Sum: strings.TrimSpace(sum)[:64], Build: build, Java: mcJava(version)}, nil
+	case "neoforge":
+		builds, err := neoforgeBuilds(ctx)
+		if err != nil {
+			return gameDownload{}, err
+		}
+		build := builds[version]
+		if build == "" {
+			return gameDownload{}, protocol.Invalid("version: NeoForge has no build for Minecraft " + version)
+		}
+		u := fmt.Sprintf("%s/%s/neoforge-%s-installer.jar", neoforgeMaven, build, build)
+		sum, err := fetchText(ctx, u+".sha256")
+		if err != nil || len(strings.TrimSpace(sum)) < 64 {
+			return gameDownload{}, fmt.Errorf("neoforge %s: no published checksum", build)
 		}
 		return gameDownload{URL: u, Sum: strings.TrimSpace(sum)[:64], Build: build, Java: mcJava(version)}, nil
 	case "mojang":
@@ -716,6 +799,8 @@ func gameExecStart(env *Env, g gameState) string {
 		case "forge":
 			// Forge's own argument file (its classpath, relative to data/).
 			return fmt.Sprintf("%s @libraries/net/minecraftforge/forge/%s-%s/unix_args.txt nogui", jvm, g.Version, g.Build)
+		case "neoforge":
+			return fmt.Sprintf("%s @libraries/net/neoforged/neoforge/%s/unix_args.txt nogui", jvm, g.Build)
 		}
 		return jvm + " -jar " + home + "/server/server.jar --nogui"
 	case "native":
@@ -827,9 +912,9 @@ func placeDownload(ctx context.Context, env *Env, g gameState, d gameDownload) e
 		return err
 	}
 	switch src.Type {
-	case "papermc", "mojang", "fabric", "forge":
+	case "papermc", "mojang", "fabric", "forge", "neoforge":
 		switch src.Type {
-		case "fabric", "forge":
+		case "fabric", "forge", "neoforge":
 			// The loader's installer, run as the game's user with its Java.
 			installer := filepath.Join(home, "server", src.Type+"-installer.jar")
 			if err := asUser(ctx, env, g.user(), "/usr/bin/install", "-m", "0640", file, installer); err != nil {
@@ -1043,6 +1128,7 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 	var g gameState
 	var def gameDef
 	var src gameSource
+	var startErr error // why it was installed but not started
 	var dl gameDownload
 	var rollback undo
 	defer func() {
@@ -1186,13 +1272,22 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 				_, _ = env.Exec.Run(context.WithoutCancel(ctx), "ufw", "delete", "allow", fmt.Sprintf("%d/%s", g.Port, gameProto(env, g)))
 			})
 		}
+		// Installed either way; it starts only when it fits next to the
+		// servers that run now (the panel says why it did not).
+		if startErr = checkGameStart(ctx, env, g); startErr != nil {
+			return nil
+		}
 		_, err := env.Exec.Run(ctx, "systemctl", "enable", "--now", g.unit())
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return gameView(ctx, env, g, false), nil
+	view := gameView(ctx, env, g, false)
+	if startErr != nil {
+		view["not_started"] = startErr.Error()
+	}
+	return view, nil
 }
 
 // A game server's long job (an install, an update) claims it: deleting or
@@ -1370,6 +1465,13 @@ func gameAction(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 	}
 	switch p.Action {
 	case "start", "restart":
+		// A restart of a running server takes nothing more; a stopped one
+		// (or a restart of one) must fit next to those that run.
+		if err := checkGameStart(ctx, env, g); err != nil {
+			if st, serr := unitStates(ctx, env, []string{g.unit()}); serr != nil || len(st) != 1 || st[0].Active != "active" {
+				return nil, err
+			}
+		}
 		_, err = env.Exec.Run(ctx, "systemctl", "enable", g.unit())
 		if err == nil {
 			_, err = env.Exec.Run(ctx, "systemctl", p.Action, g.unit())
@@ -1466,6 +1568,15 @@ func gameSettings(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	g.Name, g.MemoryMB, g.CPUPercent = p.Name, p.MemoryMB, p.CPUPercent
 	if err := checkGameMemory(env, g, previous); err != nil {
 		return nil, err
+	}
+	// More memory for a running server (it restarts with it) must still fit
+	// next to the others that run.
+	if gameUnitMemoryMB(env, g) > previous {
+		if st, err := unitStates(ctx, env, []string{g.unit()}); err == nil && len(st) == 1 && st[0].Active == "active" {
+			if err := checkGameStart(ctx, env, g); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := saveGame(env, g); err != nil {
 		return nil, err
@@ -1775,6 +1886,10 @@ func gameDelete(ctx context.Context, env *Env, raw json.RawMessage) (any, error)
 		_ = killAllProcesses(ctx, env, g.user())
 	}
 	if _, err := env.Exec.Run(ctx, "userdel", g.user()); err != nil && !env.Cfg.DryRun {
+		return nil, err
+	}
+	// Its logins on shared databases (the databases stay, they are a site's).
+	if err := dropDBLinks(ctx, env, func(l dbLink) bool { return l.Game == g.ID }); err != nil {
 		return nil, err
 	}
 	_ = os.Remove(filepath.Join(env.Cfg.AuthorizedKeysDir, g.user()))

@@ -23,6 +23,7 @@ final class Game implements Castable
             ['id' => 'vanilla', 'label' => 'Vanilla (oficiální server)', 'package' => 'minecraft', 'addons' => null],
             ['id' => 'fabric', 'label' => 'Fabric (módy)', 'package' => 'minecraft', 'addons' => ['kind' => 'mods', 'modrinth_loaders' => ['fabric']]],
             ['id' => 'forge', 'label' => 'Forge (módy)', 'package' => 'minecraft', 'addons' => ['kind' => 'mods', 'modrinth_loaders' => ['forge']]],
+            ['id' => 'neoforge', 'label' => 'NeoForge (módy, Create)', 'package' => 'minecraft', 'addons' => ['kind' => 'mods', 'modrinth_loaders' => ['neoforge']]],
         ]],
         'factorio' => ['name' => 'Factorio', 'engine' => 'factorio', 'proto' => 'udp', 'default_port' => 34197, 'min_memory_mb' => 1024, 'available' => true, 'package' => 'factorio', 'flavors' => [
             ['id' => 'stable', 'label' => 'Stabilní vydání', 'package' => 'factorio', 'addons' => null],

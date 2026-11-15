@@ -49,5 +49,12 @@
     "max": "max.",
     "more": "další",
     "or drag and drop": "nebo přetáhněte sem",
-    "{1} record selected|[2,*] records selected": "{1} vybraný záznam|[2,4] vybrané záznamy|[5,*] vybraných záznamů"
+    "{1} record selected|[2,*] records selected": "{1} vybraný záznam|[2,4] vybrané záznamy|[5,*] vybraných záznamů",
+    "Zdroje": "Zdroje",
+    "RAM serveru": "RAM serveru",
+    "Rezerva RAM pro weby": "Rezerva RAM pro weby",
+    "Rezerva (GB)": "Rezerva (GB)",
+    "Instalace modpacku :name": "Instalace modpacku :name",
+    "Modpack z Modrinthu": "Modpack z Modrinthu",
+    "Nahradit pack :old packem :new?": "Nahradit pack :old packem :new?"
 }

@@ -34,6 +34,14 @@ class GamePlugins extends ViewPage
 
     public ?string $error = null;
 
+    public string $packQuery = '';
+
+    /** @var list<array<string, mixed>>|null */
+    public ?array $packResults = null;
+
+    /** @var array{project: string, name: string, version: string, files: int}|null */
+    public ?array $pack = null;
+
     /** Factorio: whether server-settings.json has the factorio.com account. */
     public bool $account = false;
 
@@ -59,7 +67,7 @@ class GamePlugins extends ViewPage
         return $this->server()->game->addons($this->server()->flavor);
     }
 
-    /** Plugins (Paper, Folia) or mods (Fabric, Forge) from the Minecraft catalogues. */
+    /** Plugins (Paper, Folia) or mods (Fabric, Forge, NeoForge) from the Minecraft catalogues. */
     public function paper(): bool
     {
         return $this->server()->game->is('minecraft') && $this->addons() !== null;
@@ -69,6 +77,35 @@ class GamePlugins extends ViewPage
     public function hangar(): bool
     {
         return (bool) ($this->addons()['hangar'] ?? false);
+    }
+
+    /** Modpacks (Modrinth's .mrpack) go onto the mod loaders' servers. */
+    public function modpacks(): bool
+    {
+        return $this->server()->game->is('minecraft') && in_array($this->server()->flavor, ['neoforge', 'forge', 'fabric'], true);
+    }
+
+    public function findModpacks(): void
+    {
+        $this->validate(['packQuery' => ['nullable', 'string', 'max:100', 'not_regex:/[\r\n]/']]);
+        try {
+            ['results' => $this->packResults, 'installed' => $this->pack] = app(ManageGameServers::class)->searchModpacks($this->server(), trim($this->packQuery));
+        } catch (AgentException $e) {
+            Toast::error(__('Hledání selhalo'), $e->getMessage());
+        }
+    }
+
+    public function installModpack(string $project): void
+    {
+        $hit = collect($this->packResults ?? [])->firstWhere('project', $project);
+        if (! $this->modpacks() || $hit === null || ! preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $project)) {
+            return;
+        }
+        try {
+            app(ManageGameServers::class)->installModpack($this->server(), $project, (string) $hit['name']);
+        } catch (AgentException $e) {
+            Toast::error(__('Modpack se nepodařilo nainstalovat'), $e->getMessage());
+        }
     }
 
     /** "Módy" for the mod loaders and Factorio, "Pluginy" for Paper and Folia. */
@@ -128,6 +165,9 @@ class GamePlugins extends ViewPage
     {
         if ($task->status === AgentTask::DONE && in_array($task->op, ['game.plugin_install', 'game.mod_install'], true)) {
             $this->changed = true;
+        }
+        if ($task->op === 'game.modpack_install' && $this->packResults !== null) {
+            $this->findModpacks();
         }
         $this->load($this->checked);
     }

@@ -19,7 +19,8 @@ import (
 // used to push the edge, the web tier and PHP into swap, and the kernel's
 // out-of-memory killer then took turns with the games' restarts for hours.
 // Inside the slice the games compete among themselves; the kernel reclaims
-// and kills there, not in the sites.
+// and kills there, not in the sites. Any one game may be given the whole
+// budget; what is checked is that the running ones fit (checkGameStart).
 const gamesSlice = "wspanel-games.slice"
 
 // hostMemoryMB is the server's RAM (MemTotal); 0 when unknown (tests set it).
@@ -49,12 +50,12 @@ func gamesReserveMB(totalMB int) int {
 }
 
 // gamesBudgetMB is the memory all game servers together may use (0: unknown).
-func gamesBudgetMB() int {
+func gamesBudgetMB(env *Env) int {
 	total := hostMemoryMB()
 	if total <= 0 {
 		return 0
 	}
-	return max(total-gamesReserveMB(total), 0)
+	return max(total-gamesReserveOf(env, total), 0)
 }
 
 // gameUnitMemoryMB is the unit's MemoryMax: a JVM needs its heap and its own.
@@ -65,41 +66,37 @@ func gameUnitMemoryMB(env *Env, g gameState) int {
 	return g.MemoryMB
 }
 
-// checkGameMemory refuses a game whose limit would make all game servers
-// together reserve more than the server leaves them. Lowering a limit is
-// always allowed, so an over-committed server can be brought back down.
+// checkGameMemory refuses a game whose own limit is more than the games'
+// budget: a server may be given all of it (and then runs alone), not more.
+// Lowering a limit is always allowed, so a server set up before a smaller
+// budget can be brought back down.
 func checkGameMemory(env *Env, g gameState, previousMB int) error {
-	budget := gamesBudgetMB()
+	budget := gamesBudgetMB(env)
 	if budget == 0 {
 		return nil
 	}
 	next := gameUnitMemoryMB(env, g)
-	if previousMB > 0 && next <= previousMB {
-		return nil
-	}
-	total := next
-	for _, o := range allGames(env) {
-		if o.ID != g.ID {
-			total += gameUnitMemoryMB(env, o)
-		}
-	}
-	if total <= budget {
+	if (previousMB > 0 && next <= previousMB) || next <= budget {
 		return nil
 	}
 	ram := hostMemoryMB()
 	return protocol.Invalid(fmt.Sprintf(
-		"memory_mb: the game servers would reserve %d MB together; this server has %d MB of RAM and keeps %d MB for the sites, databases and the panel, so games may use %d MB (%d MB left)",
-		total, ram, gamesReserveMB(ram), budget, max(budget-(total-next), 0)))
+		"memory_mb: the game server would reserve %d MB; this server has %d MB of RAM and keeps %d MB for the sites, databases and the panel, so a game server may use at most %d MB",
+		next, ram, gamesReserveOf(env, ram), budget))
 }
 
 // gamesSliceUnit renders the slice: a soft limit the kernel reclaims at first,
 // then the hard one, without swap (a swapping game server is a stalled one).
-func gamesSliceUnit(budgetMB int) string {
+// A CPU cap is the policy's cores for all games together.
+func gamesSliceUnit(budgetMB int, p gamesPolicy) string {
 	var b strings.Builder
 	b.WriteString("# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.\n")
 	b.WriteString("[Unit]\nDescription=WSPanel game servers\nBefore=slices.target\n\n[Slice]\n")
 	if budgetMB > 0 {
 		fmt.Fprintf(&b, "MemoryHigh=%dM\nMemoryMax=%dM\nMemorySwapMax=0\n", budgetMB*95/100, budgetMB)
+	}
+	if p.CPUCores > 0 {
+		fmt.Fprintf(&b, "CPUQuota=%d%%\n", p.CPUCores*100)
 	}
 	return b.String()
 }
@@ -110,7 +107,7 @@ func gamesSliceUnit(budgetMB int) string {
 // Several games over the budget then share it, and the kernel takes a game,
 // not a site, when they all want their full limit.
 func gamesSliceMB(env *Env) int {
-	budget := gamesBudgetMB()
+	budget := gamesBudgetMB(env)
 	if budget == 0 {
 		return 0
 	}
@@ -120,15 +117,23 @@ func gamesSliceMB(env *Env) int {
 	return budget
 }
 
-// writeGamesSlice installs the slice when its rendering changed; it reports
-// whether systemd needs a daemon-reload.
+// writeGamesSlice installs the games' slice and its parent (their CPU and
+// disk weight) when their rendering changed; it reports whether systemd
+// needs a daemon-reload.
 func writeGamesSlice(env *Env) (bool, error) {
-	path := filepath.Join(env.Cfg.SystemdDir, gamesSlice)
-	unit := []byte(gamesSliceUnit(gamesSliceMB(env)))
-	if old, err := os.ReadFile(path); err == nil && string(old) == string(unit) {
-		return false, nil
+	p := loadGamesPolicy(env)
+	changed := false
+	for name, unit := range map[string]string{gamesSlice: gamesSliceUnit(gamesSliceMB(env), p), wspanelSlice: wspanelSliceUnit(p)} {
+		path := filepath.Join(env.Cfg.SystemdDir, name)
+		if old, err := os.ReadFile(path); err == nil && string(old) == unit {
+			continue
+		}
+		if err := env.FS.WriteFile(path, []byte(unit), 0o644, fsx.Root); err != nil {
+			return changed, err
+		}
+		changed = true
 	}
-	return true, env.FS.WriteFile(path, unit, 0o644, fsx.Root)
+	return changed, nil
 }
 
 // RenderGameUnitsOnStart brings the units of existing game servers to the
@@ -143,8 +148,12 @@ func RenderGameUnitsOnStart(ctx context.Context, env *Env, logf func(string, ...
 	if len(games) == 0 {
 		return
 	}
-	if budget, sum := gamesBudgetMB(), gamesReservedMB(env); budget > 0 && sum > budget {
-		logf("game servers reserve %d MB together, over the %d MB this server leaves them: they share it, lower their memory in the panel", sum, budget)
+	if budget := gamesBudgetMB(env); budget > 0 {
+		for _, g := range games {
+			if mb := gameUnitMemoryMB(env, g); mb > budget {
+				logf("game server %d reserves %d MB, over the %d MB this server leaves game servers: lower its memory in the panel", g.ID, mb, budget)
+			}
+		}
 	}
 	_ = withMutate(env, func() error {
 		n := 0
@@ -164,13 +173,4 @@ func RenderGameUnitsOnStart(ctx context.Context, env *Env, logf func(string, ...
 		}
 		return nil
 	})
-}
-
-// gamesReservedMB is what all game servers' limits add up to.
-func gamesReservedMB(env *Env) int {
-	total := 0
-	for _, g := range allGames(env) {
-		total += gameUnitMemoryMB(env, g)
-	}
-	return total
 }

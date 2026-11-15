@@ -45,7 +45,7 @@ class GameServer extends Model
     /** "Paper 1.21.10 #130", "Factorio 2.1.24". */
     public function versionLabel(): string
     {
-        $name = $this->game->is('minecraft') ? ucfirst($this->flavor) : $this->game->label();
+        $name = $this->game->is('minecraft') ? ($this->flavor === 'neoforge' ? 'NeoForge' : ucfirst($this->flavor)) : $this->game->label();
         if ($this->version === 'latest') {
             // Steam: no versions, only builds.
             return trim($name.' '.($this->build ? __('build :build', ['build' => $this->build]) : __('nejnovější')));

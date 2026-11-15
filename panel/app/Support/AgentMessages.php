@@ -136,6 +136,7 @@ final class AgentMessages
             '/^auth\.json is not valid JSON$/' => 'Soubor auth.json webu není platný JSON (opravte ho v Souborech).',
             '/^command: not a quick command of this site$/' => 'Tento rychlý příkaz web nemá.',
             '/^version: Forge has no build for Minecraft (\S+)$/' => 'Forge pro Minecraft $1 nemá žádné sestavení.',
+            '/^version: NeoForge has no build for Minecraft (\S+)$/' => 'NeoForge pro Minecraft $1 nemá žádné sestavení.',
             '/^the (fabric|forge) installer failed: (.*)$/s' => fn ($m) => 'Instalátor '.ucfirst($m[1]).' selhal: '.$m[2],
             '/^source: Hangar has Paper plugins only.*$/' => 'Hangar má jen pluginy pro Paper, módy jsou na Modrinthu.',
             '/^mods need a factorio\.com account.*$/' => 'Módy stahuje mod portál jen s účtem factorio.com: zadejte jméno a token v Nastavení serveru.',
@@ -150,7 +151,12 @@ final class AgentMessages
             '/^downloading (.+) failed: .*checksum mismatch.*$/s' => 'Stažení $1 se nepodařilo: soubor neodpovídá otisku z katalogu. Nic se neinstalovalo.',
             '/^(Modrinth|Hangar): (.+)$/s' => 'Katalog $1 neodpovídá: $2',
             '/^memory_mb: (\d+) to 262144$/' => 'Paměť musí být $1 až 262144 MB.',
-            '/^memory_mb: the game servers would reserve (\d+) MB together; this server has (\d+) MB of RAM and keeps (\d+) MB for the sites, databases and the panel, so games may use (\d+) MB \((\d+) MB left\)$/' => 'Herní servery by si dohromady vyhradily $1 MB. Server má $2 MB RAM a $3 MB drží pro weby, databáze a panel, hrám tedy zbývá $4 MB (volných $5 MB). Snižte paměť tohoto nebo jiného herního serveru.',
+            '/^memory_mb: the game server would reserve (\d+) MB; this server has (\d+) MB of RAM and keeps (\d+) MB for the sites, databases and the panel, so a game server may use at most (\d+) MB$/' => 'Herní server by si vyhradil $1 MB. Server má $2 MB RAM a $3 MB drží pro weby, databáze a panel, jeden herní server tedy smí mít nejvýš $4 MB. Snižte jeho paměť, nebo ve Zdrojích zmenšete rezervu pro weby.',
+            '/^memory: this game server needs (\d+) MB; the running ones \((.+)\) take (\d+) MB of the (\d+) MB game servers may use \((\d+) MB free\): stop one of them first$/' => 'Herní server potřebuje $1 MB, ale běžící servery ($2) zabírají $3 MB z $4 MB, které herní servery smějí použít (volných $5 MB). Nejdřív některý z nich zastavte.',
+            '/^memory: this game server needs (\d+) MB and game servers may use (\d+) MB: lower its memory$/' => 'Herní server potřebuje $1 MB, ale herní servery smějí použít jen $2 MB. Snižte jeho paměť.',
+            '/^reserve_mb: at least (\d+) MB stay for the sites, databases and the panel$/' => 'Pro weby, databáze a panel musí zůstat aspoň $1 MB.',
+            '/^reserve_mb: this server has (\d+) MB of RAM; keeping (\d+) MB leaves the game servers nothing$/' => 'Server má $1 MB RAM; rezerva $2 MB by herním serverům nenechala nic.',
+            '/^cpu_cores: 0 \(no cap\) to (\d+), the server\'s CPUs$/' => 'Strop CPU: 0 (bez stropu) až $1, počet procesorů serveru.',
 
             // Server → Systém, Procesy, Balíčky
             '/^pid: the process has already ended$/' => 'Proces už neběží.',

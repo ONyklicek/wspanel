@@ -44,6 +44,10 @@ func fakePublishers(t *testing.T) {
 			fmt.Fprint(w, `[{"version":"0.21.0-beta","stable":false},{"version":"0.20.1","stable":true}]`)
 		case "/forge/promotions_slim.json":
 			fmt.Fprint(w, `{"promos":{"1.21.10-latest":"60.1.18","1.21.10-recommended":"60.1.17","1.19.2-recommended":"43.1.1"}}`)
+		case "/neoforge/api":
+			fmt.Fprint(w, `{"versions":["20.4.237","21.0.167","21.1.214","21.1.215","21.1.216-beta","26.3.0.99","26.3.0.103","26.1.1.12"]}`)
+		case "/neoforge/21.1.215/neoforge-21.1.215-installer.jar.sha256":
+			fmt.Fprint(w, strings.Repeat("d", 64))
 		case "/download/sha256sums/":
 			fmt.Fprint(w, strings.Repeat("c", 64)+"  factorio-headless_linux_2.1.24.tar.xz\n")
 		default:
@@ -51,11 +55,13 @@ func fakePublishers(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	old := []string{paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos}
+	old := []string{paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos, neoforgeAPI, neoforgeMaven}
 	paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos = srv.URL, srv.URL+"/mojang", srv.URL, srv.URL+"/fabric", srv.URL+"/forge/promotions_slim.json"
+	neoforgeAPI, neoforgeMaven = srv.URL+"/neoforge/api", srv.URL+"/neoforge"
 	catalogCache.data = nil
 	t.Cleanup(func() {
 		paperAPIBase, mojangManifest, factorioAPI, fabricMeta, forgePromos = old[0], old[1], old[2], old[3], old[4]
+		neoforgeAPI, neoforgeMaven = old[5], old[6]
 		catalogCache.data = nil
 	})
 }
@@ -537,6 +543,37 @@ func TestEndingSFTPSessionsSparesTheGameServer(t *testing.T) {
 	m := managedCgroups(env.Cfg, "", "wsg_3")
 	if !m["/system.slice/wspanel-game-3.service"] {
 		t.Error("the game's own unit is the user's managed one")
+	}
+}
+
+// NeoForge (where Create 6 lives): its versions name the Minecraft they are
+// for; the newest stable build of each, betas and pre-1.20.5 left out.
+func TestNeoForgeBuildsMapToTheirMinecraft(t *testing.T) {
+	fakePublishers(t)
+	env, _ := gameTestEnv(t)
+	out, err := call(t, env, gameCatalog, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc := out.(map[string]any)["minecraft"].(map[string][]string)
+	if got := strings.Join(mc["neoforge"], ","); got != "26.3,26.1.1,1.21.1,1.21" {
+		t.Errorf("catalog: %s", got)
+	}
+	d, err := resolveGameDownload(context.Background(), gameSource{Type: "neoforge"}, "1.21.1")
+	if err != nil || d.Build != "21.1.215" || d.Sum != strings.Repeat("d", 64) || !strings.HasSuffix(d.URL, "/neoforge/21.1.215/neoforge-21.1.215-installer.jar") || d.Java != 21 {
+		t.Fatalf("download %+v %v", d, err)
+	}
+	g := gameState{ID: 7, Game: "minecraft", Flavor: "neoforge", Version: "1.21.1", Build: "21.1.215", Java: 21, MemoryMB: 4096}
+	if cmd := gameExecStart(env, g); !strings.HasSuffix(cmd, " @libraries/net/neoforged/neoforge/21.1.215/unix_args.txt nogui") {
+		t.Errorf("start: %s", cmd)
+	}
+	if l := addonLoaders(env, g); len(l) != 1 || l[0] != "neoforge" {
+		t.Errorf("loaders %v", l)
+	}
+	for b, want := range map[string]string{"21.1.215": "1.21.1", "21.0.167": "1.21", "26.3.0.103": "26.3", "26.1.1.12": "26.1.1", "21.1.216-beta": "", "26.3.0": ""} {
+		if got := neoforgeMC(b); got != want {
+			t.Errorf("%s → %q, want %q", b, got, want)
+		}
 	}
 }
 

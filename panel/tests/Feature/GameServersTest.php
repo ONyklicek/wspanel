@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Game;
 use App\Livewire\Games\GameConsole;
+use App\Livewire\Games\GameDatabases;
 use App\Livewire\Games\GameOptions;
 use App\Livewire\Games\GamePlayers;
 use App\Livewire\Games\GamePlugins;
@@ -16,8 +17,10 @@ use App\Livewire\Sites\FileBrowser;
 use App\Livewire\TaskIndicator;
 use App\Models\AgentTask;
 use App\Models\Client;
+use App\Models\Database;
 use App\Models\GameServer;
 use App\Models\Package;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -110,6 +113,43 @@ class GameServersTest extends TestCase
         AgentTasks::settleAll();
         $this->assertSame('failed', GameServer::where('name', 'Second')->sole()->status);
         $this->assertSame('Selhalo: download.', AgentTask::latest('id')->first()->error); // the agent's message, in Czech
+    }
+
+    public function test_the_administrator_sets_how_games_share_the_server_with_the_sites(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->with('game.resources', [])->andReturn([
+            'ram_mb' => 8000, 'reserve_mb' => 0, 'auto_reserve_mb' => 2000, 'budget_mb' => 6000, 'running_mb' => 5318,
+            'running' => [['id' => 2, 'name' => 'Create', 'unit_mb' => 5318]], 'priority' => 'sites', 'cpu_cores' => 0, 'cpus' => 4,
+        ]);
+        $this->agent->shouldReceive('call')->once()->with('game.set_resources', ['reserve_mb' => 4096, 'priority' => 'sites', 'cpu_cores' => 2])->andReturn([]);
+
+        $list = Livewire::test(ListGameServers::class)->call('openHeaderActionModal', 'resources')->assertSee('Create (5,2 GB)');
+        $this->fillActionForm($list, ['reserve_mode' => 'custom', 'reserve_gb' => 4, 'priority' => 'sites', 'cpu_cores' => 2], self::TABLE_FRAMES);
+        $list->call('submitActionModal')->assertHasNoErrors();
+
+        $client = Client::factory()->create();
+        $this->actingAs(User::factory()->forClient($client)->create());
+        // A client's user gets neither the numbers nor the switch (game.set_resources ran once, above).
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'resources', ['reserve_mode' => 'auto', 'priority' => 'games', 'cpu_cores' => 0])
+            ->assertDontSee('Teď zabírají');
+    }
+
+    public function test_an_install_that_does_not_fit_next_to_the_running_ones_says_so(): void
+    {
+        Features::setGames(true);
+        $this->agent->shouldReceive('call')->with('game.create', Mockery::any())->andReturn(['job_id' => 'j1']);
+        $this->agent->shouldReceive('call')->with('job.status', Mockery::any())->andReturn(['status' => 'done', 'output' => [
+            'build' => '130', 'not_started' => 'memory: this game server needs 2816 MB; the running ones (Create 5318 MB) take 5318 MB of the 6000 MB game servers may use (682 MB free): stop one of them first',
+        ]]);
+        $form = ['name' => 'Lobby', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'memory_mb' => 2048, 'cpu_percent' => 0, 'eula' => true];
+
+        $this->headerTableAction(Livewire::test(ListGameServers::class), 'create', $form);
+        AgentTasks::settleAll();
+        $task = AgentTask::sole();
+        $this->assertSame('Herní server Lobby je nainstalovaný, ale nespustil se', $task->done_title);
+        $this->assertStringContainsString('běžící servery (Create 5318 MB) zabírají 5318 MB z 6000 MB', $task->body);
+        $this->assertSame('active', GameServer::sole()->status);
     }
 
     public function test_a_failed_install_leaves_no_record(): void
@@ -499,5 +539,73 @@ class GameServersTest extends TestCase
             ->assertSee('Přidat mód')->assertDontSee('Hangar (PaperMC)')
             ->set('source', 'hangar')->set('query', 'sodium')->call('findPlugins')
             ->call('install', 'hangar', 'ViaVersion');
+    }
+
+    public function test_a_neoforge_server_takes_a_modpack_in_the_background(): void
+    {
+        Features::setGames(true);
+        $server = GameServer::create(['name' => 'Create', 'game' => 'minecraft', 'flavor' => 'neoforge', 'version' => '1.21.1', 'build' => '21.1.215', 'port' => 25566, 'memory_mb' => 4096, 'status' => 'active']);
+        $this->assertSame('NeoForge 1.21.1 #21.1.215', $server->versionLabel());
+        $this->agent->shouldReceive('call')->with('game.plugins', ['id' => $server->id])->andReturn(['plugins' => []]);
+        $this->agent->shouldReceive('call')->with('game.modpack_search', ['id' => $server->id, 'query' => 'create'])->andReturn(['results' => [
+            ['source' => 'modrinth', 'project' => 'AbCd1234', 'name' => 'Create Plus', 'description' => 'Create and friends', 'author' => 'x', 'downloads' => 5, 'url' => 'https://modrinth.com/modpack/create-plus'],
+        ]]);
+        $this->agent->shouldReceive('call')->once()->with('game.modpack_install', ['id' => $server->id, 'project' => 'AbCd1234'])->andReturn(['job_id' => 'p1']);
+        $this->agent->shouldReceive('call')->with('job.status', ['id' => 'p1'])->andReturn(['status' => 'done', 'output' => ['name' => 'Create Plus', 'version' => '1.4', 'files' => 212, 'loader_wanted' => '21.1.200']]);
+
+        Livewire::test(GamePlugins::class, ['record' => $server->id])
+            ->assertSee('Modpack z Modrinthu')
+            ->set('packQuery', 'create')->call('findModpacks')->assertSee('Create Plus')
+            ->call('installModpack', 'ZzZz9999') // not among the results: nothing
+            ->call('installModpack', 'AbCd1234');
+        AgentTasks::settleAll();
+        $task = AgentTask::sole();
+        $this->assertSame('Nainstalováno: Create Plus 1.4', $task->done_title);
+        $this->assertStringContainsString('212 souborů', $task->body);
+        $this->assertStringContainsString('21.1.200', $task->body);
+
+        // A Paper server has plugins, not modpacks.
+        $paper = GameServer::create(['name' => 'Lobby', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
+        $this->agent->shouldReceive('call')->with('game.plugins', ['id' => $paper->id])->andReturn(['plugins' => []]);
+        Livewire::test(GamePlugins::class, ['record' => $paper->id])->assertDontSee('Modpack z Modrinthu');
+    }
+
+    public function test_a_game_server_and_a_site_share_one_database_each_with_its_own_login(): void
+    {
+        Features::setGames(true);
+        $server = GameServer::create(['name' => 'Create', 'game' => 'minecraft', 'flavor' => 'neoforge', 'version' => '1.21.1', 'port' => 25566, 'memory_mb' => 4096, 'status' => 'active']);
+        $site = Site::create(['domain' => 'shop.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'status' => 'active']);
+        Database::create(['engine' => 'mariadb', 'name' => 'shop', 'site_id' => $site->id]);
+        Database::create(['engine' => 'mariadb', 'name' => 'apart', 'site_id' => $site->id, 'instance' => 3]); // a dedicated server: not offered
+        $other = Client::factory()->create();
+        Database::acrossClients()->create(['engine' => 'mariadb', 'name' => 'c'.$other->id.'_theirs', 'client_id' => $other->id]);
+
+        $links = [];
+        $this->agent->shouldReceive('call')->with('db.links', Mockery::any())->andReturnUsing(function ($op, $p) use (&$links) {
+            return ['links' => array_values(array_filter($links, fn ($l) => (isset($p['game']) && ($l['game'] ?? 0) === $p['game']) || (isset($p['name']) && $l['name'] === $p['name'])))];
+        });
+        $this->agent->shouldReceive('call')->once()->with('db.link', ['engine' => 'mariadb', 'name' => 'shop', 'game' => $server->id])
+            ->andReturnUsing(function () use (&$links, $server) {
+                $links[] = ['name' => 'shop', 'user' => 'wsl_aaa', 'password' => 'pw-for-the-game', 'host' => '127.0.0.1', 'port' => 3306, 'jdbc' => 'jdbc:mariadb://127.0.0.1:3306/shop', 'game' => $server->id];
+
+                return end($links);
+            });
+
+        $page = fn () => Livewire::test(GameDatabases::class, ['record' => $server->id]);
+        $page()->assertSee('zatím nepoužívá žádnou databázi');
+        $this->pageAction($page(), 'attach', ['name' => 'c'.$other->id.'_theirs'])->assertHasErrors();
+        $this->pageAction($page(), 'attach', ['name' => 'apart'])->assertHasErrors();
+        $this->pageAction($page(), 'attach', ['name' => 'shop'])->assertHasNoErrors()
+            ->assertSee('jdbc:mariadb://127.0.0.1:3306/shop')->assertSee('wsl_aaa');
+
+        // A new one for the game, shared with the site under its prefix.
+        $this->agent->shouldReceive('call')->once()->with('db.create', ['engine' => 'mariadb', 'name' => 'stats'])->andReturn(['password' => 'owner']);
+        $this->agent->shouldReceive('call')->once()->with('db.link', ['engine' => 'mariadb', 'name' => 'stats', 'game' => $server->id])->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('db.link', ['engine' => 'mariadb', 'name' => 'stats', 'domain' => 'shop.example.com', 'prefix' => 'MC_DB'])->andReturn([]);
+        $this->pageAction($page(), 'create', ['name' => 'stats', 'domain' => 'shop.example.com', 'prefix' => 'MC_DB'])->assertHasNoErrors();
+        $this->assertNull(Database::where('name', 'stats')->sole()->site_id);
+
+        $this->agent->shouldReceive('call')->once()->with('db.unlink', ['engine' => 'mariadb', 'name' => 'shop', 'game' => $server->id])->andReturn([]);
+        $page()->call('detach', 'shop');
     }
 }

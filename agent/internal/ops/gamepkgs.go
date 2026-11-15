@@ -81,7 +81,7 @@ type gameAddonSpec struct {
 // The agent's mechanisms a manifest may name.
 var (
 	gameEngines = map[string][]string{ // engine -> the source types it can run
-		"minecraft": {"papermc", "mojang", "fabric", "forge"},
+		"minecraft": {"papermc", "mojang", "fabric", "forge", "neoforge"},
 		"factorio":  {"factorio"},
 		// A game the package describes how to run (gamenative.go).
 		"native": {"steamcmd"},

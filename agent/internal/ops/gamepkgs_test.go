@@ -27,7 +27,7 @@ func TestBuiltinPackagesAddMinecraftAndFactorio(t *testing.T) {
 		t.Fatalf("built-in packages: %v %v", active, problems)
 	}
 	mc := defs["minecraft"]
-	if mc.Engine != "minecraft" || len(mc.Flavors) != 4 || mc.Flavors[0].ID != "paper" || !mc.Flavors[0].Addons.Hangar {
+	if mc.Engine != "minecraft" || len(mc.Flavors) != 5 || mc.Flavors[0].ID != "paper" || !mc.Flavors[0].Addons.Hangar {
 		t.Errorf("minecraft: %+v", mc)
 	}
 	if defs["factorio"].Proto != "udp" || defs["factorio"].Flavors[0].Source.Type != "factorio" {
@@ -85,7 +85,7 @@ func TestFoliaExtendsMinecraftThroughAPackage(t *testing.T) {
 	if _, ok := gameDefOf(env, "minecraft"); !ok {
 		t.Fatal("minecraft stays")
 	}
-	if def, _ := gameDefOf(env, "minecraft"); len(def.Flavors) != 4 {
+	if def, _ := gameDefOf(env, "minecraft"); len(def.Flavors) != 5 {
 		t.Errorf("Folia gone with its package: %v", def.Flavors)
 	}
 	if _, err := call(t, env, gamePackageRemove, map[string]string{"id": "minecraft"}); code(err) != "invalid_params" {
@@ -156,7 +156,7 @@ func TestCatalogPackagesNeedWSPanelsSignature(t *testing.T) {
 		t.Errorf("a bad signature must refuse: %v", err)
 	}
 	if _, ok := gameDefOf(env, "minecraft"); ok {
-		if def, _ := gameDefOf(env, "minecraft"); len(def.Flavors) != 4 {
+		if def, _ := gameDefOf(env, "minecraft"); len(def.Flavors) != 5 {
 			t.Error("nothing of an unsigned catalog may take effect")
 		}
 	}

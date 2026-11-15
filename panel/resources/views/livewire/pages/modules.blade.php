@@ -58,7 +58,7 @@
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --xhprof=yes</span></x-slot:footer>
     </x-panel.card>
 
-    <x-panel.card :actions="[$this->moduleAction('enableGames'), $this->moduleAction('disableGames')]" :heading="__('Herní servery')" :description="__('Minecraft (Paper, Vanilla, Fabric, Forge) a Factorio: každý server jako vlastní uživatel a služba s limity podle balíčku, konzole, hráči, pluginy a zálohy v panelu.')">
+    <x-panel.card :actions="[$this->moduleAction('enableGames'), $this->moduleAction('disableGames')]" :heading="__('Herní servery')" :description="__('Minecraft (Paper, Vanilla, Fabric, Forge, NeoForge) a Factorio: každý server jako vlastní uživatel a služba s limity podle balíčku, konzole, hráči, pluginy a zálohy v panelu.')">
         <x-slot:status><x-wire::badge :color="($this->gamesEnabled()) ? 'success' : 'gray'">{{ ($this->gamesEnabled()) ? __('zapnuto') : __('vypnuto') }}</x-wire::badge></x-slot:status>
         <p class="text-sm text-gray-600 dark:text-gray-300">@if ($this->gamesEnabled()){{ __('Serverů: :n. Vypnout jde, jen když nejsou žádné herní servery.', ['n' => $this->gameCount()]) }}@else{{ __('Na server se nic neinstaluje: Java a server hry se stáhnou až s prvním herním serverem.') }}@endif</p>
         @include('partials.module-memory', ['bytes' => $this->memory('games'), 'unused' => false])
