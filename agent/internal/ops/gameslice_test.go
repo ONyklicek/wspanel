@@ -3,9 +3,9 @@ package ops
 import (
 	"context"
 	"fmt"
-	"slices"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -89,8 +89,8 @@ func runningUnits(dr *executor.DryRun, active ...string) {
 func TestAGameStartsOnlyWhenItFitsNextToTheRunningOnes(t *testing.T) {
 	fakePublishers(t)
 	env, dr := gameTestEnv(t)
-	withHostMemory(t, 6096) // keeps 1524→1536 MB, games get 4560 MB
-	big := gameState{ID: 1, Name: "Create", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 3000} // 4006 MB
+	withHostMemory(t, 6096)                                                                                                                                           // keeps 1524→1536 MB, games get 4560 MB
+	big := gameState{ID: 1, Name: "Create", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25565, RconPort: 27000, RconPassword: "p", MemoryMB: 3000}  // 4006 MB
 	small := gameState{ID: 2, Name: "Lobby", Game: "minecraft", Flavor: "paper", Version: "1.21.10", Port: 25566, RconPort: 27001, RconPassword: "p", MemoryMB: 1024} // 1536 MB
 	for _, g := range []gameState{big, small} {
 		if err := saveGame(env, g); err != nil {
