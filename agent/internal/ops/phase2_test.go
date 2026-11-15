@@ -56,7 +56,7 @@ func TestWorkerLifecycle(t *testing.T) {
 	for _, want := range []string{
 		"User=web_app_example_com", "ExecStart=/usr/bin/php8.3 artisan horizon",
 		"WorkingDirectory=" + env.Cfg.SitesRoot + "/app.example.com/releases/%i", // its release, never current
-		"TimeoutStopSec=3600", // an old Horizon may finish its jobs beside the new one
+		"TimeoutStopSec=120", // the drain hour is the old instance's alone (a runtime drop-in)
 		"ProtectSystem=strict", "NoNewPrivileges=yes", "ReadWritePaths=" + env.Cfg.SitesRoot + "/app.example.com\n",
 	} {
 		if !strings.Contains(string(unit), want) {

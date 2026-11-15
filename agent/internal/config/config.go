@@ -129,8 +129,9 @@ type Config struct {
 	PanelDomain     string `json:"panel_domain"`
 	PanelPort       int    `json:"panel_port,omitempty"` // 0/443: the panel has its domain to itself
 
-	SystemdDir     string `json:"systemd_dir"`    // where worker units are written
-	PHPCLIBinary   string `json:"php_cli_binary"` // may contain {version}
+	SystemdDir     string `json:"systemd_dir"`      // where worker units are written
+	RuntimeUnitDir string `json:"runtime_unit_dir"` // runtime drop-ins (gone at reboot)
+	PHPCLIBinary   string `json:"php_cli_binary"`   // may contain {version}
 	UFWBinary      string `json:"ufw_binary"`
 	ProtectedPorts []int  `json:"protected_ports"` // never denied or deleted (lockout protection)
 
@@ -275,6 +276,7 @@ func Defaults() Config {
 		ProxyCertDir:      "/etc/panel-proxy/certs",
 		DeployLogDir:      "/var/log/panel-agent/deploys",
 		SystemdDir:        "/etc/systemd/system",
+		RuntimeUnitDir:    "/run/systemd/system",
 		PHPCLIBinary:      "/usr/bin/php{version}",
 		UFWBinary:         "/usr/sbin/ufw",
 		ProtectedPorts:    []int{22, 80, 443},

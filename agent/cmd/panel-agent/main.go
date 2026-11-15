@@ -203,7 +203,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	go ops.RenderEdgesOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderGameUnitsOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.ApplySiteGuardOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
-	go ops.RenderSiteOrderOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
+	go ops.RenderWorkerStopOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	return srv.Serve(ctx, ln)
 }
 

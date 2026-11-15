@@ -76,6 +76,45 @@ func TestDeployRotatesWorkersWithoutMixingCode(t *testing.T) {
 	if !releaseInUse(t.Context(), env, l, "r1") {
 		t.Error("a release an old worker still runs from must not be pruned")
 	}
+	// The hour to finish its job is the old instance's alone; the template
+	// (a reboot, a stop of the site) stops within two minutes.
+	if !strings.Contains(string(unit), "TimeoutStopSec=120\n") {
+		t.Errorf("template stop timeout:\n%s", unit)
+	}
+	drain, err := os.ReadFile(filepath.Join(env.Cfg.RuntimeUnitDir, "wspanel-web_rot_example_com-queue@r1.service.d", "50-wspanel-drain.conf"))
+	if err != nil || !strings.Contains(string(drain), "TimeoutStopSec=3600") {
+		t.Errorf("drain drop-in of the old instance: %s %v", drain, err)
+	}
+	if strings.Index(got, "daemon-reload") > queueOld {
+		t.Error("the drain drop-in must be loaded before the old instance is told to stop")
+	}
+	if _, err := os.Stat(filepath.Join(env.Cfg.RuntimeUnitDir, "wspanel-web_rot_example_com-scheduler@r1.service.d")); err == nil {
+		t.Error("the scheduler is not drained")
+	}
+}
+
+func TestOldWorkerTemplatesLoseTheHourLongStopAtTheAgentsStart(t *testing.T) {
+	env, _ := testEnv(t)
+	dir := env.Cfg.SystemdDir
+	_ = os.MkdirAll(dir, 0o755)
+	unit := "# Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.\n[Service]\nKillSignal=SIGTERM\nTimeoutStopSec=3600\n"
+	for _, name := range []string{"wspanel-web_x-horizon@.service", "wspanel-web_x-pulsework@.service", "wspanel-web_x-reverb@.service"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(unit), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := renderWorkerStop(env); n != 2 {
+		t.Fatalf("changed %d, want horizon and pulsework", n)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "wspanel-web_x-horizon@.service")); !strings.Contains(string(b), "TimeoutStopSec=120\n") {
+		t.Errorf("horizon:\n%s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "wspanel-web_x-reverb@.service")); !strings.Contains(string(b), "TimeoutStopSec=3600") {
+		t.Error("a worker that is not drained is left alone")
+	}
+	if n := renderWorkerStop(env); n != 0 {
+		t.Errorf("second pass changed %d", n)
+	}
 }
 
 func TestMaintenancePageWithBypass(t *testing.T) {

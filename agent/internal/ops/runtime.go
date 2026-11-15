@@ -277,29 +277,11 @@ type unitData struct {
 	Oneshot bool
 	// The pause before a restart and the most it grows to (default 2s, 30s).
 	RestartSec, RestartMaxDelay string
-	// After: units it starts after and, at shutdown, stops before (the
-	// site's Valkey, the database servers).
-	After []string
-}
-
-// siteUnitDeps: what a site's processes talk to, so that at shutdown (and
-// on a stop of everything) they stop while it still runs. A Horizon whose
-// Valkey went first never ends its workers and holds the shutdown for its
-// whole stop timeout (an hour). After= on a unit that does not exist is
-// nothing.
-func siteUnitDeps(env *Env, l siteLayout) []string {
-	deps := []string{"wspanel-" + l.User + "-valkey.service", "mariadb.service", "postgresql.service", "mongod.service"}
-	for _, i := range allDBInstances(env) {
-		if i.Domain == l.Domain {
-			deps = append(deps, i.unit())
-		}
-	}
-	return deps
 }
 
 // appUnitData renders the long-running app process of worker and node sites.
 func appUnitData(env *Env, l siteLayout) (unitData, string, error) {
-	d := unitData{User: l.User, Home: l.Home, StopTimeout: 30, After: siteUnitDeps(env, l)}
+	d := unitData{User: l.User, Home: l.Home, StopTimeout: 30}
 	switch l.Mode {
 	case "worker":
 		entry, _, _ := workerEntry(l.Framework, l.Home)

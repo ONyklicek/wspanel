@@ -27,8 +27,27 @@ import (
 // Workers whose old instance may finish its work beside the new one.
 var drainingWorkers = []string{"queue", "horizon", "messenger", "pulsework", "celery"}
 
-// workerDrainTimeout is how long an old consumer may finish its job.
-const workerDrainTimeout = 3600
+// workerDrainTimeout is how long an old consumer may finish its job. Only
+// the old instance gets it, by a runtime drop-in when it is told to stop:
+// the unit itself stops within workerStopTimeout, so a reboot, a stop of
+// the site or a stop that systemd orders before a database's start never
+// waits an hour (a Horizon whose Valkey stopped first held a reboot for
+// twelve minutes before the server was powered off).
+const (
+	workerDrainTimeout = 3600
+	workerStopTimeout  = 120
+)
+
+// drainDropIn lets an old instance finish its job: the long stop timeout
+// for that instance alone, until the next boot.
+func drainDropIn(env *Env, unit string) error {
+	dir := filepath.Join(env.Cfg.RuntimeUnitDir, unit+".d")
+	if err := env.FS.MkdirAll(dir, 0o755, fsx.Root); err != nil {
+		return err
+	}
+	return env.FS.WriteFile(filepath.Join(dir, "50-wspanel-drain.conf"),
+		[]byte(fmt.Sprintf("# Managed by WSPanel agent: the old release's worker finishes its job.\n[Service]\nTimeoutStopSec=%d\n", workerDrainTimeout)), 0o644, fsx.Root)
+}
 
 func workerTemplate(user, typ string) string { return "wspanel-" + user + "-" + typ + "@.service" }
 
@@ -104,7 +123,7 @@ func workerUnitDataFor(env *Env, l siteLayout, typ string, spec workerSpec) unit
 	d := workerUnitData(env, l, typ, spec)
 	d.WorkDir = filepath.Join(l.Home, "releases", "%i")
 	if slices.Contains(drainingWorkers, typ) {
-		d.StopTimeout = workerDrainTimeout
+		d.StopTimeout = workerStopTimeout
 	}
 	return d
 }
@@ -172,6 +191,20 @@ func startWorkerRelease(ctx context.Context, env *Env, l siteLayout, typ string,
 	}
 	dropGoneReleases(ctx, env, l, typ, newUnit)
 	stopOld := func(block bool) {
+		if !block && len(olds) > 0 {
+			// The long timeout for these instances only, before they are told to stop.
+			drained := false
+			for _, u := range olds {
+				if err := drainDropIn(env, u); err != nil {
+					logf("drain timeout for %s: %v\n", u, err)
+				} else {
+					drained = true
+				}
+			}
+			if drained {
+				_, _ = env.Exec.Run(ctx, "systemctl", "daemon-reload")
+			}
+		}
 		for _, u := range olds {
 			_, _ = env.Exec.Run(ctx, "systemctl", "disable", u)
 			// An old release's instance that failed would stay listed among

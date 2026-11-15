@@ -257,7 +257,7 @@ func TestPythonCeleryWorkers(t *testing.T) {
 	for _, want := range []string{
 		"ExecStart=" + home + "/releases/%i/.venv/bin/python -m celery -A config worker --loglevel=INFO --concurrency=",
 		"WorkingDirectory=" + home + "/releases/%i", "Environment=VIRTUAL_ENV=" + home + "/releases/%i/.venv",
-		"TimeoutStopSec=3600", "SocketBindDeny=any",
+		"TimeoutStopSec=120", "SocketBindDeny=any",
 	} {
 		if !strings.Contains(u, want) {
 			t.Errorf("celery unit missing %q:\n%s", want, u)

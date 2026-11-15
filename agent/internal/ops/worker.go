@@ -125,7 +125,6 @@ func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitDat
 			Environment: []string{"NODE_ENV=production", "INERTIA_SSR_PORT=" + strconv.Itoa(l.SSRPort), "PATH=" + filepath.Dir(node) + ":/usr/bin:/bin"},
 			Extra:       portUnitExtra(l.SSRPort),
 			StopTimeout: spec.StopTimeout,
-			After:       siteUnitDeps(env, l),
 		}
 	}
 	return unitData{
@@ -135,7 +134,6 @@ func workerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) unitDat
 		ExecStart:   php + " " + args,
 		Extra:       extra,
 		StopTimeout: spec.StopTimeout,
-		After:       siteUnitDeps(env, l),
 	}
 }
 

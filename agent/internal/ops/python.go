@@ -194,7 +194,7 @@ func pythonServer(framework string) string {
 }
 
 func pythonUnitData(env *Env, l siteLayout) (unitData, string, error) {
-	d := unitData{User: l.User, Home: l.Home, StopTimeout: 30, After: siteUnitDeps(env, l)}
+	d := unitData{User: l.User, Home: l.Home, StopTimeout: 30}
 	bin, ok := pythonVersions(env.Cfg)[l.PythonVersion]
 	if !ok {
 		return d, "", protocol.Invalid("python_version: Python " + l.PythonVersion + " is not installed")
@@ -437,7 +437,6 @@ func pythonWorkerUnitData(env *Env, l siteLayout, typ string, spec workerSpec) u
 		Environment: []string{"PATH=" + path + ":/usr/bin:/bin", "VIRTUAL_ENV=" + venv, "PYTHONUNBUFFERED=1", "PYTHONDONTWRITEBYTECODE=1"},
 		Extra:       noBindExtra,
 		StopTimeout: spec.StopTimeout,
-		After:       siteUnitDeps(env, l),
 	}
 }
 
