@@ -37,7 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the packages' changelog: commits since the previous tag
       - id: version
@@ -48,7 +48,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == tag ]]; then v="${GITHUB_REF_NAME#v}"; else v="${INPUT_VERSION}"; fi
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not a version: $v"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
@@ -62,7 +62,7 @@ jobs:
         env:
           WSPANEL_REPO: ${{ github.repository }} # the panel looks here for newer releases
         run: provision/bundle.sh "${{ steps.version.outputs.version }}" "${{ matrix.arch }}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundle-${{ matrix.arch }}
           path: dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
@@ -84,7 +84,7 @@ jobs:
           debs=(dist/lint/*.deb)
           [[ "${{ matrix.arch }}" == amd64 ]] && debs+=(dist/deb/*.deb)
           lintian --fail-on error --tag-display-limit 0 "${debs[@]}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.arch == 'amd64'
         with:
           name: deb-wspanel
@@ -117,8 +117,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bundle-${{ matrix.arch }}
           path: dist
@@ -133,7 +133,7 @@ jobs:
           prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
           if [[ -z "$prev" ]]; then echo "no published release yet: nothing to upgrade from"; exit 0; fi
           SMOKE_REPO="${GITHUB_REPOSITORY}" dev/release-smoke.sh --from "${prev#v}" dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.via == 'apt'
         with:
           name: deb-wspanel
@@ -154,15 +154,15 @@ jobs:
       id-token: write     # build provenance
       attestations: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: bundle-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: deb-wspanel
           path: dist
@@ -193,7 +193,7 @@ jobs:
           gpg --batch --yes --armor --local-user "$want" --detach-sign --output SHA256SUMS.asc SHA256SUMS
           gpg --dearmor < ../provision/files/wspanel-archive-keyring.asc > "$GNUPGHOME/release.gpg"
           gpgv --keyring "$GNUPGHOME/release.gpg" SHA256SUMS.asc SHA256SUMS
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/wspanel-*.tar.gz
