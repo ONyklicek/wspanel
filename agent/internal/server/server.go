@@ -17,6 +17,7 @@ import (
 	"os/user"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -221,7 +222,17 @@ func (s *Server) Dispatch(ctx context.Context, req protocol.Request, peer int64)
 	if err != nil {
 		return fail(err)
 	}
+	if ok && op.Mutating {
+		mirrorNudge(s.Env, req.Op)
+	}
 	return protocol.Response{OK: true, Output: out}
+}
+
+// mirrorNudge: a change on a mirror's primary syncs to the standby soon.
+func mirrorNudge(env *ops.Env, op string) {
+	if !strings.HasPrefix(op, "mirror.") {
+		ops.MirrorNudgePeer(env, op)
+	}
 }
 
 // startJob runs an async op in the background. The audit entry is written
@@ -257,6 +268,9 @@ func (s *Server) startJob(ctx context.Context, op ops.Op, req protocol.Request, 
 			j.Status, j.Output = "done", out
 		}
 		s.jobsMu.Unlock()
+		if err == nil {
+			mirrorNudge(s.Env, op.Name)
+		}
 		entry := audit.Entry{Time: j.Started, Op: op.Name, Params: audit.Redact(op.Name, req.Params), PeerUID: peer, OK: err == nil,
 			DurationMS: j.Finished.Sub(j.Started).Milliseconds(), DryRun: s.Env.Cfg.DryRun, Error: j.Error}
 		if s.Audit != nil {

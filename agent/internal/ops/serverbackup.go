@@ -152,7 +152,12 @@ func serverPaths(env *Env) []string {
 // written again when the restore builds it (RestoreServerData).
 func skipServerPath(env *Env, path string) bool {
 	base := filepath.Base(path)
-	if filepath.Dir(path) == env.Cfg.SystemdDir && (strings.HasPrefix(base, "wspanel-game-") || strings.HasPrefix(base, "wspanel-games-")) {
+	if filepath.Dir(path) == env.Cfg.SystemdDir && (strings.HasPrefix(base, "wspanel-game-") || strings.HasPrefix(base, "wspanel-games-") || strings.HasPrefix(base, "wspanel-mirror-")) {
+		return true
+	}
+	// The mirror is a node's own (its role, certificates, the peer's copy),
+	// and so are its replication settings (server id, read-only).
+	if m := mirrorDir(env); path == m || strings.HasPrefix(path, m+"/") || base == mariadbMirrorCf {
 		return true
 	}
 	for _, dir := range []string{"/storage/app/dmarc-incoming", env.Cfg.VmailRoot, env.Cfg.SitesRoot, env.Cfg.BackupDir} {
@@ -237,16 +242,22 @@ func pruneLocal(t offsiteTarget, keep int) int {
 func pruneServerBackups(env *Env) int { return pruneLocal(serverTarget(env), ServerBackupKeep) }
 
 func makeServerBackup(ctx context.Context, env *Env) (backupInfo, error) {
-	key, err := signingKey(env)
-	if err != nil {
-		return backupInfo{}, err
-	}
 	dir := serverBackupsDir(env)
 	if err := env.FS.MkdirAll(dir, 0o700, fsx.Root); err != nil {
 		return backupInfo{}, err
 	}
+	return makeServerArchive(ctx, env, dir, "server-")
+}
+
+// makeServerArchive: the encrypted archive in dir (a server backup, or the
+// mirror's snapshot for the standby).
+func makeServerArchive(ctx context.Context, env *Env, dir, prefix string) (backupInfo, error) {
+	key, err := signingKey(env)
+	if err != nil {
+		return backupInfo{}, err
+	}
 	now := time.Now().UTC()
-	file := "server-" + now.Format("20060102T150405Z") + ".wspbak"
+	file := prefix + now.Format("20060102T150405Z") + ".wspbak"
 	work, err := os.MkdirTemp(dir, ".work-")
 	if err != nil {
 		return backupInfo{}, err

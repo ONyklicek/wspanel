@@ -103,6 +103,16 @@ func (m idMap) of(id int) int {
 
 // RestoreServerState applies a server backup to this (freshly installed) server.
 func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey []byte) (serverManifest, RestoreReport, error) {
+	return restoreServerStateWith(ctx, env, path, recoveryKey, restoreOpts{})
+}
+
+// restoreOpts: what a mirror's promotion leaves as it is.
+type restoreOpts struct {
+	skipPaths      []string // files of this node (its installer's choices)
+	skipAccountsOf []string // engines whose accounts came with replication
+}
+
+func restoreServerStateWith(ctx context.Context, env *Env, path string, recoveryKey []byte, opt restoreOpts) (serverManifest, RestoreReport, error) {
 	var rep RestoreReport
 	man, err := readServerManifest(path, recoveryKey)
 	if err != nil {
@@ -122,6 +132,9 @@ func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey 
 	extra := map[string]string{}
 	err = openServerArchive(path, recoveryKey, func(tr *tar.Reader, hdr *tar.Header) (bool, error) {
 		if target, ok := configPath(hdr.Name); ok {
+			if slices.Contains(opt.skipPaths, target) {
+				return false, nil
+			}
 			if !restoreAllowed(env, target) {
 				rep.problem("left out (not WSPanel's): %s", target)
 				return false, nil
@@ -164,6 +177,12 @@ func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey 
 		} else {
 			rep.problem("DNS zones: PowerDNS is not installed here (install with --dns=powerdns)")
 		}
+	}
+	if slices.Contains(opt.skipAccountsOf, "mariadb") {
+		delete(extra, "db/mariadb-users.sql")
+	}
+	if slices.Contains(opt.skipAccountsOf, "postgresql") {
+		delete(extra, "db/postgres-roles.sql")
 	}
 	if p, ok := extra["db/mariadb-users.sql"]; ok {
 		if err := runSQLFile(ctx, env, p, "mariadb"); err != nil {

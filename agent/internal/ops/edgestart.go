@@ -20,6 +20,14 @@ func RenderEdgesOnStart(ctx context.Context, env *Env, logf func(string, ...any)
 	if env.Cfg.DryRun {
 		return
 	}
+	// A fenced node (or a standby holding sites) keeps its sites off the edge.
+	if mirrorSuppressesSites(env) {
+		if currentMirror(env).Role == roleFenced {
+			enforceFence(ctx, env)
+			logf("mirror: this node is fenced, its sites stay off")
+		}
+		return
+	}
 	_ = withMutate(env, func() error {
 		changed, err := renderEdges(ctx, env)
 		if err != nil {

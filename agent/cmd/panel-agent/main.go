@@ -45,8 +45,25 @@ func main() {
 	backupsDir := flag.String("backups", "", "with -server-restore-data: a copy of the old server's /var/backups/wspanel instead of the off-site storage")
 	printKey := flag.Bool("recovery-key", false, "print the recovery key (signs off-site copies, encrypts server backups) and exit; root only")
 	importKey := flag.Bool("import-recovery-key", false, "replace the recovery key with another server's, read from stdin, and exit; root only")
+	mirrorPipe := flag.Bool("mirror-pipe", false, "internal: rsync's transport to the mirror's primary (rsync -e)")
+	mirrorPromote := flag.Bool("mirror-promote", false, "promote this standby to the mirror's primary now (when its panel is not reachable) and exit; root only")
+	mirrorStatus := flag.Bool("mirror-status", false, "print the mirror's state as JSON and exit")
 	tuneDB := flag.Bool("tune-db", false, "size the shared database servers' memory for this server's RAM, print the units to restart, and exit (install.sh)")
 	flag.Parse()
+	if *mirrorPipe {
+		if err := ops.RunMirrorPipe(*cfgPath, flag.Args()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *mirrorPromote || *mirrorStatus {
+		if err := runMirrorCLI(*cfgPath, *mirrorPromote); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *tuneDB {
 		cfg, err := config.Load(*cfgPath)
 		if err == nil {
@@ -204,6 +221,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	go ops.RenderGameUnitsOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.ApplySiteGuardOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderWorkerStopOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
+	go ops.MirrorRun(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	return srv.Serve(ctx, ln)
 }
 
@@ -288,9 +306,13 @@ func binaries(cfg config.Config) map[string]string {
 		"doveadm":            "/usr/bin/doveadm",  // quota get
 		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
 		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
-		"dns-setup":          "/usr/lib/wspanel/dns.sh",    // install|remove
-		"redis-setup":        "/usr/lib/wspanel/redis.sh",  // install|--remove
-		"redis-server":       "/usr/bin/redis-server",      // --version only
+		"dns-setup":          "/usr/lib/wspanel/dns.sh",   // install|remove
+		"redis-setup":        "/usr/lib/wspanel/redis.sh", // install|--remove
+		"redis-server":       "/usr/bin/redis-server",     // --version only
+		"rsync":              "/usr/bin/rsync",            // the mirror: --server --sender (checked) and the standby's pull
+		"ssh":                "/usr/bin/ssh",              // the mirror: Windows DNS (pinned host key, one fixed account)
+		"ssh-keygen":         "/usr/bin/ssh-keygen",
+		"mirror-hook":        "/usr/bin/env",               // root's own scripts in /etc/wspanel/mirror/hooks (root-owned, checked)
 		"clamav":             "/usr/lib/wspanel/clamav.sh", // enable|disable
 		"nft":                "/usr/sbin/nft",              // -f <the agent's own ruleset> only
 		"saslpasswd2":        "/usr/sbin/saslpasswd2",      // password on stdin (-p)
@@ -467,4 +489,77 @@ func runRecoveryKey(cfgPath string, importing bool) error {
 	}
 	fmt.Println("recovery key imported: backups of that server verify and decrypt here")
 	return nil
+}
+
+// runMirrorCLI: the mirror from root's shell, for when no panel answers.
+// Promoting goes through the running agent (it owns the mirror's loop).
+func runMirrorCLI(cfgPath string, promote bool) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	call := func(op string, params map[string]any) (map[string]any, error) {
+		conn, err := net.Dial("unix", cfg.Socket)
+		if err != nil {
+			return nil, fmt.Errorf("the agent is not running: %w", err)
+		}
+		defer conn.Close()
+		b, _ := json.Marshal(map[string]any{"op": op, "params": params})
+		if _, err := conn.Write(append(b, '\n')); err != nil {
+			return nil, err
+		}
+		line, err := bufio.NewReader(conn).ReadBytes('\n')
+		if err != nil {
+			return nil, err
+		}
+		var res struct {
+			OK     bool           `json:"ok"`
+			Output map[string]any `json:"output"`
+			Error  *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(line, &res); err != nil {
+			return nil, err
+		}
+		if !res.OK {
+			msg := "failed"
+			if res.Error != nil {
+				msg = res.Error.Message
+			}
+			return nil, errors.New(msg)
+		}
+		return res.Output, nil
+	}
+	st, err := call("mirror.status", nil)
+	if err != nil {
+		return err
+	}
+	if !promote {
+		b, _ := json.MarshalIndent(st, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	id, _ := st["node_id"].(string)
+	out, err := call("mirror.promote", map[string]any{"confirm": id})
+	if err != nil {
+		return err
+	}
+	job, _ := out["job_id"].(string)
+	fmt.Println("promoting this node (job " + job + ")…")
+	for {
+		time.Sleep(2 * time.Second)
+		s, err := call("job.status", map[string]any{"id": job})
+		if err != nil {
+			return err
+		}
+		switch s["status"] {
+		case "done":
+			b, _ := json.MarshalIndent(s["output"], "", "  ")
+			fmt.Println("this node is the primary now:\n" + string(b))
+			return nil
+		case "failed":
+			return fmt.Errorf("promotion failed: %v", s["error"])
+		}
+	}
 }
