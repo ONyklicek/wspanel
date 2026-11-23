@@ -32,7 +32,12 @@ var localEnvKeys = []string{"PANEL_PUBLIC_IPV4", "PANEL_PUBLIC_IPV6", "PANEL_SIT
 const hookDir = "/etc/wspanel/mirror/hooks"
 
 func fenceMarker(env *Env) string   { return mirrorFile(env, "fenced") }
-func fencedEdgeDir(env *Env) string { return mirrorFile(env, "fenced-edge") }
+// fencedEdgeDir: beside the edge's sites (one filesystem: a rename, never a
+// copy; the agent's state directory is a mount of its own). The edge imports
+// sites/*.caddy only.
+func fencedEdgeDir(env *Env) string {
+	return filepath.Join(filepath.Dir(env.Cfg.ProxySitesDir), "sites-fenced")
+}
 
 // mirrorSuppressesSites: this node must not serve the sites (fenced, or a
 // standby that holds sites' configuration).
@@ -421,7 +426,9 @@ func enforceFence(ctx context.Context, env *Env) {
 		_, _ = writeFileIfChanged(env, filepath.Join(env.Cfg.MariaDBConfDir, mariadbMirrorCf), mariadbMirrorConfig(currentMirror(env).NodeID, true), 0o644, fsx.Root)
 	}
 	databasesReadOnly(ctx, env, true)
-	putEdgesAside(env)
+	if err := putEdgesAside(env); err != nil {
+		mirrorRuntime.event("warning", "weby se nepodařilo stáhnout z edge: %v", err)
+	}
 	_, _ = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
 	for _, s := range []string{"postfix", "dovecot"} {
 		_, _ = env.Exec.Run(ctx, "systemctl", "stop", s+".service")
@@ -436,10 +443,7 @@ func enforceFence(ctx context.Context, env *Env) {
 // keepFenced: cheap checks every tick of a fenced node; acts only when
 // something came back.
 func keepFenced(ctx context.Context, env *Env) {
-	if files, _ := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy")); len(files) > 0 {
-		putEdgesAside(env)
-		_, _ = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
-	}
+	keepSitesOff(ctx, env)
 	if slices.Contains(env.Cfg.DBEngines, "mariadb") {
 		if out, err := (mariadb{}).sql(ctx, env, "SELECT @@read_only"); err == nil && strings.TrimSpace(out) == "0" {
 			databasesReadOnly(ctx, env, true)
@@ -452,16 +456,32 @@ func keepFenced(ctx context.Context, env *Env) {
 	}
 }
 
+// keepSitesOff: a node that must not serve (fenced, standby) takes the
+// sites' edge blocks off whenever they appear (rendered at its start).
+func keepSitesOff(ctx context.Context, env *Env) {
+	if files, _ := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy")); len(files) > 0 {
+		if err := putEdgesAside(env); err != nil {
+			mirrorRuntime.event("warning", "weby se nepodařilo stáhnout z edge: %v", err)
+		}
+		_, _ = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
+	}
+}
+
 // putEdgesAside: the sites' edge blocks leave the edge (the panel stays).
-func putEdgesAside(env *Env) {
-	files, _ := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy"))
-	if len(files) == 0 {
-		return
+func putEdgesAside(env *Env) error {
+	files, err := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy"))
+	if err != nil || len(files) == 0 {
+		return err
 	}
-	_ = env.FS.MkdirAll(fencedEdgeDir(env), 0o700, fsx.Root)
+	if err := env.FS.MkdirAll(fencedEdgeDir(env), 0o700, fsx.Root); err != nil {
+		return err
+	}
 	for _, f := range files {
-		_ = os.Rename(f, filepath.Join(fencedEdgeDir(env), filepath.Base(f)))
+		if err := os.Rename(f, filepath.Join(fencedEdgeDir(env), filepath.Base(f))); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func restoreFencedEdges(env *Env) {

@@ -16,7 +16,7 @@ function call(string $op, array $params): array {
 $op = $argv[1] ?? '';
 $params = isset($argv[2]) ? json_decode($argv[2], true, flags: JSON_THROW_ON_ERROR) : [];
 $out = call($op, $params);
-if (isset($out['job_id']) && count($out) === 1) {
+if (isset($out['job_id']) && ($out['status'] ?? 'running') === 'running' && count($out) <= 2) {
     for (;;) {
         sleep(2);
         $s = call('job.status', ['id' => $out['job_id']]);

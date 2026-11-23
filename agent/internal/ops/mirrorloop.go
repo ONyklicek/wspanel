@@ -188,6 +188,15 @@ func MirrorRun(ctx context.Context, env *Env, logf func(string, ...any)) {
 	}
 }
 
+// peerConfirmsStandby: the other node answered in the last half minute and
+// is a standby.
+func peerConfirmsStandby() bool {
+	m := mirrorRuntime
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.PeerUp && m.Peer != nil && m.Peer.Role == roleStandby && time.Since(m.PeerSeen) < 30*time.Second
+}
+
 // helloPeer: one hello both ways (this node's state goes along).
 func helloPeer(ctx context.Context, env *Env) (*helloInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -219,6 +228,7 @@ func recordPeer(them *helloInfo, err error) {
 
 // standbyTick: watches the primary; true when it is up (sync may run).
 func standbyTick(ctx context.Context, env *Env, st *mirrorState, logf func(string, ...any)) bool {
+	keepSitesOff(ctx, env) // a rejoined old primary still has its sites' edge blocks
 	them, err := helloPeer(ctx, env)
 	recordPeer(them, err)
 	if err == nil {

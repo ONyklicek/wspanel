@@ -320,6 +320,12 @@ func reconcileWinDNS(ctx context.Context, env *Env, logf func(string, ...any)) {
 	if st.Role != rolePrimary || st.WinDNS == nil || st.WinDNS.Host == "" {
 		return
 	}
+	// Only while the other node confirms it is the standby: a primary that
+	// comes back after an outage must not point the LAN at itself before it
+	// learns that the standby took over.
+	if st.Peer != nil && !peerConfirmsStandby() {
+		return
+	}
 	recs := winDesired(env, st)
 	if len(recs) == 0 {
 		mirrorRuntime.layer("windns", nil, "no site in the zones "+strings.Join(st.WinDNS.Zones, ", "), nil)

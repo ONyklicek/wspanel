@@ -63,7 +63,9 @@ class SyncDatabases
             $schedule = $out['schedule'] ?? ['frequency' => 'off'];
             $database->update([
                 'backup_frequency' => $schedule['frequency'],
-                'backup_keep' => $schedule['keep'] ?? $database->backup_keep,
+                // A database just adopted from the server has no value loaded
+                // (the column's default lives in the database): 7 like it.
+                'backup_keep' => $schedule['keep'] ?? $database->backup_keep ?? 7,
             ]);
         });
     }

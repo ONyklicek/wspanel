@@ -117,6 +117,11 @@ for l in state accounts sites mariadb postgresql kv; do
 	wait_for 600 "layer $l" bash -c "[[ \$(docker exec $S php /opt/wspanel/dev/agent-call.php mirror.status | docker exec -i $S jq -r '.status.layers[\"$l\"].ok // false') == true ]]" \
 		&& ok "layer $l in sync" || bad "layer $l in sync" "$(mstatus "$S" | jqr "$S" ".status.layers[\"$l\"]")"
 done
+# The layers report every cycle; the site's own data comes with the first
+# cycle after it was made.
+wait_for 600 "the site's files" bash -c "docker exec $S test -f /srv/sites/shop.firma.local/current/public/index.html" || bad "the site reached the standby"
+wait_for 300 "the site's Valkey replica" bash -c "docker exec $S systemctl is-active --quiet wspanel-mirror-kv-web_shop_firma_local.service"
+sleep 5
 expect "site user with the primary's uid" "$(on "$S" id -u web_shop_firma_local)" "$(on "$P" id -u web_shop_firma_local)"
 expect "site files copied" "$(on "$S" cat /srv/sites/shop.firma.local/current/public/index.html 2>/dev/null)" hello-from-primary
 on "$P" mariadb shop -e "INSERT INTO t VALUES (2, 'replicated');"

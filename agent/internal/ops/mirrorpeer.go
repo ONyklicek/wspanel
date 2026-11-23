@@ -377,7 +377,7 @@ func peerHello(env *Env, raw json.RawMessage) (any, error) {
 
 // peerSnapshot: the state and configuration, fresh (primary only).
 func peerSnapshot(ctx context.Context, env *Env, conn net.Conn) {
-	if currentMirror(env).Role != rolePrimary {
+	if !mirrorSource(env) {
 		peerReply(conn, nil, errors.New("only the primary hands out its state"))
 		return
 	}
@@ -403,8 +403,9 @@ func peerSnapshot(ctx context.Context, env *Env, conn net.Conn) {
 var (
 	rsyncShortRe = regexp.MustCompile(`^-[A-Za-z]+(\.[A-Za-z]*)?$`)
 	rsyncLong    = []string{"--delete", "--delete-delay", "--delete-after", "--delete-excluded", "--partial", "--inplace",
-		"--ignore-errors", "--force", "--numeric-ids", "--hard-links", "--acls", "--xattrs", "--sparse", "--whole-file", "--no-inc-recursive", "--safe-links"}
-	rsyncLongValueRe = regexp.MustCompile(`^--(compress-choice|checksum-choice|compress-level|log-format|out-format|timeout|bwlimit)=[A-Za-z0-9%.:_-]*$`)
+		"--ignore-errors", "--force", "--numeric-ids", "--hard-links", "--acls", "--xattrs", "--sparse", "--whole-file", "--no-inc-recursive", "--safe-links",
+		"--backup"} // the receiver's own (a rejoin keeps what it alone had); the sender ignores it
+	rsyncLongValueRe = regexp.MustCompile(`^--(compress-choice|checksum-choice|compress-level|log-format|out-format|timeout|bwlimit)=[A-Za-z0-9%.:_-]*$|^--backup-dir=/[A-Za-z0-9/._-]*$`)
 )
 
 func rsyncModules(cfg config.Config) map[string]string {
@@ -461,7 +462,7 @@ func peerRsync(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessage
 		peerReply(conn, nil, err)
 		return
 	}
-	if currentMirror(env).Role != rolePrimary {
+	if !mirrorSource(env) {
 		peerReply(conn, nil, errors.New("only the primary sends its files"))
 		return
 	}
@@ -521,7 +522,7 @@ func peerTunnel(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessag
 		peerReply(conn, nil, err)
 		return
 	}
-	if currentMirror(env).Role != rolePrimary {
+	if !mirrorSource(env) {
 		peerReply(conn, nil, errors.New("tunnels lead to the primary only"))
 		return
 	}
@@ -538,6 +539,13 @@ func peerTunnel(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessag
 	defer up.Close()
 	peerReply(conn, map[string]any{}, nil)
 	pipeBoth(conn, up)
+}
+
+// mirrorSource: this node hands out its data: the primary, or a primary
+// fenced for a planned switchover (the standby catches up with it).
+func mirrorSource(env *Env) bool {
+	st := currentMirror(env)
+	return st.Role == rolePrimary || (st.Role == roleFenced && st.Fenced == "switchover")
 }
 
 // pipeBoth copies both ways until either side ends.

@@ -211,7 +211,7 @@ func peerDump(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessage)
 		peerReply(conn, nil, err)
 		return
 	}
-	if currentMirror(env).Role != rolePrimary {
+	if !mirrorSource(env) {
 		peerReply(conn, nil, errors.New("only the primary hands out dumps"))
 		return
 	}
