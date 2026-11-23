@@ -151,20 +151,11 @@ fi
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$REDIS" == yes || "$REDIS" == no ]] || die "--redis must be yes or no"
-# WSL2 (WSPanel on Windows without Docker, docs/wsl.md): systemd must run,
-# and its kernel does not enforce cgroup BPF socket-bind (like Docker Desktop).
-# A site must never reach Windows: no interop (Linux processes starting
-# Windows programs as the Windows user) and no Windows drives mounted.
+# WSL is not a supported server: its kernel does not enforce the sites' port
+# rules and it shares the host's network with Windows. On Windows WSPanel runs
+# in a Linux VM (Hyper-V, docs/hyper-v.md).
 if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
-  [[ -d /run/systemd/system ]] || die "WSL without systemd: add [boot] systemd=true to /etc/wsl.conf, run wsl --shutdown in Windows and start again (docs/wsl.md)"
-  if [[ -e /proc/sys/fs/binfmt_misc/WSLInterop && "$(head -1 /proc/sys/fs/binfmt_misc/WSLInterop 2>/dev/null)" == enabled ]] \
-    || [[ -e /proc/sys/fs/binfmt_misc/WSLInterop-late && "$(head -1 /proc/sys/fs/binfmt_misc/WSLInterop-late 2>/dev/null)" == enabled ]]; then
-    die "WSL interop is on: any process here could run Windows programs as the Windows user. Set [interop] enabled=false in /etc/wsl.conf, wsl --shutdown, start again (docs/wsl.md)"
-  fi
-  if findmnt -rn -t 9p,drvfs,virtiofs >/dev/null 2>&1; then
-    die "Windows drives are mounted here ($(findmnt -rn -t 9p,drvfs,virtiofs -o TARGET | tr '\n' ' ')): set [automount] enabled=false in /etc/wsl.conf, wsl --shutdown, start again (docs/wsl.md)"
-  fi
-  [[ $UNENFORCED_BIND == true ]] || die "WSL's kernel does not enforce the sites' port rules (cgroup socket-bind): install with --allow-unenforced-socket-bind once you accept it (docs/wsl.md)"
+  die "WSL is not supported: install WSPanel in a Linux virtual machine (Hyper-V, docs/hyper-v.md)"
 fi
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 # A download that fails once (a mirror or FrankenPHP's repository answering
