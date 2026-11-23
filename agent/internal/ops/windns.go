@@ -314,10 +314,27 @@ func winDesired(env *Env, st *mirrorState) []winRecord {
 	return out
 }
 
-// promotedThisRun: this agent promoted its node (since it started). A node
-// that has been primary since before its own start (a reboot) points DNS at
-// itself only once the other node confirms it is the standby.
-var promotedThisRun atomic.Bool
+// promotedEpoch: the epoch this agent promoted its node to (0: none, or the
+// node stepped down since). Only that promotion points DNS at the node while
+// the other one is silent; a node that has been primary since before its own
+// start (a reboot), or any later epoch, waits for the other to confirm it is
+// the standby.
+var promotedEpoch atomic.Int64
+
+// mayPointDNS: this primary may write its records now.
+func mayPointDNS(st *mirrorState) bool {
+	if st.Peer == nil || peerConfirmsStandby() {
+		return true
+	}
+	if e := promotedEpoch.Load(); e == 0 || e != st.Epoch {
+		return false
+	}
+	// The other node told us of a newer epoch: never.
+	m := mirrorRuntime
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Peer == nil || m.Peer.Epoch <= st.Epoch
+}
 
 // reconcileWinDNS: the primary's records point at it (called every minute
 // and right after a promotion).
@@ -329,7 +346,7 @@ func reconcileWinDNS(ctx context.Context, env *Env, logf func(string, ...any)) {
 	// Only while the other node confirms it is the standby: a primary that
 	// comes back after an outage must not point the LAN at itself before it
 	// learns that the standby took over.
-	if st.Peer != nil && !promotedThisRun.Load() && !peerConfirmsStandby() {
+	if !mayPointDNS(st) {
 		return
 	}
 	recs := winDesired(env, st)

@@ -193,7 +193,7 @@ func promoteLocal(ctx context.Context, env *Env, reason string, auto bool) (*Res
 	dropStaleKVData(ctx, env)
 	artisan(ctx, env, rep, "panel:sync")
 	runHooks(ctx, env, "promote", rep)
-	promotedThisRun.Store(true)
+	promotedEpoch.Store(epoch)
 	go reconcileWinDNS(context.WithoutCancel(ctx), env, func(string, ...any) {})
 	mirrorRuntime.event("info", "tento server je teď primár (epocha %d)%s", epoch, problemsSuffix(rep))
 	_ = auto
@@ -416,6 +416,7 @@ func fenceLocal(ctx context.Context, env *Env, reason string) error {
 	}); err != nil {
 		return err
 	}
+	promotedEpoch.Store(0)
 	mirrorRuntime.event("danger", "tento server přestal obsluhovat weby (%s)", reason)
 	_ = writeMirrorFile(env, "fenced", []byte(reason+"\n"))
 	enforceFence(ctx, env)
@@ -607,6 +608,7 @@ func mirrorRejoin(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}); err != nil {
 		return nil, err
 	}
+	promotedEpoch.Store(0)
 	mirrorRuntime.event("info", "připojeno zpět jako zrcadlo serveru %s; co měl jen tento server, je uloženo v %s", them.Name, backup)
 	mirrorWake()
 	return map[string]any{"role": roleStandby, "backup": backup}, nil
