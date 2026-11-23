@@ -13,7 +13,7 @@
 name: wspanel
 services:
   wspanel:
-    image: ${WSPANEL_IMAGE:-ghcr.io/onyklicek/wspanel}:${WSPANEL_TAG:?WSPANEL_TAG: a version, e.g. 1.10.0 (never latest)}
+    image: ${WSPANEL_IMAGE:-ghcr.io/onyklicek/wspanel}:${WSPANEL_TAG:?WSPANEL_TAG: a version, e.g. 1.10.1 (never latest)}
     container_name: wspanel
     hostname: ${WSPANEL_HOSTNAME:-wspanel}
     restart: unless-stopped

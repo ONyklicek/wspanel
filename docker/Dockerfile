@@ -8,7 +8,7 @@
 # nothing else). make docker-image VERSION=… does it for this machine:
 #
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#     --build-arg WSPANEL_VERSION=1.10.0 -f docker/Dockerfile .
+#     --build-arg WSPANEL_VERSION=1.10.1 -f docker/Dockerfile .
 FROM debian:trixie
 
 ARG WSPANEL_VERSION

@@ -80,7 +80,7 @@ v panelu a změny v `.env` už nic nedělají.
 
 | Proměnná | Výchozí | Význam |
 |---|---|---|
-| `WSPANEL_TAG` | – (povinné) | verze image, např. `1.10.0`; nikdy `latest` |
+| `WSPANEL_TAG` | – (povinné) | verze image, např. `1.10.1`; nikdy `latest` |
 | `WSPANEL_ADMIN_EMAIL` | – (povinné) | první účet panelu |
 | `WSPANEL_PANEL_DOMAIN` | – | doména panelu (A záznam na stroj); prázdná = adresa a port |
 | `WSPANEL_ACME_EMAIL` | – | účet Let's Encrypt |
