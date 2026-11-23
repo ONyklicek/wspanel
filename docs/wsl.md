@@ -29,10 +29,16 @@ Skript je v `provision/files/windows/` a dá se spustit opakovaně. Udělá tohl
    (distribuce má adresy Windows), `vmIdleTimeout=-1` (WSL se samo
    nevypne), `hostAddressLoopback=true` a `dnsTunneling=true`.
 3. Vytvoří distribuci `WSPanel` (Debian, starší verzi povýší na 13) se
-   systemd a rootem jako výchozím uživatelem.
+   systemd a rootem jako výchozím uživatelem. Vypne **interop** a
+   **připojování disků Windows**. Jinak by kterýkoli proces ve WSL (třeba
+   kód webu) mohl spouštět programy Windows pod uživatelem Windows nebo číst
+   disk `C:`. Na řadiči domény by to znamenalo celou doménu. `install.sh`
+   ve WSL se zapnutým interopem nebo připojenými disky odmítne pokračovat.
 4. Zaregistruje naplánovanou úlohu **WSPanel (WSPanel)**, která distribuci
    spustí se startem Windows a drží ji v běhu. Funguje i bez přihlášeného
-   uživatele.
+   uživatele a bez zvýšených oprávnění. Parametrem `-RunAs FIRMA\wspanel-wsl`
+   ji spustíte pod vyhrazeným účtem bez práv správce (doporučeno).
+   Distribuce pak patří tomu účtu, proto skript spusťte pod ním.
 5. Přidá pravidla **Hyper-V firewallu** pro porty 80, 443, SSH webů, 7443
    (zrcadlo) a port panelu. Se zrcadlenou sítí propouští spojení do WSL
    právě tento firewall.
@@ -72,9 +78,11 @@ Postupujte podle [Zrcadlo](zrcadlo.md). Ve WSL se zrcadlenou sítí platí:
 
 ## Omezení
 
-- Jádro WSL nevynucuje cgroup BPF `SocketBindDeny`. Instalátor to pozná
-  a zapne `--allow-unenforced-socket-bind`, stejně jako v Dockeru
-  ([Bezpečnost](bezpecnost.md)).
+- Jádro WSL nevynucuje cgroup BPF `SocketBindDeny`: web si může otevřít
+  i port, který mu nepatří. `install.sh` ve WSL proto bez
+  `--allow-unenforced-socket-bind` skončí s vysvětlením. Skript ho předává,
+  protože jeho spuštěním s tím souhlasíte. Pro weby klientů, kteří si
+  navzájem nevěří, použijte nativní Linux server ([Bezpečnost](bezpecnost.md)).
 - Diskové kvóty klientů na disku WSL (VHDX) obvykle nejdou. Instalace je
   vypne a vypíše to do logu.
 - Data leží ve VHDX distribuce (`%LocalAppData%\wsl\…`). Zálohujte je jako

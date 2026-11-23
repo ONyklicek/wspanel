@@ -40,7 +40,10 @@ param(
     [string] $Version = '',
     [string] $Repo = 'onyklicek/wspanel',
     [string[]] $ExtraPorts = @(),
-    [string] $InstallerArgs = ''
+    [string] $InstallerArgs = '',
+    # The Windows account the distribution runs under (default: the current
+    # one). A dedicated account without administrator rights is best.
+    [string] $RunAs = "$env:USERDOMAIN\$env:USERNAME"
 )
 $ErrorActionPreference = 'Stop'
 
@@ -94,7 +97,13 @@ systemd=true
 [user]
 default=root
 [interop]
+# Never: a process here (a site) would start Windows programs as this user.
+enabled=false
 appendWindowsPath=false
+[automount]
+# No Windows drives inside: a site must not reach C:.
+enabled=false
+mountFsTab=false
 EOF
 . /etc/os-release
 if [ "$VERSION_CODENAME" != trixie ]; then
@@ -112,7 +121,8 @@ Step 'Start with Windows (scheduled task)'
 $task = "WSPanel ($Distro)"
 $action = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wsl.exe" -Argument "-d $Distro -u root -- /bin/sh -c 'exec sleep infinity'"
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
+# WSL needs no elevation to run: the task does not get it.
+$principal = New-ScheduledTaskPrincipal -UserId $RunAs -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName $task
@@ -133,7 +143,8 @@ New-NetFirewallHyperVRule -Name 'WSPanel-TCP' -DisplayName 'WSPanel (WSL) TCP' -
 New-NetFirewallHyperVRule -Name 'WSPanel-HTTP3' -DisplayName 'WSPanel (WSL) HTTP/3' -Direction Inbound -VMCreatorId $vm -Protocol UDP -LocalPorts 443 -Action Allow | Out-Null
 
 Step 'WSPanel'
-$setupFlags = @('--yes', "--admin-email=$AdminEmail", "--db=$Db", "--php=$Php", "--ssh-port=$SshPort")
+# WSL's kernel does not enforce the sites' port rules (docs/wsl.md, Omezení).
+$setupFlags = @('--yes', "--admin-email=$AdminEmail", "--db=$Db", "--php=$Php", "--ssh-port=$SshPort", '--allow-unenforced-socket-bind')
 if ($PanelDomain) { $setupFlags += "--panel-domain=$PanelDomain" }
 if ($PanelPort -gt 0) { $setupFlags += "--panel-port=$PanelPort" }
 if ($AcmeEmail) { $setupFlags += "--acme-email=$AcmeEmail" }
