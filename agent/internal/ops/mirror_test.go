@@ -170,7 +170,11 @@ func TestRsyncServerArgs(t *testing.T) {
 	if err != nil || sub[len(sub)-1] != filepath.Join(cfg.SitesRoot, "shop.example.com")+"/" {
 		t.Fatalf("a site's own folder: %v %v", sub, err)
 	}
+	if _, err := rsyncServerArgs(cfg, []string{"rsync", "--server", "--sender", "-a", "--backup", "--backup-dir", "/var/backups/wspanel/mirror/rejoin-x/sites", ".", "sites/"}); err != nil {
+		t.Errorf("a rejoin's backup dir: %v", err)
+	}
 	for _, bad := range [][]string{
+		{"rsync", "--server", "--sender", "-a", "--backup-dir", "../x;y", ".", "sites/"},
 		{"rsync", "--server", "-a", ".", "sites/"},                                      // receiving: would write here
 		{"rsync", "--server", "--sender", "-aL", ".", "sites/"},                         // follows links out of the module
 		{"rsync", "--server", "--sender", "-a", "--remove-source-files", ".", "sites/"}, // deletes on the primary

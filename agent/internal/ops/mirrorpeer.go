@@ -409,6 +409,7 @@ var (
 	rsyncLong    = []string{"--delete", "--delete-delay", "--delete-after", "--delete-excluded", "--partial", "--inplace",
 		"--ignore-errors", "--force", "--numeric-ids", "--hard-links", "--acls", "--xattrs", "--sparse", "--whole-file", "--no-inc-recursive", "--safe-links",
 		"--backup"} // the receiver's own (a rejoin keeps what it alone had); the sender ignores it
+	rsyncBackupDirRe = regexp.MustCompile(`^/[A-Za-z0-9/._-]*$`)
 	rsyncLongValueRe = regexp.MustCompile(`^--(compress-choice|checksum-choice|compress-level|log-format|out-format|timeout|bwlimit)=[A-Za-z0-9%.:_-]*$|^--backup-dir=/[A-Za-z0-9/._-]*$`)
 )
 
@@ -426,6 +427,12 @@ func rsyncServerArgs(cfg config.Config, args []string) ([]string, error) {
 	i := 3
 	for ; i < len(args) && args[i] != "."; i++ {
 		a := args[i]
+		// --backup-dir <dir>: the receiver's (a rejoin); the sender ignores it.
+		if a == "--backup-dir" && i+1 < len(args) && rsyncBackupDirRe.MatchString(args[i+1]) {
+			out = append(out, a, args[i+1])
+			i++
+			continue
+		}
 		switch {
 		case rsyncShortRe.MatchString(a):
 			letters, _, _ := strings.Cut(a[1:], ".")
