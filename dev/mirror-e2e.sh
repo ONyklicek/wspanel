@@ -173,7 +173,7 @@ wait_for 300 "sites up" bash -c "docker exec $S curl -sk --resolve shop.firma.lo
 	&& ok "the site is served by the new primary" || bad "the site is served by the new primary"
 expect "MariaDB takes writes" "$(on "$S" mariadb -N -e 'SELECT @@read_only')" 0
 expect "nothing replicated is lost" "$(on "$S" mariadb -N shop -e 'SELECT v FROM t WHERE id = 3')" "last before outage"
-on "$S" mariadb shop -e "INSERT INTO t VALUES (4, 'written on the new primary');" && ok "a write on the new primary"
+on "$S" mariadb shop -e "INSERT INTO t VALUES (4, 'on new primary');" && ok "a write on the new primary" || bad "a write on the new primary"
 echo "  (rows on the new primary: $(on "$S" mariadb -N shop -e 'SELECT group_concat(id) FROM t'))"
 expect "PostgreSQL promoted" "$(on "$S" runuser -u postgres -- psql -tAq -c 'SELECT pg_is_in_recovery()')" f
 expect "Valkey data kept" "$(on "$S" bash -c "echo '$VK_PW' | runuser -u web_shop_firma_local -- valkey-cli --askpass --no-auth-warning -s /run/wspanel-valkey/web_shop_firma_local/valkey.sock GET greeting")" before
@@ -199,7 +199,7 @@ for l in state sites mariadb postgresql; do
 		&& ok "rejoined: layer $l" || bad "rejoined: layer $l" "$(mstatus "$P" | jqr "$P" ".status.layers[\"$l\"]")"
 done
 echo "  (after the rejoin: new primary $(on "$S" mariadb -N shop -e 'SELECT group_concat(id) FROM t'), old $(on "$P" mariadb -N shop -e 'SELECT group_concat(id) FROM t'))"
-expect "the new primary's write reached it" "$(on "$P" mariadb -N shop -e 'SELECT v FROM t WHERE id = 4')" "written on the new primary"
+expect "the new primary's write reached it" "$(on "$P" mariadb -N shop -e 'SELECT v FROM t WHERE id = 4')" "on new primary"
 contains "a planned switchover from the new primary" "$(agent "$S" mirror.switchover)" '"switched":true'
 expect "the old primary is primary again" "$(role "$P")" primary
 expect "and the other its standby" "$(role "$S")" standby
