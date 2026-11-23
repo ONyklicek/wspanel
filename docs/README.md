@@ -2,13 +2,15 @@
 
 WSPanel je hostingový panel pro jeden server s Debianem 13. Spravuje weby (PHP,
 Laravel, Symfony, Node, Python), databáze, deploy z Gitu, poštu, DNS, SSH/SFTP,
-certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru.
+certifikáty a zálohy. Běží nativně přes systemd, bez Dockeru; na Windows jako
+jeden kontejner ([Docker](docker.md)).
 
 ## Pro koho je co
 
 | Chci… | Čtěte |
 |---|---|
 | nainstalovat panel na server | [Instalace](instalace.md) |
+| provozovat ho na Windows (Docker Desktop) | [Docker](docker.md) |
 | založit web a dostat ho na internet | [Weby](weby.md) |
 | nahrát obyčejný PHP web (třeba WordPress) | [Weby → Čisté PHP](weby.md#čisté-php-wordpress-vlastní-skripty) |
 | hostovat weby pro klienty s limity | [Klienti a balíčky](klienti.md) |

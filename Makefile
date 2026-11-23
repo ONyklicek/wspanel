@@ -1,5 +1,6 @@
 # WSPanel — development tasks. Production runs natively (systemd); Docker is
-# only used for the dev "server" container.
+# the dev "server" container, and the one-container image for hosts that
+# cannot run it natively (Windows: docker/, docs/docker.md).
 
 VERSION ?= $(shell date -u +%Y%m%d%H%M%S)
 ARCH    ?= amd64
@@ -8,7 +9,7 @@ PHP     ?= 8.3,8.4
 LDFLAGS := -s -w -X wspanel/agent/internal/ops.Version=$(VERSION)
 DEV     := docker compose -f dev/compose.yaml
 
-.PHONY: release-smoke dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
+.PHONY: docker-image docker-smoke release-smoke dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
 
 test: agent-test panel-test
 
@@ -28,6 +29,15 @@ agent-build:
 ## dist/wspanel-$(VERSION)-linux-$(ARCH).tar.gz
 bundle:
 	provision/bundle.sh $(VERSION) $(ARCH)
+
+## The one-container image (docker/) from this machine's bundle:
+## wspanel:$(VERSION). make docker-image VERSION=1.10.0-test ARCH=arm64
+docker-image: bundle
+	docker build --platform linux/$(ARCH) --build-arg WSPANEL_VERSION=$(VERSION) -t wspanel:$(VERSION) -f docker/Dockerfile .
+
+## The image started the way docs/docker.md starts it, installed and checked.
+docker-smoke: docker-image
+	dev/docker-smoke.sh wspanel:$(VERSION)
 
 ## The release check CI runs: the bundle installed on a clean Debian 13
 ## (Docker), used and upgraded. make release-smoke VERSION=1.2.0-rc1

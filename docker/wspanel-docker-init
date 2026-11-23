@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# The image's entrypoint: hands the container's WSPANEL_* settings to the
+# first-start installation (systemd gives its services none of PID 1's
+# environment), then becomes systemd.
+set -euo pipefail
+install -d -m 0700 /etc/wspanel-docker
+(
+  umask 077
+  for name in $(compgen -e | grep '^WSPANEL_' || true); do
+    printf 'export %s=%q\n' "$name" "${!name}"
+  done > /etc/wspanel-docker/setup.env
+)
+exec /sbin/init "$@"

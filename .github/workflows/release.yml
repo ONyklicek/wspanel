@@ -114,6 +114,10 @@ jobs:
           - arch: amd64
             runner: ubuntu-24.04
             via: upgrade
+          # The one-container image (docker/, docs/docker.md).
+          - arch: amd64
+            runner: ubuntu-24.04
+            via: docker
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -133,6 +137,12 @@ jobs:
           prev=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
           if [[ -z "$prev" ]]; then echo "no published release yet: nothing to upgrade from"; exit 0; fi
           SMOKE_REPO="${GITHUB_REPOSITORY}" dev/release-smoke.sh --from "${prev#v}" dist/wspanel-*-linux-${{ matrix.arch }}.tar.gz
+      - name: The Docker image, first start and restart
+        if: matrix.via == 'docker'
+        run: |
+          v=$(basename dist/wspanel-*-linux-amd64.tar.gz | sed -E 's/^wspanel-(.*)-linux-amd64\.tar\.gz$/\1/')
+          docker build --build-arg WSPANEL_VERSION="$v" -t "wspanel:$v" -f docker/Dockerfile .
+          dev/docker-smoke.sh "wspanel:$v"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.via == 'apt'
         with:
@@ -219,6 +229,7 @@ jobs:
             echo "Tato verze: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/get.sh | sudo env WSPANEL_VERSION=${{ needs.build.outputs.version }} bash\`."
             echo "Ručně: stáhnout \`wspanel-${{ needs.build.outputs.version }}-linux-<arch>.tar.gz\`, rozbalit a spustit \`sudo ./install\`."
             echo "Aktualizace: týž příkaz na nainstalovaném serveru (nabídne aktualizaci se stávajícím nastavením)."
+            echo "Docker (Windows): image \`ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/wspanel:${{ needs.build.outputs.version }}\`, viz [docs/docker.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/docker.md)."
             echo "Ověření: \`gpgv\` podpisu \`SHA256SUMS.asc\` klíčem apt repozitáře (get.sh to dělá sám), \`sha256sum -c SHA256SUMS\` a \`gh attestation verify <soubor> --repo ${GITHUB_REPOSITORY}\`."
             echo
             echo "## Změny"
@@ -232,6 +243,73 @@ jobs:
           pre=""; [[ "${GITHUB_REF_NAME}" == *-* ]] && pre="--prerelease"
           gh release create "${GITHUB_REF_NAME}" dist/wspanel-*.tar.gz dist/wspanel-agent_*.deb dist/wspanel_*_all.deb dist/wspanel-archive-keyring_*.deb dist/get.sh dist/SHA256SUMS dist/SHA256SUMS.asc \
             --title "WSPanel ${{ needs.build.outputs.version }}" --notes-file notes.md --verify-tag $pre
+
+  image:
+    # The one-container image (docker/, docs/docker.md), each architecture on
+    # its own runner (no emulation), from the bundles just published.
+    name: Docker image ${{ matrix.arch }}
+    if: github.ref_type == 'tag'
+    needs: [build, publish]
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle-${{ matrix.arch }}
+          path: dist
+      - name: Build and push
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/wspanel"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker build --build-arg WSPANEL_VERSION="$VERSION" \
+            --label org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}" \
+            -t "$image:$VERSION-${{ matrix.arch }}" -f docker/Dockerfile .
+          docker push "$image:$VERSION-${{ matrix.arch }}"
+
+  image-manifest:
+    # One tag for both architectures: the version, and "stable" for a
+    # release (never "latest": docs/docker.md says why).
+    name: Docker image (both architectures)
+    needs: [build, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Manifest
+        id: manifest
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/wspanel"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          tags=(-t "$image:$VERSION")
+          [[ "$VERSION" != *-* ]] && tags+=(-t "$image:stable")
+          docker buildx imagetools create "${tags[@]}" "$image:$VERSION-amd64" "$image:$VERSION-arm64"
+          digest=$(docker buildx imagetools inspect "$image:$VERSION" --format '{{json .Manifest}}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.manifest.outputs.image }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
 
   apt:
     # The packages into the apt repository (apt.yml).
