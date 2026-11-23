@@ -342,6 +342,11 @@ for v in "${PHP_LIST[@]}"; do
   install -d -m 0755 "/etc/systemd/system/php$v-fpm.service.d"
   install -C -m 0644 "$HERE/files/php-fpm-wspanel.conf" "/etc/systemd/system/php$v-fpm.service.d/wspanel.conf"
 done
+# Plain `php` (composer, the panel's artisan, XHGui) is the panel's PHP:
+# sury's php-cli metapackage brings the newest PHP (8.6 since 2026-11),
+# which Debian's composer does not survive. Set by hand, so a newer PHP
+# installed later (by a package or from the panel) does not take it over.
+update-alternatives --set php "/usr/bin/php$PANEL_PHP" >/dev/null
 # A unit's MemoryLow protects it only as far as its slice is protected:
 # system.slice (the edge, the web tier, PHP-FPM, the databases, the agent)
 # against the games' own slice. Protection takes nothing away until memory

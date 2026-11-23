@@ -49,9 +49,16 @@ if [[ -n "$FROM" ]]; then
   # Debian 13 lacks (apt verifies with sqv); later ones take sqv.
   on 'command -v gpgv >/dev/null || { apt-get update -q >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -q gpgv >/dev/null; }' \
     || fail "gpgv for the get.sh of $FROM"
+  # A server from before sury's PHP 8.6 (2026-11): releases up to 1.9.3 ran
+  # composer on whatever `php` was, and Roundcube's php-* metapackages bring
+  # 8.6, which Debian's composer does not survive. The upgrade below runs
+  # without the pin, as on a server that has 8.6 by now.
+  # (sury's php-common stays: its PHP packages need it.)
+  on 'printf "Package: php8.6*\nPin: release *\nPin-Priority: -1\n\nPackage: php php-cli php-fpm php-intl php-mbstring php-xml php-curl php-zip php-gd php-sqlite3 php-mysql php-pgsql php-readline\nPin: origin packages.sury.org\nPin-Priority: 100\n" > /etc/apt/preferences.d/smoke-no-php86'
   on "curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors https://github.com/${SMOKE_REPO:-ONyklicek/wspanel}/releases/download/v$FROM/get.sh \
       | env WSPANEL_VERSION=$FROM bash -s -- $FLAGS > /root/install-from.log 2>&1" \
     || { on 'tail -40 /root/install-from.log' >&2; fail "installing $FROM failed"; }
+  on 'rm /etc/apt/preferences.d/smoke-no-php86'
   out=$(tinker '$s = app(App\Actions\Sites\CreateSite::class)->handle(["domain" => "old.localhost", "mode" => "classic", "framework" => "php", "php_version" => "8.4", "tls" => "internal"]); echo $s->status->value;')
   [[ $out == active ]] || fail "a site on $FROM: $out"
 fi
