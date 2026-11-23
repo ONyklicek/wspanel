@@ -35,6 +35,7 @@ class HelpPage extends Page
         'instalace' => 'Instalace',
         'hyper-v' => 'Hyper-V (Windows)',
         'zrcadlo' => 'Zrcadlo (vysoká dostupnost)',
+        'windows-dns' => 'Windows DNS pro zrcadlo',
         'klienti' => 'Klienti a balíčky',
         'weby' => 'Weby',
         'herni-servery' => 'Herní servery',

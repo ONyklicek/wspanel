@@ -3301,6 +3301,7 @@
     "Redis 8 (oficiální, s moduly JSON, Search, TimeSeries, Bloom)": "Redis 8 (official, with the JSON, Search, TimeSeries, Bloom modules)",
     "Zrcadlo": "Mirror",
     "Zrcadlo (vysoká dostupnost)": "Mirror (high availability)",
+    "Windows DNS pro zrcadlo": "Windows DNS for the mirror",
     "Hyper-V (Windows)": "Hyper-V (Windows)",
     "Aktivní server drží A záznamy svých webů v zónách Windows DNS na své IP, takže po přepnutí klienti v LAN jdou na nový primár do TTL. Panel se připojí přes OpenSSH na Windows k účtu, který smí spustit jen skript wspanel-dns.ps1 (Install-WSPanelDns.ps1 v provision/files/windows). Nastavuje se na každém serveru zvlášť: každý má svůj klíč.": "The active server keeps the A records of its sites in the Windows DNS zones pointing at its IP, so after a failover LAN clients reach the new primary within the TTL. The panel connects over OpenSSH on Windows to an account that may run only wspanel-dns.ps1 (Install-WSPanelDns.ps1 in provision/files/windows). Set it up on each server: each has its own key.",
     "Adresa zrcadla v LAN (u VM v Hyper-V její vlastní IP).": "The mirror's address in the LAN (for a Hyper-V VM its own IP).",

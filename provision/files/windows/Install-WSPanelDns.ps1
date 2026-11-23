@@ -7,12 +7,15 @@
   domain controller that runs DNS (the Windows host of the standby):
 
     .\Install-WSPanelDns.ps1 -Account 'FIRMA\wspanel-dns' -Zones firma.local `
+        -AllowFrom 192.168.1.10, 192.168.1.20 `
         -PublicKey 'ssh-ed25519 AAAA… wspanel-node-…', 'ssh-ed25519 AAAA… wspanel-node-…'
 
   The public keys are on each node's Server → Zrcadlo → Windows DNS page.
 
   What it does (idempotent):
-    - OpenSSH Server (a Windows capability), started automatically,
+    - OpenSSH Server (a Windows capability), started automatically, its
+      port 22 open in the firewall only to the -AllowFrom addresses (the
+      two servers): no other machine reaches sshd on the domain controller,
     - the account (created when missing, with a random password nobody
       needs: it signs in with the keys only) with rights on the listed zones
       only: write access to each zone's object in Active Directory and the
@@ -34,6 +37,8 @@ param(
     [Parameter(Mandatory)] [string] $Account,
     [Parameter(Mandatory)] [string[]] $Zones,
     [Parameter(Mandatory)] [string[]] $PublicKey,
+    # The servers' addresses: port 22 is open to them only.
+    [string[]] $AllowFrom = @(),
     [string] $DnsServer = 'localhost',
     [switch] $UseDnsAdmins
 )
@@ -47,6 +52,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 foreach ($k in $PublicKey) {
     if ($k -notmatch '^ssh-ed25519 [A-Za-z0-9+/=]+( \S+)?$') { throw "not an ed25519 public key: $k" }
 }
+foreach ($a in $AllowFrom) {
+    $ip = $null
+    if (-not [System.Net.IPAddress]::TryParse(($a -split '/')[0], [ref]$ip)) { throw "not an address: $a" }
+}
 foreach ($z in $Zones) {
     if (-not (Get-DnsServerZone -ComputerName $DnsServer -Name $z -ErrorAction SilentlyContinue)) { throw "zone $z does not exist on $DnsServer" }
 }
@@ -58,6 +67,12 @@ Set-Service -Name sshd -StartupType Automatic
 Start-Service sshd
 if (-not (Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+}
+if ($AllowFrom) {
+    Set-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -RemoteAddress $AllowFrom
+    Write-Host "    port 22 open only to: $($AllowFrom -join ', ') (add the addresses you use SSH from yourself, if any)"
+} else {
+    Write-Warning 'Port 22 of this domain controller is open to every address: -AllowFrom <the two servers> limits it.'
 }
 
 Write-Host "==> The account $Account"

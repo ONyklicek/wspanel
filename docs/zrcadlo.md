@@ -71,12 +71,16 @@ i do internetu, dostanou veřejný certifikát, jakmile mají veřejnou doménu.
 
 ### 3. Zrcadlo ve VM
 
-Na `dc1` v PowerShellu jako správce
-(`provision/files/windows/New-WSPanelVM.ps1`, viz [Hyper-V](hyper-v.md)):
+Na Windows hostiteli v PowerShellu jako správce
+(`provision/files/windows/New-WSPanelVM.ps1`):
 
 ```powershell
-.\New-WSPanelVM.ps1 -Name wspanel-vm -MemoryGB 4 -Cpus 2 -DiskGB 80
+.\New-WSPanelVM.ps1 -Name wspanel-vm -MemoryGB 4 -Cpus 2 -DiskGB 80 -Path D:\Hyper-V
 ```
+
+Nebo ručně v Hyper-V Manageru. Oba postupy a co dodržet, když je hostitelem
+řadič domény `dc1` (disk, paměť, síť, aby se nenarušilo AD), popisuje
+[Hyper-V](hyper-v.md).
 
 V konzoli VM nainstalujte Debian 13 (jen „SSH server“ a „standard system
 utilities“) s adresou `192.168.1.20`. Pak ve VM nainstalujte WSPanel **se
@@ -128,10 +132,13 @@ přepnutí do TTL (60 s) chodí na nový primár.
 2. Na `dc1` jako správce domény (`provision/files/windows/`):
    ```powershell
    .\Install-WSPanelDns.ps1 -Account 'FIRMA\wspanel-dns' -Zones firma.local `
+       -AllowFrom 192.168.1.10, 192.168.1.20 `
        -PublicKey 'ssh-ed25519 AAAA… wspanel-node-…', 'ssh-ed25519 AAAA… wspanel-node-…'
    ```
-   Skript udělá tohle:
-   - zapne OpenSSH Server ve Windows a založí účet s přihlášením jen klíčem,
+   Nebo ručně podle [Windows DNS](windows-dns.md), kde je i přesný výčet
+   toho, co se na řadiči domény změní, a jak to odebrat. Skript udělá tohle:
+   - zapne OpenSSH Server ve Windows s portem 22 otevřeným jen pro oba
+     servery a založí účet s přihlášením jen klíčem,
    - dá účtu práva **jen na zónu `firma.local`** (zápis do jejího objektu
      v AD a správu DNS přes WMI), ne skupinu DnsAdmins,
    - nastaví, že účet smí přes SSH spustit jen skript `wspanel-dns.ps1`

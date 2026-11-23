@@ -10,11 +10,14 @@
   What it does (idempotent):
     - the Hyper-V role (a restart when it was not there),
     - an external virtual switch on the LAN adapter: the VM gets its own
-      address in the LAN (no port shared with Windows, no NAT),
+      address in the LAN (no port shared with Windows, no NAT). With
+      -NetAdapter <name> -Dedicated a second adapter is the VM's alone and
+      the network of Windows stays untouched (the way on a domain controller),
     - the newest Debian 13 netinst ISO, checked against Debian's SHA256SUMS,
     - a generation 2 VM (Secure Boot with the template Debian's shim uses),
       started with Windows, no automatic checkpoints (a checkpoint of a
       running database server is no backup),
+    - warns when the VM's disk would grow on the volume of the AD database,
     - starts it and opens its console.
 
   Then install Debian in the console (only "SSH server" and "standard
@@ -33,6 +36,9 @@ param(
     [string] $SwitchName = 'WSPanel LAN',
     # The physical adapter of the LAN (default: the one with the default route).
     [string] $NetAdapter = '',
+    # The adapter is the VM's alone: Windows keeps its own network untouched
+    # (the safe way on a domain controller; needs a second adapter).
+    [switch] $Dedicated,
     [string] $Path = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -58,14 +64,26 @@ if ($server) {
 Import-Module Hyper-V
 if (-not $Path) { $Path = (Get-VMHost).VirtualMachinePath }
 
+# A growing disk that fills the volume of the AD database stops AD.
+$ntds = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\NTDS\Parameters' -ErrorAction SilentlyContinue).'DSA Database file'
+if ($ntds -and ([IO.Path]::GetPathRoot($ntds) -eq [IO.Path]::GetPathRoot($Path))) {
+    Write-Warning "The VM's disk would grow on the volume of the AD database ($ntds): when it fills up, AD stops. Prefer -Path on another volume (docs/hyper-v.md)."
+}
+
 Step "External switch '$SwitchName'"
 if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {
     if (-not $NetAdapter) {
+        if ($Dedicated) { throw '-Dedicated needs -NetAdapter: the adapter for the VM alone (Get-NetAdapter lists them)' }
         $ifIndex = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | Select-Object -First 1).ifIndex
         $NetAdapter = (Get-NetAdapter -InterfaceIndex $ifIndex).Name
     }
-    Write-Host "The network of this machine drops for a few seconds while '$NetAdapter' becomes the switch's." -ForegroundColor Yellow
-    New-VMSwitch -Name $SwitchName -NetAdapterName $NetAdapter -AllowManagementOS $true | Out-Null
+    if ($Dedicated) {
+        New-VMSwitch -Name $SwitchName -NetAdapterName $NetAdapter -AllowManagementOS $false | Out-Null
+    } else {
+        Write-Host "The network of this machine drops for a few seconds while '$NetAdapter' becomes the switch's." -ForegroundColor Yellow
+        Write-Host 'On a domain controller check it afterwards (docs/hyper-v.md: ipconfig /all, ipconfig /registerdns, dcdiag /test:dns).' -ForegroundColor Yellow
+        New-VMSwitch -Name $SwitchName -NetAdapterName $NetAdapter -AllowManagementOS $true | Out-Null
+    }
 }
 
 Step 'Debian 13 netinst ISO'
