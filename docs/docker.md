@@ -157,6 +157,9 @@ výpadku převezme provoz ([Zrcadlo](zrcadlo.md)). Port zrcadla
 - **Privilegovaný kontejner:** systemd, ACL a nftables to vyžadují. Kontejner
   má proto k hostiteli blízko, jako by byl samotný server. Na stroji s ním
   nepouštějte nic, čemu nevěříte.
+  Na Windows se privilegovaný kontejner může dostat i k diskům, které
+  Docker Desktop sdílí. Na řadiči domény a všude, kde weby nejsou vaše,
+  dejte přednost [WSL](wsl.md).
 
 ## Vlastní image
 

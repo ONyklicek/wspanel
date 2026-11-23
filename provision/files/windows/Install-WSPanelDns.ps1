@@ -14,22 +14,28 @@
   What it does (idempotent):
     - OpenSSH Server (a Windows capability), started automatically,
     - the account (created when missing, with a random password nobody
-      needs: it signs in with the keys only) in the DnsAdmins group,
+      needs: it signs in with the keys only) with rights on the listed zones
+      only: write access to each zone's object in Active Directory and the
+      DNS server's management (WMI) namespace. Not DnsAdmins: a member of
+      DnsAdmins can make the DNS service load a DLL, i.e. run code as SYSTEM
+      on the domain controller. -UseDnsAdmins falls back to the group where
+      the delegation is not enough (the panel's "Vyzkoušet Windows DNS"
+      reports access denied),
     - C:\ProgramData\WSPanel\wspanel-dns.ps1 and dns.json (the zones),
     - an sshd block for the account: keys from C:\ProgramData\WSPanel\
       authorized_keys only, the script as its only command (ForceCommand),
       no forwarding, no terminal,
     - prints the host key's fingerprint to compare in the panel.
 
-  Membership of DnsAdmins is powerful on a domain controller; the account
-  can do nothing over SSH but run the script, which changes only A/AAAA
-  records of the listed zones. Keep the keys' nodes as safe as the DC.
+  Over SSH the account can do nothing but run the script, which changes
+  only A/AAAA records of the listed zones.
 #>
 param(
     [Parameter(Mandatory)] [string] $Account,
     [Parameter(Mandatory)] [string[]] $Zones,
     [Parameter(Mandatory)] [string[]] $PublicKey,
-    [string] $DnsServer = 'localhost'
+    [string] $DnsServer = 'localhost',
+    [switch] $UseDnsAdmins
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -65,8 +71,38 @@ if (-not $user) {
         -Description 'WSPanel mirror: A/AAAA records over SSH (wspanel-dns.ps1 only)' | Out-Null
     $user = Get-ADUser -Identity $sam
 }
-if (-not (Get-ADGroupMember -Identity 'DnsAdmins' | Where-Object { $_.SID -eq $user.SID })) {
-    Add-ADGroupMember -Identity 'DnsAdmins' -Members $user
+if ($UseDnsAdmins) {
+    Write-Warning 'DnsAdmins: the account can make the DNS service load code (SYSTEM on this DC). Use it only where the delegation does not work.'
+    if (-not (Get-ADGroupMember -Identity 'DnsAdmins' | Where-Object { $_.SID -eq $user.SID })) {
+        Add-ADGroupMember -Identity 'DnsAdmins' -Members $user
+    }
+} else {
+    if (Get-ADGroupMember -Identity 'DnsAdmins' | Where-Object { $_.SID -eq $user.SID }) {
+        Remove-ADGroupMember -Identity 'DnsAdmins' -Members $user -Confirm:$false
+    }
+    Write-Host '==> Rights on the zones only'
+    $sid = $user.SID
+    foreach ($z in $Zones) {
+        $dn = (Get-DnsServerZone -ComputerName $DnsServer -Name $z).DistinguishedName
+        if (-not $dn) { throw "zone $z is not stored in Active Directory: delegation works for AD-integrated zones (or use -UseDnsAdmins)" }
+        $acl = Get-Acl -Path "AD:$dn"
+        $rights = [System.DirectoryServices.ActiveDirectoryRights]'CreateChild, DeleteChild, ListChildren, ReadProperty, WriteProperty, GenericRead, DeleteTree'
+        $rule = New-Object System.DirectoryServices.ActiveDirectoryAccessRule($sid, $rights, 'Allow', [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All)
+        if (-not ($acl.Access | Where-Object { $_.IdentityReference -eq $sid -or ($_.IdentityReference.Value -like "*\$sam") })) {
+            $acl.AddAccessRule($rule)
+            Set-Acl -Path "AD:$dn" -AclObject $acl
+        }
+    }
+    # The DnsServer cmdlets go through the DNS server's WMI namespace:
+    # enable, execute methods, provider write, remote enable (not the
+    # namespace's security itself).
+    $sd = Invoke-CimMethod -Namespace 'root/MicrosoftDNS' -ClassName '__SystemSecurity' -MethodName GetSecurityDescriptor
+    $sddl = (Invoke-CimMethod -ClassName Win32_SecurityDescriptorHelper -MethodName Win32SDToSDDL -Arguments @{ Descriptor = $sd.Descriptor }).SDDL
+    $ace = "(A;CI;CCDCWPRP;;;$($sid.Value))"
+    if ($sddl -notlike "*$($sid.Value)*") {
+        $new = (Invoke-CimMethod -ClassName Win32_SecurityDescriptorHelper -MethodName SDDLToWin32SD -Arguments @{ SDDL = ($sddl + $ace) }).Descriptor
+        Invoke-CimMethod -Namespace 'root/MicrosoftDNS' -ClassName '__SystemSecurity' -MethodName SetSecurityDescriptor -Arguments @{ Descriptor = $new } | Out-Null
+    }
 }
 
 Write-Host '==> The script and its zones'

@@ -415,6 +415,10 @@ func fenceLocal(ctx context.Context, env *Env, reason string) error {
 
 // enforceFence: also at the agent's start (the units started with the system).
 func enforceFence(ctx context.Context, env *Env) {
+	if slices.Contains(env.Cfg.DBEngines, "mariadb") {
+		// Read-only also when MariaDB starts again (a reboot).
+		_, _ = writeFileIfChanged(env, filepath.Join(env.Cfg.MariaDBConfDir, mariadbMirrorCf), mariadbMirrorConfig(currentMirror(env).NodeID, true), 0o644, fsx.Root)
+	}
 	databasesReadOnly(ctx, env, true)
 	putEdgesAside(env)
 	_, _ = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
@@ -424,6 +428,25 @@ func enforceFence(ctx context.Context, env *Env) {
 	for _, u := range enabledUnits(env) {
 		if !strings.HasPrefix(u, "wspanel-mirror-") && u != "wspanel-site-guard.service" {
 			_, _ = env.Exec.Run(ctx, "systemctl", "stop", u)
+		}
+	}
+}
+
+// keepFenced: cheap checks every tick of a fenced node; acts only when
+// something came back.
+func keepFenced(ctx context.Context, env *Env) {
+	if files, _ := filepath.Glob(filepath.Join(env.Cfg.ProxySitesDir, "*.caddy")); len(files) > 0 {
+		putEdgesAside(env)
+		_, _ = env.Exec.Run(ctx, "systemctl", "reload", env.Cfg.ProxyUnit)
+	}
+	if slices.Contains(env.Cfg.DBEngines, "mariadb") {
+		if out, err := (mariadb{}).sql(ctx, env, "SELECT @@read_only"); err == nil && strings.TrimSpace(out) == "0" {
+			databasesReadOnly(ctx, env, true)
+		}
+	}
+	if slices.Contains(env.Cfg.DBEngines, "postgresql") {
+		if out, err := (postgres{}).psql(ctx, env, "postgres", "SHOW default_transaction_read_only"); err == nil && strings.TrimSpace(out) == "off" {
+			databasesReadOnly(ctx, env, true)
 		}
 	}
 }
@@ -455,6 +478,9 @@ func restoreFencedEdges(env *Env) {
 // unfenceLocal: serving again (edge blocks, mail, writes).
 func unfenceLocal(ctx context.Context, env *Env) error {
 	_ = os.Remove(fenceMarker(env))
+	if slices.Contains(env.Cfg.DBEngines, "mariadb") {
+		_, _ = writeFileIfChanged(env, filepath.Join(env.Cfg.MariaDBConfDir, mariadbMirrorCf), mariadbMirrorConfig(currentMirror(env).NodeID, false), 0o644, fsx.Root)
+	}
 	restoreFencedEdges(env)
 	databasesReadOnly(ctx, env, false)
 	for _, u := range enabledUnits(env) {

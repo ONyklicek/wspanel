@@ -75,14 +75,29 @@ a nikdy nemaže jiné záznamy. Jméno, které je CNAME, nechá být.
    .\Install-WSPanelDns.ps1 -Account 'FIRMA\wspanel-dns' -Zones firma.local `
        -PublicKey 'ssh-ed25519 AAAA… wspanel-node-…', 'ssh-ed25519 AAAA… wspanel-node-…'
    ```
-   Skript nainstaluje OpenSSH Server a založí účet (ve skupině DnsAdmins,
-   přihlášení jen klíčem). Nastaví ForceCommand a vypíše otisk klíče
-   hostitele.
+   Skript nainstaluje OpenSSH Server a založí účet s přihlášením jen klíčem.
+   Účet dostane práva **jen na vyjmenované zóny** (zápis do jejich objektů
+   v AD a správu DNS přes WMI), ne skupinu DnsAdmins. Nastaví ForceCommand
+   a vypíše otisk klíče hostitele.
 3. Na každém serveru: **Ověřit hostitele Windows** (porovnejte otisk) a pak
    **Vyzkoušet Windows DNS**.
 
-> DnsAdmins je na řadiči domény silné oprávnění. Přes SSH účet nesmí nic jiného
-> než skript, ale klíče obou serverů chraňte jako přístup k řadiči domény.
+> Kdyby delegace práv na zóny ve vaší doméně nestačila („Vyzkoušet Windows DNS“
+> hlásí odepřený přístup), spusťte skript s `-UseDnsAdmins`. Člen skupiny
+> DnsAdmins ale umí přimět službu DNS načíst knihovnu, tedy spustit kód jako
+> SYSTEM na řadiči domény. Přes SSH účet nesmí nic jiného než skript, přesto pak
+> klíče obou serverů chraňte jako přístup k řadiči domény.
+
+**Bezpečnost na Windows.** Weby jsou mezi sebou izolované stejně jako na
+Linuxu. Do Windows se z WSL nedostanou:
+- interop i disky Windows jsou vypnuté,
+- agent uživatelům webů a herních serverů zakáže spojení na služby Windows
+  na vlastních adresách serveru (Kerberos, RPC, SMB, LDAP, RDP, WinRM).
+
+Docker Desktop je slabší: privilegovaný kontejner se může dostat k diskům,
+které Docker Desktop sdílí. Pro zrcadlo na řadiči domény proto používejte
+WSL. Spouštět kód webů na řadiči domény je riziko samo o sobě. Pro weby
+klientů, kteří si nevěří, dejte zrcadlo na samostatný Windows stroj nebo VM.
 
 ## Přístup z internetu
 

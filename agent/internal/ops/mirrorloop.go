@@ -307,6 +307,9 @@ func primaryTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 // fencedTick: an isolated node comes back by itself when the standby did
 // not take over; one the standby replaced waits to rejoin (by hand).
 func fencedTick(ctx context.Context, env *Env, st *mirrorState, logf func(string, ...any)) {
+	// What started with the system (the edge's sites, a database that came
+	// up writable) is taken off again.
+	keepFenced(ctx, env)
 	them, err := helloPeer(ctx, env)
 	recordPeer(them, err)
 	if err != nil || st.Fenced != "isolated" {

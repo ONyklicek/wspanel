@@ -1205,6 +1205,11 @@ func gameCreate(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err 
 		if err != nil {
 			return err
 		}
+		if onWSL() { // the game's user away from Windows' services
+			if err := applySiteGuard(ctx, env); err != nil {
+				return err
+			}
+		}
 		if err := env.FS.MkdirAll(env.Cfg.GamesRoot, 0o751, fsx.Root); err != nil {
 			return err
 		}

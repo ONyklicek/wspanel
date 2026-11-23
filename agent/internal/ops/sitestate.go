@@ -104,7 +104,8 @@ func saveSiteState(env *Env, st siteState) error {
 	}
 	// A port taken or given up: the guard follows before the server listens
 	// (its failure fails the operation, and the next save tries again).
-	if !samePorts(old, st) || siteGuardStale.Load() {
+	// On WSL a new site's user is confined away from Windows' services too.
+	if !samePorts(old, st) || siteGuardStale.Load() || (old.Domain == "" && onWSL()) {
 		return applySiteGuard(context.Background(), env)
 	}
 	return nil
