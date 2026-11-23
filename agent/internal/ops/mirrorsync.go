@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"wspanel/agent/internal/fsx"
@@ -132,7 +133,37 @@ func snapshotSites(env *Env) ([]siteState, error) {
 	return out, nil
 }
 
-var syncRunning = make(chan struct{}, 1)
+var (
+	syncRunning = make(chan struct{}, 1)
+	syncCancel  struct {
+		sync.Mutex
+		fn context.CancelFunc
+	}
+)
+
+// stopSyncCycle cancels a running cycle and waits for it: a promotion must
+// not have a cycle that still takes this node for a standby (it would make
+// its databases read-only, or seed them from the old primary).
+func stopSyncCycle() {
+	syncCancel.Lock()
+	if syncCancel.fn != nil {
+		syncCancel.fn()
+	}
+	syncCancel.Unlock()
+	select {
+	case syncRunning <- struct{}{}: // none running, or it ended
+		<-syncRunning
+	case <-time.After(2 * time.Minute):
+	}
+}
+
+// stillStandby: every step of a cycle checks the node is still the standby.
+func stillStandby(env *Env) error {
+	if currentMirror(env).Role != roleStandby || mirrorRuntime.busy() {
+		return errors.New("this node is no longer the standby")
+	}
+	return nil
+}
 
 func startSyncCycle(ctx context.Context, env *Env, logf func(string, ...any)) {
 	select {
@@ -152,6 +183,14 @@ func startSyncCycle(ctx context.Context, env *Env, logf func(string, ...any)) {
 		}()
 		cctx, cancel := context.WithTimeout(ctx, 6*time.Hour)
 		defer cancel()
+		syncCancel.Lock()
+		syncCancel.fn = cancel
+		syncCancel.Unlock()
+		defer func() {
+			syncCancel.Lock()
+			syncCancel.fn = nil
+			syncCancel.Unlock()
+		}()
 		if err := syncCycle(cctx, env); err != nil {
 			logf("mirror: sync: %v", err)
 		}
@@ -190,6 +229,9 @@ func syncCycle(ctx context.Context, env *Env) error {
 	}
 
 	// 2. What the primary runs must be installed here too.
+	if err := stillStandby(env); err != nil {
+		return err
+	}
 	prepareStandby(ctx, env, peer)
 
 	// 3. Files and mail.
@@ -208,6 +250,9 @@ func syncCycle(ctx context.Context, env *Env) error {
 
 	// 4. Databases: the shared servers replicate; MongoDB and the dedicated
 	// servers are dumped.
+	if err := stillStandby(env); err != nil {
+		return err
+	}
 	tunnelsForEngines(ctx, env, peer)
 	ensureReplication(ctx, env, st, peer)
 	if time.Since(lastDumps) >= mirrorDumpEvery {
@@ -216,6 +261,9 @@ func syncCycle(ctx context.Context, env *Env) error {
 	}
 
 	// 5. Each site's Valkey/Redis.
+	if err := stillStandby(env); err != nil {
+		return err
+	}
 	if sites, err := snapshotSites(env); err == nil {
 		syncKVReplicas(ctx, env, sites)
 	} else {

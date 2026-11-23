@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"wspanel/agent/internal/fsx"
@@ -313,6 +314,11 @@ func winDesired(env *Env, st *mirrorState) []winRecord {
 	return out
 }
 
+// promotedThisRun: this agent promoted its node (since it started). A node
+// that has been primary since before its own start (a reboot) points DNS at
+// itself only once the other node confirms it is the standby.
+var promotedThisRun atomic.Bool
+
 // reconcileWinDNS: the primary's records point at it (called every minute
 // and right after a promotion).
 func reconcileWinDNS(ctx context.Context, env *Env, logf func(string, ...any)) {
@@ -323,7 +329,7 @@ func reconcileWinDNS(ctx context.Context, env *Env, logf func(string, ...any)) {
 	// Only while the other node confirms it is the standby: a primary that
 	// comes back after an outage must not point the LAN at itself before it
 	// learns that the standby took over.
-	if st.Peer != nil && !peerConfirmsStandby() {
+	if st.Peer != nil && !promotedThisRun.Load() && !peerConfirmsStandby() {
 		return
 	}
 	recs := winDesired(env, st)

@@ -292,6 +292,9 @@ func mariadbSlaveStatus(ctx context.Context, env *Env) (replicaStatus, error) {
 }
 
 func mariadbReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, string, error) {
+	if err := stillStandby(env); err != nil {
+		return nil, "", err
+	}
 	if err := mariadbAsSource(ctx, env, st, true); err != nil {
 		return nil, "", err
 	}
@@ -327,6 +330,9 @@ func mariadbReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, s
 // seedMariaDB: the replica becomes a copy of the source at a GTID position
 // and replicates from there. What this node had is dumped aside first.
 func seedMariaDB(ctx context.Context, env *Env, st *mirrorState) error {
+	if err := stillStandby(env); err != nil {
+		return err
+	}
 	if err := peerCall(ctx, env, "repl_prepare", map[string]any{}, nil); err != nil {
 		return err
 	}
@@ -414,6 +420,9 @@ func pruneMirrorSafety(dir, engine string, keep int) {
 }
 
 func postgresReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, string, error) {
+	if err := stillStandby(env); err != nil {
+		return nil, "", err
+	}
 	dir, err := postgresMainCluster(env)
 	if err != nil {
 		return nil, "", err
@@ -459,6 +468,9 @@ func postgresReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, 
 // seedPostgres: the cluster becomes a base backup of the source; the old
 // data directory is kept aside (the newest only).
 func seedPostgres(ctx context.Context, env *Env, st *mirrorState, confDir string) error {
+	if err := stillStandby(env); err != nil {
+		return err
+	}
 	if err := peerCall(ctx, env, "repl_prepare", map[string]any{}, nil); err != nil {
 		return err
 	}

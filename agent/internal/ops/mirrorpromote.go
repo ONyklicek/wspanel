@@ -31,7 +31,8 @@ var localEnvKeys = []string{"PANEL_PUBLIC_IPV4", "PANEL_PUBLIC_IPV6", "PANEL_SIT
 
 const hookDir = "/etc/wspanel/mirror/hooks"
 
-func fenceMarker(env *Env) string   { return mirrorFile(env, "fenced") }
+func fenceMarker(env *Env) string { return mirrorFile(env, "fenced") }
+
 // fencedEdgeDir: beside the edge's sites (one filesystem: a rename, never a
 // copy; the agent's state directory is a mount of its own). The edge imports
 // sites/*.caddy only.
@@ -146,6 +147,7 @@ func promoteLocal(ctx context.Context, env *Env, reason string, auto bool) (*Res
 		return nil, protocol.Conflict("no copy of the primary's state yet")
 	}
 	mirrorRuntime.event("danger", "povýšení tohoto serveru: %s", reason)
+	stopSyncCycle()
 	epoch := st.Epoch + 1
 	if _, err := updateMirror(env, func(s *mirrorState) error { s.Epoch = epoch; return nil }); err != nil {
 		return nil, err
@@ -191,6 +193,7 @@ func promoteLocal(ctx context.Context, env *Env, reason string, auto bool) (*Res
 	dropStaleKVData(ctx, env)
 	artisan(ctx, env, rep, "panel:sync")
 	runHooks(ctx, env, "promote", rep)
+	promotedThisRun.Store(true)
 	go reconcileWinDNS(context.WithoutCancel(ctx), env, func(string, ...any) {})
 	mirrorRuntime.event("info", "tento server je teď primár (epocha %d)%s", epoch, problemsSuffix(rep))
 	_ = auto

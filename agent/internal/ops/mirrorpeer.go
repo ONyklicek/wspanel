@@ -252,6 +252,10 @@ func servePeer(ctx context.Context, env *Env, conn *tls.Conn, logf func(string, 
 		out, err := peerFence(ctx, env, req.Params)
 		peerReply(conn, out, err)
 	case "repl_prepare":
+		if !mirrorSource(env) {
+			peerReply(conn, nil, errors.New("only the primary is a replication source"))
+			return
+		}
 		out, err := prepareReplicationSource(ctx, env)
 		peerReply(conn, out, err)
 	case "promote":

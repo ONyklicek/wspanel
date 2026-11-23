@@ -186,7 +186,8 @@ wait_for 240 "fenced" bash -c "[[ \$(docker exec $P php /opt/wspanel/dev/agent-c
 	&& ok "it steps down (a newer epoch is primary)" || bad "it steps down" "$(mstatus "$P")"
 wait_for 60 "edges aside" bash -c "[[ \$(docker exec $P bash -c 'ls /etc/panel-proxy/sites/*.caddy 2>/dev/null | wc -l') == 0 ]]" \
 	&& ok "it serves no sites" || bad "it serves no sites" "$(on "$P" ls /etc/panel-proxy/sites/)"
-expect "its MariaDB is read-only" "$(on "$P" mariadb -N -e 'SELECT @@read_only')" 1
+wait_for 90 "read-only" bash -c "[[ \$(docker exec $P mariadb -N -e 'SELECT @@read_only' 2>/dev/null) == 1 ]]" \
+	&& ok "its MariaDB is read-only" || bad "its MariaDB is read-only" "$(on "$P" mariadb -N -e 'SELECT @@read_only')"
 
 section "Rejoin and switch back"
 contains "it rejoins as the standby" "$(agent "$P" mirror.rejoin)" '"role":"standby"'
