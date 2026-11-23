@@ -23,9 +23,8 @@ import (
 // the sites and a standby that keeps a copy of everything and takes over when
 // the primary fails. Active/passive: only the primary takes writes.
 //
-// Every copy flows from the standby's side: it dials the primary (which may
-// be behind nothing, the standby behind Docker Desktop's NAT) over mutual TLS
-// on one port and pulls
+// Every copy flows from the standby's side: it dials the primary over
+// mutual TLS on one port (open to the standby's address only) and pulls
 //
 //   - the server's state and configuration (a server backup's archive,
 //     made fresh each cycle), applied when it is promoted,

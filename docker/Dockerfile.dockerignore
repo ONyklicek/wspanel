@@ -1,4 +1,0 @@
-# Build context of docker/Dockerfile: the bundles and the image's own files.
-*
-!dist/wspanel-*-linux-*.tar.gz
-!docker/wspanel-docker-*

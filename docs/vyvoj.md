@@ -34,6 +34,15 @@ make dev-down        # smaže kontejner i data
 
 Certifikáty vydává interní CA Caddy. Prohlížeč jednou zobrazí varování.
 
+## Zrcadlo se dvěma kontejnery
+
+`dev/mirror-e2e.sh` (po `make agent-build`) vyzkouší zrcadlo na tomto stroji.
+Spustí dva servery v Dockeru a náhradu Windows DNS (sshd se stejným
+protokolem jako `wspanel-dns.ps1`). Projde párování, replikaci všech
+vrstev, výpadek primáru s automatickým povýšením, odstavení starého primáru,
+jeho návrat a plánované přepnutí zpět. Trvá asi půl hodiny.
+`MIRROR_KEEP=1` kontejnery po testu nechá.
+
 ## Struktura repozitáře
 
 ```

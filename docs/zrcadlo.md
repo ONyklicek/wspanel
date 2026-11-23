@@ -1,23 +1,20 @@
 # Zrcadlo (vysoká dostupnost)
 
 Dva servery WSPanel tvoří pár. **Primár** obsluhuje weby. **Zrcadlo** (standby)
-drží jeho úplnou kopii a při výpadku převezme provoz. Typická sestava:
+drží jeho úplnou kopii a při výpadku převezme provoz. Oba jsou obyčejné
+servery s Debianem 13: fyzické, nebo virtuální (na Windows ve virtuálním
+stroji [Hyper-V](hyper-v.md)). Oba jsou ve stejné síti a vidí na sebe.
+Stránka v panelu: **Server → Zrcadlo**.
 
-- **primár:** Linux (Debian 13) nativně,
-- **zrcadlo:** WSPanel na Windows, nejlépe ve virtuálním stroji Hyper-V
-  ([Hyper-V](hyper-v.md)), lehčeji ve WSL2 ([WSL](wsl.md)). Docker jen
-  tam, kde nic jiného nejde ([Docker](docker.md)). Na stejném
-  Windows serveru běží řadič domény s **Windows DNS**, který slouží jako
-  lokální DNS celé sítě.
-
-Oba servery jsou ve stejné síti a vidí na sebe. Stránka v panelu:
-**Server → Zrcadlo**.
+Návod pro nejčastější sestavu (Linux server, druhý server jako VM v Hyper-V,
+DNS ve Windows a Active Directory) je níže:
+[Linux server + VM v Hyper-V + Windows DNS](#návod-linux-server--vm-v-hyper-v--windows-dns).
 
 ## Co se kopíruje
 
 Veškerá data teče od zrcadla k primáru. Zrcadlo se připojuje jedním spojením
-se vzájemným TLS (port 7443). Primár tak nepotřebuje přístup do sítě
-Docker Desktopu a jeho port je otevřený jen pro adresu zrcadla.
+se vzájemným TLS (port 7443), které je na primáru otevřené jen pro adresu
+zrcadla.
 
 | Vrstva | Jak | Čerstvost |
 |---|---|---|
@@ -34,79 +31,160 @@ Software, který primár používá (DB enginy, verze PHP a Pythonu, Redis,
 poštovní hosting), si zrcadlo doinstaluje samo. Herní servery se
 nekopírují.
 
-## Nastavení krok za krokem
+## Návod: Linux server + VM v Hyper-V + Windows DNS
 
-1. **Zrcadlo nainstalujte** se stejnou doménou panelu jako primár (Hyper-V:
-   `New-WSPanelVM.ps1` a `get.sh` ve VM, adresa zrcadla je IP VM; WSL:
-   `Install-WSPanelWsl.ps1 -PanelDomain …`, adresa zrcadla je pak IP Windows; Docker:
-   `WSPANEL_PANEL_DOMAIN`). Musí být prázdné, bez webů. V `docker/.env`
-   nechte `WSPANEL_MIRROR_PORT=7443` (port se publikuje v `compose.yaml`).
-2. **Na primáru:** Server → Zrcadlo → **Nastavit jako primár**. Vyplňte adresu
-   primáru v LAN a adresu zrcadla. U Dockeru na Windows je to IP adresa
-   Windows hostitele. Panel ukáže **párovací kód**, který platí hodinu
-   a jen jednou.
-3. **Na zrcadle:** Server → Zrcadlo → **Připojit jako zrcadlo**. Zadejte adresu
-   primáru, kód a adresu, na které primár zrcadlo uvidí (IP Windows
-   hostitele). Kód obsahuje otisk certifikátu primáru, takže se zrcadlo
-   nespojí s ničím jiným.
-4. Počkejte na první synchronizaci. V tabulce **Kopie** musí být všechny vrstvy
-   „v pořádku“.
-5. **Svědek a automatické přepnutí** (Nastavení, na obou serverech stejně):
-   jako svědka zadejte bránu LAN (`192.168.1.1`, ping) nebo řadič domény
-   (`192.168.1.5:53`, TCP). Pak zapněte **Automatické přepnutí**
-   a nastavte dobu (výchozí 60 s).
-6. **Windows DNS** viz níže.
+Příklad, ze kterého návod vychází (adresy si nahraďte svými):
 
-## Windows DNS (Active Directory)
+| | Jméno | Adresa |
+|---|---|---|
+| Primár, Debian 13 | `srv1` | `192.168.1.10` |
+| Windows Server: řadič domény, Windows DNS, Hyper-V | `dc1` | `192.168.1.5` |
+| Zrcadlo, Debian 13 ve VM na `dc1` | `wspanel-vm` | `192.168.1.20` |
+| Brána LAN | | `192.168.1.1` |
+| Doména AD a zóna DNS | `firma.local` | |
+| Panel | `panel.firma.local` | |
 
-Aktivní server drží A záznamy svých webů (domény, aliasy, přesměrované
-domény a jména v „Další jména“) v zónách Windows DNS na své IP.
-Po přepnutí tak klienti v LAN do TTL (výchozí 60 s) chodí na nový primár.
+### 1. Předpoklady
 
-Panel se připojuje přes **OpenSSH** (součást Windows) k účtu, který smí
-spustit jen skript `wspanel-dns.ps1` (ForceCommand). Skript mění jen záznamy
-A/AAAA ve vyjmenovaných zónách, jen u jmen, na která se ho panel zeptá,
-a nikdy nemaže jiné záznamy. Jméno, které je CNAME, nechá být.
+- Zóna `firma.local` je **uložená v Active Directory** (AD-integrated) a
+  klienti v LAN používají jako DNS řadič domény (běžné v doméně, nastavuje
+  DHCP).
+- Oba servery budou mít **pevné adresy**: nastavené v Debianu, nebo
+  rezervované v DHCP.
+- Na obou poběží **stejná verze WSPanelu** se **stejnou doménou panelu**
+  a stejnými DB enginy.
+- V zóně je A záznam `panel.firma.local → 192.168.1.10`. Po spárování ho
+  bude spravovat zrcadlo (krok 6).
 
-1. Na každém serveru: Zrcadlo → **Windows DNS**. Vyplňte server (z primáru IP
-   řadiče domény, z kontejneru `host.docker.internal`), účet
-   `wspanel-dns@firma.local` a zóny. Panel ukáže **veřejný klíč** tohoto serveru.
-2. Na Windows jako správce domény (soubory jsou
-   v `provision/files/windows/`):
+### 2. Primár
+
+Na `srv1` je WSPanel nainstalovaný běžně ([Instalace](instalace.md)), například:
+
+```bash
+curl -fsSL https://github.com/onyklicek/wspanel/releases/latest/download/get.sh | sudo bash -s -- \
+  --yes --panel-domain=panel.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
+```
+
+`--local-certs`: interní doména `.local` nemá certifikát od Let's Encrypt.
+Panel a weby dostanou certifikát vlastní CA panelu. Weby, které mají jít
+i do internetu, dostanou veřejný certifikát, jakmile mají veřejnou doménu.
+
+### 3. Zrcadlo ve VM
+
+Na `dc1` v PowerShellu jako správce
+(`provision/files/windows/New-WSPanelVM.ps1`, viz [Hyper-V](hyper-v.md)):
+
+```powershell
+.\New-WSPanelVM.ps1 -Name wspanel-vm -MemoryGB 4 -Cpus 2 -DiskGB 80
+```
+
+V konzoli VM nainstalujte Debian 13 (jen „SSH server“ a „standard system
+utilities“) s adresou `192.168.1.20`. Pak ve VM nainstalujte WSPanel **se
+stejnými volbami jako primár** a žádný web nezakládejte:
+
+```bash
+curl -fsSL https://github.com/onyklicek/wspanel/releases/latest/download/get.sh | sudo bash -s -- \
+  --yes --panel-domain=panel.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
+```
+
+Panel zrcadla je na stejné doméně, ale ta zatím míří na primár. Do panelu
+zrcadla se proto dostanete přes dočasný záznam v souboru `hosts` svého
+počítače (`192.168.1.20 panel.firma.local`). Po spárování ho smažte.
+
+### 4. Spárování
+
+1. **Panel primáru** (`srv1`): Server → Zrcadlo → **Nastavit jako primár**.
+   - Adresa tohoto serveru: `192.168.1.10`.
+   - Adresa zrcadla: `192.168.1.20`.
+   - Panel ukáže **párovací kód**. Platí hodinu a jen jednou.
+2. **Panel zrcadla** (`wspanel-vm`, přes `hosts`): Server → Zrcadlo →
+   **Připojit jako zrcadlo**.
+   - Adresa primáru: `192.168.1.10`.
+   - Kód z primáru.
+   - Adresa tohoto serveru: `192.168.1.20`.
+3. Počkejte na první synchronizaci. Na zrcadle musí být v tabulce **Kopie**
+   všechny vrstvy „v pořádku“. Trvá to podle velikosti webů a databází.
+
+### 5. Svědek a automatické přepnutí
+
+Na **obou** serverech Zrcadlo → **Nastavení**:
+
+- **Svědci:** `192.168.1.1` (ping na bránu) a `192.168.1.5:53` (DNS řadiče
+  domény přes TCP). Zrcadlo se samo povýší jen tehdy, když primár neodpovídá
+  a většina svědků ano. Odříznuté zrcadlo se tak nikdy nepovýší.
+- **Automatické přepnutí:** zapnout, doba 60 s.
+
+### 6. Windows DNS
+
+Aktivní server drží A záznamy svých webů v zóně `firma.local` na své IP: na
+`192.168.1.10`, po převzetí na `192.168.1.20`. Patří k nim domény webů,
+aliasy, přesměrované domény a jména z „Další jména“. Klienti v LAN tak po
+přepnutí do TTL (60 s) chodí na nový primár.
+
+1. Na **každém** serveru: Zrcadlo → **Windows DNS**:
+   - server: `192.168.1.5`, port 22, účet: `wspanel-dns@firma.local`,
+   - zóny: `firma.local`, další jména: `panel.firma.local`,
+   - panel ukáže **veřejný klíč** tohoto serveru, oba si zkopírujte.
+2. Na `dc1` jako správce domény (`provision/files/windows/`):
    ```powershell
    .\Install-WSPanelDns.ps1 -Account 'FIRMA\wspanel-dns' -Zones firma.local `
        -PublicKey 'ssh-ed25519 AAAA… wspanel-node-…', 'ssh-ed25519 AAAA… wspanel-node-…'
    ```
-   Skript nainstaluje OpenSSH Server a založí účet s přihlášením jen klíčem.
-   Účet dostane práva **jen na vyjmenované zóny** (zápis do jejich objektů
-   v AD a správu DNS přes WMI), ne skupinu DnsAdmins. Nastaví ForceCommand
-   a vypíše otisk klíče hostitele.
-3. Na každém serveru: **Ověřit hostitele Windows** (porovnejte otisk) a pak
-   **Vyzkoušet Windows DNS**.
+   Skript udělá tohle:
+   - zapne OpenSSH Server ve Windows a založí účet s přihlášením jen klíčem,
+   - dá účtu práva **jen na zónu `firma.local`** (zápis do jejího objektu
+     v AD a správu DNS přes WMI), ne skupinu DnsAdmins,
+   - nastaví, že účet smí přes SSH spustit jen skript `wspanel-dns.ps1`
+     (ForceCommand). Ten mění jen záznamy A/AAAA v povolených zónách, jen
+     u jmen, na která se ho panel zeptá, a nic jiného nemaže. CNAME nechá
+     být,
+   - vypíše otisk klíče hostitele.
+3. Na každém serveru: **Ověřit hostitele Windows** (porovnejte otisk
+   s výpisem skriptu) a **Vyzkoušet Windows DNS**.
 
-> Kdyby delegace práv na zóny ve vaší doméně nestačila („Vyzkoušet Windows DNS“
-> hlásí odepřený přístup), spusťte skript s `-UseDnsAdmins`. Člen skupiny
+> Kdyby delegace práv na zónu ve vaší doméně nestačila („Vyzkoušet Windows DNS“
+> hlásí odepřený přístup), spusťte skript znovu s `-UseDnsAdmins`. Člen skupiny
 > DnsAdmins ale umí přimět službu DNS načíst knihovnu, tedy spustit kód jako
-> SYSTEM na řadiči domény. Přes SSH účet nesmí nic jiného než skript, přesto pak
-> klíče obou serverů chraňte jako přístup k řadiči domény.
+> SYSTEM na řadiči domény. Klíče obou serverů pak chraňte jako přístup
+> k řadiči domény.
 
-**Bezpečnost na Windows.** Weby jsou mezi sebou izolované stejně jako na
-Linuxu. Do Windows se z WSL nedostanou:
-- interop i disky Windows jsou vypnuté,
-- agent uživatelům webů a herních serverů zakáže spojení na služby Windows
-  na vlastních adresách serveru (Kerberos, RPC, SMB, LDAP, RDP, WinRM).
+### 7. Notifikace
 
-Nejsilnější izolaci má virtuální stroj Hyper-V: vlastní jádro, vlastní IP,
-vynucená pravidla portů i kvóty. Docker Desktop je nejslabší: privilegovaný
-kontejner se může dostat k diskům, které Docker Desktop sdílí. Pro zrcadlo
-na řadiči domény proto používejte Hyper-V, nebo aspoň WSL. Spouštět kód webů na řadiči domény je riziko samo o sobě. Pro weby
-klientů, kteří si nevěří, dejte zrcadlo na samostatný Windows stroj nebo VM.
+Panel zrcadla má do povýšení vlastní databázi. **Notifikace** (e-mail,
+Slack, ntfy…) proto nastavte na obou serverech. Hlášení „Primár neodpovídá“
+a chyby kopií posílá zrcadlo.
+
+### 8. Vyzkoušejte to
+
+1. **Plánované přepnutí** (panel primáru, Zrcadlo → Plánované přepnutí):
+   zrcadlo převezme provoz bez ztráty dat a `srv1` se stane jeho zrcadlem.
+   Ověřte weby z počítače v LAN (`nslookup web.firma.local` vrátí
+   `192.168.1.20`). Pak stejným tlačítkem na `wspanel-vm` přepněte zpět.
+2. **Výpadek** (v klidné době): vypněte `srv1`. Zrcadlo se po 60 s povýší
+   a přepne DNS. Po zapnutí se `srv1` sám odstaví (uvidí novější epochu).
+   V jeho panelu zvolte **Připojit zpět jako zrcadlo** a až se dosynchronizuje,
+   plánovaně přepněte zpět.
+
+### 9. Provoz
+
+- **Aktualizace:** nejdřív zrcadlo, pak primár. Panel upozorní, když se verze
+  liší.
+- **Zálohy** běží dál na aktivním serveru (záloha serveru, kopie mimo server).
+  Zrcadlo zálohy nenahrazuje: smazaná data smaže i na zrcadle.
+- **Řadič domény jako jediný bod:** když vypadne `dc1`, nejede DNS v LAN ani
+  zrcadlo. Primár běží dál, ale klienti ho bez DNS nenajdou. Druhý řadič
+  domény s DNS to řeší a je v AD doporučený tak jako tak. Server pro
+  `Install-WSPanelDns.ps1` je pak kterýkoli z nich, protože zóna v AD se
+  replikuje.
+- **Kód webů na řadiči domény:** VM v Hyper-V je od Windows izolovaná (vlastní
+  jádro, k řadiči domény jen po síti jako jiný stroj v LAN). Lepší je ale
+  samostatný Windows hostitel pro VM, zvlášť když weby nejsou vaše.
 
 ## Přístup z internetu
 
-- **Různé veřejné IP serverů:** u obou serverů vyplňte veřejnou IPv4. Aktivní
-  server pak každou minutu přepíše A záznamy v zónách **Cloudflare**, které
-  míří na druhý server, na sebe (proxy a TTL zůstanou).
+- **Různé veřejné IP serverů:** u obou serverů vyplňte veřejnou IPv4 (Zrcadlo →
+  Nastavení). Aktivní server pak každou minutu přepíše A záznamy v zónách
+  **Cloudflare**, které míří na druhý server, na sebe (proxy a TTL zůstanou).
 - **Jedna veřejná IP za routerem** (běžné u firmy): přepnout se musí
   přesměrování portů. Na to slouží **háky**: spustitelné soubory roota
   v `/etc/wspanel/mirror/hooks/promote.d/` se spustí po povýšení s argumenty
@@ -123,7 +201,7 @@ klientů, kteří si nevěří, dejte zrcadlo na samostatný Windows stroj nebo 
 | **Primár je odříznutý** (nevidí zrcadlo ani svědka) | Po plné době se povýší | Po polovině doby se **sám odstaví**: weby z edge, zastaví poštu, databáze jen pro čtení. Když se spojení vrátí a zrcadlo nepřevzalo provoz, sám se vrátí |
 | **Starý primár naběhne** po povýšení zrcadla | – | Uvidí novější epochu a odstaví se. Pak **Připojit zpět jako zrcadlo** |
 | **Údržba primáru** | – | **Plánované přepnutí**: primár přestane přijímat zápisy, zrcadlo ho dožene a převezme provoz **bez ztráty dat**, primár se stane zrcadlem |
-| **Panel zrcadla nejde otevřít** | `sudo panel-agent -mirror-status`, `sudo panel-agent -mirror-promote` (v Dockeru `docker exec -it wspanel …`) | – |
+| **Panel zrcadla nejde otevřít** | `sudo panel-agent -mirror-status`, `sudo panel-agent -mirror-promote` | – |
 
 **Epocha** je čítač zvyšovaný s každým povýšením. Když se potkají dva
 primáry, ten se starší epochou se odstaví. Dva primáry tak nikdy neběží
@@ -150,8 +228,6 @@ přepíšou, se uloží tamtéž. Potom lze plánovaně přepnout zpět.
 - Oba servery musí mít **stejnou verzi WSPanelu** (panel na to upozorní).
   Aktualizujte nejdřív zrcadlo, pak primár.
 - PostgreSQL musí mít na obou serverech stejnou hlavní verzi (Debian 13 = 17).
-- Zrcadlo v Dockeru Desktop má [omezení Docker varianty](docker.md#omezení-oproti-nativní-instalaci).
-  Weby obsluhuje i tak, ale například IP adresy klientů vidí přes proxy
-  Docker Desktopu.
-- Plovoucí IP (VRRP) se nepoužívá, protože ji Docker Desktop na Windows
-  spolehlivě neudrží. Přepíná se přes DNS.
+- Provoz se přepíná přes DNS (Windows DNS, Cloudflare) a háky, ne plovoucí IP.
+  Klienti, kteří si záznam drží déle než TTL, se na nový primár dostanou
+  později.

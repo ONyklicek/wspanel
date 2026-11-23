@@ -276,7 +276,7 @@ func mirrorTLS(env *Env, peerID string, server bool) (*tls.Config, error) {
 	}
 	cfg.RootCAs = pool
 	// The peer is known by its node name, whatever address it answers on
-	// (Docker Desktop's NAT, a changed IP).
+	// (a changed IP, NAT).
 	cfg.ServerName = peerID
 	return cfg, nil
 }

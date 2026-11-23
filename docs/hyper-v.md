@@ -1,4 +1,4 @@
-# Hyper-V (Windows, doporučeno)
+# Hyper-V (Windows)
 
 Nejlepší způsob, jak provozovat WSPanel na Windows, je **virtuální stroj
 Hyper-V** s Debianem 13. Je to plnohodnotný Linux server s vlastním jádrem,
@@ -12,8 +12,7 @@ takže platí vše jako na fyzickém serveru:
   si nechá 22, 53, 88, 389, 445…) a žádný NAT,
 - aktualizace, zálohy a obnova jako na každém serveru.
 
-Pořadí doporučení pro Windows: **Hyper-V** → [WSL](wsl.md) (lehčí, ale sdílí
-síť a porty s Windows) → [Docker](docker.md) (jen tam, kde nic jiného nejde).
+Na Windows je to jediná podporovaná varianta.
 
 Hyper-V je ve Windows Serveru (role) i ve Windows 10/11 Pro a Enterprise.
 

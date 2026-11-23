@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -39,49 +38,8 @@ func sitePorts(st siteState) []int {
 	return slices.Compact(out)
 }
 
-// Windows' own services (Kerberos, RPC, NetBIOS, LDAP, SMB, RDP, WinRM, AD
-// web services, dynamic RPC): on WSL with mirrored networking this server's
-// addresses are the Windows host's, often a domain controller. A site's or a
-// game's process must not reach them there.
-const winServicePorts = "88, 135, 137-139, 389, 445, 464, 593, 636, 3268-3269, 3389, 5985-5986, 9389, 47001, 49152-65535"
-
-// onWSL: the agent runs in WSL2 (Windows); a variable for the tests.
-var onWSL = func() bool {
-	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
-	return err == nil && strings.Contains(strings.ToLower(string(b)), "microsoft")
-}
-
-// confinedUID: a user's id (a variable for the tests).
-var confinedUID = func(env *Env, name string) (int, bool) {
-	o, err := lookupOwner(env, name)
-	return o.UID, err == nil && o.UID > 0
-}
-
-// confinedUIDs: the users that run sites' and games' code (extra: one
-// being created whose state is not saved yet).
-func confinedUIDs(env *Env, extra ...int) []string {
-	var out []string
-	for _, uid := range extra {
-		if uid > 0 {
-			out = append(out, strconv.Itoa(uid))
-		}
-	}
-	for _, st := range allSiteStates(env.Cfg) {
-		if uid, ok := confinedUID(env, validate.SiteUser(st.Domain)); ok {
-			out = append(out, strconv.Itoa(uid))
-		}
-	}
-	for _, g := range allGames(env) {
-		if uid, ok := confinedUID(env, g.user()); ok {
-			out = append(out, strconv.Itoa(uid))
-		}
-	}
-	slices.Sort(out)
-	return slices.Compact(out)
-}
-
 // siteGuardRules renders the table: who may connect to each guarded port.
-func siteGuardRules(env *Env, extraConfined ...int) (string, error) {
+func siteGuardRules(env *Env) (string, error) {
 	rules := "table inet wspanel_sites\ndelete table inet wspanel_sites\n"
 	proxy, err := lookupOwner(env, env.Cfg.ProxyGroup)
 	if err != nil {
@@ -106,43 +64,19 @@ func siteGuardRules(env *Env, extraConfined ...int) (string, error) {
 			}
 		}
 	}
-	var wsl []string
-	if onWSL() {
-		if uids := confinedUIDs(env, extraConfined...); len(uids) > 0 {
-			// fib: whatever addresses the server has right now (IPv4, IPv6,
-			// loopback), never a list that a new DHCP lease makes stale.
-			wsl = []string{
-				"  set confined {\n    type uid\n    elements = { " + strings.Join(uids, ", ") + " }\n  }\n",
-				"    meta skuid @confined fib daddr type local tcp dport { " + winServicePorts + " } reject with tcp reset\n" +
-					"    meta skuid @confined fib daddr type local udp dport { 88, 137-138, 389, 464 } reject\n",
-			}
-		}
-	}
-	if len(guarded) == 0 && wsl == nil {
+	if len(guarded) == 0 {
 		return rules, nil
 	}
 	slices.Sort(guarded)
 	guarded = slices.Compact(guarded)
 	slices.Sort(allowed)
 	allowed = slices.Compact(allowed)
-	rules += "table inet wspanel_sites {\n"
-	if len(guarded) > 0 {
-		rules += "  set guarded {\n    type inet_service\n    elements = { " + strings.Join(guarded, ", ") + " }\n  }\n" +
-			"  set allowed {\n    type inet_service . uid\n    elements = { " + strings.Join(allowed, ", ") + " }\n  }\n"
-	}
-	if wsl != nil {
-		rules += wsl[0]
-	}
-	rules += "  chain output {\n    type filter hook output priority 0; policy accept;\n"
-	if wsl != nil {
-		// Windows' services on this server's own addresses: before anything else.
-		rules += wsl[1]
-	}
-	if len(guarded) > 0 {
-		rules += "    oifname \"lo\" tcp dport . meta skuid @allowed accept\n" +
-			"    oifname \"lo\" tcp dport @guarded reject with tcp reset\n"
-	}
-	rules += "  }\n}\n"
+	rules += "table inet wspanel_sites {\n" +
+		"  set guarded {\n    type inet_service\n    elements = { " + strings.Join(guarded, ", ") + " }\n  }\n" +
+		"  set allowed {\n    type inet_service . uid\n    elements = { " + strings.Join(allowed, ", ") + " }\n  }\n" +
+		"  chain output {\n    type filter hook output priority 0; policy accept;\n" +
+		"    oifname \"lo\" tcp dport . meta skuid @allowed accept\n" +
+		"    oifname \"lo\" tcp dport @guarded reject with tcp reset\n  }\n}\n"
 	return rules, nil
 }
 
@@ -152,9 +86,9 @@ var siteGuardStale atomic.Bool
 
 // applySiteGuard loads the rules now and at every boot (before the network,
 // so before any site's server starts).
-func applySiteGuard(ctx context.Context, env *Env, extraConfined ...int) (err error) {
+func applySiteGuard(ctx context.Context, env *Env) (err error) {
 	defer func() { siteGuardStale.Store(err != nil) }()
-	rules, err := siteGuardRules(env, extraConfined...)
+	rules, err := siteGuardRules(env)
 	if err != nil {
 		return err
 	}

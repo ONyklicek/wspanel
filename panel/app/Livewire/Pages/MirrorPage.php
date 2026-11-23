@@ -162,7 +162,7 @@ class MirrorPage extends Page
                 ->form([
                     TextInput::make('address')->label(__('Adresa tohoto serveru (jak ho uvidí zrcadlo)'))->required()->placeholder('192.168.1.10')->rules(['required', 'max:253']),
                     TextInput::make('peer_address')->label(__('Adresa zrcadla (odkud se bude připojovat)'))->required()->placeholder('192.168.1.20')
-                        ->helperText(__('U Dockeru na Windows je to IP adresa Windows hostitele v LAN.'))->rules(['required', 'max:253']),
+                        ->helperText(__('Adresa zrcadla v LAN (u VM v Hyper-V její vlastní IP).'))->rules(['required', 'max:253']),
                     TextInput::make('lan_address')->label(__('IP pro lokální DNS (výchozí: adresa výše)'))->rules(['nullable', 'ip']),
                     TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->rules(['nullable', 'ipv4']),
                     TextInput::make('port')->label(__('Port zrcadla'))->integer()->default(7443)->rules(['nullable', 'integer', 'between:1024,65535']),
@@ -189,7 +189,7 @@ class MirrorPage extends Page
                     TextInput::make('port')->label(__('Port zrcadla na primáru'))->integer()->default(7443)->rules(['nullable', 'integer', 'between:1024,65535']),
                     TextInput::make('code')->label(__('Párovací kód'))->required()->placeholder('WSPM1-…')->rules(['required', 'regex:/^WSPM1-[A-Z2-7]+-[A-Z2-7]+$/i']),
                     TextInput::make('address')->label(__('Adresa tohoto serveru (jak ho uvidí primár)'))->required()
-                        ->helperText(__('U Dockeru na Windows IP adresa Windows hostitele; port zrcadla musí být v compose.yaml publikovaný.'))->rules(['required', 'max:253']),
+                        ->helperText(__('Adresa tohoto serveru v LAN (u VM v Hyper-V její vlastní IP).'))->rules(['required', 'max:253']),
                     TextInput::make('local_port')->label(__('Port zrcadla na tomto serveru'))->integer()->default(7443)->rules(['nullable', 'integer', 'between:1024,65535']),
                     TextInput::make('lan_address')->label(__('IP pro lokální DNS, až bude primárem'))->rules(['nullable', 'ip']),
                     TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->rules(['nullable', 'ipv4']),
@@ -322,7 +322,7 @@ class MirrorPage extends Page
                 ->visible($role !== '')
                 ->slideOver()
                 ->modalHeading(__('Windows DNS (Active Directory)'))
-                ->modalDescription(__('Aktivní server drží A záznamy svých webů v zónách Windows DNS na své IP, takže po přepnutí klienti v LAN jdou na nový primár do TTL. Panel se připojí přes OpenSSH na Windows k účtu, který smí spustit jen skript wspanel-dns.ps1 (Install-WSPanelDns.ps1 v provision/files/windows). Nastavuje se na každém serveru zvlášť: každý má svůj klíč, z Dockeru je Windows hostitel host.docker.internal.'))
+                ->modalDescription(__('Aktivní server drží A záznamy svých webů v zónách Windows DNS na své IP, takže po přepnutí klienti v LAN jdou na nový primár do TTL. Panel se připojí přes OpenSSH na Windows k účtu, který smí spustit jen skript wspanel-dns.ps1 (Install-WSPanelDns.ps1 v provision/files/windows). Nastavuje se na každém serveru zvlášť: každý má svůj klíč.'))
                 ->fillFormUsing(fn () => [
                     'host' => (string) ($this->state['windns']['host'] ?? ''),
                     'port' => (int) ($this->state['windns']['port'] ?? 22),
@@ -332,7 +332,7 @@ class MirrorPage extends Page
                     'extra' => (array) ($this->state['windns']['extra'] ?? []),
                 ])
                 ->form([
-                    TextInput::make('host')->label(__('Windows server (DNS)'))->required()->placeholder('192.168.1.5 / host.docker.internal')->rules(['required', 'max:253']),
+                    TextInput::make('host')->label(__('Windows server (DNS)'))->required()->placeholder('192.168.1.5')->rules(['required', 'max:253']),
                     TextInput::make('port')->label(__('Port SSH'))->integer()->rules(['integer', 'between:1,65535']),
                     TextInput::make('user')->label(__('Účet'))->required()->placeholder('wspanel-dns@firma.local')->rules(['required', 'regex:/^[A-Za-z0-9._-]{1,64}(@[A-Za-z0-9.-]{1,190})?$/']),
                     Tags::make('zones')->label(__('Zóny'))->placeholder('firma.local')->required(),

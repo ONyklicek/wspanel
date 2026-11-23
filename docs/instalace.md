@@ -9,7 +9,7 @@
   pkg.henderkes.com pro FrankenPHP), Let's Encrypt, GitHub (Mailpit, fnm).
 - Doporučeno: alespoň 2 GB RAM a 20 GB disku.
 
-Bez Debianu (Windows): celý server jako jeden kontejner, viz [Docker](docker.md).
+Na Windows: Debian 13 ve virtuálním stroji, viz [Hyper-V](hyper-v.md).
 
 ## Instalace jedním příkazem (doporučeno)
 

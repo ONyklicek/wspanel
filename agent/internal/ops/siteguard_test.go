@@ -90,30 +90,3 @@ func TestAFailedPortGuardIsLoadedAgainByTheNextSave(t *testing.T) {
 		t.Error("the next save left the failed guard as it was")
 	}
 }
-
-func TestSiteGuardOnWSLConfinesSitesAwayFromWindows(t *testing.T) {
-	env, _ := testEnv(t)
-	if _, err := call(t, env, siteCreate, map[string]string{"domain": "plain.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
-		t.Fatal(err)
-	}
-	rules, err := siteGuardRules(env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(rules, "confined") {
-		t.Fatal("not on WSL: no Windows rules")
-	}
-	oldWSL, oldUID := onWSL, confinedUID
-	t.Cleanup(func() { onWSL, confinedUID = oldWSL, oldUID })
-	confinedUID = func(*Env, string) (int, bool) { return 990, true }
-	onWSL = func() bool { return true }
-	rules, err = siteGuardRules(env, 4242)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"elements = { 4242, 990 }", "fib daddr type local tcp dport { 88, 135, 137-139, 389, 445", "49152-65535 } reject", "udp dport { 88, 137-138, 389, 464 } reject"} {
-		if !strings.Contains(rules, want) {
-			t.Errorf("missing %q:\n%s", want, rules)
-		}
-	}
-}

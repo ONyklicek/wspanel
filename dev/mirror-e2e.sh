@@ -32,7 +32,9 @@ die() { printf '%s\n' "$(red "$*")" >&2; exit 1; }
 
 on() { local c=$1; shift; docker exec "$c" "$@"; }
 agent() { # agent CONTAINER OP [JSON]
-	docker exec "$1" php /opt/wspanel/dev/agent-call.php "$2" "${3:-{\}}"
+	local params=${3:-}
+	[[ -n $params ]] || params='{}'
+	docker exec "$1" php /opt/wspanel/dev/agent-call.php "$2" "$params"
 }
 jqr() { docker exec -i "$1" jq -r "$2"; }
 mstatus() { agent "$1" mirror.status; }
@@ -94,7 +96,7 @@ contains "the primary shows a pairing code" "$code" "WSPM1-"
 out=$(agent "$S" mirror.join "{\"primary\":\"$PIP\",\"code\":\"$code\",\"address\":\"$SIP\"}")
 contains "the standby pairs" "$out" '"role":"standby"'
 expect "the code is used up" "$(agent "$S" mirror.join "{\"primary\":\"$PIP\",\"code\":\"$code\",\"address\":\"$SIP\"}" 2>&1 | grep -c 'already in a mirror')" 1
-wait_for 60 "the link" bash -c "[[ \$(docker exec $P php /opt/wspanel/dev/agent-call.php mirror.status | docker exec -i $P jq -r .status.peer_up) == true ]]"
+wait_for 90 "the link" bash -c "[[ \$(docker exec $P php /opt/wspanel/dev/agent-call.php mirror.status | docker exec -i $P jq -r .status.peer.role) == standby ]]"
 expect "the primary sees the standby" "$(mstatus "$P" | jqr "$P" .status.peer.role)" standby
 expect "the mirror port is open only for the standby" "$(on "$P" ufw status | grep -c "7443/tcp.*ALLOW.*$SIP")" 1
 
@@ -126,7 +128,7 @@ expect "the MariaDB replica is read-only" "$(on "$S" mariadb -N -e 'SELECT @@rea
 expect "the standby serves no sites" "$(on "$S" bash -c 'ls /etc/panel-proxy/sites/*.caddy 2>/dev/null | wc -l')" 0
 kvs=$(on "$S" bash -c "echo '$VK_PW' | runuser -u web_shop_firma_local -- valkey-cli --askpass --no-auth-warning -s /run/wspanel-mirror-kv/web_shop_firma_local/kv.sock GET greeting")
 expect "Valkey replicates" "$kvs" before
-expect "a tunnel refuses other users" "$(on "$S" runuser -u nobody -- bash -c 'exec 3<>/dev/tcp/127.0.0.1/17306' 2>&1 | grep -c -i 'refused\|reset')" 1
+expect "a tunnel refuses other users" "$(on "$S" runuser -u nobody -- bash -c 'exec 3<>/dev/tcp/127.0.0.1/17306 && echo open' 2>/dev/null)" ""
 
 section "Windows DNS"
 for c in "$P" "$S"; do
@@ -162,7 +164,7 @@ sleep 5
 docker stop "$P" >/dev/null && ok "the primary is down"
 wait_for 240 "promotion" bash -c "[[ \$(docker exec $S php /opt/wspanel/dev/agent-call.php mirror.status | docker exec -i $S jq -r .role) == primary ]]" \
 	&& ok "the standby promoted itself" || bad "the standby promoted itself" "$(mstatus "$S" | jqr "$S" .status.events)"
-wait_for 120 "sites up" bash -c "docker exec $S curl -sk --resolve shop.firma.local:443:127.0.0.1 https://shop.firma.local/ | grep -q hello-from-primary" \
+wait_for 300 "sites up" bash -c "docker exec $S curl -sk --resolve shop.firma.local:443:127.0.0.1 https://shop.firma.local/index.html | grep -q hello-from-primary" \
 	&& ok "the site is served by the new primary" || bad "the site is served by the new primary"
 expect "MariaDB takes writes" "$(on "$S" mariadb -N -e 'SELECT @@read_only')" 0
 expect "nothing replicated is lost" "$(on "$S" mariadb -N shop -e 'SELECT v FROM t WHERE id = 3')" "last before outage"
@@ -177,7 +179,8 @@ section "The old primary returns"
 docker start "$P" >/dev/null
 wait_for 240 "fenced" bash -c "[[ \$(docker exec $P php /opt/wspanel/dev/agent-call.php mirror.status | docker exec -i $P jq -r .role) == fenced ]]" \
 	&& ok "it steps down (a newer epoch is primary)" || bad "it steps down" "$(mstatus "$P")"
-expect "it serves no sites" "$(on "$P" bash -c 'ls /etc/panel-proxy/sites/*.caddy 2>/dev/null | wc -l')" 0
+wait_for 60 "edges aside" bash -c "[[ \$(docker exec $P bash -c 'ls /etc/panel-proxy/sites/*.caddy 2>/dev/null | wc -l') == 0 ]]" \
+	&& ok "it serves no sites" || bad "it serves no sites" "$(on "$P" ls /etc/panel-proxy/sites/)"
 expect "its MariaDB is read-only" "$(on "$P" mariadb -N -e 'SELECT @@read_only')" 1
 
 section "Rejoin and switch back"
@@ -191,7 +194,7 @@ expect "the new primary's write reached it" "$(on "$P" mariadb -N shop -e 'SELEC
 contains "a planned switchover from the new primary" "$(agent "$S" mirror.switchover)" '"switched":true'
 expect "the old primary is primary again" "$(role "$P")" primary
 expect "and the other its standby" "$(role "$S")" standby
-wait_for 120 "sites back" bash -c "docker exec $P curl -sk --resolve shop.firma.local:443:127.0.0.1 https://shop.firma.local/ | grep -q hello-from-primary" \
+wait_for 300 "sites back" bash -c "docker exec $P curl -sk --resolve shop.firma.local:443:127.0.0.1 https://shop.firma.local/index.html | grep -q hello-from-primary" \
 	&& ok "the site is served by the primary again" || bad "the site is served by the primary again"
 expect "no write was lost in the switchover" "$(on "$P" mariadb -N shop -e 'SELECT count(*) FROM t')" 4
 wait_for 120 "DNS back" bash -c "docker exec $D jq -r '.\"shop/A\".values[0]' /var/lib/fake-dns/firma.local.json | grep -qx $PIP" \

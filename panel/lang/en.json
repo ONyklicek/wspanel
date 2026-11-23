@@ -3139,7 +3139,6 @@
     "Odpojit :name? Databáze zůstane, herní server k ní ztratí přístup.": "Detach :name? The database stays, the game server loses access to it.",
     "Valkey / Redis": "Valkey / Redis",
     "Zapnout Valkey / Redis pro tento web": "Enable Valkey / Redis for this site",
-    "U Dockeru na Windows je to IP adresa Windows hostitele v LAN.": "With Docker on Windows this is the Windows host's IP address in the LAN.",
     "Port zrcadla": "Mirror port",
     "Tento server jako zrcadlo (standby)": "This server as the mirror (standby)",
     "Port zrcadla na tomto serveru": "Mirror port on this server",
@@ -3186,7 +3185,6 @@
     "Port zrcadla na primáru": "Mirror port on the primary",
     "Párovací kód": "Pairing code",
     "Adresa tohoto serveru (jak ho uvidí primár)": "This server's address (as the primary sees it)",
-    "U Dockeru na Windows IP adresa Windows hostitele; port zrcadla musí být v compose.yaml publikovaný.": "With Docker on Windows the Windows host's IP address; the mirror port must be published in compose.yaml.",
     "IP pro lokální DNS, až bude primárem": "IP for the local DNS once it is the primary",
     "Připojeno jako zrcadlo": "Joined as the mirror",
     "První synchronizace začíná.": "The first sync is starting.",
@@ -3219,7 +3217,6 @@
     "Databáze se replikují průběžně; změny na primáru (deploy, nastavení) spouští synchronizaci hned.": "Databases replicate continuously; changes on the primary (a deploy, settings) start a sync at once.",
     "IP pro lokální DNS": "IP for the local DNS",
     "Veřejná IPv4 (pro Cloudflare)": "Public IPv4 (for Cloudflare)",
-    "Aktivní server drží A záznamy svých webů v zónách Windows DNS na své IP, takže po přepnutí klienti v LAN jdou na nový primár do TTL. Panel se připojí přes OpenSSH na Windows k účtu, který smí spustit jen skript wspanel-dns.ps1 (Install-WSPanelDns.ps1 v provision/files/windows). Nastavuje se na každém serveru zvlášť: každý má svůj klíč, z Dockeru je Windows hostitel host.docker.internal.": "The active server keeps the A records of its sites in the Windows DNS zones pointing at its IP, so after a failover LAN clients reach the new primary within the TTL. The panel connects over OpenSSH on Windows to an account that may run only wspanel-dns.ps1 (Install-WSPanelDns.ps1 in provision/files/windows). Set it up on each server: each has its own key; from Docker the Windows host is host.docker.internal.",
     "TTL záznamů (s)": "Record TTL (s)",
     "Krátké TTL = rychlejší přepnutí. 60 s je rozumný kompromis.": "A short TTL = a faster switch. 60 s is a sensible compromise.",
     "Další jména, která následují aktivní server": "More names that follow the active server",
@@ -3304,6 +3301,8 @@
     "Redis 8 (oficiální, s moduly JSON, Search, TimeSeries, Bloom)": "Redis 8 (official, with the JSON, Search, TimeSeries, Bloom modules)",
     "Zrcadlo": "Mirror",
     "Zrcadlo (vysoká dostupnost)": "Mirror (high availability)",
-    "WSL (Windows)": "WSL (Windows)",
-    "Hyper-V (Windows)": "Hyper-V (Windows)"
+    "Hyper-V (Windows)": "Hyper-V (Windows)",
+    "Aktivní server drží A záznamy svých webů v zónách Windows DNS na své IP, takže po přepnutí klienti v LAN jdou na nový primár do TTL. Panel se připojí přes OpenSSH na Windows k účtu, který smí spustit jen skript wspanel-dns.ps1 (Install-WSPanelDns.ps1 v provision/files/windows). Nastavuje se na každém serveru zvlášť: každý má svůj klíč.": "The active server keeps the A records of its sites in the Windows DNS zones pointing at its IP, so after a failover LAN clients reach the new primary within the TTL. The panel connects over OpenSSH on Windows to an account that may run only wspanel-dns.ps1 (Install-WSPanelDns.ps1 in provision/files/windows). Set it up on each server: each has its own key.",
+    "Adresa zrcadla v LAN (u VM v Hyper-V její vlastní IP).": "The mirror's address in the LAN (for a Hyper-V VM its own IP).",
+    "Adresa tohoto serveru v LAN (u VM v Hyper-V její vlastní IP).": "This server's address in the LAN (for a Hyper-V VM its own IP)."
 }

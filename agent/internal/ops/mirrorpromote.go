@@ -3,6 +3,7 @@ package ops
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -549,6 +550,17 @@ func mirrorRejoin(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	if them.Role != rolePrimary {
 		return nil, protocol.Conflict("the other node is not the primary (" + orNone(them.Role) + ")")
+	}
+	// The new primary took this node's state with its recovery key when it
+	// was promoted: its snapshots open with this node's own key.
+	if !fsx.Exists(mirrorFile(env, "peer-recovery.key")) {
+		key, err := signingKey(env)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeMirrorFile(env, "peer-recovery.key", []byte(hex.EncodeToString(key)+"\n")); err != nil {
+			return nil, err
+		}
 	}
 	backup := filepath.Join(env.Cfg.BackupDir, "mirror", "rejoin-"+time.Now().UTC().Format("20060102T150405Z"))
 	if err := env.FS.MkdirAll(backup, 0o700, fsx.Root); err != nil {
