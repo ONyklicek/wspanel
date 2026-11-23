@@ -151,6 +151,15 @@ fi
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$REDIS" == yes || "$REDIS" == no ]] || die "--redis must be yes or no"
+# WSL2 (WSPanel on Windows without Docker, docs/wsl.md): systemd must run,
+# and its kernel does not enforce cgroup BPF socket-bind (like Docker Desktop).
+if grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
+  [[ -d /run/systemd/system ]] || die "WSL without systemd: add [boot] systemd=true to /etc/wsl.conf, run wsl --shutdown in Windows and start again (docs/wsl.md)"
+  if [[ $UNENFORCED_BIND != true ]]; then
+    UNENFORCED_BIND=true
+    log "WSL: the kernel does not enforce socket-bind rules (--allow-unenforced-socket-bind, see docs/wsl.md)"
+  fi
+fi
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 # A download that fails once (a mirror or FrankenPHP's repository answering
 # 5xx for a moment) is retried, with growing pauses, instead of failing the

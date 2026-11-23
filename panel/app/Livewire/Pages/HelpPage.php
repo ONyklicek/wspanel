@@ -33,6 +33,7 @@ class HelpPage extends Page
     public const PAGES = [
         'README' => 'Přehled',
         'instalace' => 'Instalace',
+        'wsl' => 'WSL (Windows)',
         'docker' => 'Docker (Windows)',
         'zrcadlo' => 'Zrcadlo (vysoká dostupnost)',
         'klienti' => 'Klienti a balíčky',

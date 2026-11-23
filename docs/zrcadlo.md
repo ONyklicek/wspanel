@@ -4,7 +4,8 @@ Dva servery WSPanel tvoří pár. **Primár** obsluhuje weby. **Zrcadlo** (stand
 drží jeho úplnou kopii a při výpadku převezme provoz. Typická sestava:
 
 - **primár:** Linux (Debian 13) nativně,
-- **zrcadlo:** WSPanel v Dockeru na Windows ([Docker](docker.md)). Na stejném
+- **zrcadlo:** WSPanel na Windows, nejlépe nativně ve WSL2 ([WSL](wsl.md)), jinak
+  v Dockeru ([Docker](docker.md)). Na stejném
   Windows serveru běží řadič domény s **Windows DNS**, který slouží jako
   lokální DNS celé sítě.
 
@@ -34,7 +35,8 @@ nekopírují.
 
 ## Nastavení krok za krokem
 
-1. **Zrcadlo nainstalujte** se stejnou doménou panelu jako primár (Docker:
+1. **Zrcadlo nainstalujte** se stejnou doménou panelu jako primár (WSL:
+   `Install-WSPanelWsl.ps1 -PanelDomain …`, adresa zrcadla je pak IP Windows; Docker:
    `WSPANEL_PANEL_DOMAIN`). Musí být prázdné, bez webů. V `docker/.env`
    nechte `WSPANEL_MIRROR_PORT=7443` (port se publikuje v `compose.yaml`).
 2. **Na primáru:** Server → Zrcadlo → **Nastavit jako primár**. Vyplňte adresu

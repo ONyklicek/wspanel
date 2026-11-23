@@ -10,6 +10,7 @@ jeden kontejner ([Docker](docker.md)).
 | Chci… | Čtěte |
 |---|---|
 | nainstalovat panel na server | [Instalace](instalace.md) |
+| provozovat ho na Windows nativně ve WSL2 (doporučeno) | [WSL](wsl.md) |
 | provozovat ho na Windows (Docker Desktop) | [Docker](docker.md) |
 | mít druhý server jako zrcadlo, který při výpadku převezme provoz | [Zrcadlo](zrcadlo.md) |
 | založit web a dostat ho na internet | [Weby](weby.md) |

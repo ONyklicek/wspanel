@@ -1,8 +1,9 @@
 # WSPanel
 
 Vlastní hostingový panel pro jeden server (Debian 13). Produkce běží nativně
-přes systemd, bez Dockeru. Kde to nejde (Windows), běží celý server jako jeden
-kontejner: [Docker](docs/docker.md).
+přes systemd, bez Dockeru. Na Windows nativně ve WSL2 ([WSL](docs/wsl.md)), nebo
+jako jeden kontejner ([Docker](docs/docker.md)). Dva servery mohou tvořit
+[zrcadlo](docs/zrcadlo.md), které při výpadku převezme provoz.
 
 **Umí:**
 - klienty s balíčky a limity (každý vidí jen své weby, databáze a DNS),
