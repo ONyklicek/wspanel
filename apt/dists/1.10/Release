@@ -1,0 +1,28 @@
+Architectures: amd64 arm64
+Codename: 1.10
+Components: main
+Date: Mon, 23 Nov 2026 08:29:02 +0000
+Description: WSPanel, channel 1.10
+Label: WSPanel
+Origin: WSPanel
+Suite: 1.10
+MD5Sum:
+ e479a30cec811fce7acc8a2f8d6a9394             3317 main/binary-amd64/Packages
+ c72ced610e9ab0779af42b569f8b25cc             1580 main/binary-amd64/Packages.gz
+ 09e051f92030b016a46ba518f55e313a             3317 main/binary-arm64/Packages
+ 6766ce507a9e9bc9da8d493edc1341b6             1583 main/binary-arm64/Packages.gz
+SHA1:
+ acda9219dd2aa7d84f05e42307bb5cbe33faabf3             3317 main/binary-amd64/Packages
+ 625712df926731e144e5b14eaab2711976e22645             1580 main/binary-amd64/Packages.gz
+ 84357447a237f5780668bd3ea1fa54d3f1c700b1             3317 main/binary-arm64/Packages
+ cf9db958bd544849d1f691e367e584e77ec9ebbf             1583 main/binary-arm64/Packages.gz
+SHA256:
+ f7eff3605d44dfd88214ddc3f322b84cf68e0a556310e8147344c6013bef0f2f             3317 main/binary-amd64/Packages
+ 763112aa18ba912c03560127173b0e4b897c4a42a67b8b230786ee744359b57b             1580 main/binary-amd64/Packages.gz
+ 49fe5cf5a85748537719eab884892887bde4b2ca01039753f4fd31fc1e008e09             3317 main/binary-arm64/Packages
+ 5d8fcb352392bbdc8242423e2d4aaf3460765cd0b872913383d3e418ac91fca4             1583 main/binary-arm64/Packages.gz
+SHA512:
+ 7b0da8f13cbe2b44d22db32c0503db1ab14e09da3c8d1d38a51cc99e80771d259be41fbd598267a74c57b9a8d3e8e3981f35f0d36869f859139cf29a80aaa1c3             3317 main/binary-amd64/Packages
+ 4e53f663e109c04c0876e4b1302aace9d6fee7bac0a09188022498e8e8047c9adf573efdbc0865a429add70ad4639c42bebab1d67a7a98ac75679addbbe40564             1580 main/binary-amd64/Packages.gz
+ 0af9edae89bd5250f1244d41c27c207ed30cada8c647468268a486ad3f952e89eba8393d4156cd6f4e4051552add472802c58d49142f71c0f6377e1e85d4a629             3317 main/binary-arm64/Packages
+ 04bfd5200584a47bcf83b2cb8206bbd0672235610e4127af2307533bd230ac57713007c47a3b4442e9b0b25c18660a80a51c6cb1dbc44ada20be4a924d006eeb             1583 main/binary-arm64/Packages.gz
