@@ -103,16 +103,15 @@ func TestSiteGuardOnWSLConfinesSitesAwayFromWindows(t *testing.T) {
 	if strings.Contains(rules, "confined") {
 		t.Fatal("not on WSL: no Windows rules")
 	}
-	oldWSL, oldAddrs, oldUID := onWSL, hostAddrs, confinedUID
-	t.Cleanup(func() { onWSL, hostAddrs, confinedUID = oldWSL, oldAddrs, oldUID })
+	oldWSL, oldUID := onWSL, confinedUID
+	t.Cleanup(func() { onWSL, confinedUID = oldWSL, oldUID })
 	confinedUID = func(*Env, string) (int, bool) { return 990, true }
 	onWSL = func() bool { return true }
-	hostAddrs = func() ([]string, []string) { return []string{"127.0.0.0/8", "192.168.1.20"}, []string{"::1"} }
-	rules, err = siteGuardRules(env)
+	rules, err = siteGuardRules(env, 4242)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"elements = { 990 }", "ip daddr { 127.0.0.0/8, 192.168.1.20 } tcp dport { 88, 135, 137-139, 389, 445", "49152-65535 } reject", "udp dport { 88, 137-138, 389, 464 } reject"} {
+	for _, want := range []string{"elements = { 4242, 990 }", "fib daddr type local tcp dport { 88, 135, 137-139, 389, 445", "49152-65535 } reject", "udp dport { 88, 137-138, 389, 464 } reject"} {
 		if !strings.Contains(rules, want) {
 			t.Errorf("missing %q:\n%s", want, rules)
 		}

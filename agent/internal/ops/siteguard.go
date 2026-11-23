@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -52,34 +51,21 @@ var onWSL = func() bool {
 	return err == nil && strings.Contains(strings.ToLower(string(b)), "microsoft")
 }
 
-// hostAddrs: this server's own addresses (with mirrored networking also the
-// Windows host's), IPv4 and IPv6, loopback included.
-var hostAddrs = func() (v4, v6 []string) {
-	v4, v6 = []string{"127.0.0.0/8"}, []string{"::1"}
-	addrs, _ := net.InterfaceAddrs()
-	for _, a := range addrs {
-		ipn, ok := a.(*net.IPNet)
-		if !ok || ipn.IP.IsLoopback() || ipn.IP.IsLinkLocalUnicast() {
-			continue
-		}
-		if ipn.IP.To4() != nil {
-			v4 = append(v4, ipn.IP.String())
-		} else {
-			v6 = append(v6, ipn.IP.String())
-		}
-	}
-	return v4, v6
-}
-
 // confinedUID: a user's id (a variable for the tests).
 var confinedUID = func(env *Env, name string) (int, bool) {
 	o, err := lookupOwner(env, name)
 	return o.UID, err == nil && o.UID > 0
 }
 
-// confinedUIDs: the users that run sites' and games' code.
-func confinedUIDs(env *Env) []string {
+// confinedUIDs: the users that run sites' and games' code (extra: one
+// being created whose state is not saved yet).
+func confinedUIDs(env *Env, extra ...int) []string {
 	var out []string
+	for _, uid := range extra {
+		if uid > 0 {
+			out = append(out, strconv.Itoa(uid))
+		}
+	}
 	for _, st := range allSiteStates(env.Cfg) {
 		if uid, ok := confinedUID(env, validate.SiteUser(st.Domain)); ok {
 			out = append(out, strconv.Itoa(uid))
@@ -95,7 +81,7 @@ func confinedUIDs(env *Env) []string {
 }
 
 // siteGuardRules renders the table: who may connect to each guarded port.
-func siteGuardRules(env *Env) (string, error) {
+func siteGuardRules(env *Env, extraConfined ...int) (string, error) {
 	rules := "table inet wspanel_sites\ndelete table inet wspanel_sites\n"
 	proxy, err := lookupOwner(env, env.Cfg.ProxyGroup)
 	if err != nil {
@@ -122,13 +108,13 @@ func siteGuardRules(env *Env) (string, error) {
 	}
 	var wsl []string
 	if onWSL() {
-		if uids := confinedUIDs(env); len(uids) > 0 {
-			v4, v6 := hostAddrs()
+		if uids := confinedUIDs(env, extraConfined...); len(uids) > 0 {
+			// fib: whatever addresses the server has right now (IPv4, IPv6,
+			// loopback), never a list that a new DHCP lease makes stale.
 			wsl = []string{
 				"  set confined {\n    type uid\n    elements = { " + strings.Join(uids, ", ") + " }\n  }\n",
-				"    meta skuid @confined ip daddr { " + strings.Join(v4, ", ") + " } tcp dport { " + winServicePorts + " } reject with tcp reset\n" +
-					"    meta skuid @confined ip6 daddr { " + strings.Join(v6, ", ") + " } tcp dport { " + winServicePorts + " } reject with tcp reset\n" +
-					"    meta skuid @confined ip daddr { " + strings.Join(v4, ", ") + " } udp dport { 88, 137-138, 389, 464 } reject\n",
+				"    meta skuid @confined fib daddr type local tcp dport { " + winServicePorts + " } reject with tcp reset\n" +
+					"    meta skuid @confined fib daddr type local udp dport { 88, 137-138, 389, 464 } reject\n",
 			}
 		}
 	}
@@ -166,9 +152,9 @@ var siteGuardStale atomic.Bool
 
 // applySiteGuard loads the rules now and at every boot (before the network,
 // so before any site's server starts).
-func applySiteGuard(ctx context.Context, env *Env) (err error) {
+func applySiteGuard(ctx context.Context, env *Env, extraConfined ...int) (err error) {
 	defer func() { siteGuardStale.Store(err != nil) }()
-	rules, err := siteGuardRules(env)
+	rules, err := siteGuardRules(env, extraConfined...)
 	if err != nil {
 		return err
 	}

@@ -171,12 +171,12 @@ func TestRsyncServerArgs(t *testing.T) {
 		t.Fatalf("a site's own folder: %v %v", sub, err)
 	}
 	for _, bad := range [][]string{
-		{"rsync", "--server", "-a", ".", "sites/"},                                     // receiving: would write here
-		{"rsync", "--server", "--sender", "-aL", ".", "sites/"},                        // follows links out of the module
+		{"rsync", "--server", "-a", ".", "sites/"},                                      // receiving: would write here
+		{"rsync", "--server", "--sender", "-aL", ".", "sites/"},                         // follows links out of the module
 		{"rsync", "--server", "--sender", "-a", "--remove-source-files", ".", "sites/"}, // deletes on the primary
-		{"rsync", "--server", "--sender", "-a", ".", "etc/"},                           // not a module
-		{"rsync", "--server", "--sender", "-a", ".", "sites/../../etc/"},               // out of it
-		{"rsync", "--server", "--sender", "-a", ".", "sites/", "mail/"},                // two paths
+		{"rsync", "--server", "--sender", "-a", ".", "etc/"},                            // not a module
+		{"rsync", "--server", "--sender", "-a", ".", "sites/../../etc/"},                // out of it
+		{"rsync", "--server", "--sender", "-a", ".", "sites/", "mail/"},                 // two paths
 		{"sh", "-c", "id"},
 	} {
 		if out, err := rsyncServerArgs(cfg, bad); err == nil {
