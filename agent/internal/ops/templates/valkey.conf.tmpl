@@ -1,5 +1,5 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
-# The site's own Valkey: 127.0.0.1:{{.Port}} and a unix socket, both behind the site's password.
+# The site's own key-value server (Valkey or Redis): 127.0.0.1:{{.Port}} and a unix socket, both behind the site's password.
 bind 127.0.0.1
 port {{.Port}}
 unixsocket {{.Socket}}
@@ -18,5 +18,8 @@ save 3600 1 300 100 60 10000
 {{- else}}
 save ""
 {{- end}}
-# requirepass: copied at start from a root-only file into the 0700 runtime dir
+{{- range .Modules}}
+loadmodule {{.}}
+{{- end}}
+# requirepass: a file only the site user can read
 include {{.AuthInclude}}

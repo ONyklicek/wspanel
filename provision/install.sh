@@ -61,6 +61,7 @@ CLIENTS=no
 GAMES=no
 MAIL_HOSTING=no
 XHPROF=no
+REDIS=no
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -108,6 +109,7 @@ for arg in "$@"; do
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
     --games=*) GAMES="${arg#*=}" ;; # yes: game servers in the menu (Java and the games come with the first server)
+    --redis=*) REDIS="${arg#*=}" ;; # yes: Redis 8 (packages.redis.io) beside Valkey, per site
     --xhprof=*) XHPROF="${arg#*=}" ;; # yes: XHProf + XHGui, switchable per site (Server → Moduly later)
     --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
@@ -148,6 +150,7 @@ fi
 [[ "$GAMES" == yes || "$GAMES" == no ]] || die "--games must be yes or no"
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
+[[ "$REDIS" == yes || "$REDIS" == no ]] || die "--redis must be yes or no"
 [[ "$PANEL_PORT" =~ ^[0-9]+$ && $PANEL_PORT -ge 1 && $PANEL_PORT -le 65535 ]] || die "invalid --panel-port"
 # A download that fails once (a mirror or FrankenPHP's repository answering
 # 5xx for a moment) is retried, with growing pauses, instead of failing the
@@ -601,6 +604,12 @@ rm -rf /etc/panel-web/xhgui # viewers moved onto the sites' own domains
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
   PANEL_DOMAIN="$PANEL_DOMAIN" PANEL_PORT="$PANEL_PORT" /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
+fi
+# Redis 8 (optional): binaries for the sites' own servers, added later in Server → Moduly as well.
+install -m 0755 "$HERE/redis.sh" /usr/lib/wspanel/redis.sh
+if [[ $REDIS == yes || -f /etc/apt/sources.list.d/redis.sources ]]; then
+  log "Redis 8"
+  /usr/lib/wspanel/redis.sh install
 fi
 if [[ $XHPROF == yes || -f /usr/share/wspanel-xhgui/prepend.php ]]; then
   log "XHProf + XHGui"

@@ -53,6 +53,15 @@
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --python=3.13</span></x-slot:footer>
     </x-panel.card>
 
+    <x-panel.card :actions="[$this->moduleAction('installRedis'), $this->moduleAction('uninstallRedis')]" :heading="__('Redis 8')" :description="__('Oficiální Redis 8 jako volba vedle Valkey: každý web, který ho zvolí, má vlastní server pod svým uživatelem, s heslem a limitem paměti. Navíc moduly JSON, Search, TimeSeries a Bloom.')">
+        @php($redis = $this->redis())
+        <x-slot:status><x-wire::badge :color="($redis['installed'] ?? false) ? 'success' : 'gray'">{{ ($redis['installed'] ?? false) ? ($redis['version'] ?? __('nainstalováno')) : __('nenainstalováno') }}</x-wire::badge></x-slot:status>
+        @if ($redis['installed'] ?? false)
+            <p class="text-sm text-gray-600 dark:text-gray-300">{{ __('Webů s Redisem: :n', ['n' => count($redis['sites'] ?? [])]) }}@if (! empty($redis['modules'])) · {{ __('moduly: :m', ['m' => implode(', ', $redis['modules'])]) }}@endif</p>
+        @endif
+        <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --redis=yes</span></x-slot:footer>
+    </x-panel.card>
+
     <x-panel.card :actions="[$this->moduleAction('installXhprof'), $this->moduleAction('uninstallXhprof')]" :heading="__('Profilování PHP (XHProf + XHGui)')" :description="__('Kolik času a paměti zabraly jednotlivé funkce aplikace, s přehledem v XHGui. Zapíná se u každého webu zvlášť (PHP-FPM); profily vidí jen ten, kdo vidí web.')">
         <x-slot:status><x-wire::badge :color="($this->xhprof()) ? 'success' : 'gray'">{{ ($this->xhprof()) ? __('nainstalováno') : __('nenainstalováno') }}</x-wire::badge></x-slot:status>
         <x-slot:footer>{{ __('Při instalaci:') }} <span class="font-mono">install.sh --xhprof=yes</span></x-slot:footer>

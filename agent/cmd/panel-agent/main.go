@@ -289,6 +289,8 @@ func binaries(cfg config.Config) map[string]string {
 		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
 		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
 		"dns-setup":          "/usr/lib/wspanel/dns.sh",    // install|remove
+		"redis-setup":        "/usr/lib/wspanel/redis.sh",  // install|--remove
+		"redis-server":       "/usr/bin/redis-server",      // --version only
 		"clamav":             "/usr/lib/wspanel/clamav.sh", // enable|disable
 		"nft":                "/usr/sbin/nft",              // -f <the agent's own ruleset> only
 		"saslpasswd2":        "/usr/sbin/saslpasswd2",      // password on stdin (-p)

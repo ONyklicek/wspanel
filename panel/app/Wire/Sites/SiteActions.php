@@ -5,6 +5,7 @@ namespace App\Wire\Sites;
 use App\Actions\Clients\ManageClients;
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\ManageDatabaseServers;
+use App\Actions\Server\ManageRedis;
 use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
@@ -689,13 +690,14 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     public static function valkey(): Action
     {
         return Action::make('valkey')
-            ->label(__('Valkey (Redis)'))
+            ->label(__('Valkey / Redis'))
             ->icon('outline:bolt')
             ->visible(fn (Site $record) => $record->isOperational())
-            ->modalHeading(fn (Site $record) => "Valkey pro {$record->domain}")
+            ->modalHeading(fn (Site $record) => "Valkey / Redis pro {$record->domain}")
             ->modalDescription(__('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).'))
             ->fillFormUsing(fn (Site $record) => [
                 'enabled' => $record->valkey !== null,
+                'server' => $record->valkey['server'] ?? 'valkey',
                 'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,
                 'policy' => $record->valkey['policy'] ?? 'allkeys-lru',
                 'persist' => $record->valkey['persist'] ?? false,
@@ -704,7 +706,12 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             // The record from the form's closure: a field's own `fn (Site $record)`
             // is handed an empty model when the dialog opens from the Settings tab.
             ->form(fn (Site $record) => [
-                Toggle::make('enabled')->label(__('Zapnout Valkey pro tento web'))->live(),
+                Toggle::make('enabled')->label(__('Zapnout Valkey / Redis pro tento web'))->live(),
+                Radio::make('server')->label(__('Server'))
+                    ->options(Lang::values(ManageValkey::SERVERS))
+                    ->rules(['in:valkey,redis'])
+                    ->visible(fn ($get) => $get('enabled') && app(ManageRedis::class)->installed())
+                    ->helperText(__('Oba mluví stejným protokolem, .env se nemění. Při přepnutí se uložená data smažou (každý zapisuje jiný formát souboru).')),
                 TextInput::make('maxmemory_mb')->label(__('Paměť (MB)'))->integer()->minValue(8)->maxValue(65536)
                     ->rules(['integer', 'between:8,65536'])->visibleWhen('enabled', true)->requiredIf('enabled', true),
                 Select::make('policy')->label(__('Když se paměť zaplní'))->options(Lang::values(ManageValkey::POLICIES))->rules([Options::rule()])
@@ -718,7 +725,8 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ])
             ->action(fn (Site $record, array $data) => self::attempt(__('Valkey se nepodařilo nastavit'), function () use ($record, $data) {
                 app(ManageValkey::class)->set($record, $data);
-                Toast::success($data['enabled'] ? __('Valkey běží') : __('Valkey vypnut'), $data['enabled'] ? __('Připojení je v .env webu.') : null);
+                $name = ($data['server'] ?? 'valkey') === 'redis' ? 'Redis' : 'Valkey';
+                Toast::success($data['enabled'] ? __(':name běží', ['name' => $name]) : __('Vypnuto'), $data['enabled'] ? __('Připojení je v .env webu.') : null);
             }));
     }
 

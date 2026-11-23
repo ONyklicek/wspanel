@@ -109,7 +109,7 @@ class SshAndWorkersTest extends TestCase
     {
         $site = $this->site();
         $this->agent->shouldReceive('call')->once()
-            ->with('valkey.set', ['domain' => 'app.example.com', 'enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => ['queue']])
+            ->with('valkey.set', ['domain' => 'app.example.com', 'enabled' => true, 'server' => 'valkey', 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => ['queue']])
             ->andReturn(['port' => 602]);
         $this->agent->shouldReceive('call')->once()->with('worker.create', ['domain' => 'app.example.com', 'worker' => 'horizon'])->andReturn(['started' => true]);
 

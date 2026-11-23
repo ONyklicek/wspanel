@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\Dns\ManageDnsServer;
 use App\Actions\Mail\ManageMailHosting;
 use App\Actions\Server\ManagePython;
+use App\Actions\Server\ManageRedis;
 use App\Actions\Server\ModuleMemory;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\DatabaseEngine;
@@ -141,6 +142,12 @@ class ModulesPage extends Page
         return app(ManageXhprof::class)->installed();
     }
 
+    /** @return array{installed?: bool, version?: string, modules?: list<string>, sites?: list<string>} */
+    public function redis(): array
+    {
+        return app(ManageRedis::class)->status();
+    }
+
     public function dnsLocal(): bool
     {
         return app(ManageDnsServer::class)->installed();
@@ -153,7 +160,7 @@ class ModulesPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['mail-install', 'python', 'xhprof', 'dns'];
+        return ['mail-install', 'python', 'xhprof', 'dns', 'redis'];
     }
 
     /**
@@ -293,6 +300,21 @@ class ModulesPage extends Page
                 ->requiresConfirmation()
                 ->modalDescription(__('Odebere PowerDNS a zavře port 53. Jde jen tehdy, když na serveru nezbývá žádná DNS zóna (Síť → DNS); zóny v Cloudflare zůstávají.'))
                 ->action(fn () => $this->runModuleTask(fn () => app(ManageDnsServer::class)->uninstall(), __('Odinstalace nejde'))),
+            Action::make('installRedis')
+                ->label(__('Nainstalovat Redis 8'))
+                ->icon('outline:bolt')
+                ->visible(fn () => ! isset($this->backgroundJobs['redis']) && ! app(ManageRedis::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription(__('Doinstaluje oficiální Redis 8 z packages.redis.io (jen programy, sdílený server zůstane vypnutý). U každého webu pak půjde místo Valkey zvolit Redis: vlastní proces pod uživatelem webu, heslo a limit paměti jako u Valkey, navíc moduly JSON, Search, TimeSeries a Bloom.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageRedis::class)->install(), __('Instalace selhala'))),
+            Action::make('uninstallRedis')
+                ->label(__('Odinstalovat Redis'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['redis']) && app(ManageRedis::class)->installed())
+                ->requiresConfirmation()
+                ->modalDescription(__('Odebere Redis 8. Jde jen tehdy, když ho žádný web nepoužívá (přepněte je na Valkey).'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageRedis::class)->uninstall(), __('Odinstalace nejde'))),
             Action::make('uninstallXhprof')
                 ->label(__('Odinstalovat XHProf'))
                 ->icon('outline:trash')

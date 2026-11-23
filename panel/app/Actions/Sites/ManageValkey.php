@@ -21,6 +21,12 @@ class ManageValkey
         'noeviction' => 'Data a fronty: nic nemaže, při zaplnění zápis selže',
     ];
 
+    /** Key-value servers a site can run: value => label. Redis only with the module (Server → Moduly). */
+    public const SERVERS = [
+        'valkey' => 'Valkey (open source fork Redisu, výchozí)',
+        'redis' => 'Redis 8 (oficiální, s moduly JSON, Search, TimeSeries, Bloom)',
+    ];
+
     public function __construct(private readonly AgentClient $agent) {}
 
     /**
@@ -38,7 +44,7 @@ class ManageValkey
     }
 
     /**
-     * @param  array{enabled: bool, maxmemory_mb?: int, policy?: string, persist?: bool}  $data
+     * @param  array{enabled: bool, server?: string, maxmemory_mb?: int, policy?: string, persist?: bool}  $data
      *
      * @throws AgentException
      */
@@ -51,6 +57,8 @@ class ManageValkey
             return;
         }
         $settings = [
+            // Not given (a worker switching it on): the server the site already runs.
+            'server' => in_array($server = (string) ($data['server'] ?? $site->valkey['server'] ?? 'valkey'), array_keys(self::SERVERS), true) ? $server : 'valkey',
             'maxmemory_mb' => (int) ($data['maxmemory_mb'] ?? 64),
             'policy' => (string) ($data['policy'] ?? 'allkeys-lru'),
             'persist' => (bool) ($data['persist'] ?? false),

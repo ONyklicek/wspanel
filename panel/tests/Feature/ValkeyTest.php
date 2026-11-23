@@ -42,12 +42,36 @@ class ValkeyTest extends TestCase
         $site = $this->site();
         $this->actingAs(User::factory()->create());
         $this->agent->shouldReceive('call')->once()
-            ->with('valkey.set', ['domain' => 'kv.example.com', 'enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []])
+            ->with('valkey.set', ['domain' => 'kv.example.com', 'enabled' => true, 'server' => 'valkey', 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []])
             ->andReturn(['socket' => '/run/wspanel-valkey/web_kv_example_com/valkey.sock']);
 
         app(ManageValkey::class)->set($site, ['enabled' => true, 'maxmemory_mb' => 128, 'policy' => 'noeviction', 'persist' => true, 'use' => []]);
 
         $this->assertSame(128, $site->fresh()->valkey['maxmemory_mb']);
+    }
+
+    public function test_a_site_can_run_redis_instead(): void
+    {
+        $site = $this->site();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()
+            ->with('valkey.set', ['domain' => 'kv.example.com', 'enabled' => true, 'server' => 'redis', 'maxmemory_mb' => 64, 'policy' => 'allkeys-lru', 'persist' => false, 'use' => []])
+            ->andReturn(['port' => 601]);
+
+        app(ManageValkey::class)->set($site, ['enabled' => true, 'server' => 'redis', 'maxmemory_mb' => 64]);
+
+        $this->assertSame('redis', $site->fresh()->valkey['server']);
+    }
+
+    public function test_an_unknown_server_falls_back_to_valkey(): void
+    {
+        $site = $this->site();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->once()
+            ->with('valkey.set', Mockery::on(fn ($p) => $p['server'] === 'valkey'))
+            ->andReturn([]);
+
+        app(ManageValkey::class)->set($site, ['enabled' => true, 'server' => 'memcached', 'maxmemory_mb' => 64]);
     }
 
     public function test_the_dialog_opens_from_the_settings_tab(): void
@@ -58,7 +82,7 @@ class ValkeyTest extends TestCase
         Livewire::test(SiteSettings::class, ['record' => $site->id])
             ->call('callInfolistAction', 'open_valkey')
             ->assertOk()
-            ->assertSee('Zapnout Valkey pro tento web');
+            ->assertSee('Zapnout Valkey / Redis pro tento web');
     }
 
     public function test_a_restart_runs_in_the_background(): void

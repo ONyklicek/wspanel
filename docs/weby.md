@@ -408,6 +408,14 @@ a přesun, Vlastník a Nebezpečná zóna (vypnout, smazat). U každé oblasti j
 tlačítko, které otevře její úpravu. Každá úprava má i vlastní adresu
 (`…/settings?action=tls`), takže na ni jde poslat odkaz.
 
+**Valkey nebo Redis.** Každý web může mít vlastní key-value server: proces pod
+uživatelem webu na `127.0.0.1` a vlastním portu, s heslem a limitem paměti.
+Výchozí je Valkey. Po instalaci modulu Redis 8 (Server → Moduly, nebo
+`install.sh --redis=yes`) jde u webu zvolit oficiální Redis 8 včetně modulů
+JSON, Search, TimeSeries a Bloom. Oba mluví stejným protokolem, `.env` se
+nemění. Při přepnutí se uložená data smažou, protože každý server zapisuje
+jiný formát souboru.
+
 ## Zapnutí, vypnutí, restart
 
 - **Vypnout web:**
@@ -539,7 +547,7 @@ shodovaly s aplikací. Nic z toho není třeba psát ručně:
 | Akce v panelu | Co se zapíše do `.env` |
 |---|---|
 | Nová databáze | `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` |
-| Valkey | `REDIS_CLIENT=phpredis`, `REDIS_HOST=127.0.0.1`, `REDIS_PORT`, `REDIS_PASSWORD`; podle volby `CACHE_STORE`, `SESSION_DRIVER`, `QUEUE_CONNECTION` = `redis` (nezaškrtnuté = `database`) |
+| Valkey / Redis | `REDIS_CLIENT=phpredis`, `REDIS_HOST=127.0.0.1`, `REDIS_PORT`, `REDIS_PASSWORD`; podle volby `CACHE_STORE`, `SESSION_DRIVER`, `QUEUE_CONNECTION` = `redis` (nezaškrtnuté = `database`) |
 | Worker **Reverb** | `BROADCAST_CONNECTION=reverb`, `REVERB_APP_ID/KEY/SECRET` (vygenerované jednou, pak se drží), `REVERB_HOST=127.0.0.1` + port Reverbu (aplikace publikuje přímo na serveru), `VITE_REVERB_HOST=<doména>`, `VITE_REVERB_PORT=443`, `VITE_REVERB_SCHEME=https` (prohlížeč přes HTTPS webu) |
 | Worker **Horizon** | zapne Valkey webu, pokud běží jinak (nic nemaže, ukládá na disk), `QUEUE_CONNECTION=redis` |
 | Worker **Pulse (Redis ingest)** | zapne Valkey, `PULSE_INGEST_DRIVER=redis` |

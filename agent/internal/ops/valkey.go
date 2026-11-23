@@ -32,9 +32,18 @@ import (
 type valkeyConfig struct {
 	Port        int      `json:"port"`
 	MaxMemoryMB int      `json:"maxmemory_mb"`
-	Policy      string   `json:"policy"`        // maxmemory-policy
-	Persist     bool     `json:"persist"`       // RDB snapshots in <home>/valkey
-	Use         []string `json:"use,omitempty"` // what the app keeps in it: cache, session, queue
+	Policy      string   `json:"policy"`           // maxmemory-policy
+	Persist     bool     `json:"persist"`          // RDB snapshots in <home>/valkey
+	Use         []string `json:"use,omitempty"`    // what the app keeps in it: cache, session, queue
+	Server      string   `json:"server,omitempty"` // valkey (default) or redis (Redis 8 module)
+}
+
+// server: the key-value server the site runs ("" from before Redis was offered = Valkey).
+func (c *valkeyConfig) server() string {
+	if c == nil || c.Server == "" {
+		return kvValkey
+	}
+	return c.Server
 }
 
 var valkeyPolicies = []string{"allkeys-lru", "allkeys-lfu", "volatile-lru", "noeviction"}
@@ -46,6 +55,7 @@ type valkeyLayout struct {
 	Port, MaxMemoryMB                                                      int
 	Policy                                                                 string
 	Persist                                                                bool
+	Modules                                                                []string // Redis 8 modules to load
 }
 
 func valkeyPaths(env *Env, l siteLayout) valkeyLayout {
@@ -111,6 +121,7 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		Policy      string   `json:"policy"`
 		Persist     bool     `json:"persist"`
 		Use         []string `json:"use"`
+		Server      string   `json:"server"` // valkey (default) | redis
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -118,6 +129,15 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 	st, l, err := loadSite(env, p.Domain)
 	if err != nil {
 		return nil, err
+	}
+	if p.Server == "" { // not given: the server the site already runs
+		p.Server = st.Valkey.server()
+	}
+	if err := validate.OneOf("server", p.Server, kvServers); err != nil {
+		return nil, err
+	}
+	if p.Enabled && p.Server == kvRedis && !redisInstalled(env) {
+		return nil, protocol.Conflict("Redis is not installed (Server → Moduly)")
 	}
 	v := valkeyPaths(env, l)
 	for _, u := range p.Use {
@@ -168,6 +188,9 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		return nil, err
 	}
 	v.MaxMemoryMB, v.Policy, v.Persist = p.MaxMemoryMB, p.Policy, p.Persist
+	if p.Server == kvRedis {
+		v.Modules = redisModules(env)
+	}
 	if st.ValkeyPort > 0 {
 		v.Port = st.ValkeyPort
 	} else if v.Port, err = allocatePort(env); err != nil {
@@ -187,6 +210,16 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 	// Data dir as the site user: the home is the user's tree.
 	if err = asUser(ctx, env, l.User, "/usr/bin/install", "-d", "-m", "0700", v.DataDir); err != nil {
 		return nil, err
+	}
+	// Another server: the old one stops first (with persistence it writes
+	// its snapshot on the way out), then that snapshot goes.
+	if st.Valkey != nil && st.Valkey.server() != p.Server {
+		if _, err = env.Exec.Run(ctx, "systemctl", "stop", v.Unit); err != nil {
+			return nil, err
+		}
+		if err = removeKVData(ctx, env, l.User, v); err != nil {
+			return nil, err
+		}
 	}
 	conf, err := render("valkey.conf.tmpl", v)
 	if err != nil {
@@ -212,10 +245,10 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 		}
 	})
 	data := unitData{
-		Description: "WSPanel Valkey for " + l.Domain,
+		Description: "WSPanel " + kvLabel(p.Server) + " for " + l.Domain,
 		User:        l.User,
 		Home:        l.Home,
-		ExecStart:   env.Cfg.ValkeyServerBin + " " + v.Config,
+		ExecStart:   kvServerBin(env, p.Server) + " " + v.Config,
 		StopTimeout: 30,
 		Extra: append([]string{
 			"RuntimeDirectory=" + strings.TrimPrefix(v.RunDir, "/run/"),
@@ -246,10 +279,13 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 	}
 	st.ValkeyPort = v.Port
 	st.Valkey = &valkeyConfig{Port: v.Port, MaxMemoryMB: p.MaxMemoryMB, Policy: p.Policy, Persist: p.Persist, Use: p.Use}
+	if p.Server == kvRedis {
+		st.Valkey.Server = kvRedis
+	}
 	if err = saveSiteState(env, st); err != nil {
 		return nil, err
 	}
-	return map[string]any{"domain": p.Domain, "enabled": true, "host": "127.0.0.1", "port": v.Port, "socket": v.Socket, "unit": v.Unit}, nil
+	return map[string]any{"domain": p.Domain, "enabled": true, "server": p.Server, "host": "127.0.0.1", "port": v.Port, "socket": v.Socket, "unit": v.Unit}, nil
 }
 
 // installService writes, checks, enables and (re)starts a unit that does
@@ -290,6 +326,7 @@ func installService(ctx context.Context, env *Env, path string, data unitData, r
 
 var valkeyInfoRe = regexp.MustCompile(`(?m)^(used_memory|maxmemory|uptime_in_seconds|connected_clients|evicted_keys):(\d+)\r?$`)
 var valkeyKeysRe = regexp.MustCompile(`(?m)^db\d+:keys=(\d+)`)
+var kvVersionRe = regexp.MustCompile(`(?m)^(valkey_version|redis_version):([0-9.]+)\r?$`)
 
 func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 	var p struct {
@@ -307,7 +344,7 @@ func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}
 	v := valkeyPaths(env, l)
 	out := map[string]any{"domain": p.Domain, "enabled": true, "host": "127.0.0.1", "port": st.Valkey.Port, "socket": v.Socket, "unit": v.Unit,
-		"maxmemory_mb": st.Valkey.MaxMemoryMB, "policy": st.Valkey.Policy, "persist": st.Valkey.Persist, "use": st.Valkey.Use}
+		"maxmemory_mb": st.Valkey.MaxMemoryMB, "policy": st.Valkey.Policy, "persist": st.Valkey.Persist, "use": st.Valkey.Use, "server": st.Valkey.server()}
 	if states, err := unitStates(ctx, env, []string{v.Unit}); err == nil && len(states) == 1 {
 		out["active"] = states[0].Active
 	}
@@ -322,6 +359,12 @@ func valkeyStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 			keys += n
 		}
 		out["keys"] = keys
+		// Valkey answers both (redis_version for compatibility): its own wins.
+		for _, m := range kvVersionRe.FindAllStringSubmatch(res.Stdout, -1) {
+			if _, ok := out["version"]; !ok || m[1] == "valkey_version" {
+				out["version"] = m[2]
+			}
+		}
 	}
 	return out, nil
 }

@@ -190,3 +190,78 @@ func TestValkeyKeepsItsPortAndPasswordWhenReconfigured(t *testing.T) {
 		}
 	}
 }
+
+func TestRedisInsteadOfValkey(t *testing.T) {
+	env, dr := testEnv(t) // dry run: Redis counts as installed
+	modDir := t.TempDir()
+	env.Cfg.RedisModulesDir = modDir
+	if err := os.WriteFile(filepath.Join(modDir, "rejson.so"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64, "server": "redis", "persist": true}); err != nil {
+		t.Fatal(err)
+	}
+	unit, _ := os.ReadFile(filepath.Join(env.Cfg.SystemdDir, "wspanel-web_kv_example_com-valkey.service"))
+	if !strings.Contains(string(unit), "ExecStart="+env.Cfg.RedisServerBin+" ") || !strings.Contains(string(unit), "WSPanel Redis for kv.example.com") {
+		t.Errorf("unit must run redis-server:\n%s", unit)
+	}
+	conf, _ := os.ReadFile(filepath.Join(env.Cfg.SiteConfigDir, "web_kv_example_com.valkey.conf"))
+	if !strings.Contains(string(conf), "loadmodule "+filepath.Join(modDir, "rejson.so")) {
+		t.Errorf("Redis modules must be loaded:\n%s", conf)
+	}
+	if st, _, _ := loadSite(env, "kv.example.com"); st.Valkey.server() != "redis" {
+		t.Errorf("state server %q", st.Valkey.server())
+	}
+	// Reconfigured without naming a server (a worker switching it on): stays Redis, data kept.
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 128}); err != nil {
+		t.Fatal(err)
+	}
+	if callContains(dr, "/usr/bin/rm -f -- ") {
+		t.Error("the same server must keep its data")
+	}
+	if st, _, _ := loadSite(env, "kv.example.com"); st.Valkey.server() != "redis" {
+		t.Error("an unnamed server must keep Redis")
+	}
+	// Back to Valkey: stopped first, the incompatible snapshot goes.
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64, "server": "valkey"}); err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(dr, "systemctl stop wspanel-web_kv_example_com-valkey.service") || !callContains(dr, "/usr/bin/rm -f -- "+filepath.Join(env.Cfg.SitesRoot, "kv.example.com/valkey/dump.rdb")) {
+		t.Errorf("switching servers must stop and drop the snapshot:\n%s", strings.Join(callLines(dr), "\n"))
+	}
+	conf, _ = os.ReadFile(filepath.Join(env.Cfg.SiteConfigDir, "web_kv_example_com.valkey.conf"))
+	if strings.Contains(string(conf), "loadmodule") {
+		t.Error("Valkey must not load Redis modules")
+	}
+	if _, err := call(t, env, redisUninstall, map[string]any{}); err != nil {
+		t.Fatalf("no site on Redis any more: %v", err)
+	}
+}
+
+func TestRedisUninstallRefusedWhileUsed(t *testing.T) {
+	env, _ := testEnv(t)
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64, "server": "redis"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, redisUninstall, map[string]any{}); code(err) != "conflict" {
+		t.Fatalf("want conflict, got %v", err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64, "server": "memcached"}); code(err) != "invalid_params" {
+		t.Fatalf("unknown server: %v", err)
+	}
+}
+
+func callContains(dr *executor.DryRun, part string) bool {
+	for _, c := range callLines(dr) {
+		if strings.Contains(c, part) {
+			return true
+		}
+	}
+	return false
+}

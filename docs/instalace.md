@@ -148,6 +148,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--games=` | `no` | `yes` = herní servery (Minecraft, Factorio) v menu; Java a hry se stáhnou až s prvním serverem; později Server → Moduly |
 | `--mail-hosting=` | `no` | `yes` = schránky, webmail a antispam (pošta pro domény); později Server → Moduly |
 | `--xhprof=` | `no` | `yes` = XHProf + XHGui, profilování zapínané u každého webu; později Server → Moduly |
+| `--redis=` | `no` | `yes` = oficiální Redis 8 (packages.redis.io) jako volba vedle Valkey u každého webu; později Server → Moduly |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |
 | `--agent-bin=` | (povinné) | sestavená binárka agenta |
 | `--panel-source=` | – | adresář `panel/` (bez něj se nainstaluje jen systém) |
@@ -175,7 +176,8 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
   (jejich workery, cron a `php` v SSH používají `php-zts`, tedy totéž PHP).
   Vlastní `frankenphp.service` balíčku je zamaskovaná. Binárky z GitHubu
   (Mailpit, fnm) se ověřují otiskem sha256.
-- **MariaDB / PostgreSQL** podle `--db`, **Valkey** (Redis) pro cache a fronty.
+- **MariaDB / PostgreSQL** podle `--db`, **Valkey** (Redis) pro cache a fronty;
+  s `--redis=yes` i **Redis 8** z oficiálního repozitáře (každý web si vybere).
 - **Node** přes fnm v `/opt/fnm`, **Composer**, **Git**.
 - **Postfix** (jen odchozí, poslouchá na loopbacku), **OpenDKIM** a **Mailpit**.
 - **PowerDNS** (s `--dns=powerdns`).

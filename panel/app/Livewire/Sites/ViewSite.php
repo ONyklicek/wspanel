@@ -127,7 +127,7 @@ class ViewSite extends ViewPage
                         ->label($d->name)->icon('outline:circle-stack')->color('gray')->size('sm')
                         ->tooltip(__('Otevřít databázi ').$d->name)
                         ->url(DatabaseResource::url('view', $d)))->all()),
-                TextEntry::make('valkey')->label(__('Valkey (Redis)'))
+                TextEntry::make('valkey')->label(__('Valkey / Redis'))
                     ->state(fn () => $this->valkeyState($site))
                     ->actions($site->valkey !== null ? [SiteActions::valkeyFlush()->size('sm'), SiteActions::valkeyRestart()->size('sm')] : []),
                 TextEntry::make('staging')->label(__('Staging'))
@@ -167,7 +167,9 @@ class ViewSite extends ViewPage
             return __('neběží').(isset($s['active']) ? ' ('.$s['active'].')' : '');
         }
 
-        return '127.0.0.1:'.($s['port'] ?? $site->valkey['port'] ?? '?').' · '.Number::fileSize($s['used_memory'] ?? 0, 1).' z '.$site->valkey['maxmemory_mb'].' MB · '
+        $server = ($s['server'] ?? $site->valkey['server'] ?? 'valkey') === 'redis' ? 'Redis' : 'Valkey';
+
+        return $server.(isset($s['version']) ? ' '.$s['version'] : '').' · 127.0.0.1:'.($s['port'] ?? $site->valkey['port'] ?? '?').' · '.Number::fileSize($s['used_memory'] ?? 0, 1).' z '.$site->valkey['maxmemory_mb'].' MB · '
             .Number::format($s['keys'] ?? 0).__(' klíčů').($site->valkey['persist'] ? __(' · ukládá na disk') : '');
     }
 
