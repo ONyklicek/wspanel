@@ -224,7 +224,7 @@ func peerDump(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessage)
 		peerReply(conn, map[string]any{}, nil)
 		gz := gzip.NewWriter(conn)
 		_, err := env.Exec.RunIO(ctx, nil, gz, "mariadb-dump", "--all-databases", "--single-transaction", "--gtid", "--master-data=1",
-			"--routines", "--events", "--triggers", "--add-drop-database", "--flush-privileges", "--hex-blob",
+			"--routines", "--events", "--triggers", "--flush-privileges", "--hex-blob",
 			"--ignore-table=mysql.gtid_slave_pos", "--ignore-table=mysql.innodb_index_stats", "--ignore-table=mysql.innodb_table_stats")
 		if err == nil {
 			err = gz.Close()
@@ -337,6 +337,23 @@ func seedMariaDB(ctx context.Context, env *Env, st *mirrorState) error {
 	// Its own binary log goes too: GTIDs of its own would break strict mode.
 	if _, err := m.sql(ctx, env, "STOP SLAVE; RESET SLAVE ALL; RESET MASTER;"); err != nil {
 		return err
+	}
+	// Its databases go (the dump creates the source's; the system schema is
+	// replaced table by table, never dropped).
+	list, err := m.sql(ctx, env, "SHOW DATABASES")
+	if err != nil {
+		return err
+	}
+	var drop strings.Builder
+	for _, d := range strings.Fields(list) {
+		if !slices.Contains([]string{"mysql", "information_schema", "performance_schema", "sys"}, d) {
+			fmt.Fprintf(&drop, "DROP DATABASE `%s`;", strings.ReplaceAll(d, "`", "``"))
+		}
+	}
+	if drop.Len() > 0 {
+		if _, err := m.sql(ctx, env, "SET SESSION sql_log_bin = 0;"+drop.String()); err != nil {
+			return err
+		}
 	}
 	r, closer, err := peerStream(ctx, env, "dump", map[string]any{"kind": "mariadb-seed"}, nil)
 	if err != nil {

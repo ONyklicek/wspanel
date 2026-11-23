@@ -3302,5 +3302,6 @@
     "odstavený": "fenced",
     "Valkey (open source fork Redisu, výchozí)": "Valkey (the open-source fork of Redis, default)",
     "Redis 8 (oficiální, s moduly JSON, Search, TimeSeries, Bloom)": "Redis 8 (official, with the JSON, Search, TimeSeries, Bloom modules)",
-    "Zrcadlo": "Mirror"
+    "Zrcadlo": "Mirror",
+    "Zrcadlo (vysoká dostupnost)": "Mirror (high availability)"
 }

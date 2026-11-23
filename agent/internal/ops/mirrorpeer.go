@@ -473,7 +473,22 @@ func peerRsync(ctx context.Context, env *Env, conn net.Conn, raw json.RawMessage
 	peerReply(conn, map[string]any{}, nil)
 	ctx, cancel := context.WithTimeout(ctx, 6*time.Hour)
 	defer cancel()
-	if _, err := env.Exec.RunIO(ctx, conn, conn, "rsync", args...); err != nil {
+	// rsync's stdin is a pipe this side feeds from the connection: when
+	// rsync ends, closing the connection ends the feeding too (a read on
+	// the connection itself could not be interrupted).
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		logf("mirror: rsync: %v", err)
+		return
+	}
+	go func() {
+		_, _ = io.Copy(pw, conn)
+		pw.Close()
+	}()
+	_, err = env.Exec.RunIO(ctx, pr, conn, "rsync", args...)
+	pr.Close()
+	conn.Close()
+	if err != nil {
 		logf("mirror: rsync: %v", err)
 	}
 }

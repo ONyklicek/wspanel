@@ -49,6 +49,9 @@ func ensureTunnel(ctx context.Context, env *Env, port int, target string, uids [
 		return fmt.Errorf("tunnel %s on %d: %w", target, port, err)
 	}
 	tunnels.m[port] = &tunnel{ln: ln, target: target, uids: uids}
+	// The tunnel outlives the sync cycle that opened it (it ends with its
+	// listener: stopTunnels, dropTunnel).
+	ctx = context.WithoutCancel(ctx)
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -95,11 +98,13 @@ func carryTunnel(ctx context.Context, env *Env, local net.Conn, target string) {
 	st := currentMirror(env)
 	conn, err := peerDial(ctx, env, st)
 	if err != nil {
+		mirrorRuntime.event("warning", "tunel %s: %v", target, err)
 		return
 	}
 	defer conn.Close()
 	br, err := peerSend(conn, "tunnel", map[string]any{"target": target}, nil)
 	if err != nil {
+		mirrorRuntime.event("warning", "tunel %s: %v", target, err)
 		return
 	}
 	done := make(chan struct{}, 2)

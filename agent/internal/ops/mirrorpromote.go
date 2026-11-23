@@ -268,10 +268,7 @@ func restoreMirrorDumps(ctx context.Context, env *Env, rep *RestoreReport) {
 
 // artisan runs a panel command as the panel's user.
 func artisan(ctx context.Context, env *Env, rep *RestoreReport, args ...string) {
-	php := config.ForVersion(env.Cfg.PHPCLIBinary, env.Cfg.DefaultPHPVer)
-	if env.Cfg.DefaultPHPVer == "" {
-		php = "/usr/bin/php"
-	}
+	php := "/usr/bin/php" // the panel's PHP (install.sh points the alternative at it)
 	full := append([]string{"--reuid=panel", "--regid=panel", "--init-groups", "--reset-env", "--", php, "/srv/panel/current/artisan"}, args...)
 	actx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()

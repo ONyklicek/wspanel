@@ -34,6 +34,7 @@ class HelpPage extends Page
         'README' => 'Přehled',
         'instalace' => 'Instalace',
         'docker' => 'Docker (Windows)',
+        'zrcadlo' => 'Zrcadlo (vysoká dostupnost)',
         'klienti' => 'Klienti a balíčky',
         'weby' => 'Weby',
         'herni-servery' => 'Herní servery',

@@ -34,6 +34,9 @@ services:
       - "${WSPANEL_PUBLIC_HTTPS_PORT:-443}:443/udp"   # HTTP/3
       - "${WSPANEL_PUBLIC_SSH_PORT:-2222}:22"          # SSH/SFTP of the sites
       - "${WSPANEL_PANEL_PORT:-8443}:${WSPANEL_PANEL_PORT:-8443}" # the panel without a domain of its own
+      # The mirror (Server → Zrcadlo): the primary connects to this container
+      # through it. Only reachable by the paired node (mutual TLS).
+      - "${WSPANEL_MIRROR_PORT:-7443}:7443"
       # Mail hosting (WSPANEL_ARGS=--mail-hosting=yes):
       # - "25:25"
       # - "465:465"

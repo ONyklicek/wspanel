@@ -133,6 +133,12 @@ serveru:
    zálohy webů, databází a pošty.
 4. Klíč z `.env` smažte.
 
+## Zrcadlo nativního serveru
+
+Kontejner může být **zrcadlem** nativního serveru: drží jeho kopii a při
+výpadku převezme provoz ([Zrcadlo](zrcadlo.md)). Port zrcadla
+(`WSPANEL_MIRROR_PORT`, výchozí 7443) je v `compose.yaml` publikovaný.
+
 ## Omezení oproti nativní instalaci
 
 - **Adresy návštěvníků:** Docker Desktop posílá spojení přes vlastní proxy,
