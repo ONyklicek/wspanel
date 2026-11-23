@@ -10,8 +10,9 @@ jeden kontejner ([Docker](docker.md)).
 | Chci… | Čtěte |
 |---|---|
 | nainstalovat panel na server | [Instalace](instalace.md) |
-| provozovat ho na Windows nativně ve WSL2 (doporučeno) | [WSL](wsl.md) |
-| provozovat ho na Windows (Docker Desktop) | [Docker](docker.md) |
+| provozovat ho na Windows ve virtuálním stroji (doporučeno) | [Hyper-V](hyper-v.md) |
+| provozovat ho na Windows ve WSL2 (lehčí varianta) | [WSL](wsl.md) |
+| provozovat ho na Windows v Dockeru (jen když nic jiného nejde) | [Docker](docker.md) |
 | mít druhý server jako zrcadlo, který při výpadku převezme provoz | [Zrcadlo](zrcadlo.md) |
 | založit web a dostat ho na internet | [Weby](weby.md) |
 | nahrát obyčejný PHP web (třeba WordPress) | [Weby → Čisté PHP](weby.md#čisté-php-wordpress-vlastní-skripty) |

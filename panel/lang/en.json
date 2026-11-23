@@ -3304,5 +3304,6 @@
     "Redis 8 (oficiální, s moduly JSON, Search, TimeSeries, Bloom)": "Redis 8 (official, with the JSON, Search, TimeSeries, Bloom modules)",
     "Zrcadlo": "Mirror",
     "Zrcadlo (vysoká dostupnost)": "Mirror (high availability)",
-    "WSL (Windows)": "WSL (Windows)"
+    "WSL (Windows)": "WSL (Windows)",
+    "Hyper-V (Windows)": "Hyper-V (Windows)"
 }

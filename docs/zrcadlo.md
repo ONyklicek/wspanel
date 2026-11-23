@@ -4,8 +4,9 @@ Dva servery WSPanel tvoří pár. **Primár** obsluhuje weby. **Zrcadlo** (stand
 drží jeho úplnou kopii a při výpadku převezme provoz. Typická sestava:
 
 - **primár:** Linux (Debian 13) nativně,
-- **zrcadlo:** WSPanel na Windows, nejlépe nativně ve WSL2 ([WSL](wsl.md)), jinak
-  v Dockeru ([Docker](docker.md)). Na stejném
+- **zrcadlo:** WSPanel na Windows, nejlépe ve virtuálním stroji Hyper-V
+  ([Hyper-V](hyper-v.md)), lehčeji ve WSL2 ([WSL](wsl.md)). Docker jen
+  tam, kde nic jiného nejde ([Docker](docker.md)). Na stejném
   Windows serveru běží řadič domény s **Windows DNS**, který slouží jako
   lokální DNS celé sítě.
 
@@ -35,7 +36,8 @@ nekopírují.
 
 ## Nastavení krok za krokem
 
-1. **Zrcadlo nainstalujte** se stejnou doménou panelu jako primár (WSL:
+1. **Zrcadlo nainstalujte** se stejnou doménou panelu jako primár (Hyper-V:
+   `New-WSPanelVM.ps1` a `get.sh` ve VM, adresa zrcadla je IP VM; WSL:
    `Install-WSPanelWsl.ps1 -PanelDomain …`, adresa zrcadla je pak IP Windows; Docker:
    `WSPANEL_PANEL_DOMAIN`). Musí být prázdné, bez webů. V `docker/.env`
    nechte `WSPANEL_MIRROR_PORT=7443` (port se publikuje v `compose.yaml`).
@@ -94,9 +96,10 @@ Linuxu. Do Windows se z WSL nedostanou:
 - agent uživatelům webů a herních serverů zakáže spojení na služby Windows
   na vlastních adresách serveru (Kerberos, RPC, SMB, LDAP, RDP, WinRM).
 
-Docker Desktop je slabší: privilegovaný kontejner se může dostat k diskům,
-které Docker Desktop sdílí. Pro zrcadlo na řadiči domény proto používejte
-WSL. Spouštět kód webů na řadiči domény je riziko samo o sobě. Pro weby
+Nejsilnější izolaci má virtuální stroj Hyper-V: vlastní jádro, vlastní IP,
+vynucená pravidla portů i kvóty. Docker Desktop je nejslabší: privilegovaný
+kontejner se může dostat k diskům, které Docker Desktop sdílí. Pro zrcadlo
+na řadiči domény proto používejte Hyper-V, nebo aspoň WSL. Spouštět kód webů na řadiči domény je riziko samo o sobě. Pro weby
 klientů, kteří si nevěří, dejte zrcadlo na samostatný Windows stroj nebo VM.
 
 ## Přístup z internetu

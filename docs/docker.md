@@ -1,5 +1,9 @@
 # Docker (Windows a jiné hostitele bez Debianu)
 
+> Na Windows dejte přednost virtuálnímu stroji [Hyper-V](hyper-v.md) (nejlepší
+> izolace), nebo [WSL](wsl.md). Docker Desktop potřebuje privilegovaný kontejner,
+> který má k Windows nejblíž.
+
 WSPanel patří nativně na Debian 13 ([Instalace](instalace.md)). Kde to nejde,
 typicky **Windows** (Docker Desktop s WSL2), běží celý jako **jeden kontejner**:
 uvnitř je kompletní Debian 13 se systemd a instalace v něm proběhne stejně jako

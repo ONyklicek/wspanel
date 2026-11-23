@@ -2,8 +2,9 @@
 
 Na Windows může WSPanel běžet **nativně ve WSL2**: Debian 13 se systemd, do
 kterého `install.sh` nainstaluje stejný WSPanel jako na Linux server. Je to
-doporučená varianta pro Windows a pro [zrcadlo](zrcadlo.md) na Windows serveru.
-[Docker](docker.md) zůstává pro starší Windows.
+lehčí varianta pro Windows a pro [zrcadlo](zrcadlo.md). Nejlepší izolaci má
+[Hyper-V](hyper-v.md) (vlastní jádro a IP, vynucená pravidla portů). Ten
+doporučujeme, kde to jde. [Docker](docker.md) zůstává pro starší Windows.
 
 | | WSL2 (zrcadlená síť) | Docker Desktop |
 |---|---|---|
