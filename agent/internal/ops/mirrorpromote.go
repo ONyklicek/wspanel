@@ -63,9 +63,9 @@ func mirrorPromote(ctx context.Context, env *Env, raw json.RawMessage) (any, err
 		return nil, protocol.Conflict("this standby has no copy of the primary's state yet (the first sync has not finished)")
 	}
 	if _, err := helloPeer(ctx, env); err == nil {
-		return promotePlanned(ctx, env, "promoted by hand, the primary handed over")
+		return promotePlanned(ctx, env, "ručně, primár předal provoz")
 	}
-	return promoteLocal(ctx, env, "promoted by hand: the primary does not answer", false)
+	return promoteLocal(ctx, env, "ručně: primár neodpovídá", false)
 }
 
 func orNone(s string) string {
@@ -86,9 +86,9 @@ func promotePlanned(ctx context.Context, env *Env, reason string) (any, error) {
 	if err := peerCall(ctx, env, "fence", map[string]any{"epoch": st.Epoch + 1, "reason": "switchover", "positions": true}, &pos); err != nil {
 		return nil, fmt.Errorf("the primary did not hand over: %w", err)
 	}
-	mirrorRuntime.event("info", "switchover: the primary is read-only, catching up")
+	mirrorRuntime.event("info", "přepnutí: primár je jen pro čtení, dohánění")
 	if err := catchUp(ctx, env, pos.MariaDB, pos.Postgres); err != nil {
-		mirrorRuntime.event("warning", "switchover: %v", err)
+		mirrorRuntime.event("warning", "přepnutí: %v", err)
 		return nil, err
 	}
 	return promoteLocal(ctx, env, reason, false)
@@ -139,7 +139,7 @@ func promoteLocal(ctx context.Context, env *Env, reason string, auto bool) (*Res
 	if !fsx.Exists(snap) {
 		return nil, protocol.Conflict("no copy of the primary's state yet")
 	}
-	mirrorRuntime.event("danger", "promoting this node: %s", reason)
+	mirrorRuntime.event("danger", "povýšení tohoto serveru: %s", reason)
 	epoch := st.Epoch + 1
 	if _, err := updateMirror(env, func(s *mirrorState) error { s.Epoch = epoch; return nil }); err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func promoteLocal(ctx context.Context, env *Env, reason string, auto bool) (*Res
 	artisan(ctx, env, rep, "panel:sync")
 	runHooks(ctx, env, "promote", rep)
 	go reconcileWinDNS(context.WithoutCancel(ctx), env, func(string, ...any) {})
-	mirrorRuntime.event("info", "this node is the primary now (epoch %d)%s", epoch, problemsSuffix(rep))
+	mirrorRuntime.event("info", "tento server je teď primár (epocha %d)%s", epoch, problemsSuffix(rep))
 	_ = auto
 	mirrorWake()
 	return rep, nil
@@ -196,7 +196,7 @@ func problemsSuffix(rep *RestoreReport) string {
 	if len(rep.Problems) == 0 {
 		return ""
 	}
-	return "; problems: " + strings.Join(rep.Problems, "; ")
+	return "; problémy: " + strings.Join(rep.Problems, "; ")
 }
 
 // startServing: the sites' units, PHP-FPM, the web tiers, the edge, mail.
@@ -410,7 +410,7 @@ func fenceLocal(ctx context.Context, env *Env, reason string) error {
 	}); err != nil {
 		return err
 	}
-	mirrorRuntime.event("danger", "this node stopped serving (%s)", reason)
+	mirrorRuntime.event("danger", "tento server přestal obsluhovat weby (%s)", reason)
 	_ = writeMirrorFile(env, "fenced", []byte(reason+"\n"))
 	enforceFence(ctx, env)
 	return nil
@@ -482,7 +482,7 @@ func unfenceToPrimary(ctx context.Context, env *Env) error {
 		s.Role, s.Fenced, s.Since = rolePrimary, "", time.Now().UTC()
 		return nil
 	})
-	mirrorRuntime.event("info", "this node serves again (the standby did not take over)")
+	mirrorRuntime.event("info", "tento server znovu obsluhuje weby (zrcadlo provoz nepřevzalo)")
 	return err
 }
 
@@ -549,7 +549,7 @@ func mirrorRejoin(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	}); err != nil {
 		return nil, err
 	}
-	mirrorRuntime.event("info", "rejoined as the standby of %s; what only this node had is kept in %s", them.Name, backup)
+	mirrorRuntime.event("info", "připojeno zpět jako zrcadlo serveru %s; co měl jen tento server, je uloženo v %s", them.Name, backup)
 	mirrorWake()
 	return map[string]any{"role": roleStandby, "backup": backup}, nil
 }

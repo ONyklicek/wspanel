@@ -4,6 +4,7 @@ namespace App\Services\Notify;
 
 use App\Actions\Mail\ManageMail;
 use App\Actions\Monitoring\ServerMetrics;
+use App\Actions\Server\ManageMirror;
 use App\Enums\SiteStatus;
 use App\Models\Certificate;
 use App\Models\CronJob;
@@ -59,6 +60,9 @@ class Alerts
                         'expired' => __('Certifikát vypršel: :domain', ['domain' => $c->domain]), 'missing' => __('Chybí certifikát: :domain', ['domain' => $c->domain]), default => __('Certifikát brzy vyprší: :domain', ['domain' => $c->domain])
                     }, (string) ($c->last_error ?? ($c->not_after ? __('platí do ').$c->not_after->format('j. n. Y') : '')));
             }
+            foreach ($this->mirror() as $m) {
+                $add(...$m);
+            }
             // The server's own DNS (its name, the mail server, PTR, nameservers).
             foreach (rescue(fn () => app(ServerDns::class)->failing(), [], report: false) as $r) {
                 $add('dns:'.$r['key'], null, 'warning', ServerDns::problem($r), ServerDns::fix($r));
@@ -90,6 +94,44 @@ class Alerts
 
             return $out;
         });
+    }
+
+    /** Replication lag worth a warning (seconds). */
+    public const MIRROR_LAG = 300;
+
+    /**
+     * The mirror: the other server gone, a fenced node, a layer of the copy
+     * failing or lagging.
+     *
+     * @return list<array{0: string, 1: null, 2: string, 3: string, 4: string}>
+     */
+    public function mirror(): array
+    {
+        $st = rescue(fn () => app(ManageMirror::class)->status(), [], report: false);
+        $role = (string) ($st['role'] ?? '');
+        if ($role === '') {
+            return [];
+        }
+        $rt = (array) ($st['status'] ?? []);
+        $out = [];
+        if ($role === 'fenced') {
+            $out[] = ['mirror:fenced', null, 'danger', __('Zrcadlo: tento server je odstavený'), (string) ($st['fenced'] ?? '')];
+        }
+        if (! empty($st['peer']) && ! ($rt['peer_up'] ?? true)) {
+            $out[] = $role === 'standby'
+                ? ['mirror:primary-down', null, 'danger', __('Zrcadlo: primár neodpovídá'), (string) ($rt['peer_error'] ?? '')]
+                : ['mirror:peer-down', null, 'warning', __('Zrcadlo: druhý server neodpovídá'), (string) ($rt['peer_error'] ?? '')];
+        }
+        foreach ((array) ($rt['layers'] ?? []) as $key => $layer) {
+            $label = __(ManageMirror::LAYERS[$key] ?? $key);
+            if (! ($layer['ok'] ?? true)) {
+                $out[] = ['mirror:layer:'.$key, null, 'warning', __('Zrcadlo: :layer', ['layer' => $label]), (string) ($layer['error'] ?? '')];
+            } elseif (($layer['lag_seconds'] ?? 0) > self::MIRROR_LAG) {
+                $out[] = ['mirror:lag:'.$key, null, 'warning', __('Zrcadlo: :layer se zpožďuje', ['layer' => $label]), __(':s s za primárem', ['s' => round($layer['lag_seconds'])])];
+            }
+        }
+
+        return $out;
     }
 
     /** Messages that have been in Postfix's queue for over an hour (asked every few minutes, not every check). */

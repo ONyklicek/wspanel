@@ -313,7 +313,7 @@ func prepareStandby(ctx context.Context, env *Env, peer *helloInfo) {
 	detail := "the same software as the primary"
 	if len(missing) > 0 {
 		detail = "installed: " + strings.Join(missing, ", ")
-		mirrorRuntime.event("info", "installed what the primary runs: %s", strings.Join(missing, ", "))
+		mirrorRuntime.event("info", "doinstalováno, co používá primár: %s", strings.Join(missing, ", "))
 	}
 	mirrorRuntime.layer("software", err, detail, nil)
 }

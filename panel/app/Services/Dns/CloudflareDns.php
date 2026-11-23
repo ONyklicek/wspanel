@@ -46,6 +46,29 @@ class CloudflareDns implements DnsZoneProvider
             ->all();
     }
 
+    /**
+     * The mirror: every A record of the zone that points at $from points at
+     * $to (proxy and TTL kept).
+     *
+     * @return list<string> the names that changed
+     */
+    public function repointA(string $from, string $to): array
+    {
+        $http = self::client($this->token);
+        $res = $http->get("/zones/{$this->zoneId}/dns_records", ['type' => 'A', 'content' => $from, 'per_page' => 5000]);
+        self::check($res);
+        $changed = [];
+        foreach ($res->json('result', []) as $r) {
+            if (($r['content'] ?? '') !== $from) {
+                continue;
+            }
+            self::check($http->patch("/zones/{$this->zoneId}/dns_records/{$r['id']}", ['content' => $to]));
+            $changed[] = (string) $r['name'];
+        }
+
+        return $changed;
+    }
+
     public function set(string $domain, string $name, string $type, int $ttl, array $records): void
     {
         $http = self::client($this->token);

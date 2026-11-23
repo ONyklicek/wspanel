@@ -16,6 +16,7 @@ Schedule::command('panel:metrics')->everyMinute()->withoutOverlapping();
 Schedule::call(fn () => AgentTasks::settleAll())->name('agent-tasks')->everyMinute()->withoutOverlapping();
 // Notifications: new and resolved problems, finished deploys (only changes).
 Schedule::command('panel:alerts')->everyMinute()->withoutOverlapping();
+Schedule::command('panel:mirror-dns')->everyMinute()->withoutOverlapping();
 // Watching from outside (Healthchecks.io), when set: Notifikace → Hlídání zvenku.
 Schedule::command('panel:heartbeat')->everyFiveMinutes()->withoutOverlapping()
     ->when(fn () => Heartbeat::url() !== null);

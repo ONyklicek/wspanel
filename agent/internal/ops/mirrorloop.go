@@ -206,13 +206,13 @@ func recordPeer(them *helloInfo, err error) {
 	defer m.mu.Unlock()
 	if err != nil {
 		if m.PeerUp {
-			m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "warning", Message: "the other node stopped answering: " + err.Error()})
+			m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "warning", Message: "druhý server přestal odpovídat: " + err.Error()})
 		}
 		m.PeerUp, m.PeerError = false, err.Error()
 		return
 	}
 	if !m.PeerUp && !m.PeerSeen.IsZero() {
-		m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "info", Message: "the other node answers again"})
+		m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "info", Message: "druhý server znovu odpovídá"})
 	}
 	m.PeerUp, m.PeerError, m.PeerSeen, m.Peer = true, "", time.Now().UTC(), them
 }
@@ -245,18 +245,18 @@ func standbyTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 	}
 	if m.PrimaryDownSince.IsZero() {
 		m.PrimaryDownSince = time.Now().UTC()
-		m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "danger", Message: "the primary does not answer (mirror link, HTTPS, HTTP)"})
+		m.Events = append(m.Events, mirrorEvent{At: time.Now().UTC(), Level: "danger", Message: "primár neodpovídá (spojení zrcadla, HTTPS, HTTP)"})
 	}
 	down := time.Since(m.PrimaryDownSince)
 	m.mu.Unlock()
 	if st.Auto && down >= time.Duration(st.FailoverAfter)*time.Second {
 		if !wOK {
-			mirrorRuntime.event("warning", "the primary is down but no witness answers either: this node may be cut off, no automatic failover")
+			mirrorRuntime.event("warning", "primár neodpovídá, ale ani žádný svědek: tento server je možná odříznutý, automatické přepnutí neproběhne")
 			return false
 		}
 		go func() {
 			logf("mirror: the primary has been down for %s, promoting this node", down.Round(time.Second))
-			if _, err := promoteLocal(context.WithoutCancel(ctx), env, "automatic failover: the primary did not answer for "+down.Round(time.Second).String(), true); err != nil {
+			if _, err := promoteLocal(context.WithoutCancel(ctx), env, "automatické přepnutí: primár neodpovídal "+down.Round(time.Second).String(), true); err != nil {
 				logf("mirror: promotion failed: %v", err)
 			}
 		}()
@@ -331,7 +331,7 @@ func settleEpoch(env *Env, them helloInfo) {
 	}
 	newer := them.Epoch > st.Epoch || (them.Epoch == st.Epoch && them.NodeID > st.NodeID)
 	if them.Role == rolePrimary && st.Role == rolePrimary && newer {
-		mirrorRuntime.event("danger", "the other node is primary with a newer epoch (%d): this node steps down", them.Epoch)
+		mirrorRuntime.event("danger", "druhý server je primár s novější epochou (%d): tento server se odstavuje", them.Epoch)
 		go func() { _ = fenceLocal(context.Background(), env, "replaced") }()
 		return
 	}

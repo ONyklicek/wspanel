@@ -332,7 +332,7 @@ func reconcileWinDNS(ctx context.Context, env *Env, logf func(string, ...any)) {
 	detail := fmt.Sprintf("%d records point here", len(recs))
 	if len(ans.Changed) > 0 {
 		detail += ", changed: " + strings.Join(ans.Changed, ", ")
-		mirrorRuntime.event("info", "Windows DNS now points %s here", strings.Join(ans.Changed, ", "))
+		mirrorRuntime.event("info", "Windows DNS teď směruje sem: %s", strings.Join(ans.Changed, ", "))
 		logf("mirror: Windows DNS changed %s", strings.Join(ans.Changed, ", "))
 	}
 	mirrorRuntime.layer("windns", err, detail, nil)

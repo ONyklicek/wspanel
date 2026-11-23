@@ -300,7 +300,7 @@ func mariadbReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, s
 		return nil, "", err
 	}
 	if !fsx.Exists(seededMark(env, "mariadb")) || rs["Master_Host"] == "" {
-		mirrorRuntime.event("info", "MariaDB: seeding the replica from the primary")
+		mirrorRuntime.event("info", "MariaDB: plnění repliky z primáru")
 		if err := seedMariaDB(ctx, env, st); err != nil {
 			return nil, "", fmt.Errorf("seeding the replica: %w", err)
 		}
@@ -414,7 +414,7 @@ func postgresReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, 
 		return nil, "", err
 	}
 	if !fsx.Exists(seededMark(env, "postgresql")) || strings.TrimSpace(rec) != "t" {
-		mirrorRuntime.event("info", "PostgreSQL: seeding the replica (base backup of the primary)")
+		mirrorRuntime.event("info", "PostgreSQL: plnění repliky (base backup primáru)")
 		if err := seedPostgres(ctx, env, st, dir); err != nil {
 			return nil, "", fmt.Errorf("seeding the replica: %w", err)
 		}
