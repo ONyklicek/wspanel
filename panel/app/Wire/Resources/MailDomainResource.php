@@ -72,11 +72,11 @@ final class MailDomainResource implements DescribesResource, ProvidesNavigation,
     {
         return $table
             ->stackedOnMobile()
-            ->query(MailDomain::query()->withCount(['mailboxes', 'aliases'])->with('client'))
+            ->query(MailDomain::query()->with('client'))
             ->columns([
                 TextColumn::make('domain')->label(__('Doména'))->weight('medium')->searchable()->sortable(),
-                TextColumn::make('mailboxes_count')->label(__('Schránky'))->sortable(),
-                TextColumn::make('aliases_count')->label(__('Aliasy')),
+                TextColumn::make('mailboxes_count')->counts('mailboxes')->label(__('Schránky'))->sortable(),
+                TextColumn::make('aliases_count')->counts('aliases')->label(__('Aliasy')),
                 BadgeColumn::make('dns')->label(__('DNS pro poštu'))
                     ->state(fn (MailDomain $record) => self::dnsState($record))
                     ->colors([__('v pořádku') => 'success', __('chybí') => 'warning', __('neověřeno') => 'gray'])

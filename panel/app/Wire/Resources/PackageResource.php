@@ -136,7 +136,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
 
         return $table
             ->stackedOnMobile()
-            ->query(Package::query()->withCount('clients'))
+            ->query(Package::query())
             ->columns([
                 TextColumn::make('name')->label(__('Balíček'))->weight('medium')->searchable()->sortable()
                     ->description(fn (Package $record) => $record->description),
@@ -144,7 +144,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
                 TextColumn::make('max_databases')->label(__('Databáze'))->state(fn (Package $record) => $limit($record->max_databases)),
                 TextColumn::make('disk_quota_mb')->label(__('Disk'))->state(fn (Package $record) => $record->disk_quota_mb === null ? '∞' : round($record->disk_quota_mb / 1024, 1).' GB'),
                 BadgeColumn::make('ssh')->label('SSH'),
-                TextColumn::make('clients_count')->label(__('Klientů'))->sortable(),
+                TextColumn::make('clients_count')->counts('clients')->label(__('Klientů'))->sortable(),
             ])
             ->actions([
                 Action::make('edit')->label(__('Upravit'))->icon('outline:pencil-square')->onlyIcon()->tooltip(__('Upravit balíček'))

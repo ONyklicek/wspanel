@@ -16,6 +16,7 @@ use App\Livewire\TaskIndicator;
 use App\Models\AgentTask;
 use App\Models\Client;
 use App\Models\DnsZone;
+use App\Models\MailAlias;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
 use App\Models\Package;
@@ -544,5 +545,19 @@ class MailHostingTest extends TestCase
             ->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
         Livewire::test(TaskIndicator::class)->assertDontSee('úloha běží');
         $this->assertSame('done', AgentTask::sole()->status);
+    }
+
+    public function test_the_domain_list_counts_mailboxes_and_aliases(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        foreach (['alice', 'bob'] as $local) {
+            Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => $local, 'quota_mb' => 500, 'enabled' => true]);
+        }
+        MailAlias::create(['mail_domain_id' => $domain->id, 'local_part' => 'info', 'destinations' => ['alice@firma.cz']]);
+
+        $html = Livewire::test(ListMailDomains::class)->html();
+
+        $this->assertMatchesRegularExpression('/firma\.cz.*?>\s*2\s*<.*?>\s*1\s*</s', $html);
     }
 }
