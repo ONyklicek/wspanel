@@ -374,11 +374,41 @@ func sysNTP(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 		if _, err := aptRun(ctx, env, "--no-install-recommends", "install", "systemd-timesyncd"); err != nil {
 			return nil, err
 		}
+		// timedated (started by the look above) lists the NTP services once,
+		// when it starts: stopped, the next call starts it with timesyncd known.
+		restartTimedated(ctx, env)
 	}
-	if _, err := env.Exec.Run(ctx, "timedatectl", "set-ntp", strconv.FormatBool(p.Enabled)); err != nil {
+	if err := setNTP(ctx, env, p.Enabled); err != nil {
 		return nil, err
 	}
 	return map[string]any{"ntp": p.Enabled}, nil
+}
+
+// setNTP: timedatectl set-ntp. "NTP not supported" is timedated not knowing
+// the service (installed while it ran, or a system whose timedated looks
+// elsewhere): asked again once it restarted, then the service is switched
+// by systemctl itself.
+func setNTP(ctx context.Context, env *Env, on bool) error {
+	_, err := env.Exec.Run(ctx, "timedatectl", "set-ntp", strconv.FormatBool(on))
+	if err == nil || !strings.Contains(err.Error(), "NTP not supported") {
+		return err
+	}
+	restartTimedated(ctx, env)
+	if _, again := env.Exec.Run(ctx, "timedatectl", "set-ntp", strconv.FormatBool(on)); again == nil {
+		return nil
+	}
+	verb := "disable"
+	if on {
+		verb = "enable"
+	}
+	if _, serr := env.Exec.Run(ctx, "systemctl", verb, "--now", "systemd-timesyncd.service"); serr != nil {
+		return fmt.Errorf("%w (systemctl %s systemd-timesyncd: %v)", err, verb, serr)
+	}
+	return nil
+}
+
+func restartTimedated(ctx context.Context, env *Env) {
+	_, _ = env.Exec.Run(ctx, "systemctl", "stop", "systemd-timedated.service")
 }
 
 // ---------------------------------------------------------------- swap

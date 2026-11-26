@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,7 +140,30 @@ func TestNTPInstallsTimesyncdWhereMissing(t *testing.T) {
 	for _, c := range dr.Calls()[1:] {
 		got = append(got, c.String())
 	}
-	if strings.Join(got, "|") != "timedatectl show|apt-get -y -q -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold --no-install-recommends install systemd-timesyncd|timedatectl set-ntp true" {
+	if strings.Join(got, "|") != "timedatectl show|apt-get -y -q -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold --no-install-recommends install systemd-timesyncd|systemctl stop systemd-timedated.service|timedatectl set-ntp true" {
+		t.Errorf("calls: %v", got)
+	}
+}
+
+func TestNTPNotSupportedFallsBackToTheService(t *testing.T) {
+	env, dr := testEnv(t)
+	dr.Responder = func(c executor.Call) (executor.Result, error) {
+		switch c.String() {
+		case "timedatectl show":
+			return executor.Result{Stdout: "Timezone=UTC\nNTP=no\nCanNTP=yes\n"}, nil
+		case "timedatectl set-ntp true":
+			return executor.Result{}, errors.New("timedatectl set-ntp true: exit status 1: Failed to set ntp: NTP not supported")
+		}
+		return executor.Result{}, nil
+	}
+	if _, err := call(t, env, sysNTP, map[string]bool{"enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, c := range dr.Calls() {
+		got = append(got, c.String())
+	}
+	if strings.Join(got, "|") != "timedatectl show|timedatectl set-ntp true|systemctl stop systemd-timedated.service|timedatectl set-ntp true|systemctl enable --now systemd-timesyncd.service" {
 		t.Errorf("calls: %v", got)
 	}
 }
