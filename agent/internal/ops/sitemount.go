@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"wspanel/agent/internal/config"
+	"wspanel/agent/internal/fileop"
 	"wspanel/agent/internal/fsx"
 	"wspanel/agent/internal/protocol"
 )
@@ -352,7 +355,7 @@ func siteMountChange(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 			return nil, err
 		}
 		return map[string]any{"name": m.Name, "path": mountPoint(l, m.Name), "not_visible_to": unitsWithoutMount(ctx, env, st, l, mountPoint(l, m.Name)),
-			"host_keys": hostKeyFingerprints(mountKnownHosts(env, l.User, m.Name))}, nil
+			"host_keys": hostKeyFingerprints(mountKnownHosts(env, l.User, m.Name)), "writable": mountWritable(ctx, env, l, m)}, nil
 	case "remove":
 		if idx < 0 {
 			return nil, protocol.NotFound("disk " + p.Mount.Name + " does not exist")
@@ -381,7 +384,7 @@ func siteMountChange(ctx context.Context, env *Env, raw json.RawMessage) (any, e
 		if _, err := env.Exec.Run(ctx, "systemctl", "restart", unit); err != nil {
 			return nil, fmt.Errorf("the disk did not connect: %s", mountFailure(ctx, env, unit))
 		}
-		return map[string]any{"name": p.Mount.Name}, nil
+		return map[string]any{"name": p.Mount.Name, "writable": mountWritable(ctx, env, l, st.Mounts[idx])}, nil
 	}
 	return nil, protocol.Invalid("action: add, remove or remount")
 }
@@ -541,6 +544,39 @@ func stopMount(ctx context.Context, env *Env, l siteLayout, name string) error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil
+}
+
+// mountWritable: whether the site's user can create a file on the disk,
+// tried as that user through the file manager (what the site does too).
+// "permission denied" there is the server's answer: the account on the
+// NAS or the Windows share may only read. Nil when it cannot be told (a
+// read-only disk, a dry run).
+func mountWritable(ctx context.Context, env *Env, l siteLayout, m siteMount) *bool {
+	if m.ReadOnly || env.Cfg.DryRun {
+		return nil
+	}
+	probe := path.Join("mounts", m.Name, fmt.Sprintf(".wspanel-write-test-%d", time.Now().UnixNano()))
+	ask := func(req fileop.Request) (fileop.Response, bool) {
+		line, _ := json.Marshal(req)
+		var out bytes.Buffer
+		args := append(userCreds(l.User), env.Cfg.AgentBinary, "-fileop", l.Home)
+		if _, err := env.Exec.RunIO(ctx, bytes.NewReader(append(line, '\n')), &out, "setpriv", args...); err != nil && out.Len() == 0 {
+			return fileop.Response{}, false
+		}
+		var resp fileop.Response
+		if json.Unmarshal(bytes.TrimSpace(out.Bytes()), &resp) != nil {
+			return fileop.Response{}, false
+		}
+		return resp, true
+	}
+	resp, ok := ask(fileop.Request{Action: "write", Path: probe})
+	if !ok {
+		return nil
+	}
+	if resp.OK {
+		_, _ = ask(fileop.Request{Action: "delete", Path: probe})
+	}
+	return &resp.OK
 }
 
 // mountOwner: the site's user and its (client's) group.

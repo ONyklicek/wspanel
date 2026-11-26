@@ -35,6 +35,26 @@ class ManageSiteMounts
     }
 
     /**
+     * What an SMB server offers the account (for a form, so nobody has to
+     * know the server's layout): without a share the shares, with one the
+     * folders in path and whether the account may write there.
+     *
+     * @param  array{host: string, port?: int, user: string, password?: string, domain?: string, encrypt?: bool, share?: string, path?: string}  $connection
+     * @return array{shares?: list<array{name: string, comment?: string}>, dirs?: list<string>, path?: string, writable?: bool}
+     *
+     * @throws AgentException
+     */
+    public function browse(array $connection): array
+    {
+        return $this->agent->call('smb.browse', array_filter([
+            'host' => trim((string) ($connection['host'] ?? '')), 'port' => (int) ($connection['port'] ?? 0),
+            'user' => trim((string) ($connection['user'] ?? '')), 'password' => (string) ($connection['password'] ?? ''),
+            'domain' => trim((string) ($connection['domain'] ?? '')), 'encrypt' => (bool) ($connection['encrypt'] ?? false),
+            'share' => trim((string) ($connection['share'] ?? '')), 'path' => trim((string) ($connection['path'] ?? ''), ' /'),
+        ], fn ($v) => $v !== '' && $v !== 0 && $v !== false));
+    }
+
+    /**
      * Connects the disk (in the background); nothing is kept when it does not
      * connect.
      *
@@ -66,7 +86,10 @@ class ManageSiteMounts
         if ($task->status !== AgentTask::DONE) {
             return;
         }
-        if (($out['not_visible_to'] ?? []) !== []) {
+        if (($out['writable'] ?? null) === false) {
+            $task->update(['done_title' => __('Disk připojen, ale účet na něj nesmí zapisovat'),
+                'body' => __('Soubory na disku patří uživateli webu, zápis odmítl server SMB/FTP. Dejte účtu právo zápisu (u Windows sdílení „Změnit“ ve sdílení i v zabezpečení NTFS, u NAS čtení i zápis ke sdílené složce), pak disk připojte znovu. Nebo ho připojte jen pro čtení.')]);
+        } elseif (($out['not_visible_to'] ?? []) !== []) {
             $task->update(['done_title' => __('Disk připojen, některé procesy ho ještě nevidí'),
                 'body' => __('Běžely už před připojením: :units. Do disku zapíšou až po restartu (do té doby zápis selže, nic se neuloží jinam).', ['units' => implode(', ', $out['not_visible_to'])])]);
         } elseif (($out['host_keys'] ?? []) !== []) {

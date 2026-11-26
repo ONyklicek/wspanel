@@ -308,6 +308,28 @@ func read(root *os.Root, p string, resp *Response) error {
 	return nil
 }
 
+// writeInPlace: write() on a network disk, straight into the file.
+func writeInPlace(root *os.Root, p string, mode fs.FileMode, req Request, in io.Reader, resp *Response) error {
+	f, err := root.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	n, err := io.Copy(f, io.LimitReader(in, req.Size))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil && n != req.Size {
+		err = fail("invalid", "incomplete upload")
+	}
+	if err != nil {
+		return err
+	}
+	if fi, _ := root.Stat(p); fi != nil {
+		resp.Size, resp.Mtime = fi.Size(), fi.ModTime().Unix()
+	}
+	return nil
+}
+
 // write replaces a file atomically (temp file + rename in the same folder),
 // keeping its mode. IfMtime guards against overwriting someone else's edit.
 func write(root *os.Root, p string, req Request, in io.Reader, resp *Response) error {
@@ -328,6 +350,17 @@ func write(root *os.Root, p string, req Request, in io.Reader, resp *Response) e
 		mode = fi.Mode().Perm()
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
+	}
+	// A network disk (SMB above all) is written in place: replacing a file by
+	// a rename needs the right to delete it, which an account allowed only
+	// to write (Windows "Write" without "Modify") has not, and the save
+	// failed with "permission denied".
+	if dir, err := root.Open(path.Dir(p)); err == nil {
+		network := onNetworkDisk(dir)
+		_ = dir.Close()
+		if network {
+			return writeInPlace(root, p, mode, req, in, resp)
+		}
 	}
 	tmp := path.Join(path.Dir(p), fmt.Sprintf(".%s.wspanel-%d", path.Base(p), time.Now().UnixNano()))
 	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)

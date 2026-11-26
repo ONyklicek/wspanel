@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManageOffsite;
+use App\Livewire\Concerns\ReactsInActionForms;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
@@ -10,6 +11,7 @@ use App\Support\Lang;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
+use App\Wire\Forms\SmbBrowser;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -18,6 +20,7 @@ use NyonCode\WirePanels\Pages\Page;
 /** Copies of all backups in S3-compatible storage outside the server. */
 class OffsitePage extends Page
 {
+    use ReactsInActionForms;
     use TranslatesPageText;
     use WatchesBackgroundJobs;
 
@@ -215,6 +218,9 @@ class OffsitePage extends Page
                         ->visibleWhen('type', 'smb')->rules(['nullable', 'max:128', 'not_regex:/["\r\n]/']),
                     Toggle::make('smb_encrypt')->label(__('Vyžadovat šifrování SMB3'))->visibleWhen('type', 'smb')
                         ->helperText(__('Doporučeno; vypněte jen pro starší NAS bez podpory šifrování.')),
+                    // Without knowing the NAS: ask it what the account sees, pick a share and a folder.
+                    ...SmbBrowser::fields(['host' => 'host', 'port' => 'port', 'user' => 'username', 'password' => 'password', 'domain' => 'smb_domain',
+                        'encrypt' => 'smb_encrypt', 'share' => 'share', 'path' => 'prefix'], fn ($get) => $get('type') === 'smb'),
 
                     // Common
                     TextInput::make('prefix')->label(__('Složka'))->placeholder(__('např. muj-server'))->rules(['nullable', 'regex:/^[A-Za-z0-9._\-\/]{0,200}$/', 'not_regex:/\.\./'])

@@ -75,4 +75,43 @@ class SiteMountsTest extends TestCase
 
         Livewire::test(SiteSettings::class, ['record' => $site->id])->assertDontSee('Síťové disky');
     }
+
+    public function test_the_share_and_the_folder_are_picked_from_what_the_server_offers(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $site = Site::create(['domain' => 'nas.example.com', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active', 'home' => '/srv/sites/nas.example.com']);
+        $login = ['host' => 'nas.firma.lan', 'user' => 'web', 'password' => 'Tajne-heslo-1', 'encrypt' => true];
+        $this->agent->shouldReceive('call')->with('smb.browse', $login)->andReturn(['shares' => [['name' => 'Data', 'comment' => 'Sdílená data'], ['name' => 'backup']]]);
+        $this->agent->shouldReceive('call')->with('smb.browse', $login + ['share' => 'Data'])->andReturn(['share' => 'Data', 'path' => '', 'dirs' => ['web', 'foto'], 'writable' => false]);
+        $this->agent->shouldReceive('call')->with('smb.browse', $login + ['share' => 'Data', 'path' => 'web'])->andReturn(['share' => 'Data', 'path' => 'web', 'dirs' => ['uploads'], 'writable' => true]);
+        $this->agent->shouldReceive('call')->once()->with('site.mount', Mockery::on(fn ($p) => $p['mount']['share'] === 'Data' && $p['mount']['path'] === 'web'
+            && ! array_key_exists('smb_shares', $p['mount'])))->andReturn(['name' => 'nas']);
+
+        Livewire::test(SiteSettings::class, ['record' => $site->id])
+            ->call('mountAction', 'mountAdd')
+            ->set('mountedActions.0.data.host', 'nas.firma.lan')
+            ->set('mountedActions.0.data.user', 'web')
+            ->set('mountedActions.0.data.password', 'Tajne-heslo-1')
+            ->call('callFieldAction', 'mountedActions.0.data.smb_browse', 'smb_browse')
+            ->assertNotified('Nalezeno sdílených složek: 2')
+            ->assertSee('Data – Sdílená data')
+            ->set('mountedActions.0.data.smb_share_pick', 'Data')
+            ->assertSet('mountedActions.0.data.share', 'Data')
+            ->assertSee('Do této složky účet zapisovat nesmí')
+            ->set('mountedActions.0.data.smb_dir_pick', 'web')
+            ->assertSet('mountedActions.0.data.path', 'web')
+            ->assertSee('Do této složky účet smí zapisovat')
+            ->call('callMountedAction')
+            ->assertHasNoErrors();
+    }
+
+    public function test_a_disk_the_account_may_not_write_to_says_so(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $site = Site::create(['domain' => 'nas.example.com', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4', 'status' => 'active', 'home' => '/srv/sites/nas.example.com']);
+        $this->agent->shouldReceive('call')->with('site.mount', Mockery::any())->andReturn(['name' => 'nas', 'writable' => false]);
+
+        $this->siteSetting($site, 'mountAdd', ['type' => 'smb', 'host' => 'nas.firma.lan', 'share' => 'Data', 'user' => 'web', 'password' => 'x', 'name' => 'nas'])
+            ->assertHasNoErrors()->assertNotified('účet na něj nesmí zapisovat');
+    }
 }

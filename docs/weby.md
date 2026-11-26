@@ -661,9 +661,23 @@ i SFTP webu je čtou a zapisují jako vlastní. Jiné weby na server do disku
 nevidí. V Laravelu stačí přidat disk do `config/filesystems.php` s `root` na tuto
 cestu.
 
+**Neznáte strukturu serveru?** U SMB vyplňte server, uživatele a heslo
+a stiskněte **Najít sdílené složky**. Panel se serveru zeptá, které sdílené
+složky účet vidí. Vyberete jednu a pak se klikáním zanořujete do podsložek
+(„↑ o úroveň výš“ vrací zpět). U každé složky formulář řekne, jestli do ní
+účet smí zapisovat. Stejně to funguje v **Zálohy mimo server** u SMB.
+
 - Heslo zná jen server (v souboru, který čte jen root), panel ho neukládá.
 - Disk se připojí znovu i po restartu serveru. Když nejde připojit, panel ukáže
   proč (špatné heslo, nedostupný server, neexistující sdílená složka).
+- Po připojení panel zkusí na disk zapsat jako uživatel webu. Když to server
+  odmítne („permission denied“), řekne to rovnou: soubory na disku patří webu,
+  zápis odmítl **server SMB**. Účtu dejte právo zápisu: u Windows sdílení
+  „Změnit“ v oprávněních sdílení i v zabezpečení NTFS, u NAS čtení i zápis ke
+  sdílené složce. Pak disk připojte znovu (Síťové disky → Připojit znovu).
+- Správce souborů panelu ukládá na síťový disk rovnou do souboru (ne přes
+  dočasný soubor a přejmenování), takže stačí právo zápisu, není třeba právo
+  mazat.
 - Když disk připojený není, zápis do jeho složky **selže**. Nic se tiše neuloží
   na lokální disk pod ním.
 - FTP a SFTP: zapisovaný soubor se nahraje na server po zavření (rclone

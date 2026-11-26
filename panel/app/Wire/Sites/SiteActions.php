@@ -40,6 +40,7 @@ use App\Support\WebRules\RulesConverter;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\DnsGate;
 use App\Wire\Forms\Options;
+use App\Wire\Forms\SmbBrowser;
 use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use Closure;
@@ -793,12 +794,6 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     TextInput::make('port')->label(__('Port'))->integer()->placeholder(__('výchozí'))->rules(['nullable', 'integer', 'between:1,65535']),
                 ]),
                 Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
-                    TextInput::make('share')->label(__('Sdílená složka'))->placeholder('Data')->maxLength(80)
-                        ->visibleWhen('type', 'smb')->requiredIf('type', 'smb'),
-                    TextInput::make('path')->label(__('Složka na disku'))->placeholder('web/uploads')->maxLength(500)
-                        ->helperText(__('Prázdné = celý disk.')),
-                ]),
-                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
                     TextInput::make('user')->label(__('Uživatel'))->required()->maxLength(128)->autocomplete('off'),
                     TextInput::make('password')->label(__('Heslo'))->password()->revealable()->maxLength(256)->autocomplete('new-password')
                         ->helperText(__('Panel ho neukládá, zná ho jen server.')),
@@ -816,6 +811,15 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                         }]),
                     Select::make('tls')->label(__('Šifrování'))->options(Lang::values(ManageSiteMounts::FTP_TLS))->default('explicit')
                         ->visibleWhen('type', 'ftp')->rules([Options::rule(ManageSiteMounts::FTP_TLS)]),
+                ]),
+                // Without knowing the server: ask it what the account sees, pick a share and a folder.
+                ...SmbBrowser::fields(['host' => 'host', 'port' => 'port', 'user' => 'user', 'password' => 'password', 'domain' => 'domain',
+                    'encrypt' => 'encrypt', 'share' => 'share', 'path' => 'path'], fn ($get) => $get('type') === 'smb'),
+                Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
+                    TextInput::make('share')->label(__('Sdílená složka'))->placeholder('Data')->maxLength(80)
+                        ->visibleWhen('type', 'smb')->requiredIf('type', 'smb'),
+                    TextInput::make('path')->label(__('Složka na disku'))->placeholder('web/uploads')->maxLength(500)
+                        ->helperText(__('Prázdné = celý disk. U SMB ji vyberete i tlačítkem Najít sdílené složky.')),
                 ]),
                 Grid::make()->columns(['default' => 1, 'sm' => 2])->schema([
                     TextInput::make('name')->label(__('Název složky'))->default('nas')->required()->maxLength(32)
