@@ -5,7 +5,7 @@ namespace App\Livewire\Games;
 use App\Actions\Games\ManageGameServers;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
-use App\Support\Toast;
+use App\Support\AgentTasks;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Locked;
@@ -98,12 +98,12 @@ class GameServerStatus extends Component
         if (! in_array($action, ['start', 'stop', 'restart'], true)) {
             return;
         }
-        try {
-            app(ManageGameServers::class)->control($this->server(), $action);
+        // A world is saved before a stop: in the background, the state below follows it.
+        $server = $this->server();
+        $task = AgentTasks::queue('game.'.$action, self::controlText($server->name, $action), ManageGameServers::class, 'control', [$server, $action], $server);
+        if ($task->status !== 'failed') {
             $this->pending = $action;
             $this->pendingSince = time();
-        } catch (AgentException $e) {
-            Toast::error(__('Akce selhala'), $e->getMessage());
         }
         $this->refresh();
     }
@@ -182,5 +182,19 @@ class GameServerStatus extends Component
             'badge' => GameServer::runStateBadge($state),
             'interval' => $this->interval(),
         ]);
+    }
+
+    /**
+     * What a start, stop or restart of a game server is called while it runs and once done.
+     *
+     * @return array{title: string, done: string}
+     */
+    public static function controlText(string $name, string $action): array
+    {
+        return match ($action) {
+            'start' => ['title' => __('Spuštění :name', ['name' => $name]), 'done' => __(':name se spouští', ['name' => $name])],
+            'stop' => ['title' => __('Zastavení :name', ['name' => $name]), 'done' => __(':name zastaven', ['name' => $name])],
+            default => ['title' => __('Restart :name', ['name' => $name]), 'done' => __(':name se restartuje', ['name' => $name])],
+        };
     }
 }

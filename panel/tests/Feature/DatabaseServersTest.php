@@ -106,7 +106,7 @@ class DatabaseServersTest extends TestCase
             ->assertHasErrors();
         $this->pageAction(Livewire::test(DatabaseServersPage::class), 'access_postgresql', ['access' => 'anywhere', 'understood' => true])
             ->assertHasNoErrors()
-            ->assertNotified('je dostupná z internetu', 'warning');
+            ->assertNotified('je dostupná z internetu');
     }
 
     public function test_back_to_local_only(): void

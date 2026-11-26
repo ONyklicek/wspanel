@@ -65,6 +65,29 @@ class ManageDatabaseServers
         ]);
     }
 
+    /**
+     * setAccess() as a background task (RunPanelTask): what it means, said.
+     *
+     * @param  list<string>  $allow
+     * @return array{message: string, body: string|null}
+     *
+     * @throws AgentException
+     */
+    public function setAccessQueued(string $engine, string $access, array $allow, string $label, int|string $port): array
+    {
+        $out = $this->setAccess($engine, $access, $allow);
+        [$message, $body] = match ($access) {
+            self::ACCESS_LOCAL => [__(':label je dostupná jen z tohoto serveru', ['label' => $label]), __('Port :port je zavřený.', ['port' => $port])],
+            self::ACCESS_ANYWHERE => [__(':label je dostupná z internetu', ['label' => $label]), __('Port :port je otevřený všem. Připojení jen přes TLS.', ['port' => $port])],
+            default => [__(':label je dostupná z vybraných adres', ['label' => $label]), implode(', ', $out['allow'] ?? [])],
+        };
+        if (isset($out['warning'])) {
+            $body = trim($body.' '.__('Ochrana proti hádání hesel').': '.$out['warning']);
+        }
+
+        return ['message' => $message, 'body' => $body];
+    }
+
     /** @param  array<string, mixed>  $engine  one entry of status() */
     public static function access(array $engine): string
     {

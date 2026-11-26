@@ -1,4 +1,5 @@
 <div class="space-y-6">
+    @include('partials.background-jobs')
     @if ($error)
         <x-wire::section>
             <p class="text-sm text-red-600">{{ __('Stav pošty se nepodařilo načíst:') }} {{ $error }}</p>

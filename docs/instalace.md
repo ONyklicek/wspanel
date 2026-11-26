@@ -162,7 +162,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--ssh-password=` | `no` | `yes`: správci (i root) se přihlašují i heslem (hlídá fail2ban); `no`: jen klíčem – bez klíče správce root podrží heslo, jen pokud ho měl už před instalací (nikdy nezamkne, nikdy nepovolí víc) |
 | `--ssh-key=` | – | veřejný klíč pro roota (`"ssh-ed25519 AAAA… popis"`), přidá se do `/root/.ssh/authorized_keys` |
 | `--no-root-ssh` | – | zakáže přihlášení roota přes SSH; odmítne se, pokud jiný správce (skupina `sudo`) nemá klíč |
-| `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy (za NATem zadejte ručně) |
+| `--public-ipv4=` / `--public-ipv6=` | zjistí se | veřejné adresy pro navrhované DNS záznamy; za NATem se IPv4 zjistí dotazem ven (cloudflare.com/cdn-cgi/trace). Upgrade ponechá adresy z panelu; mění se v Server → Systém → Veřejná adresa |
 | `--public-https-port=` / `--public-ssh-port=` | 443 / 22 | porty, jak je vidí klienti (jen pro přesměrování portů, např. dev kontejner) |
 | `--panel-allow=` | veřejný | panel jen z těchto adres/sítí, např. `10.8.0.0/24,203.0.113.7`; `any` = zase veřejný (viz [Bezpečnost](bezpecnost.md#panel-jen-z-vnitřní-sítě)) |
 | `--local-certs` | – | certifikáty od vlastní certifikační autority serveru místo Let's Encrypt (panel i weby ve vnitřní síti, vývoj) |

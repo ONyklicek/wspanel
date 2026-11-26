@@ -6,8 +6,7 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\MailDomain;
 use App\Models\Site;
-use App\Services\Agent\AgentException;
-use App\Support\Toast;
+use App\Support\AgentTasks;
 use App\Wire\Actions\Action;
 use App\Wire\Resources\MailDomainResource;
 use App\Wire\Resources\SiteResource;
@@ -50,12 +49,9 @@ class SiteMail extends ViewPage
     {
         /** @var Site $site */
         $site = $this->nativeRecord();
-        try {
-            app(ManageMailHosting::class)->addDomain(self::mailDomainName($site));
-            Toast::success(__('Pošta pro :domain zřízena', ['domain' => self::mailDomainName($site)]), __('Založte schránky. MX záznam: ').ManageMailHosting::mailHost());
-        } catch (AgentException $e) {
-            Toast::error(__('Poštu se nepodařilo zřídit'), $e->getMessage());
-        }
+        // The mail configs and OpenDKIM restart: in the background, on the site's page.
+        AgentTasks::queue('mail.domain.add', ['title' => __('Zřízení pošty pro :domain', ['domain' => self::mailDomainName($site)]), 'done' => __('Pošta zřízena')],
+            ManageMailHosting::class, 'addDomainQueued', [self::mailDomainName($site)], $site);
     }
 
     protected function headerActions(): array

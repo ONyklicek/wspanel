@@ -69,13 +69,19 @@ class UpdatesPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['sys-upgrade'];
+        return ['sys-upgrade', 'updates-refresh', 'updates-auto'];
     }
 
     protected function backgroundJobFinished(string $key, bool $ok): void
     {
-        $this->selected = [];
-        $this->load(true);
+        if ($key === 'sys-upgrade') {
+            $this->selected = [];
+            // The list anew after an upgrade (apt-get update): in the background too.
+            $this->refresh();
+
+            return;
+        }
+        $this->load();
     }
 
     /** Whether an upgrade runs now (the buttons wait for it). */
@@ -148,10 +154,11 @@ class UpdatesPage extends Page
             ->sortBy([['security', 'desc'], ['name', 'asc']])->values()->all();
     }
 
+    /** apt-get update takes as long as the mirrors: in the background. */
     public function refresh(): void
     {
-        $this->load(true);
-        Toast::success(__('Seznam balíčků obnoven'));
+        $this->queueBackgroundJob('updates-refresh', ['title' => __('Obnova seznamu balíčků'), 'done' => __('Seznam balíčků obnoven')],
+            ManageUpdates::class, 'status', [true]);
     }
 
     /** @var array<string, mixed>|null the panel's own upgrade (agent's panel.upgrade_status) */
@@ -235,16 +242,14 @@ class UpdatesPage extends Page
             : Toast::success(__('Nabízejí se jen stabilní verze'));
     }
 
+    /** Switching on may install unattended-upgrades first: in the background. */
     public function toggleAuto(): void
     {
-        try {
-            $on = ! ($this->updates['auto_security'] ?? false);
-            app(ManageUpdates::class)->setAutoSecurity($on);
-            Toast::success($on ? __('Bezpečnostní aktualizace se instalují samy') : __('Automatické aktualizace vypnuty'));
-        } catch (AgentException $e) {
-            Toast::error(__('Změna selhala'), $e->getMessage());
-        }
-        $this->load();
+        $on = ! ($this->updates['auto_security'] ?? false);
+        $this->queueBackgroundJob('updates-auto', [
+            'title' => $on ? __('Zapnutí automatických bezpečnostních aktualizací') : __('Vypnutí automatických aktualizací'),
+            'done' => $on ? __('Bezpečnostní aktualizace se instalují samy') : __('Automatické aktualizace vypnuty'),
+        ], ManageUpdates::class, 'setAutoSecurity', [$on]);
     }
 
     public function cancelReboot(): void

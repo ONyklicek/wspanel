@@ -4,6 +4,7 @@ namespace App\Services\Dns;
 
 use App\Actions\Mail\ManageMail;
 use App\Actions\Mail\ManageMailHosting;
+use App\Actions\System\ManagePublicAddress;
 use App\Enums\DnsProvider;
 use App\Models\DnsZone;
 use App\Models\Site;
@@ -40,13 +41,23 @@ class ServerDns
         $v6 = (string) config('panel.public_ipv6');
         $v4 = PublicAddress::host($v4) ? $v4 : '';
         $v6 = PublicAddress::host($v6) ? $v6 : '';
+        $rows = [];
+        // Behind NAT: the records would point to the internal address while
+        // the internet sees another one.
+        if ($v4 === '') {
+            $seen = (string) (rescue(fn () => app(ManagePublicAddress::class)->detected()['ipv4'], '', report: false));
+            if ($seen !== '') {
+                $rows[] = ['key' => 'ip:v4', 'name' => __('Veřejná IPv4 serveru'), 'type' => 'IP', 'want' => $seen,
+                    'now' => (string) config('panel.public_ipv4'), 'ok' => false,
+                    'note' => __('Server je za NATem: záznamy DNS mají mířit na adresu, kterou vidí internet. Nastavte ji v Server → Systém → Veřejná adresa.')];
+            }
+        }
         if ($v4 === '' && $v6 === '') {
-            return []; // a server on a local network: public DNS has nothing to say
+            return $rows; // a server on a local network: public DNS has nothing more to say
         }
         $panel = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
         $hosting = (bool) rescue(fn () => app(ManageMailHosting::class)->installed(), false, report: false);
         $mailHost = strtolower(ManageMailHosting::mailHost());
-        $rows = [];
 
         // An address record for each public name of the server.
         $names = [$panel => __('Adresa panelu; certifikát se vydá, jen když míří sem.')];
@@ -115,6 +126,7 @@ class ServerDns
     {
         return match ($r['type']) {
             'PTR' => __('Reverzní záznam (PTR) :ip nesedí', ['ip' => $r['name']]),
+            'IP' => __('Veřejná IPv4 serveru není nastavená (za NATem)'),
             'TXT' => __('Chybí SPF serveru pošty :host', ['host' => $r['name']]),
             default => __('DNS: :host (:type) nemíří na tento server', ['host' => $r['name'], 'type' => $r['type']]),
         };
@@ -161,6 +173,6 @@ class ServerDns
     private function address(string $host, string $type, string $want, array $now, string $note): array
     {
         return ['key' => strtolower($type).':'.$host, 'name' => $host, 'type' => $type, 'want' => $want,
-            'now' => implode(', ', $now), 'ok' => in_array($want, $now, true), 'note' => $note];
+            'now' => implode(', ', $now), 'ok' => app(ManagePublicAddress::class)->pointsHere($now, $want), 'note' => $note];
     }
 }

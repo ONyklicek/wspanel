@@ -6,6 +6,7 @@ use App\Actions\Games\ManageGameServers;
 use App\Livewire\Games\Concerns\IsGameTab;
 use App\Models\AgentTask;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Toast;
 use App\Wire\Resources\GameServerResource;
 use Illuminate\Contracts\View\View;
@@ -204,13 +205,9 @@ class GamePlugins extends ViewPage
 
     public function restart(): void
     {
-        try {
-            app(ManageGameServers::class)->control($this->server(), 'restart');
-            Toast::success(__('Server se restartuje'));
-            $this->changed = false;
-        } catch (AgentException $e) {
-            Toast::error(__('Restart selhal'), $e->getMessage());
-        }
+        $server = $this->server();
+        AgentTasks::queue('game.restart', GameServerStatus::controlText($server->name, 'restart'), ManageGameServers::class, 'control', [$server, 'restart'], $server);
+        $this->changed = false;
     }
 
     public function render(): View

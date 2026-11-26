@@ -820,8 +820,30 @@ if [[ -n "$PANEL_SOURCE" ]]; then
   set_panel_env PANEL_MAIL_HOST "$MAIL_NAME"
   set_panel_env PANEL_SITES_HTTPS_PORT "$PUBLIC_HTTPS_PORT"
   set_panel_env PANEL_SSH_PORT "$PUBLIC_SSH_PORT"
-  [[ -n "$PUBLIC_IPV4" ]] || PUBLIC_IPV4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
-  [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+  # The public addresses (suggested DNS records point to them). Without a
+  # flag, an upgrade keeps what the panel has (Server → Systém sets them);
+  # an address missing or internal is looked for again: the route's source,
+  # and behind NAT (an internal source) the address the internet sees.
+  private_ipv4() { [[ "$1" =~ ^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.) ]]; }
+  outside_ip() { curl "-$1" -fsS --max-time 5 https://cloudflare.com/cdn-cgi/trace 2>/dev/null | sed -n 's/^ip=//p' | head -1 || true; }
+  if [[ -z "$PUBLIC_IPV4" ]]; then
+    PUBLIC_IPV4="$(sed -n 's/^PANEL_PUBLIC_IPV4=//p' /srv/panel/shared/.env | tail -1)"
+    if [[ -z "$PUBLIC_IPV4" ]] || private_ipv4 "$PUBLIC_IPV4"; then
+      found="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+      if [[ -z "$found" ]] || private_ipv4 "$found"; then
+        outside="$(outside_ip 4)"
+        [[ "$outside" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && ! private_ipv4 "$outside" && found="$outside"
+      fi
+      [[ -n "$found" ]] && PUBLIC_IPV4="$found"
+    fi
+  fi
+  if [[ -z "$PUBLIC_IPV6" ]]; then
+    PUBLIC_IPV6="$(sed -n 's/^PANEL_PUBLIC_IPV6=//p' /srv/panel/shared/.env | tail -1)"
+    [[ -n "$PUBLIC_IPV6" ]] || PUBLIC_IPV6="$(ip -6 route get 2606:4700::1111 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)"
+  fi
+  if private_ipv4 "$PUBLIC_IPV4"; then
+    log "Pozor: veřejná IPv4 se nezjistila (server je za NATem bez přístupu ven?): navrhované DNS záznamy by mířily na $PUBLIC_IPV4. Nastavte ji v Server → Systém → Veřejná adresa."
+  fi
   # The release this is and where newer ones come from (a bundle from the
   # release workflow carries both; a run from source leaves them as they are).
   bundle_version="$(cat "$HERE/../VERSION" 2>/dev/null || true)"
@@ -1093,11 +1115,12 @@ fi
 # The choices of this run, for the next upgrade ("./install" offers to keep
 # them). Left out: paths of this bundle (the next one has its own) and what
 # the panel manages from then on (who may open it: replaying the list from
-# the install would undo a change made in Firewall → Přístup k panelu).
+# the install would undo a change made in Firewall → Přístup k panelu, and
+# the public addresses, set on Server → Systém).
 install -d -m 0755 /etc/wspanel
 saved=()
 for arg in "$@"; do
-  case "$arg" in --agent-bin=*|--panel-source=*|--panel-allow=*) ;; *) saved+=("$arg") ;; esac
+  case "$arg" in --agent-bin=*|--panel-source=*|--panel-allow=*|--public-ipv4=*|--public-ipv6=*) ;; *) saved+=("$arg") ;; esac
 done
 printf '%s\n' "${saved[@]}" > /etc/wspanel/install.flags
 chmod 0600 /etc/wspanel/install.flags

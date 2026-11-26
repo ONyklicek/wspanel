@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\SiteStatus;
 use App\Livewire\Sites\CreateSitePage as CreateSite;
+use App\Models\AgentTask;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -66,16 +67,22 @@ class SiteManagementTest extends TestCase
         $this->assertSame('web_shop_example_com', $site->system_user);
     }
 
-    public function test_agent_failure_is_shown_and_no_site_is_left_behind(): void
+    public function test_agent_failure_in_the_background_leaves_the_site_with_its_error(): void
     {
         $this->agent->shouldReceive('call')->with('site.create', Mockery::any())
             ->andThrow(new AgentException('op_failed', 'php-fpm 8.4 config invalid, not reloading', 'site.create'));
 
         $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'broken.example.com', 'framework' => 'laravel', 'php_version' => '8.4'])
             ->call('save')
-            ->assertHasErrors(['data.domain']);
+            ->assertHasNoErrors()
+            ->assertRedirect('/sites/1');
 
-        $this->assertSame(0, Site::count());
+        $site = Site::sole();
+        $this->assertSame(SiteStatus::Failed, $site->status);
+        $this->assertStringContainsString('config invalid', (string) $site->last_error);
+        $task = AgentTask::query()->where('op', 'site.create')->sole();
+        $this->assertSame(AgentTask::FAILED, $task->status);
+        $this->assertStringContainsString('config invalid', (string) $task->error);
     }
 
     public function test_invalid_domains_never_reach_the_agent(): void

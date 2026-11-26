@@ -2,8 +2,10 @@
 
 namespace Tests;
 
+use App\Actions\System\ManagePublicAddress;
 use App\Enums\Game;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Features\SupportTesting\Testable;
 
 abstract class TestCase extends BaseTestCase
@@ -13,6 +15,8 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
         // The games the packages make are remembered per process: each test anew.
         Game::flush();
+        // The address the internet sees is not asked from a test (one that cares forgets this and fakes it).
+        Cache::put(ManagePublicAddress::DETECTED, ['ipv4' => '', 'ipv6' => ''], 600);
 
         if (! Testable::hasMacro('assertNotified')) {
             /*

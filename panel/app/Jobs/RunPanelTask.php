@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\AgentTask;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Auth;
@@ -19,8 +20,11 @@ use Throwable;
  * given (models are serialized by key and loaded fresh). What it returns
  * (an array) becomes the task's output; a returned ['message' => …,
  * 'body' => …] says how it ended.
+ *
+ * Encrypted in the queue: the arguments may be a form with a password or a
+ * token in it (an off-site storage, a DNS provider).
  */
-class RunPanelTask implements ShouldQueue
+class RunPanelTask implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
 

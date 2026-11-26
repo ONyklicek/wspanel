@@ -8,6 +8,7 @@ use App\Actions\Firewall\SyncFirewall;
 use App\Actions\ManagePanelAccess;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Countries;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
@@ -16,6 +17,7 @@ use App\Wire\Resources\FirewallRuleResource;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
+use Livewire\Attributes\On;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireForms\Components\Radio;
 use NyonCode\WireForms\Components\Select;
@@ -77,14 +79,9 @@ class ListFirewallRules extends ListPage
                         }]),
                     TextInput::make('description')->label(__('Popis'))->maxLength(100)->rules(['max:100']),
                 ])
-                ->action(function (array $data) {
-                    try {
-                        app(ManageFirewall::class)->add($data);
-                        Toast::success(__('Pravidlo přidáno'));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Pravidlo se nepodařilo přidat'), $e->getMessage());
-                    }
-                }),
+                // ufw and the rules read back: in the background, the list once done.
+                ->action(fn (array $data) => AgentTasks::queue('fw.add', ['title' => __('Přidání pravidla firewallu'), 'done' => __('Pravidlo přidáno')],
+                    ManageFirewall::class, 'add', [$data], key: 'firewall')),
             Action::make('panelAccess')
                 ->label(__('Přístup k panelu'))
                 ->icon('outline:lock-closed')
@@ -148,4 +145,8 @@ class ListFirewallRules extends ListPage
                 }),
         ];
     }
+
+    /** A rule changed in the background: the list anew (rendering is enough). */
+    #[On('agent-task-finished')]
+    public function firewallTaskFinished(): void {}
 }

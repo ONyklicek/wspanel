@@ -7,6 +7,7 @@ use App\Actions\Sites\ManageEdge;
 use App\Enums\DnsProvider;
 use App\Livewire\Sites\CreateSitePage;
 use App\Livewire\Sites\SiteDns;
+use App\Models\AgentTask;
 use App\Models\DnsZone;
 use App\Models\MailDomain;
 use App\Models\Site;
@@ -97,7 +98,13 @@ class SiteDnsTest extends TestCase
 
         $page = $this->fillForm(Livewire::test(CreateSitePage::class), ['domain' => 'shop.example.com', 'mode' => 'classic', 'framework' => 'php', 'php_version' => '8.4']);
         $this->assertSame('zone', $page->get('data.dns')); // preselected: the panel has example.com
-        $page->call('save')->assertHasNoErrors()->assertNotified('DNS v zóně example.com');
+        $page->call('save')->assertHasNoErrors()->assertNotified('Spuštěno na pozadí');
+
+        // The server part ran in the background (the queue is synchronous here) and says how it went.
+        $task = AgentTask::query()->where('op', 'site.create')->sole();
+        $this->assertSame(AgentTask::DONE, $task->status);
+        $this->assertStringContainsString('DNS v zóně example.com', (string) $task->body);
+        $this->assertSame('active', Site::query()->where('domain', 'shop.example.com')->sole()->status->value);
 
         $this->assertContains('shop.example.com A', $this->set);
         $this->assertContains('_dmarc.shop.example.com TXT', $this->set);

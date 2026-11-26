@@ -3,19 +3,21 @@
 namespace App\Livewire\Dns;
 
 use App\Actions\Dns\ManageDnsZones;
-use App\Actions\Mail\ManageMail;
 use App\Enums\DnsProvider;
+use App\Livewire\Concerns\WatchesAgentTasks;
+use App\Models\AgentTask;
 use App\Models\DnsZone;
-use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
 use App\Services\Dns\LocalDns;
+use App\Support\AgentTasks;
 use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Dns\RecordForm;
 use App\Wire\Resources\DnsZoneResource;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use NyonCode\WireCore\Actions\ActionGroup;
 use NyonCode\WireCore\Foundation\Schema\Section;
 use NyonCode\WireCore\Infolists\Components\TextEntry;
@@ -27,7 +29,22 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
 
 class ViewDnsZone extends ViewPage
 {
+    use WatchesAgentTasks;
+
     protected static ?string $resource = DnsZoneResource::class;
+
+    protected function agentTaskSubject(): ?Model
+    {
+        $zone = $this->nativeRecord();
+
+        return $zone instanceof DnsZone ? $zone : null;
+    }
+
+    /** Records were added in the background: the list anew. */
+    protected function agentTaskFinished(AgentTask $task): void
+    {
+        $this->dispatch('dns-changed');
+    }
 
     public function zone(): DnsZone
     {
@@ -95,15 +112,12 @@ class ViewDnsZone extends ViewPage
                 ->color('gray')
                 ->requiresConfirmation()
                 ->modalDescription(__('Přidá záznamy, které zóna ještě nemá: A/AAAA na tento server, CAA, SPF, DKIM (je-li klíč) a DMARC. Existující záznamy se nemění.'))
+                // A record at a time at the provider: in the background, the records reload once done.
                 ->action(function () {
-                    $zone = $this->zone();
-                    try {
-                        $dkim = rescue(fn () => app(ManageMail::class)->dkim($zone->domain, 'get'), null, report: false);
-                        $added = app(ManageDnsZones::class)->addRecommended($zone, isset($dkim['name']) ? $dkim : null);
-                        Toast::success($added === [] ? __('Nic nechybělo') : __('Přidáno: ').implode(', ', $added));
+                    $task = AgentTasks::queue('dns.recommended', ['title' => __('Doporučené záznamy :zone', ['zone' => $this->zone()->domain]), 'done' => __('Doporučené záznamy doplněny')],
+                        ManageDnsZones::class, 'addRecommendedQueued', [$this->zone()], $this->zone());
+                    if (! $task->isRunning()) {
                         $this->dispatch('dns-changed');
-                    } catch (DnsException|AgentException $e) {
-                        Toast::error(__('Nepodařilo se'), $e->getMessage());
                     }
                 }),
             Action::make('dnssec')

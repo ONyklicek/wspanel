@@ -9,6 +9,7 @@ use App\Livewire\Server\ListServices;
 use App\Models\Service;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
+use App\Support\AgentTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use Illuminate\Support\Facades\Gate;
@@ -128,12 +129,20 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
     {
         return Action::make($verb)->label($label)->icon($icon)->color($color)
             ->action(function (Service $record) use ($verb, $label) {
-                try {
-                    app(ControlService::class)->handle($record, $verb);
-                    Toast::success("{$record->label()}: {$label} – hotovo");
-                } catch (AgentException $e) {
-                    Toast::error("{$record->label()}: {$label} selhalo", $e->getMessage());
+                // The panel's own units at once: the queue worker would be restarting itself.
+                if (self::isPanelUnit($record)) {
+                    try {
+                        app(ControlService::class)->handle($record, $verb);
+                        Toast::success("{$record->label()}: {$label} – hotovo");
+                    } catch (AgentException $e) {
+                        Toast::error("{$record->label()}: {$label} selhalo", $e->getMessage());
+                    }
+
+                    return;
                 }
+                // A database or a game may take long to stop: in the background.
+                AgentTasks::queue('service.'.$verb, ['title' => "{$record->label()}: {$label}", 'done' => "{$record->label()}: {$label} – hotovo"],
+                    ControlService::class, 'handle', [$record, $verb], $record);
             });
     }
 

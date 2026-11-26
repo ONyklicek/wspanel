@@ -131,6 +131,23 @@ class ManageDeploys
         return $this->agent->call('deploy.rollback', array_filter(['domain' => $site->domain, 'release' => $release]));
     }
 
+    /**
+     * rollback() as a background task (RunPanelTask): says how the site
+     * answers on the release it went back to.
+     *
+     * @return array{message: string, body: string}
+     *
+     * @throws AgentException
+     */
+    public function rollbackQueued(Site $site, string $release): array
+    {
+        $r = $this->rollback($site, $release);
+        $current = (string) ($r['current'] ?? $release);
+
+        return ['message' => __('Web běží na releasu :current', ['current' => $current]),
+            'body' => ($r['healthy'] ?? false) ? __('Odpovídá.') : __('Pozor, neodpovídá: ').($r['health_error'] ?? '')];
+    }
+
     /** @throws AgentException */
     public function envGet(Site $site): string
     {

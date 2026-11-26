@@ -34,6 +34,22 @@ class CreateSite
      */
     public function handle(array $data): Site
     {
+        $site = $this->register($data);
+        $this->provision($site);
+
+        return $site;
+    }
+
+    /**
+     * The quick half, while the person waits: the checks (ownership, package
+     * limits) and the site stored as pending. provision() does the rest.
+     *
+     * @param  array{domain: string, framework: string, mode?: string, php_version?: ?string, node_version?: ?string, python_version?: ?string, python_app?: ?string, tls?: string, client_id?: ?int}  $data
+     *
+     * @throws LimitReachedException
+     */
+    public function register(array $data): Site
+    {
         $data['mode'] ??= 'classic';
         $owner = Client::find(CurrentClient::id() ?? ($data['client_id'] ?? null));
         // A client's site never lands in (or above) another owner's domain.
@@ -42,23 +58,10 @@ class CreateSite
         }
         $this->limits->assertCanAdd($owner, 'sites');
         $this->limits->assertMode($owner, $data['mode'], $data['mode'] === 'classic' ? ($data['php_version'] ?? null) : null);
-        $params = ['domain' => $data['domain']] + Domains::runtimeParams($data);
+        $params = Domains::runtimeParams($data);
         $tls = $data['tls'] ?? (Domains::isInternal($data['domain']) ? 'internal' : 'auto');
-        if (in_array($tls, ['auto', 'internal'], true)) {
-            $params['tls'] = $tls;
-        }
 
-        if ($owner !== null) {
-            if ($owner->linux_group === null) {
-                CurrentClient::unrestricted(fn () => app(ManageClients::class)->applyToServer($owner));
-            }
-            $params['group'] = $owner->linux_group;
-            if ($owner->limit('fpm_children') !== null) {
-                $params['fpm_children'] = (int) $owner->limit('fpm_children');
-            }
-        }
-
-        $site = Site::create([
+        return Site::create([
             'domain' => $data['domain'],
             'mode' => $data['mode'],
             'framework' => $data['framework'],
@@ -67,17 +70,38 @@ class CreateSite
             'python_version' => $params['python_version'] ?? null,
             'python_app' => $params['python_app'] ?? null,
             'status' => SiteStatus::Pending,
-            'tls_mode' => $params['tls'] ?? 'auto',
+            'tls_mode' => in_array($tls, ['auto', 'internal'], true) ? $tls : 'auto',
             'client_id' => $owner?->id,
         ]);
+    }
+
+    /**
+     * The slow half: the agent sets the site up on the server (user, pool or
+     * app unit, edge, certificate). The site ends active, or failed with the
+     * error.
+     */
+    public function provision(Site $site): void
+    {
+        $params = ['domain' => $site->domain] + Domains::runtimeParams([
+            'mode' => $site->mode->value, 'framework' => $site->framework->value, 'php_version' => $site->php_version,
+            'node_version' => $site->node_version, 'python_version' => $site->python_version, 'python_app' => $site->python_app,
+        ]) + ['tls' => $site->tls_mode];
+        $owner = $site->client;
 
         try {
+            if ($owner !== null) {
+                if ($owner->linux_group === null) {
+                    CurrentClient::unrestricted(fn () => app(ManageClients::class)->applyToServer($owner));
+                }
+                $params['group'] = $owner->linux_group;
+                if ($owner->limit('fpm_children') !== null) {
+                    $params['fpm_children'] = (int) $owner->limit('fpm_children');
+                }
+            }
             $out = $this->agent->call('site.create', $params);
             $site->update(Site::attributesFromAgent($out) + ['status' => SiteStatus::Active, 'last_error' => null]);
         } catch (AgentException $e) {
             $site->update(['status' => SiteStatus::Failed, 'last_error' => $e->getMessage()]);
         }
-
-        return $site;
     }
 }

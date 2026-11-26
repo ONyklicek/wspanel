@@ -3,6 +3,7 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManageMirror;
+use App\Actions\System\ManagePublicAddress;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
@@ -63,7 +64,7 @@ class MirrorPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['mirror'];
+        return ['mirror', 'mirror-windns'];
     }
 
     protected function backgroundJobFinished(string $key, bool $ok): void
@@ -164,7 +165,7 @@ class MirrorPage extends Page
                     TextInput::make('peer_address')->label(__('Adresa zrcadla (odkud se bude připojovat)'))->required()->placeholder('192.168.1.20')
                         ->helperText(__('Adresa zrcadla v LAN (u VM v Hyper-V její vlastní IP).'))->rules(['required', 'max:253']),
                     TextInput::make('lan_address')->label(__('IP pro lokální DNS (výchozí: adresa výše)'))->rules(['nullable', 'ip']),
-                    TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->rules(['nullable', 'ipv4']),
+                    TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->default(fn () => self::publicIpv4())->rules(['nullable', 'ipv4']),
                     TextInput::make('port')->label(__('Port zrcadla'))->integer()->default(7443)->rules(['nullable', 'integer', 'between:1024,65535']),
                 ])
                 ->action(function (array $data) use ($m) {
@@ -192,18 +193,11 @@ class MirrorPage extends Page
                         ->helperText(__('Adresa tohoto serveru v LAN (u VM v Hyper-V její vlastní IP).'))->rules(['required', 'max:253']),
                     TextInput::make('local_port')->label(__('Port zrcadla na tomto serveru'))->integer()->default(7443)->rules(['nullable', 'integer', 'between:1024,65535']),
                     TextInput::make('lan_address')->label(__('IP pro lokální DNS, až bude primárem'))->rules(['nullable', 'ip']),
-                    TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->rules(['nullable', 'ipv4']),
+                    TextInput::make('public_ipv4')->label(__('Veřejná IPv4 (pro Cloudflare, nepovinné)'))->default(fn () => self::publicIpv4())->rules(['nullable', 'ipv4']),
                 ])
-                ->action(function (array $data) use ($m) {
-                    try {
-                        $data['code'] = strtoupper(trim((string) $data['code']));
-                        $out = $m()->join($data);
-                        Toast::success(__('Připojeno jako zrcadlo'), $out['warning'] ?? __('První synchronizace začíná.'));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Připojení se nepodařilo'), $e->getMessage());
-                    }
-                    $this->refreshState();
-                }),
+                // Dialing the primary and the pairing exchange: in the background.
+                ->action(fn (array $data) => $this->queueBackgroundJob('mirror', ['title' => __('Připojení jako zrcadlo'), 'done' => __('Připojeno jako zrcadlo')],
+                    ManageMirror::class, 'joinQueued', [['code' => strtoupper(trim((string) $data['code']))] + $data])),
             Action::make('pairingCode')
                 ->label(__('Nový párovací kód'))
                 ->icon('outline:key')
@@ -263,7 +257,9 @@ class MirrorPage extends Page
                 ->visible($role === 'fenced')
                 ->requiresConfirmation()
                 ->modalDescription(__('Druhý server je teď primár. Tento server se stane jeho zrcadlem: databáze se znovu naplní z primáru (co měl jen tento server, se nejdřív uloží stranou do /var/backups/wspanel/mirror), soubory se srovnají s primárem (rozdíly se uloží stranou). Pak půjde plánovaně přepnout zpět.'))
-                ->action(fn () => $run(fn () => $m()->rejoin(), __('Server je teď zrcadlo'), __('Připojení zpět nejde'))),
+                // Stopping the units and asking the primary: in the background.
+                ->action(fn () => $this->queueBackgroundJob('mirror', ['title' => __('Připojení zpět jako zrcadlo'), 'done' => __('Server je teď zrcadlo')],
+                    ManageMirror::class, 'rejoin')),
             Action::make('unfence')
                 ->label(__('Znovu obsluhovat weby'))
                 ->icon('outline:play')
@@ -374,14 +370,8 @@ class MirrorPage extends Page
                 ->icon('outline:beaker')
                 ->color('gray')
                 ->visible(! empty($this->state['windns']['trusted']))
-                ->action(function () use ($m) {
-                    try {
-                        $out = $m()->winDnsTest();
-                        Toast::success(__('Windows DNS odpovídá'), __('Zóna :zone: :n záznamů A/AAAA', ['zone' => $out['zone'], 'n' => count($out['records'] ?? [])]));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Windows DNS neodpovídá'), $e->getMessage());
-                    }
-                }),
+                ->action(fn () => $this->queueBackgroundJob('mirror-windns', ['title' => __('Zkouška Windows DNS'), 'done' => __('Windows DNS odpovídá')],
+                    ManageMirror::class, 'winDnsTestQueued')),
             Action::make('unpair')
                 ->label(__('Zrušit zrcadlo'))
                 ->icon('outline:trash')
@@ -391,7 +381,17 @@ class MirrorPage extends Page
                 ->form([
                     TextInput::make('confirm')->label(__('ID tohoto serveru: :id', ['id' => $id]))->required()->rules(['required', 'in:'.$id]),
                 ])
-                ->action(fn () => $run(fn () => $m()->unpair($id), __('Zrcadlo zrušeno'), __('Zrušení nejde'))),
+                // Stopping replication (PostgreSQL's promote may wait up to two minutes): in the background.
+                ->action(fn () => $this->queueBackgroundJob('mirror', ['title' => __('Rušení zrcadla'), 'done' => __('Zrcadlo zrušeno')],
+                    ManageMirror::class, 'unpair', [$id])),
         ];
+    }
+
+    /** This server's public IPv4 as far as the panel knows (Server → Systém), or what the internet sees behind NAT. */
+    private static function publicIpv4(): string
+    {
+        $public = app(ManagePublicAddress::class);
+
+        return $public->internal() ? $public->detected()['ipv4'] : $public->current()['ipv4'];
     }
 }

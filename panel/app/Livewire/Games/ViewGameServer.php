@@ -10,6 +10,7 @@ use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\AgentTask;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\PageActions;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
@@ -110,7 +111,6 @@ class ViewGameServer extends ViewPage
     {
         try {
             app(ManageGameServers::class)->fetchOffsite($this->server(), $file);
-            Toast::success(__('Kopie stažena zpět'), __('Je v seznamu záloh, odtud ji obnovíte.'));
         } catch (AgentException $e) {
             Toast::error(__('Stažení selhalo'), $e->getMessage());
         }
@@ -215,14 +215,11 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')
                 ->requiresConfirmation()
                 ->modalDescription(__('Server se zastaví a smaže i se světem a zálohami. Port se ve firewallu zavře.'))
+                // Stopping it (the world is saved) and removing it: in the background, the list meanwhile.
                 ->action(function () use ($server) {
-                    try {
-                        app(ManageGameServers::class)->delete($server());
-                        Toast::success(__('Herní server smazán'));
-                        $this->redirect(GameServerResource::url('index'));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Smazání selhalo'), $e->getMessage());
-                    }
+                    AgentTasks::queue('game.delete', ['title' => __('Mazání :name', ['name' => $server()->name]), 'done' => __('Herní server smazán')],
+                        ManageGameServers::class, 'delete', [$server()]);
+                    $this->redirect(GameServerResource::url('index'));
                 }),
         ], primary: null);
     }

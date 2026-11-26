@@ -9,13 +9,13 @@ use App\Livewire\Games\GamePlayers;
 use App\Livewire\Games\GamePlugins;
 use App\Livewire\Games\GameServerFiles;
 use App\Livewire\Games\GameServerSettings;
+use App\Livewire\Games\GameServerStatus;
 use App\Livewire\Games\ListGameServers;
 use App\Livewire\Games\ViewGameServer;
 use App\Models\GameServer;
-use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Features;
 use App\Support\Limits;
-use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
 use App\Wire\Sites\SiteFields;
@@ -195,17 +195,7 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
     private static function control(string $verb, string $label, string $icon, string $color): Action
     {
         return Action::make($verb)->label($label)->icon($icon)->color($color)->onlyIcon()->tooltip($label)
-            ->action(function (GameServer $record) use ($verb) {
-                try {
-                    app(ManageGameServers::class)->control($record, $verb);
-                    Toast::success(match ($verb) {
-                        'start' => __(':name se spouští', ['name' => $record->name]),
-                        'stop' => __(':name zastaven', ['name' => $record->name]),
-                        default => __(':name se restartuje', ['name' => $record->name]),
-                    });
-                } catch (AgentException $e) {
-                    Toast::error(__('Akce selhala'), $e->getMessage());
-                }
-            });
+            ->action(fn (GameServer $record) => AgentTasks::queue('game.'.$verb, GameServerStatus::controlText($record->name, $verb),
+                ManageGameServers::class, 'control', [$record, $verb], $record));
     }
 }

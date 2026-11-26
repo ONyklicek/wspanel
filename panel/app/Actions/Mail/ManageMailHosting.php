@@ -156,6 +156,21 @@ class ManageMailHosting
     }
 
     /**
+     * addDomain() as a background task (RunPanelTask): the mail configs, the
+     * maps and the DKIM key (which restarts OpenDKIM).
+     *
+     * @return array{message: string, body: string}
+     *
+     * @throws AgentException
+     */
+    public function addDomainQueued(string $domain): array
+    {
+        $record = $this->addDomain($domain);
+
+        return ['message' => __('Pošta pro :domain zřízena', ['domain' => $record->domain]), 'body' => __('Založte schránky. MX záznam: ').self::mailHost()];
+    }
+
+    /**
      * Switches the domain's webmail (webmail.<domain>) and the addresses mail
      * clients read their settings from (autoconfig./autodiscover.<domain>).
      *

@@ -7,7 +7,7 @@ use App\Enums\SiteMode;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
-use App\Support\Toast;
+use App\Support\AgentTasks;
 use App\Wire\Actions\Action;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
@@ -120,12 +120,9 @@ class SiteProcesses extends Component
             ->color($color)
             ->action(function ($record) use ($verb, $label) {
                 $label = $label instanceof \Closure ? $label($record) : $label;
-                try {
-                    app(ControlSite::class)->control($this->getSite(), $record->kind, $record->name, $verb);
-                    Toast::success("{$record->label}: {$label} – hotovo");
-                } catch (AgentException $e) {
-                    Toast::error("{$record->label}: {$label} selhalo", $e->getMessage());
-                }
+                // A Node or Python app may take long to stop and start: in the background.
+                AgentTasks::queue('site.'.$verb, ['title' => "{$record->label}: {$label}", 'done' => "{$record->label}: {$label} – hotovo"],
+                    ControlSite::class, 'control', [$this->getSite(), (string) $record->kind, (string) $record->name, $verb], $this->getSite());
             });
     }
 

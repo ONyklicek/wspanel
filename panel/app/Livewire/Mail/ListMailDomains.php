@@ -6,11 +6,13 @@ use App\Actions\Mail\ManageMailHosting;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Resources\MailDomainResource;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\On;
 use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -42,15 +44,9 @@ class ListMailDomains extends ListPage
                         ->helperText(__('Doména některého z vašich webů.'))
                         ->rules([fn () => Rule::in(Site::query()->pluck('domain')->all())]),
                 ])
-                ->action(function (array $data) {
-                    try {
-                        $d = app(ManageMailHosting::class)->addDomain($data['domain']);
-                        Toast::success(__('Doména přidána'), __('Založte v ní schránky. MX záznam: ').ManageMailHosting::mailHost());
-                        $this->redirect(MailDomainResource::url('view', $d));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Doménu se nepodařilo přidat'), $e->getMessage());
-                    }
-                }),
+                // The mail configs and OpenDKIM restart: in the background, the list shows it once done.
+                ->action(fn (array $data) => AgentTasks::queue('mail.domain.add', ['title' => __('Zřízení pošty pro :domain', ['domain' => $data['domain']]), 'done' => __('Doména přidána')],
+                    ManageMailHosting::class, 'addDomainQueued', [(string) $data['domain']], key: 'mail-domain:'.$data['domain'])),
             Action::make('filters')
                 ->label(__('Ochrana pošty'))
                 ->icon('outline:shield-check')
@@ -95,4 +91,8 @@ class ListMailDomains extends ListPage
                 }),
         ];
     }
+
+    /** A domain was added in the background: the list anew (rendering is enough). */
+    #[On('agent-task-finished')]
+    public function mailTaskFinished(): void {}
 }

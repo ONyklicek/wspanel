@@ -11,6 +11,7 @@ use App\Enums\SiteMode;
 use App\Forms\Components\CodeIde;
 use App\Livewire\Pages\IntegrationsPage;
 use App\Livewire\Sites\Concerns\IsSiteTab;
+use App\Models\AgentTask;
 use App\Models\Deployment;
 use App\Models\GithubConnection;
 use App\Models\Site;
@@ -18,6 +19,7 @@ use App\Models\WebhookDelivery;
 use App\Services\Agent\AgentException;
 use App\Services\GitHub\GitHubApp;
 use App\Services\GitHub\GitHubException;
+use App\Support\AgentTasks;
 use App\Support\ConsoleText;
 use App\Support\Lang;
 use App\Support\PublicAddress;
@@ -108,6 +110,12 @@ class SiteDeploy extends ViewPage
     public function deliveries(): Collection
     {
         return WebhookDelivery::query()->where('site_id', $this->site()->id)->latest('id')->limit(10)->get();
+    }
+
+    /** A task of the site ended (a rollback, a deploy): the history as it is now. */
+    protected function agentTaskFinished(AgentTask $task): void
+    {
+        $this->refreshHistory();
     }
 
     public function refreshHistory(): void
@@ -469,8 +477,10 @@ class SiteDeploy extends ViewPage
             ->action(function (array $data) {
                 try {
                     app(ManageDeploys::class)->configure($this->site(), $data + ['migrate' => false, 'assets' => false]);
+                    // OPcache reloads the pool: in the background.
                     if ($this->site()->mode === SiteMode::Classic && (bool) ($data['opcache_production'] ?? false) !== $this->opcacheProduction) {
-                        app(ManageDeploys::class)->opcache($this->site(), (bool) $data['opcache_production']);
+                        AgentTasks::queue('site.opcache', ['title' => __('OPcache :domain', ['domain' => $this->site()->domain]), 'done' => __('OPcache nastaveno')],
+                            ManageDeploys::class, 'opcache', [$this->site(), (bool) $data['opcache_production']], $this->site());
                     }
                     $this->refreshHistory();
                     Toast::success(__('Nastavení deploye uloženo'));
@@ -654,15 +664,14 @@ class SiteDeploy extends ViewPage
                     ->default($this->releases[array_search($this->current, $this->releases, true) - 1] ?? null)
                     ->required(),
             ])
+            // Restarting the processes and waiting for the site to answer: in the background.
             ->action(function (array $data) {
-                try {
-                    $r = app(ManageDeploys::class)->rollback($this->site(), $data['release']);
+                $task = AgentTasks::queue('deploy.rollback', [
+                    'title' => __('Rollback :domain na :release', ['domain' => $this->site()->domain, 'release' => $data['release']]),
+                    'done' => __('Rollback dokončen'),
+                ], ManageDeploys::class, 'rollbackQueued', [$this->site(), (string) $data['release']], $this->site());
+                if (! $task->isRunning()) {
                     $this->refreshHistory();
-                    $r['healthy']
-                        ? Toast::success(__('Web běží na releasu :current', ['current' => $r['current']]), __('Odpovídá.'))
-                        : Toast::warning(__('Web běží na releasu :current', ['current' => $r['current']]), __('Pozor, neodpovídá: ').$r['health_error']);
-                } catch (AgentException $e) {
-                    Toast::error(__('Rollback selhal'), $e->getMessage());
                 }
             });
     }

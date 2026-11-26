@@ -77,7 +77,7 @@ class DatabaseServersPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['engine-install', 'db-instance'];
+        return ['engine-install', 'db-instance', 'db-access'];
     }
 
     /** The new engine shows here, in the create form and in the services. */
@@ -87,30 +87,22 @@ class DatabaseServersPage extends Page
         $this->refreshStatus();
     }
 
-    /** Start, stop or restart a dedicated server. */
+    /** Start, stop or restart a dedicated server: in the background (a database may take long to stop). */
     public function controlInstance(int $id, string $action): void
     {
         if (! in_array($action, ['start', 'stop', 'restart'], true)) {
             return;
         }
-        try {
-            app(ManageDatabaseInstances::class)->control($id, $action);
-            Toast::success(['start' => __('Server spuštěn'), 'stop' => __('Server zastaven'), 'restart' => __('Server restartován')][$action]);
-        } catch (AgentException $e) {
-            Toast::error(__('Akce selhala'), $e->getMessage());
-        }
-        $this->refreshStatus();
+        $this->queueBackgroundJob('db-instance', [
+            'title' => ['start' => __('Spuštění vyhrazeného serveru'), 'stop' => __('Zastavení vyhrazeného serveru'), 'restart' => __('Restart vyhrazeného serveru')][$action],
+            'done' => ['start' => __('Server spuštěn'), 'stop' => __('Server zastaven'), 'restart' => __('Server restartován')][$action],
+        ], ManageDatabaseInstances::class, 'control', [$id, $action]);
     }
 
     public function deleteInstance(int $id): void
     {
-        try {
-            app(ManageDatabaseInstances::class)->delete($id);
-            Toast::success(__('Vyhrazený server smazán'));
-        } catch (AgentException $e) {
-            Toast::error(__('Vyhrazený server se nepodařilo smazat'), $e->getMessage());
-        }
-        $this->refreshStatus();
+        $this->queueBackgroundJob('db-instance', ['title' => __('Mazání vyhrazeného serveru'), 'done' => __('Vyhrazený server smazán')],
+            ManageDatabaseInstances::class, 'delete', [$id]);
     }
 
     public function instanceLimitsAction(int $id): Action
@@ -393,21 +385,8 @@ class DatabaseServersPage extends Page
                     ->hiddenWhen('access', ManageDatabaseServers::ACCESS_LOCAL),
             ])
             ->modalSubmitActionLabel(__('Uložit'))
-            ->action(function (array $data) use ($engine, $label, $port) {
-                try {
-                    $out = app(ManageDatabaseServers::class)->setAccess($engine, $data['access'], ManageDatabaseServers::parseAllow($data['allow'] ?? ''));
-                    match ($data['access']) {
-                        ManageDatabaseServers::ACCESS_LOCAL => Toast::success(__(':label je dostupná jen z tohoto serveru', ['label' => $label]), __('Port :port je zavřený.', ['port' => $port])),
-                        ManageDatabaseServers::ACCESS_ANYWHERE => Toast::warning(__(':label je dostupná z internetu', ['label' => $label]), __('Port :port je otevřený všem. Připojení jen přes TLS.', ['port' => $port])),
-                        default => Toast::success(__(':label je dostupná z vybraných adres', ['label' => $label]), implode(', ', $out['allow'] ?? [])),
-                    };
-                    if (isset($out['warning'])) {
-                        Toast::warning(__('Ochrana proti hádání hesel'), (string) $out['warning']);
-                    }
-                } catch (AgentException $e) {
-                    Toast::error(__('Nastavení se nepodařilo uložit'), $e->getMessage());
-                }
-                $this->refreshStatus();
-            });
+            // The certificate and a restart of the database server: in the background.
+            ->action(fn (array $data) => $this->queueBackgroundJob('db-access', ['title' => __('Přístup k :label', ['label' => $label]), 'done' => __('Uloženo')],
+                ManageDatabaseServers::class, 'setAccessQueued', [$engine, (string) $data['access'], ManageDatabaseServers::parseAllow($data['allow'] ?? ''), $label, $port]));
     }
 }

@@ -173,6 +173,35 @@ class ManageMirror
         return $this->agent->call('mirror.windns_test');
     }
 
+    /**
+     * join() as a background task (RunPanelTask).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{message: string, body: string}
+     *
+     * @throws AgentException
+     */
+    public function joinQueued(array $data): array
+    {
+        $out = $this->join($data);
+
+        return ['message' => __('Připojeno jako zrcadlo'), 'body' => (string) ($out['warning'] ?? __('První synchronizace začíná.'))];
+    }
+
+    /**
+     * winDnsTest() as a background task (RunPanelTask): an SSH round trip to Windows.
+     *
+     * @return array{message: string, body: string}
+     *
+     * @throws AgentException
+     */
+    public function winDnsTestQueued(): array
+    {
+        $out = $this->winDnsTest();
+
+        return ['message' => __('Windows DNS odpovídá'), 'body' => __('Zóna :zone: :n záznamů A/AAAA', ['zone' => $out['zone'], 'n' => count($out['records'] ?? [])])];
+    }
+
     /** @throws AgentException */
     public function winDnsRemove(): array
     {

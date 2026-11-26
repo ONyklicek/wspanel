@@ -5,6 +5,7 @@ namespace App\Livewire\Games;
 use App\Actions\Games\ManageGameServers;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Toast;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
@@ -74,6 +75,14 @@ class GameOptions extends Component
             ->map(fn ($v) => is_bool($v) ? ($v ? '1' : '0') : (string) $v)->all();
         $secrets = collect($this->secrets)->only($keys->filter(fn ($t) => $t === 'secret')->keys())
             ->map(fn ($v) => trim((string) $v))->filter()->all();
+        if ($restart) {
+            AgentTasks::queue('game.restart', ['title' => __('Uložení nastavení a restart :name', ['name' => $this->server()->name]), 'done' => __('Uloženo, server se restartuje')], ManageGameServers::class,
+                'setOptions', [$this->server(), $values, $secrets, [], true], $this->server());
+            $this->dispatch('game-refresh');
+            $this->load();
+
+            return;
+        }
         try {
             app(ManageGameServers::class)->setOptions($this->server(), $values, $secrets, restart: $restart);
             Toast::success(__('Nastavení uloženo'), $restart ? __('Server se restartuje.') : __('Platí po příštím restartu serveru.'));

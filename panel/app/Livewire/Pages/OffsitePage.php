@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManageOffsite;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Lang;
 use App\Support\Toast;
@@ -18,6 +19,7 @@ use NyonCode\WirePanels\Pages\Page;
 class OffsitePage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.offsite';
 
@@ -40,6 +42,16 @@ class OffsitePage extends Page
     public array $status = ['configured' => false, 'has_secret' => false, 'config' => []];
 
     public ?string $error = null;
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['offsite-save'];
+    }
+
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->refreshStatus();
+    }
 
     public function mount(): void
     {
@@ -211,15 +223,11 @@ class OffsitePage extends Page
                         ->helperText(__('Starší kopie se mažou po každém nahrání; nejnovější kopie zůstává vždy.')),
                 ])
                 ->modalSubmitActionLabel(__('Otestovat a uložit'))
-                ->action(function (array $data) {
-                    try {
-                        app(ManageOffsite::class)->save($data);
-                        Toast::success($data['enabled'] ? __('Úložiště funguje, nové zálohy se budou kopírovat') : __('Uloženo, kopírování je vypnuté'));
-                    } catch (AgentException $e) {
-                        Toast::error(__('Úložiště se nepodařilo nastavit'), $e->getMessage());
-                    }
-                    $this->refreshStatus();
-                }),
+                // The test round trip to the storage (and smbclient the first time): in the background.
+                ->action(fn (array $data) => $this->queueBackgroundJob('offsite-save', [
+                    'title' => __('Test a uložení úložiště záloh'),
+                    'done' => $data['enabled'] ? __('Úložiště funguje, nové zálohy se budou kopírovat') : __('Uloženo, kopírování je vypnuté'),
+                ], ManageOffsite::class, 'save', [$data])),
         ];
     }
 }

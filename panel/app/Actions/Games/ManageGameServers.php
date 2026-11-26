@@ -379,10 +379,21 @@ class ManageGameServers
         }
     }
 
-    /** Downloads an off-site copy back beside the local backups. @throws AgentException */
-    public function fetchOffsite(GameServer $server, string $file): void
+    /**
+     * Downloads an off-site copy back beside the local backups (an agent job,
+     * followed like a backup: the list reloads once it is there).
+     *
+     * @throws AgentException
+     */
+    public function fetchOffsite(GameServer $server, string $file): AgentTask
     {
-        $this->agent->call('offsite.fetch', ['game' => $server->id, 'file' => $file]);
+        $job = $this->agent->call('offsite.fetch', ['game' => $server->id, 'file' => $file]);
+
+        return AgentTasks::start($job, 'offsite.fetch', [
+            'title' => __('Stažení kopie :file', ['file' => $file]),
+            'done' => __('Kopie stažena zpět'),
+            'body' => __('Je v seznamu záloh, odtud ji obnovíte.'),
+        ], subject: $server);
     }
 
     /**

@@ -86,8 +86,13 @@ final class AgentTasks
             Livewire::current()->dispatch('agent-task-started');
         }
         RunPanelTask::dispatch($task->id, $class, $method, $arguments);
+        $task->refresh();
+        // Ended already (a synchronous queue): said at once, as on the page.
+        if (! $task->isRunning() && Livewire::current() instanceof Component) {
+            self::notify($task);
+        }
 
-        return $task->refresh();
+        return $task;
     }
 
     /**

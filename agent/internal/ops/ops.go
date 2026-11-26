@@ -146,6 +146,7 @@ func Registry() map[string]Op {
 		{"deploy.rollback", true, deployRollback},
 		{"deploy.remote_ref", false, deployRemoteRef},
 		{"panel.access", true, panelAccess},
+		{"panel.public_address", true, panelPublicAddress},
 		{"env.get", false, envGet},
 		{"env.set", true, envSet},
 		{"env.vars", false, envVars},

@@ -1,5 +1,6 @@
 @php($origin = ['builtin' => [__('vestavěný'), 'gray'], 'catalog' => [__('z katalogu WSPanelu'), 'primary'], 'local' => [__('vlastní'), 'warning']])
 <div class="space-y-6" wire:init="loadCatalog">
+    @include('partials.background-jobs')
     @if ($error)
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif

@@ -6,6 +6,7 @@ use App\Actions\Games\ManageGameServers;
 use App\Enums\Game;
 use App\Livewire\Games\Concerns\IsGameTab;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\FactorioSettings;
 use App\Support\MinecraftProperties;
 use App\Support\Toast;
@@ -137,6 +138,14 @@ class GameServerSettings extends ViewPage
 
             return;
         }
+        // A restart waits for the world to be saved: in the background.
+        if ($restart) {
+            AgentTasks::queue('game.restart', ['title' => __('Uložení nastavení a restart :name', ['name' => $this->server()->name]), 'done' => __('Uloženo, server se restartuje')], ManageGameServers::class,
+                $changed !== [] ? 'setProperties' : 'control', $changed !== [] ? [$this->server(), $changed, true] : [$this->server(), 'restart'], $this->server());
+            $this->load();
+
+            return;
+        }
         try {
             if ($changed !== []) {
                 app(ManageGameServers::class)->setProperties($this->server(), $changed, $restart);
@@ -228,6 +237,14 @@ class GameServerSettings extends ViewPage
         }
         if ($values === [] && $secrets === [] && ! $restart) {
             Toast::warning(__('Nic se nezměnilo'));
+
+            return;
+        }
+        if ($restart) {
+            AgentTasks::queue('game.restart', ['title' => __('Uložení nastavení a restart :name', ['name' => $this->server()->name]), 'done' => __('Uloženo, server se restartuje')], ManageGameServers::class,
+                'setFactorioSettings', [$this->server(), $values, $secrets, [], true], $this->server());
+            $this->newToken = $this->newGamePassword = '';
+            $this->loadFactorio();
 
             return;
         }

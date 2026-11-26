@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Concerns;
 
+use App\Support\AgentTasks;
 use App\Support\BackgroundJobs;
 use Livewire\Attributes\On;
 
@@ -42,6 +43,22 @@ trait WatchesBackgroundJobs
     protected function startBackgroundJob(string $key, mixed $job, array $text): void
     {
         $task = BackgroundJobs::start($key, is_array($job) ? $job : [], $text);
+        if (! $task->isRunning()) {
+            $this->backgroundJobFinished($key, $task->status === 'done');
+        }
+        $this->loadBackgroundJobs();
+    }
+
+    /**
+     * A panel operation of this page in the background (the queue worker):
+     * a method of an action class, with its arguments (models by key).
+     *
+     * @param  array{title: string, done: string, body?: string|null}  $text
+     * @param  list<mixed>  $arguments
+     */
+    protected function queueBackgroundJob(string $key, array $text, string $class, string $method, array $arguments = []): void
+    {
+        $task = AgentTasks::queue($key, $text, $class, $method, $arguments, key: $key);
         if (! $task->isRunning()) {
             $this->backgroundJobFinished($key, $task->status === 'done');
         }

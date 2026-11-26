@@ -4,6 +4,7 @@ namespace App\Actions\Dns;
 
 use App\Actions\Mail\ManageMail;
 use App\Actions\Mail\ManageMailHosting;
+use App\Actions\System\ManagePublicAddress;
 use App\Enums\DnsProvider;
 use App\Livewire\Sites\SiteMail;
 use App\Models\DnsZone;
@@ -184,6 +185,10 @@ class ManageSiteDns
         if ($have === []) {
             return 'missing';
         }
+        // Inside the network an internal DNS server answers with this server's LAN address.
+        if (in_array($r['type'], ['A', 'AAAA'], true) && app(ManagePublicAddress::class)->pointsHere($have, (string) ($r['records'][0] ?? ''))) {
+            return 'ok';
+        }
         $want = array_map(fn (array $f) => $f['value'], array_map(fn (string $v) => self::fields($r['type'], $v), $r['records']));
         $norm = fn (array $l) => array_map(fn ($v) => strtolower(rtrim(trim((string) $v, '" '), '.')), $l);
 
@@ -243,6 +248,21 @@ class ManageSiteDns
             str_ends_with($name, '.'.$domain) => substr($name, 0, -strlen($domain) - 1),
             default => $name,
         };
+    }
+
+    /**
+     * fill() as a background task (RunPanelTask), said as a sentence.
+     *
+     * @return array{message: string, body: string|null}
+     *
+     * @throws DnsException
+     */
+    public function fillQueued(Site $site): array
+    {
+        $out = $this->fill($site);
+
+        return ['message' => $out['added'] === [] ? __('Nic nechybělo') : __('Přidáno: :list', ['list' => implode(', ', $out['added'])]),
+            'body' => $out['kept'] === [] ? null : __('Ponecháno (míří jinam, změňte v zóně): :list', ['list' => implode(', ', $out['kept'])])];
     }
 
     /**

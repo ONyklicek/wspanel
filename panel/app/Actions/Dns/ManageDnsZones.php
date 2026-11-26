@@ -2,6 +2,7 @@
 
 namespace App\Actions\Dns;
 
+use App\Actions\Mail\ManageMail;
 use App\Enums\DnsProvider;
 use App\Models\DnsZone;
 use App\Models\Site;
@@ -48,6 +49,21 @@ class ManageDnsZones
         }
 
         return $zone;
+    }
+
+    /**
+     * addRecommended() as a background task (RunPanelTask): a provider over
+     * HTTP (Cloudflare) answers each record on its own. With the mail's
+     * DKIM key when there is one.
+     *
+     * @return array{message: string, body: string|null}
+     */
+    public function addRecommendedQueued(DnsZone $zone): array
+    {
+        $dkim = rescue(fn () => app(ManageMail::class)->dkim($zone->domain, 'get'), null, report: false);
+        $added = $this->addRecommended($zone, isset($dkim['name'], $dkim['value']) ? ['name' => $dkim['name'], 'value' => $dkim['value']] : null);
+
+        return ['message' => $added === [] ? __('Nic nechybělo') : __('Doporučené záznamy doplněny'), 'body' => $added === [] ? null : __('Přidáno: ').implode(', ', $added)];
     }
 
     /**

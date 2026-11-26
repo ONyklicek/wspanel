@@ -50,13 +50,25 @@ tabulka Procesy na detailu webu.
 - **název serveru** (hostname; zapíše i `/etc/hosts` a na cloudových serverech
   zařídí, aby ho cloud-init po restartu nepřepsal),
 - **časové pásmo** a **synchronizaci času** (NTP; když chybí
-  systemd-timesyncd, doinstaluje ho),
+  systemd-timesyncd, doinstaluje ho; běží na pozadí),
 - **swap**: velikost swapového souboru panelu (0 = žádný) a swappiness;
-  swap, který panel nevytvořil, jen ukáže,
+  swap, který panel nevytvořil, jen ukáže (změna běží na pozadí),
+- **veřejnou adresu**: IPv4 (a IPv6), na kterou míří všechny navrhované DNS
+  záznamy webů, pošty a nameserverů. Za NATem (server ve vnitřní síti) to
+  není adresa rozhraní, ale veřejná adresa routeru: panel ji zjistí dotazem
+  ven (`cloudflare.com/cdn-cgi/trace`), upozorní, když záznamy míří na
+  vnitřní adresu, a nabídne tlačítko **Použít …**. Na routeru pak přesměrujte
+  porty 80 a 443 (pošta 25, 465, 587, 993; DNS 53) na server. Adresa patří
+  jen tomuto serveru (zrcadlo má svou) a upgrade ji nepřepíše,
 - **síť**: rozhraní, adresy, brána a DNS servery – jen pro čtení,
 - **zdraví disků (SMART)**: stav, teplota, přemapované sektory, opotřebení
   SSD. Sledování (smartmontools) se instaluje až tlačítkem; u virtuálních
   serverů disky SMART obvykle nehlásí.
+
+Kontrola **DNS serveru** se ptá přes DNS server, který server používá. Ve
+vnitřní síti s vlastním DNS (Windows DNS, split horizon) dostane LAN adresu
+tohoto serveru (u zrcadla aktivního uzlu) místo veřejné: i ta se počítá jako
+„míří sem“, stejně jako v záložce DNS webu.
 
 ## Co dělat při vysokém vytížení
 

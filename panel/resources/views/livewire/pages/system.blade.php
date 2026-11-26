@@ -5,6 +5,19 @@
         <x-wire::callout color="danger" :heading="__('Agent neodpovídá')">{{ $error }}</x-wire::callout>
     @endif
 
+    <x-wire::section :heading="__('Veřejná adresa')" :description="__('Kam míří navrhované DNS záznamy (weby, pošta, nameservery). Mění se tlačítkem Veřejná adresa nahoře.')">
+        @if ($internal && $seen['ipv4'] !== '')
+            <x-wire::callout color="warning" :heading="__('Server je ve vnitřní síti (za NATem)')" class="mb-3">
+                {{ __('Záznamy by mířily na :local, ale internet server vidí z :ip. Na routeru přesměrujte porty 80 a 443 (pošta 25, 465, 587, 993; DNS 53) na tento server.', ['local' => $address['ipv4'] ?: '—', 'ip' => $seen['ipv4']]) }}
+                <div class="mt-2"><x-wire::button size="xs" wire:click="useSeenAddress" wire:loading.attr="disabled" wire:target="useSeenAddress">{{ __('Použít :ip', ['ip' => $seen['ipv4']]) }}</x-wire::button></div>
+            </x-wire::callout>
+        @endif
+        <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <div><dt class="text-xs text-gray-500">IPv4</dt><dd class="font-mono">{{ $address['ipv4'] ?: '—' }}</dd></div>
+            <div><dt class="text-xs text-gray-500">IPv6</dt><dd class="font-mono">{{ $address['ipv6'] ?: '—' }}</dd></div>
+        </dl>
+    </x-wire::section>
+
     @if ($settings)
         <x-wire::section :heading="__('Název a čas')">
             <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">

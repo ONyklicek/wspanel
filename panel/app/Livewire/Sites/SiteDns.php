@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
+use App\Support\AgentTasks;
 use App\Support\Domains;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
@@ -46,15 +47,11 @@ class SiteDns extends ViewPage
         return $this->nativeRecord();
     }
 
+    /** A record at a time at the provider (Cloudflare over HTTP): in the background. */
     public function fillDns(): void
     {
-        try {
-            $out = app(ManageSiteDns::class)->fill($this->site());
-            Toast::success($out['added'] === [] ? __('Nic nechybělo') : __('Přidáno: :list', ['list' => implode(', ', $out['added'])]),
-                $out['kept'] === [] ? null : __('Ponecháno (míří jinam, změňte v zóně): :list', ['list' => implode(', ', $out['kept'])]));
-        } catch (DnsException|AgentException $e) {
-            Toast::error(__('DNS se nepodařilo doplnit'), $e->getMessage());
-        }
+        AgentTasks::queue('dns.fill', ['title' => __('Doplnění DNS :domain', ['domain' => $this->site()->domain]), 'done' => __('DNS doplněno')],
+            ManageSiteDns::class, 'fillQueued', [$this->site()], $this->site());
     }
 
     protected function headerActions(): array

@@ -5,8 +5,7 @@ namespace App\Wire\Resources;
 use App\Actions\Firewall\ManageFirewall;
 use App\Livewire\Server\ListFirewallRules;
 use App\Models\FirewallRule;
-use App\Services\Agent\AgentException;
-use App\Support\Toast;
+use App\Support\AgentTasks;
 use App\Wire\Actions\Action;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
@@ -81,14 +80,8 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
                     ->visible(fn (FirewallRule $record) => $record->isDeletable() && ! self::isProtected($record))
                     ->requiresConfirmation()
                     ->modalHeading(fn (FirewallRule $record) => "Smazat pravidlo {$record->to} ({$record->action})?")
-                    ->action(function (FirewallRule $record) {
-                        try {
-                            app(ManageFirewall::class)->delete($record);
-                            Toast::success(__('Pravidlo smazáno'));
-                        } catch (AgentException $e) {
-                            Toast::error(__('Smazání selhalo'), $e->getMessage());
-                        }
-                    }),
+                    ->action(fn (FirewallRule $record) => AgentTasks::queue('fw.delete', ['title' => __('Mazání pravidla :to', ['to' => $record->to]), 'done' => __('Pravidlo smazáno')],
+                        ManageFirewall::class, 'delete', [$record], key: 'firewall')),
             ])
             ->searchable(false)
             ->paginated(false);

@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Services\Agent\SystemInfo;
 use App\Services\Dns\DnsAdvisor;
 use App\Services\Dns\DnsException;
+use App\Support\AgentTasks;
 use App\Support\Domains;
 use App\Wire\Forms\Options;
 use Illuminate\Validation\ValidationException;
@@ -125,10 +126,17 @@ final class DnsZoneResource implements DescribesResource, ProvidesNavigation, Pr
                     throw ValidationException::withMessages(['data.provider' => __('Lokální DNS server není nainstalovaný.')]);
                 }
                 try {
-                    return app(ManageDnsZones::class)->create($data);
+                    // The zone (and the token) at once; its records in the background.
+                    $zone = app(ManageDnsZones::class)->create(['recommended' => false] + $data);
                 } catch (DnsException $e) {
                     throw ValidationException::withMessages(['data.domain' => $e->getMessage()]);
                 }
+                if ($data['recommended'] ?? false) {
+                    AgentTasks::queue('dns.recommended', ['title' => __('Doporučené záznamy :zone', ['zone' => $zone->domain]), 'done' => __('Doporučené záznamy doplněny')],
+                        ManageDnsZones::class, 'addRecommendedQueued', [$zone], $zone);
+                }
+
+                return $zone;
             })
             ->successMessage(__('Zóna přidána'));
     }

@@ -21,6 +21,7 @@ use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageWebRules;
 use App\Actions\Sites\ManageWorkers;
 use App\Actions\Sites\ManageXhprof;
+use App\Actions\Sites\SiteTasks;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
@@ -42,7 +43,6 @@ use App\Wire\Forms\Options;
 use App\Wire\Resources\DatabaseResource;
 use App\Wire\Resources\SiteResource;
 use Closure;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use NyonCode\WireCore\Foundation\Schema\Grid;
 use NyonCode\WireCore\Foundation\Schema\Section;
@@ -93,6 +93,17 @@ final class SiteActions
     }
 
     /** Runs an agent-backed step and turns its failure into a toast. */
+    /**
+     * A change of the site in the background (SiteTasks, run by the queue
+     * worker): its page shows it running and says how it ended.
+     *
+     * @param  list<mixed>  $arguments
+     */
+    private static function background(Site $site, string $op, string $title, string $method, array $arguments): void
+    {
+        AgentTasks::queue($op, ['title' => $title, 'done' => $title.' – '.__('hotovo')], SiteTasks::class, $method, $arguments, $site);
+    }
+
     private static function attempt(string $failure, callable $fn): void
     {
         try {
@@ -373,13 +384,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->visibleWhen('mode', 'custom')
                     ->requiredIf('mode', 'custom'),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt(__('Certifikát se nepodařilo nastavit'), function () use ($record, $data) {
-                $out = app(ManageTls::class)->set($record, $data['mode'], $data['cert'] ?? null, $data['key'] ?? null);
-                $cert = $out['certificate'] ?? null;
-                Toast::success("{$record->domain}: ".__(ManageTls::MODES[$data['mode']]), $cert
-                    ? 'Vydal '.$cert['issuer'].__(', platí do ').Carbon::parse($cert['not_after'])->format('j. n. Y').'.'
-                    : __('Certifikát se vydá během chvíle.'));
-            }));
+            // The edge reloads (and the certificate may be issued): in the background.
+            ->action(fn (Site $record, array $data) => self::background($record, 'site.tls', __('HTTPS :domain', ['domain' => $record->domain]),
+                'tls', [$record, (string) $data['mode'], $data['cert'] ?? null, $data['key'] ?? null]));
     }
 
     public static function addWorker(): Action
@@ -405,22 +412,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->visible(fn ($get) => in_array($get('worker'), ManageWorkers::CELERY, true))
                     ->required($record->framework !== Framework::Django), // Django: its project package
             ])
-            ->action(fn (Site $record, array $data) => self::attempt(__('Worker se nepodařilo přidat'), function () use ($record, $data) {
-                $out = app(ManageWorkers::class)->create($record, $data['worker'], $data['app'] ?? null);
-                $body = ($out['started'] ?? false) ? __('Běží.') : __('Zaregistrován, spustí se po prvním deployi.');
-                $body .= match ($data['worker']) {
-                    'reverb' => __(' Panel nastavil .env: klíče aplikace, publikování přímo na serveru a VITE_REVERB_* pro prohlížeč (po deployi je sestaví npm run build).'),
-                    'horizon' => __(' Fronty běží ve Valkey webu (QUEUE_CONNECTION=redis).'),
-                    'pulsework' => __(' Pulse sbírá data přes Valkey webu (PULSE_INGEST_DRIVER=redis).'),
-                    'ssr' => ' '.__('Port :port, v .env INERTIA_SSR_URL; deploy sestaví i SSR bundle (npm run build:ssr).', ['port' => $out['port'] ?? '?']),
-                    'celery', 'celerybeat' => ' '.__('Aplikace Celery: :app. Broker (Valkey webu nebo jiný) si nastavte v aplikaci.', ['app' => $out['app'] ?? '']),
-                    default => '',
-                };
-                Toast::success(__('Worker přidán'), $body);
-                if (($out['hints'] ?? []) !== []) {
-                    Toast::warning(__('Aplikace musí převzít port od panelu'), implode("\n", array_map(fn (string $h) => self::ssrHint($h), $out['hints'])));
-                }
-            }));
+            // A unit started (and the edge reloaded): in the background.
+            ->action(fn (Site $record, array $data) => self::background($record, 'worker.create', __('Přidání workeru :worker', ['worker' => $data['worker']]),
+                'addWorker', [$record, (string) $data['worker'], $data['app'] ?? null]));
     }
 
     /** What the app still needs for Inertia SSR, in Czech. */
@@ -453,14 +447,11 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->validationMessages(['in' => __('Doména nesouhlasí.')]),
             ])
             ->modalSubmitActionLabel(__('Smazat web'))
-            ->action(function (Site $record) {
-                try {
-                    app(DeleteSite::class)->handle($record);
-                    Toast::success(__('Web :domain smazán', ['domain' => $record->domain]));
-                } catch (AgentException $e) {
-                    Toast::error(__('Smazání selhalo'), $e->getMessage());
-                }
-            })
+            // Dozens of units, the user and the files: in the background, the list meanwhile.
+            ->action(fn (Site $record) => AgentTasks::queue('site.delete', [
+                'title' => __('Mazání webu :domain', ['domain' => $record->domain]),
+                'done' => __('Web :domain smazán', ['domain' => $record->domain]),
+            ], DeleteSite::class, 'handle', [$record], key: 'site-delete:'.$record->id))
             ->successRedirect(fn () => SiteResource::url('index'));
     }
 
@@ -509,10 +500,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                 ]))),
             ])
             ->modalSubmitActionLabel(__('Uložit'))
-            ->action(fn (Site $record, array $data) => self::attempt(__('PHP nastavení se nepodařilo uložit'), function () use ($record, $data) {
-                $applied = app(ManagePhpSettings::class)->set($record, collect($data)->mapWithKeys(fn ($v, $key) => [str_replace('__', '.', $key) => $v])->all());
-                Toast::success(__('PHP nastavení uloženo'), $applied === [] ? __('Všechny hodnoty jsou výchozí.') : count($applied).__(' vlastních hodnot.'));
-            }));
+            // The pool or the app unit restarts: in the background.
+            ->action(fn (Site $record, array $data) => self::background($record, 'site.php', __('PHP nastavení :domain', ['domain' => $record->domain]),
+                'phpSettings', [$record, collect($data)->mapWithKeys(fn ($v, $key) => [str_replace('__', '.', $key) => $v])->all()]));
     }
 
     public static function edge(): Action
@@ -723,11 +713,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->visible(fn ($get) => $get('enabled') && ManageValkey::uses($record) !== [])
                     ->helperText(__('Panel nastaví ovladače v .env; nezaškrtnuté vrátí na výchozí (database). Fronty a session nemají být v paměti, která maže klíče: zvolte „nic nemaže“.')),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt(__('Valkey se nepodařilo nastavit'), function () use ($record, $data) {
-                app(ManageValkey::class)->set($record, $data);
-                $name = ($data['server'] ?? 'valkey') === 'redis' ? 'Redis' : 'Valkey';
-                Toast::success($data['enabled'] ? __(':name běží', ['name' => $name]) : __('Vypnuto'), $data['enabled'] ? __('Připojení je v .env webu.') : null);
-            }));
+            // A unit installed or removed and the .env rewritten: in the background.
+            ->action(fn (Site $record, array $data) => self::background($record, 'valkey.set', __('Valkey / Redis :domain', ['domain' => $record->domain]),
+                'valkey', [$record, $data]));
     }
 
     /** Moving a site in: a cPanel backup or an archive of its files. */
@@ -899,11 +887,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     ->helperText(__('Potom se profilování samo vypne.'))
                     ->rules(['nullable', 'integer', 'between:1,'.ManageXhprof::MAX_HOURS]),
             ])
-            ->action(fn (Site $record, array $data) => self::attempt(__('Profilování se nepodařilo nastavit'), function () use ($record, $data) {
-                app(ManageXhprof::class)->set($record, $data['enabled'] ? (int) $data['ratio'] : null, (int) ($data['hours'] ?? ManageXhprof::DEFAULT_HOURS));
-                Toast::success($data['enabled'] ? __('Profilování zapnuto') : __('Profilování vypnuto'), $data['enabled']
-                    ? __('Otevřete web, ať vzniknou první měření. Výsledky: tlačítko Otevřít XHGui v Nastavení → Výkon a ladění, na přehledu webu nebo v menu Další.') : null);
-            }));
+            // The pool and the edge reload: in the background.
+            ->action(fn (Site $record, array $data) => self::background($record, 'site.xhprof', __('Profilování :domain', ['domain' => $record->domain]),
+                'xhprof', [$record, $data['enabled'] ? (int) $data['ratio'] : null, (int) ($data['hours'] ?? ManageXhprof::DEFAULT_HOURS)]));
     }
 
     /** The site's XHGui (profiles), signed in through the panel; while profiling is on. */

@@ -7,8 +7,8 @@ use App\Enums\SiteMode;
 use App\Enums\SshAccess;
 use App\Livewire\Clients\ListPackages;
 use App\Models\Package;
-use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
+use App\Support\AgentTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
@@ -155,17 +155,14 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
                     ->form(self::formSchema())
                     ->action(function (Package $record, array $data) {
                         $record->update(self::normalize($data));
-                        $failed = [];
-                        foreach ($record->clients as $client) {
-                            try {
-                                app(ManageClients::class)->applyToServer($client);
-                            } catch (AgentException $e) {
-                                $failed[] = $client->name.': '.$e->getMessage();
-                            }
+                        if ($record->clients()->doesntExist()) {
+                            Toast::success(__('Balíček uložen'));
+
+                            return;
                         }
-                        $failed === []
-                            ? Toast::success(__('Balíček uložen'), __('Změna platí hned pro všechny jeho klienty.'))
-                            : Toast::warning(__('Balíček uložen, u některých klientů se server nepodařilo upravit'), implode("\n", $failed));
+                        // Every client and each of its sites on the server: in the background.
+                        AgentTasks::queue('package.apply', ['title' => __('Balíček :name na serveru', ['name' => $record->name]), 'done' => __('Balíček uložen')],
+                            ManageClients::class, 'applyPackage', [$record], key: 'package-apply:'.$record->id);
                     }),
                 Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')->onlyIcon()->tooltip(__('Smazat balíček'))
                     ->visible(fn (Package $record) => $record->clients_count === 0)

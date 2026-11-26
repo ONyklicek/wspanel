@@ -5,6 +5,7 @@ namespace App\Livewire\Pages;
 use App\Actions\Mail\ManageMail;
 use App\Enums\SiteStatus;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -22,6 +23,7 @@ use NyonCode\WirePanels\Pages\Page;
 class MailPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.mail';
 
@@ -49,6 +51,16 @@ class MailPage extends Page
 
     /** @var list<array<string, mixed>>|null the queue, once loaded */
     public ?array $queue = null;
+
+    protected function backgroundJobKeys(): array
+    {
+        return ['mail-dkim'];
+    }
+
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->refreshStatus();
+    }
 
     public function mount(): void
     {
@@ -104,13 +116,9 @@ class MailPage extends Page
     public function createDkim(string $domain): void
     {
         abort_unless(Site::query()->where('domain', $domain)->exists(), 404);
-        try {
-            app(ManageMail::class)->dkim($domain);
-            Toast::success(__('DKIM klíč pro :domain vytvořen', ['domain' => $domain]), __('Přidejte TXT záznam z tabulky do DNS domény.'));
-        } catch (AgentException $e) {
-            Toast::error(__('DKIM se nepodařilo vytvořit'), $e->getMessage());
-        }
-        $this->refreshStatus();
+        // A new key restarts OpenDKIM: in the background.
+        $this->queueBackgroundJob('mail-dkim', ['title' => __('DKIM klíč pro :domain', ['domain' => $domain]), 'done' => __('DKIM klíč pro :domain vytvořen', ['domain' => $domain]),
+            'body' => __('Přidejte TXT záznam z tabulky do DNS domény.')], ManageMail::class, 'dkim', [$domain]);
     }
 
     public function loadQueue(): void

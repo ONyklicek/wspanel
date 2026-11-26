@@ -4,6 +4,7 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Games\ManageGamePackages;
 use App\Livewire\Concerns\TranslatesPageText;
+use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
@@ -18,6 +19,7 @@ use NyonCode\WirePanels\Pages\Page;
 class GamePackagesPage extends Page
 {
     use TranslatesPageText;
+    use WatchesBackgroundJobs;
 
     protected static string $view = 'livewire.pages.game-packages';
 
@@ -48,6 +50,16 @@ class GamePackagesPage extends Page
 
     public ?string $error = null;
 
+    protected function backgroundJobKeys(): array
+    {
+        return ['game-package'];
+    }
+
+    protected function backgroundJobFinished(string $key, bool $ok): void
+    {
+        $this->load();
+    }
+
     public function mount(): void
     {
         $this->load();
@@ -77,8 +89,10 @@ class GamePackagesPage extends Page
 
     public function install(string $id): void
     {
-        $this->run(fn () => app(ManageGamePackages::class)->install($id), __('Balíček :id nainstalován', ['id' => $id]),
-            __('Jeho hry a varianty nabídne formulář nového herního serveru.'));
+        abort_unless(auth()->user()?->can('game-packages'), 403);
+        // Fetched from the signed catalog: in the background.
+        $this->queueBackgroundJob('game-package', ['title' => __('Instalace balíčku :id', ['id' => $id]), 'done' => __('Balíček :id nainstalován', ['id' => $id]),
+            'body' => __('Jeho hry a varianty nabídne formulář nového herního serveru.')], ManageGamePackages::class, 'install', [$id]);
     }
 
     public function remove(string $id): void

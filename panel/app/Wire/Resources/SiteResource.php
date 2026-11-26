@@ -2,10 +2,8 @@
 
 namespace App\Wire\Resources;
 
-use App\Actions\Dns\ManageSiteDns;
 use App\Actions\Sites\CreateSite;
-use App\Actions\Sites\ManageWorkers;
-use App\Enums\SiteStatus;
+use App\Actions\Sites\SetUpNewSite;
 use App\Enums\SshAccess;
 use App\Exceptions\LimitReachedException;
 use App\Livewire\Sites\CreateSitePage;
@@ -24,8 +22,8 @@ use App\Models\Client;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Support\AgentTasks;
 use App\Support\Lang;
-use App\Support\Toast;
 use App\Wire\Sites\SiteActions;
 use App\Wire\Sites\SiteFields;
 use Illuminate\Support\Facades\Gate;
@@ -172,50 +170,6 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             ->defaultSort('domain');
     }
 
-    /**
-     * The workers chosen with a new site. The site exists by now, so a worker
-     * that fails (a package limit, the agent) is reported, not fatal: it can
-     * be added from the site later.
-     *
-     * @param  list<string>  $workers
-     */
-    private static function addWorkers(Site $site, array $workers): void
-    {
-        $failed = [];
-        foreach ($workers as $worker) {
-            try {
-                app(ManageWorkers::class)->create($site, $worker);
-            } catch (LimitReachedException|AgentException $e) {
-                $failed[] = $worker.': '.$e->getMessage();
-            }
-        }
-        if ($failed !== []) {
-            Toast::warning(__('Některé workery se nepřidaly'), implode(' · ', $failed));
-        }
-    }
-
-    /** DNS (and mail) of a new site; a failure leaves the site and says what to do. */
-    private static function setUpDns(Site $site, array $data): void
-    {
-        if (($data['dns'] ?? 'none') === 'none' && ! ($data['mail'] ?? false)) {
-            return;
-        }
-        try {
-            $out = app(ManageSiteDns::class)->setUpForNewSite($site, $data);
-            if ($out['zone'] !== null) {
-                Toast::success(__('DNS v zóně :zone', ['zone' => $out['zone']]), $out['added'] === []
-                    ? __('Nic nechybělo.')
-                    : __('Přidáno: :list', ['list' => implode(', ', $out['added'])]).($out['kept'] === [] ? '' : ' '.__('Ponecháno (míří jinam): :list', ['list' => implode(', ', $out['kept'])])));
-            }
-            if ($out['mail_error'] !== null) {
-                Toast::warning(__('Web je založený, pošta zatím ne'), $out['mail_error'].' '.__('Poštu pak přidáte v záložce Pošta webu.'));
-            }
-        } catch (\Throwable $e) {
-            report($e);
-            Toast::warning(__('Web je založený, DNS se nepodařilo nastavit'), $e->getMessage().' '.__('Dokončíte to v záložce DNS webu.'));
-        }
-    }
-
     public function form(Form $form): Form
     {
         return $form
@@ -231,20 +185,18 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
                     throw ValidationException::withMessages(['data.domain' => __('Web s touto doménou už existuje.')]);
                 }
                 try {
-                    $site = app(CreateSite::class)->handle($data);
+                    $site = app(CreateSite::class)->register($data);
                 } catch (LimitReachedException|AgentException $e) {
                     throw ValidationException::withMessages(['data.domain' => $e->getMessage()]);
                 }
-                if ($site->status === SiteStatus::Failed) {
-                    $error = (string) $site->last_error;
-                    $site->delete();
-                    throw ValidationException::withMessages(['data.domain' => __('Web se nepodařilo založit: ').$error]);
-                }
-                self::addWorkers($site, SiteFields::chosenWorkers($data));
-                self::setUpDns($site, $data);
+                // The server part takes a while: in the background, shown on the site's page.
+                AgentTasks::queue('site.create', [
+                    'title' => __('Zakládání webu :domain', ['domain' => $site->domain]),
+                    'done' => __('Web :domain založen', ['domain' => $site->domain]),
+                ], SetUpNewSite::class, 'run', [$site, SiteFields::chosenWorkers($data), SetUpNewSite::queueable($data)], $site, 'site-create:'.$site->id);
 
-                return $site;
+                return $site->refresh();
             })
-            ->successMessage(__('Web založen'));
+            ->successMessage(__('Web se zakládá'));
     }
 }

@@ -9,6 +9,7 @@ use App\Models\Client;
 use App\Models\DnsZone;
 use App\Models\Mailbox;
 use App\Models\MailDomain;
+use App\Models\Package;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
@@ -53,6 +54,29 @@ class ManageClients
         if ($client->wasChanged('package_id')) {
             $this->applyToServer($client->fresh());
         }
+    }
+
+    /**
+     * A package changed: each of its clients on the server again (a
+     * background task, RunPanelTask). A client that fails is said, the rest
+     * still get it.
+     *
+     * @return array{message: string, body: string|null}
+     */
+    public function applyPackage(Package $package): array
+    {
+        $failed = [];
+        foreach ($package->clients as $client) {
+            try {
+                $this->applyToServer($client);
+            } catch (AgentException $e) {
+                $failed[] = $client->name.': '.$e->getMessage();
+            }
+        }
+
+        return $failed === []
+            ? ['message' => __('Balíček uložen'), 'body' => __('Změna platí pro všechny jeho klienty.')]
+            : ['message' => __('Balíček uložen, u některých klientů se server nepodařilo upravit'), 'body' => implode("\n", $failed)];
     }
 
     /**
