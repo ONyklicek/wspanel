@@ -118,4 +118,16 @@ class OffsitePageTest extends TestCase
 
         $this->artisan('panel:server-backup')->expectsOutputToContain('job abcdef0123456789')->assertSuccessful();
     }
+
+    public function test_choosing_an_s3_provider_fills_in_its_address(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test(OffsitePage::class)
+            ->call('mountAction', 'configure')
+            ->set('mountedActions.0.data.type', 's3')
+            ->set('mountedActions.0.data.provider', 'b2')
+            ->assertSet('mountedActions.0.data.endpoint', 'https://s3.eu-central-003.backblazeb2.com')
+            ->assertSet('mountedActions.0.data.region', 'eu-central-003');
+    }
 }

@@ -9,6 +9,7 @@ use App\Actions\Sites\ManageValkey;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\Framework;
 use App\Enums\SshAccess;
+use App\Livewire\Concerns\ReactsInActionForms;
 use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\Database;
 use App\Models\Deployment;
@@ -33,6 +34,7 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
  */
 class ViewSite extends ViewPage
 {
+    use ReactsInActionForms;
     use WatchesAgentTasks;
 
     protected function agentTaskSubject(): ?Model

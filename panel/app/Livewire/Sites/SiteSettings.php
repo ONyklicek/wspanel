@@ -7,6 +7,7 @@ use App\Actions\Sites\ManageSiteMounts;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\SiteMode;
 use App\Enums\SshAccess;
+use App\Livewire\Concerns\ReactsInActionForms;
 use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\Site;
 use App\Wire\Actions\Action;
@@ -24,6 +25,8 @@ use NyonCode\WirePanels\Resources\Pages\ViewPage;
  */
 class SiteSettings extends ViewPage
 {
+    use ReactsInActionForms;
+
     protected static ?string $resource = SiteResource::class;
 
     use IsSiteTab;
