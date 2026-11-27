@@ -3437,5 +3437,11 @@
     "Odinstalovat Redis 8": "Uninstall Redis 8",
     "Instalace :server": "Installing :server",
     "Odinstalace :server": "Uninstalling :server",
-    "Valkey / Redis (cache, fronty, session)": "Valkey / Redis (cache, queues, sessions)"
+    "Valkey / Redis (cache, fronty, session)": "Valkey / Redis (cache, queues, sessions)",
+    "Založit databázi": "Create a database",
+    "Údaje (host, jméno, heslo) zapíše server rovnou do .env webu.": "The server writes the details (host, name, password) straight to the site's .env.",
+    "Název databáze (i uživatel)": "Database name (also the user)",
+    "Prázdné = podle domény.": "Empty = after the domain.",
+    "Databáze :name je založená, údaje jsou v .env webu.": "The database :name is created, its details are in the site's .env.",
+    "Databázi se nepodařilo založit: :error Založíte ji u webu (Databáze → Nová databáze).": "The database could not be created: :error Create it on the site (Databases → New database)."
 }

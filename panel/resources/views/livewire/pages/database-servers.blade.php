@@ -89,7 +89,7 @@
                 <div class="sm:col-span-2 lg:col-span-3">
                     <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('SSH tunel') }}</dt>
                     <dd class="mt-2 space-y-1">
-                        <code class="block overflow-x-auto whitespace-nowrap rounded-md bg-gray-100 px-2 py-1 text-xs dark:bg-white/5">ssh -N -L {{ $s['port'] }}:127.0.0.1:{{ $s['port'] }} root@{{ $this->host() }}</code>
+                        <code class="block overflow-x-auto whitespace-nowrap rounded-md bg-gray-100 px-2 py-1 text-xs dark:bg-white/5">{{ $this->tunnelCommand((int) $s['port']) }}</code>
                         <p class="text-gray-500">
                             {{ __('Bez otevření portu do internetu: v klientovi pak server 127.0.0.1, port :port. Místo root můžete použít jiný SSH účet správce; je-li port na vašem počítači obsazený, změňte první číslo.', ['port' => $s['port']]) }}
                             @unless ($s['root_password'])

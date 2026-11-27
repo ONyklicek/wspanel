@@ -215,6 +215,19 @@ class DatabaseServersPage extends Page
         return (string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: config('panel.public_ipv4') ?: 'server');
     }
 
+    /**
+     * The SSH tunnel to a database server's port, over the server's SSH
+     * (its public host and port, as for SFTP), built here: in Blade
+     * "root@{{ … }}" is the escape for a literal "{{" and printed as text.
+     */
+    public function tunnelCommand(int $port): string
+    {
+        $sshPort = (int) config('panel.ssh_port', 22);
+        $host = (string) (config('panel.ssh_host') ?: $this->host());
+
+        return 'ssh -N -L '.$port.':127.0.0.1:'.$port.($sshPort !== 22 ? ' -p '.$sshPort : '').' root@'.$host;
+    }
+
     /** @return list<string> */
     public function tools(string $engine): array
     {

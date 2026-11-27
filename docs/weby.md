@@ -32,7 +32,14 @@
    (Symfony); dál Horizon, Reverb a Pulse. Horizon nahrazuje frontu, obojí
    najednou vybrat nejde. Horizon a Pulse ingest zapnou Valkey webu. Další
    workery přidáte kdykoli u webu (Další → Přidat worker).
-6. **DNS a pošta:**
+6. **Databáze** (jen když je na serveru databázový server): **Založit
+   databázi**, engine (MariaDB, PostgreSQL…) a název, který je zároveň
+   uživatelem databáze. Prázdný název = podle domény (`shop.example.com` →
+   `shop_example_com`). Host, jméno a heslo zapíše server rovnou do `.env`
+   webu a heslo se nikde nezobrazuje. Když se databázi nepodaří založit
+   (třeba kvůli limitu balíčku), web se i tak založí a panel napíše proč.
+   Další databáze přidáte kdykoli u webu (Databáze → Nová databáze).
+7. **DNS a pošta:**
    - **Do zóny …:** panel už spravuje zónu, pod kterou doména patří
      (pro `shop.example.com` třeba `example.com`). Zapíše do ní chybějící
      záznamy webu, existující nemění. Je předvybrané, když taková zóna je.
@@ -45,7 +52,7 @@
      poštovních programů.
    Když se DNS nepovede (např. neplatný token Cloudflare), web se i tak založí
    a panel napíše, co dokončit v záložce DNS.
-7. Po vytvoření se otevře **detail webu**. Web už odpovídá úvodní stránkou
+8. Po vytvoření se otevře **detail webu**. Web už odpovídá úvodní stránkou
    „Web běží“, která popisuje, jak pokračovat.
 
 ### DNS webu
@@ -634,6 +641,11 @@ s Redisem): **Nastavení → Výkon a ladění → Valkey**.
 - **Laravel / Symfony**: nasadí oficiální kostru (`laravel/laravel`,
   `symfony/skeleton`) jako běžný deploy, s novým `APP_KEY` / `APP_SECRET`.
   Pak v Deploy → Nastavení zadejte svůj repozitář.
+
+Engine a název databáze jdou vybrat v okně (prázdný název = podle domény).
+WordPress ji má vždy, v MariaDB. U Laravelu a Symfony jde vypnout
+(**Založit databázi**), aplikace pak použije, co má ve svém `.env`
+(Laravel ve výchozím stavu SQLite).
 
 ## Přesun webu z jiného hostingu
 

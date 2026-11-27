@@ -2,11 +2,13 @@
 
 namespace App\Actions\Sites;
 
+use App\Actions\Databases\ManageDatabases;
 use App\Actions\Dns\ManageSiteDns;
 use App\Enums\SiteStatus;
 use App\Exceptions\LimitReachedException;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Wire\Sites\SiteFields;
 use RuntimeException;
 use Throwable;
 
@@ -25,6 +27,7 @@ class SetUpNewSite
         private readonly CreateSite $createSite,
         private readonly ManageWorkers $workers,
         private readonly ManageSiteDns $dns,
+        private readonly ManageDatabases $databases,
     ) {}
 
     /**
@@ -35,7 +38,7 @@ class SetUpNewSite
      */
     public static function queueable(array $data): array
     {
-        return array_intersect_key($data, array_flip(['dns', 'dns_zone', 'cloudflare_token', 'mail']));
+        return array_intersect_key($data, array_flip(['dns', 'dns_zone', 'cloudflare_token', 'mail', 'db_create', 'db_engine', 'db_name']));
     }
 
     /**
@@ -52,6 +55,10 @@ class SetUpNewSite
             throw new RuntimeException(__('Web se nepodařilo založit: ').$site->last_error);
         }
         $notes = [];
+        // Before the workers: a queue or Horizon reads the database from .env.
+        if ($data['db_create'] ?? false) {
+            $notes = [...$notes, ...$this->database($site, $data)];
+        }
         $failed = [];
         foreach ($workers as $worker) {
             try {
@@ -66,6 +73,26 @@ class SetUpNewSite
         $notes = [...$notes, ...$this->dns($site, $data)];
 
         return ['message' => __('Web :domain založen', ['domain' => $site->domain]), 'body' => $notes === [] ? null : implode(' ', $notes)];
+    }
+
+    /**
+     * The database asked for with the site; a failure is a note, not a
+     * failed site (it is made later from the site's page).
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private function database(Site $site, array $data): array
+    {
+        $engine = (string) ($data['db_engine'] ?? '');
+        $name = trim((string) ($data['db_name'] ?? '')) ?: SiteFields::databaseName($site->domain);
+        try {
+            $db = $this->databases->create($engine, $name, $site)['database'];
+
+            return [__('Databáze :name je založená, údaje jsou v .env webu.', ['name' => $db->name])];
+        } catch (LimitReachedException|AgentException $e) {
+            return [__('Databázi se nepodařilo založit: :error Založíte ji u webu (Databáze → Nová databáze).', ['error' => $e->getMessage()])];
+        }
     }
 
     /**

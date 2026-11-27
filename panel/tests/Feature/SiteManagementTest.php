@@ -67,6 +67,26 @@ class SiteManagementTest extends TestCase
         $this->assertSame('web_shop_example_com', $site->system_user);
     }
 
+    public function test_a_new_site_may_get_its_database_with_it(): void
+    {
+        $this->agent->shouldReceive('call')->with('sys.versions')->andReturn([
+            'php' => [['version' => '8.4', 'installed' => true]], 'php_default' => '8.4', 'db_engines' => ['mariadb', 'postgresql'],
+        ]);
+        $this->agent->shouldReceive('call')->once()->with('site.create', Mockery::any())->andReturn([
+            'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4', 'system_user' => 'web_shop_example_com', 'home' => '/srv/sites/shop.example.com',
+        ]);
+        $this->agent->shouldReceive('call')->with('worker.create', Mockery::any())->andReturn([]);
+        $this->agent->shouldReceive('call')->once()->with('db.create', Mockery::on(fn ($p) => $p['engine'] === 'postgresql' && $p['name'] === 'shop_example_com' && $p['domain'] === 'shop.example.com'))
+            ->andReturn(['password' => null]);
+
+        $this->fillForm(Livewire::test(CreateSite::class), ['domain' => 'shop.example.com', 'mode' => 'classic', 'framework' => 'laravel', 'php_version' => '8.4',
+            'workers' => [], 'db_create' => true, 'db_engine' => 'postgresql'])
+            ->assertSee('Založit databázi')
+            ->call('save')->assertHasNoErrors();
+
+        $this->assertSame(['shop_example_com'], Site::sole()->databases()->pluck('name')->all());
+    }
+
     public function test_agent_failure_in_the_background_leaves_the_site_with_its_error(): void
     {
         $this->agent->shouldReceive('call')->with('site.create', Mockery::any())

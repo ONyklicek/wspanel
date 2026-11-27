@@ -22,6 +22,7 @@ use App\Models\Client;
 use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
+use App\Services\Agent\SystemInfo;
 use App\Support\AgentTasks;
 use App\Support\Lang;
 use App\Wire\Sites\SiteActions;
@@ -176,6 +177,8 @@ final class SiteResource implements DescribesResource, GloballySearchable, Provi
             ->schema([
                 Section::make('domain')->label(__('Doména'))->schema([SiteFields::domain(), SiteFields::tls()]),
                 Section::make('runtime')->label(__('Jak web poběží'))->schema([...SiteFields::runtime(), SiteFields::workers()]),
+                Section::make('database')->label(__('Databáze'))->schema(SiteFields::database())
+                    ->visible(fn () => app(SystemInfo::class)->dbEngines() !== []),
                 Section::make('dns')->label(__('DNS a pošta'))->schema(SiteFields::dns()),
                 Section::make('owner')->label(__('Vlastník'))->schema([SiteFields::client()])
                     ->visible(fn () => Gate::allows('clients') && Client::query()->exists()),

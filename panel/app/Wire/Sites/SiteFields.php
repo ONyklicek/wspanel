@@ -248,6 +248,52 @@ final class SiteFields
     }
 
     /**
+     * A database made with the site: engine and name (empty = after the
+     * domain). Its host, name and password go straight to the site's .env.
+     * Shown only where a database server is installed.
+     *
+     * @param  bool|null  $on  the toggle's default; null = on for Laravel and Symfony
+     * @param  list<string>|null  $engines  the engines offered (WordPress: MariaDB only)
+     * @return list<mixed>
+     */
+    public static function database(?bool $on = null, ?array $engines = null): array
+    {
+        $installed = fn (): array => collect(app(SystemInfo::class)->dbEngines())
+            ->filter(fn ($e) => $engines === null || in_array($e->value, $engines, true))
+            ->mapWithKeys(fn ($e) => [$e->value => $e->getLabel()])->all();
+        $has = fn (): bool => $installed() !== [];
+
+        return [
+            Toggle::make('db_create')->label(__('Založit databázi'))
+                ->default($on ?? false)->live()
+                ->visible($has)
+                ->helperText(__('Údaje (host, jméno, heslo) zapíše server rovnou do .env webu.')),
+            Select::make('db_engine')->label(__('Engine'))->rules([Options::rule()])
+                ->options($installed)
+                ->default(fn () => array_key_first($installed()))
+                ->visible(fn ($get = null) => $get !== null && $has() && (bool) $get('db_create'))
+                ->requiredIf('db_create', true),
+            TextInput::make('db_name')->label(__('Název databáze (i uživatel)'))->maxLength(32)
+                ->placeholder(fn ($get = null) => $get === null ? '' : self::databaseName((string) $get('domain')))
+                ->helperText(__('Prázdné = podle domény.'))
+                ->visible(fn ($get = null) => $get !== null && $has() && (bool) $get('db_create'))
+                ->rules(['nullable', 'max:32', 'regex:/^[a-z][a-z0-9_]{0,31}$/'])
+                ->validationMessages(['regex' => __('Malá písmena, číslice a podtržítko, začíná písmenem.')]),
+        ];
+    }
+
+    /** A database name after the domain: "shop.firma.cz" → "shop_firma_cz". */
+    public static function databaseName(string $domain): string
+    {
+        $name = trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($domain)), '_');
+        if ($name === '' || ! ctype_alpha($name[0])) {
+            $name = 'db_'.$name;
+        }
+
+        return substr($name, 0, 32);
+    }
+
+    /**
      * The chosen workers the site's framework actually offers (the checkbox
      * state keeps a choice made under another framework).
      *

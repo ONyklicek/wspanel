@@ -46,6 +46,15 @@ class DatabaseServersTest extends TestCase
             ->assertDontSee(route('dbtools.server', ['postgresql', 'phpmyadmin']), false);
     }
 
+    public function test_the_ssh_tunnel_names_the_server_and_its_ssh_port(): void
+    {
+        config(['app.url' => 'https://panel.firma.cz', 'panel.ssh_port' => 22]);
+        $this->get('/db-servers')->assertSee('ssh -N -L 3306:127.0.0.1:3306 root@panel.firma.cz')->assertDontSee('$this->host()');
+
+        config(['panel.ssh_port' => 2222, 'panel.ssh_host' => 'ssh.firma.cz']);
+        $this->get('/db-servers')->assertSee('ssh -N -L 5432:127.0.0.1:5432 -p 2222 root@ssh.firma.cz');
+    }
+
     public function test_generated_root_password_is_shown_once(): void
     {
         $this->agent->shouldReceive('call')->once()->with('db.root_password', ['engine' => 'mariadb'])

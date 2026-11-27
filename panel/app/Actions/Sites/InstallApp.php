@@ -10,6 +10,7 @@ use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
 use App\Support\AgentTasks;
+use App\Wire\Sites\SiteFields;
 use Illuminate\Support\Str;
 
 /**
@@ -58,9 +59,16 @@ class InstallApp
         if ($site->status === SiteStatus::Failed) {
             throw new AgentException('op_failed', __('Web se nepodařilo založit: ').$site->last_error, 'panel');
         }
-        $engine = $app === 'wordpress' ? 'mariadb' : ($engines[0] ?? null);
+        // The chosen engine and name (empty = after the domain); WordPress always
+        // has one, in MariaDB; Laravel and Symfony may go without (db_create off).
+        $engine = null;
+        if ($app === 'wordpress') {
+            $engine = 'mariadb';
+        } elseif ($data['db_create'] ?? true) {
+            $engine = in_array($chosen = (string) ($data['db_engine'] ?? ''), $engines, true) ? $chosen : ($engines[0] ?? null);
+        }
         if ($engine !== null) {
-            $this->databases->create($engine, substr((string) preg_replace('/[^a-z0-9]+/', '_', $site->domain), 0, 32), $site);
+            $this->databases->create($engine, trim((string) ($data['db_name'] ?? '')) ?: SiteFields::databaseName($site->domain), $site);
         }
 
         if ($app === 'wordpress') {
