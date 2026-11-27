@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/smtp"
 	"os"
 	"path/filepath"
@@ -40,6 +41,8 @@ type extFetch struct {
 	// KeepDays: how long a downloaded message stays at the provider
 	// (0 = removed at once).
 	KeepDays int `json:"keep_days"`
+	// AllowPrivate: the administrator set a server in the local network.
+	AllowPrivate bool `json:"allow_private,omitempty"`
 }
 
 type extRelay struct {
@@ -140,19 +143,56 @@ func checkPublicHost(env *Env, field, host string, allowPrivate bool) error {
 	return nil
 }
 
-var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+// specialNets: what is not a public server, beyond what netip says
+// (RFC 6890 and the IANA special-purpose registries).
+var specialNets = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, c := range []string{
+		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "198.18.0.0/15",
+		"198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "255.255.255.255/32",
+		"100::/64", "2001::/23", "2001:db8::/32", "3fff::/20", "5f00::/16",
+	} {
+		out = append(out, netip.MustParsePrefix(c))
+	}
+	return out
+}()
 
-// internalIP: loopback, private, link-local, unspecified, multicast,
-// carrier-grade NAT, or one of this server's own addresses.
+var (
+	sixToFour = netip.MustParsePrefix("2002::/16")
+	nat64     = netip.MustParsePrefix("64:ff9b::/96")
+	nat64Loc  = netip.MustParsePrefix("64:ff9b:1::/48")
+)
+
+// internalIP: anything but a public unicast address (IPv4 inside an IPv6
+// form, 6to4 or NAT64, is unwrapped first), or this server's own.
 func internalIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || cgnat.Contains(ip) {
+	a, ok := netip.AddrFromSlice(ip)
+	if !ok {
 		return true
 	}
+	a = a.Unmap()
+	switch {
+	case sixToFour.Contains(a):
+		b := a.As16()
+		a = netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]})
+	case nat64.Contains(a) || nat64Loc.Contains(a):
+		b := a.As16()
+		a = netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	}
+	if !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() {
+		return true
+	}
+	for _, n := range specialNets {
+		if n.Contains(a) {
+			return true
+		}
+	}
 	if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, a := range addrs {
-			if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
-				return true
+		for _, ia := range addrs {
+			if n, ok := ia.(*net.IPNet); ok {
+				if own, ok := netip.AddrFromSlice(n.IP); ok && own.Unmap() == a {
+					return true
+				}
 			}
 		}
 	}
@@ -250,6 +290,9 @@ func mailMailboxExternal(ctx context.Context, env *Env, raw json.RawMessage) (an
 		if err := ensureGetmail(ctx, env); err != nil {
 			return nil, err
 		}
+	}
+	if p.Fetch != nil {
+		p.Fetch.AllowPrivate = p.AllowPrivate
 	}
 	mb.Fetch, mb.Relay = p.Fetch, p.Relay
 	st.Domains[d].Mailboxes[lp] = mb
@@ -665,7 +708,13 @@ func RunMailFetch(ctx context.Context, env *Env) error {
 				continue
 			}
 			addr := lp + "@" + d
-			s := fetchOne(ctx, env, addr)
+			var s fetchStatus
+			// Checked again before every run: the name may point elsewhere now.
+			if err := checkPublicHost(env, "fetch.host", md.Mailboxes[lp].Fetch.Host, md.Mailboxes[lp].Fetch.AllowPrivate); err != nil {
+				s = fetchStatus{At: time.Now().UTC(), Error: "the provider's server now points into the local network: not downloaded"}
+			} else {
+				s = fetchOne(ctx, env, addr)
+			}
 			_ = withMutate(env, func() error {
 				all := loadFetchStatus(env)
 				if prev, ok := all[addr]; ok && s.LastMail == nil {

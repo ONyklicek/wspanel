@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,5 +232,26 @@ func TestAClientCannotPointAMailboxIntoTheLocalNetwork(t *testing.T) {
 	if _, err := call(t, env, mailMailboxExternal, map[string]any{"address": "alice@firma.cz", "allow_private": true,
 		"fetch": map[string]any{"protocol": "imap", "host": "10.0.0.5", "port": 143, "user": "a", "password": "p", "keep_days": 7}}); err != nil {
 		t.Errorf("an administrator's local server: %v", err)
+	}
+}
+
+func TestOnlyPublicUnicastAddressesAreProviders(t *testing.T) {
+	for addr, internal := range map[string]bool{
+		"8.8.8.8": false, "2a00:1450:4001:80b::200e": false,
+		"127.0.0.1": true, "10.1.2.3": true, "172.16.5.5": true, "192.168.1.1": true, "169.254.169.254": true,
+		"100.64.0.1": true, "0.0.0.0": true, "192.0.2.1": true, "198.18.0.1": true, "198.51.100.7": true, "203.0.113.9": true,
+		"240.0.0.1": true, "224.0.0.1": true, "::1": true, "fd00::1": true, "fe80::1": true, "2001:db8::1": true,
+		"::ffff:127.0.0.1": true, "2002:7f00:1::": true, "2002:0808:0808::": false, "64:ff9b::a00:5": true, "64:ff9b::808:808": false,
+	} {
+		if got := internalIP(net.ParseIP(addr)); got != internal {
+			t.Errorf("%s: internal = %v, want %v", addr, got, internal)
+		}
+	}
+	env, _ := externalTestEnv(t)
+	for _, host := range []string{"203.0.113.9", "198.18.0.1", "192.0.2.10"} {
+		if _, err := call(t, env, mailExternalTest, map[string]any{"address": "alice@firma.cz",
+			"fetch": map[string]any{"protocol": "imap", "host": host, "user": "a", "password": "p"}}); code(err) != "invalid_params" {
+			t.Errorf("%s: want invalid, got %v", host, err)
+		}
 	}
 }
