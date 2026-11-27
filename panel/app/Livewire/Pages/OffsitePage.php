@@ -3,7 +3,6 @@
 namespace App\Livewire\Pages;
 
 use App\Actions\Server\ManageOffsite;
-use App\Livewire\Concerns\ReactsInActionForms;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Livewire\Concerns\WatchesBackgroundJobs;
 use App\Services\Agent\AgentException;
@@ -20,7 +19,6 @@ use NyonCode\WirePanels\Pages\Page;
 /** Copies of all backups in S3-compatible storage outside the server. */
 class OffsitePage extends Page
 {
-    use ReactsInActionForms;
     use TranslatesPageText;
     use WatchesBackgroundJobs;
 

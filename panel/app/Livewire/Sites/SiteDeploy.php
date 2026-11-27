@@ -9,7 +9,6 @@ use App\Actions\Sites\ManageWebhook;
 use App\Enums\Framework;
 use App\Enums\SiteMode;
 use App\Forms\Components\CodeIde;
-use App\Livewire\Concerns\ReactsInActionForms;
 use App\Livewire\Pages\IntegrationsPage;
 use App\Livewire\Sites\Concerns\IsSiteTab;
 use App\Models\AgentTask;
@@ -96,7 +95,6 @@ class SiteDeploy extends ViewPage
     }
 
     use IsSiteTab;
-    use ReactsInActionForms;
 
     protected function tabLabel(): string
     {

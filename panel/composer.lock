@@ -2983,7 +2983,7 @@
         },
         {
             "name": "nyoncode/wire-admin",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-admin.git",
@@ -3054,7 +3054,7 @@
         },
         {
             "name": "nyoncode/wire-core",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-core.git",
@@ -3127,16 +3127,16 @@
         },
         {
             "name": "nyoncode/wire-forms",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-forms.git",
-                "reference": "71e972c62572b78d94d2445c09d067f603d4071b"
+                "reference": "c0624d3e5c81242818f913eaf275437a70b26d3f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/NyonCode/wire-forms/zipball/71e972c62572b78d94d2445c09d067f603d4071b",
-                "reference": "71e972c62572b78d94d2445c09d067f603d4071b",
+                "url": "https://api.github.com/repos/NyonCode/wire-forms/zipball/c0624d3e5c81242818f913eaf275437a70b26d3f",
+                "reference": "c0624d3e5c81242818f913eaf275437a70b26d3f",
                 "shasum": ""
             },
             "require": {
@@ -3192,11 +3192,11 @@
                 "issues": "https://github.com/ONyklicek/WireStack/issues",
                 "source": "https://github.com/NyonCode/wire-forms"
             },
-            "time": "2026-11-20T23:01:38+00:00"
+            "time": "2026-11-27T07:02:57+00:00"
         },
         {
             "name": "nyoncode/wire-module-auth",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-module-auth.git",
@@ -3270,7 +3270,7 @@
         },
         {
             "name": "nyoncode/wire-module-notifications",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-module-notifications.git",
@@ -3342,7 +3342,7 @@
         },
         {
             "name": "nyoncode/wire-module-users",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-module-users.git",
@@ -3423,7 +3423,7 @@
         },
         {
             "name": "nyoncode/wire-panels",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-panels.git",
@@ -3495,7 +3495,7 @@
         },
         {
             "name": "nyoncode/wire-sortable",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-sortable.git",
@@ -3566,7 +3566,7 @@
         },
         {
             "name": "nyoncode/wire-suite",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-suite.git",
@@ -3650,16 +3650,16 @@
         },
         {
             "name": "nyoncode/wire-table",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-table.git",
-                "reference": "8a575cbf3060019d97363993a36ea720b6ed95ba"
+                "reference": "d57f3d70e90a8d00329e4d8e1638d9d38cc6eac8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/NyonCode/wire-table/zipball/8a575cbf3060019d97363993a36ea720b6ed95ba",
-                "reference": "8a575cbf3060019d97363993a36ea720b6ed95ba",
+                "url": "https://api.github.com/repos/NyonCode/wire-table/zipball/d57f3d70e90a8d00329e4d8e1638d9d38cc6eac8",
+                "reference": "d57f3d70e90a8d00329e4d8e1638d9d38cc6eac8",
                 "shasum": ""
             },
             "require": {
@@ -3724,7 +3724,7 @@
                 "issues": "https://github.com/ONyklicek/WireStack/issues",
                 "source": "https://github.com/NyonCode/wire-table"
             },
-            "time": "2026-11-22T23:13:14+00:00"
+            "time": "2026-11-27T07:02:43+00:00"
         },
         {
             "name": "paragonie/constant_time_encoding",
@@ -9507,16 +9507,16 @@
         },
         {
             "name": "nyoncode/wire-boost",
-            "version": "2.10.8",
+            "version": "2.10.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NyonCode/wire-boost.git",
-                "reference": "eda44f67c5b3f4342dfcaae1b459893666cc0d09"
+                "reference": "f312f14022eb2553d7c157f52933c059cd4e4ab4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/NyonCode/wire-boost/zipball/eda44f67c5b3f4342dfcaae1b459893666cc0d09",
-                "reference": "eda44f67c5b3f4342dfcaae1b459893666cc0d09",
+                "url": "https://api.github.com/repos/NyonCode/wire-boost/zipball/f312f14022eb2553d7c157f52933c059cd4e4ab4",
+                "reference": "f312f14022eb2553d7c157f52933c059cd4e4ab4",
                 "shasum": ""
             },
             "require": {
@@ -9589,7 +9589,7 @@
                 "issues": "https://github.com/ONyklicek/WireStack/issues",
                 "source": "https://github.com/NyonCode/wire-boost"
             },
-            "time": "2026-11-22T23:13:34+00:00"
+            "time": "2026-11-27T07:02:54+00:00"
         },
         {
             "name": "phar-io/manifest",
