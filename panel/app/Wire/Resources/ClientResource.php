@@ -54,8 +54,11 @@ final class ClientResource implements DescribesResource, ProvidesNavigation, Pro
 
     public static function navigation(): NavigationItem
     {
+        // A parent with children is only their heading (WireStack 2.10): its own list is a child.
         return NavigationItem::make()->icon('outline:user-group')->group('hosting')->sort(5)
-            ->visible(fn (): bool => Gate::allows('clients'));
+            ->visible(fn (): bool => Gate::allows('clients'))
+            ->children([NavigationItem::make(__('Přehled'))->icon('outline:squares-2x2')->sort(5)
+                ->url(fn () => self::url('index'))->activeWhen('wire.clients.*')]);
     }
 
     public function table(Table $table): Table

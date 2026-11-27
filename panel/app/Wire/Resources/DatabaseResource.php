@@ -69,7 +69,10 @@ final class DatabaseResource implements DescribesResource, GloballySearchable, P
 
     public static function navigation(): NavigationItem
     {
-        return NavigationItem::make()->icon('outline:circle-stack')->group('hosting')->sort(20);
+        // A parent with children is only their heading (WireStack 2.10): its own list is a child.
+        return NavigationItem::make()->icon('outline:circle-stack')->group('hosting')->sort(20)
+            ->children([NavigationItem::make(__('Přehled'))->icon('outline:squares-2x2')->sort(10)
+                ->url(fn () => self::url('index'))->activeWhen('wire.databases.*')]);
     }
 
     public static function globallySearchableAttributes(): array
