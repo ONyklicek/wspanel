@@ -1,0 +1,38 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64 arm64
+Codename: 1.14-pre
+Components: main
+Date: Fri, 27 Nov 2026 07:58:36 +0000
+Description: WSPanel, channel 1.14-pre
+Label: WSPanel
+Origin: WSPanel
+Suite: 1.14-pre
+MD5Sum:
+ e4086d9ab1375a343b34d01a2b9a3255             3317 main/binary-amd64/Packages
+ 0ec9f2ff6d8049eb032c9996df133844             1584 main/binary-amd64/Packages.gz
+ 21ddc7f6ae6c119c7e2879827a710f32             3317 main/binary-arm64/Packages
+ 85cffb4cf63c6a78740c6855485a8aed             1585 main/binary-arm64/Packages.gz
+SHA1:
+ da5b6e01b23fd3642ebf2e686bea0845cd937fac             3317 main/binary-amd64/Packages
+ 2dafce444c914e85ad5c06367d13ed09675c6373             1584 main/binary-amd64/Packages.gz
+ 909b84c54c95c58175e8e8b42b3c5644b4acb054             3317 main/binary-arm64/Packages
+ 96eff8b97f8571428760694d08a623f5f3bd60f2             1585 main/binary-arm64/Packages.gz
+SHA256:
+ 8b32c2c6247c07ba665ded03e654ea6e4e20410df073378c520f389608b33307             3317 main/binary-amd64/Packages
+ 7820ac3187fc050db0eb288efbb400011735353bc47459f8fa1964b090f31888             1584 main/binary-amd64/Packages.gz
+ fb875278e3dbb3cafc9b7077a356c0608c01c1c4ed0d6aa8ce67b9fbd723e3f5             3317 main/binary-arm64/Packages
+ 4ebede9dd283bcc03e5a67c5c0462724832a0154e3dba27a049d16fde894ca93             1585 main/binary-arm64/Packages.gz
+SHA512:
+ bf6eab5d222e7cbe5b046546d333a3d67d212d4d39fbff117f0a5ff91df88ea292095314deb08d63961e2581c43da2be1bf8ff5ee720494cf4b169dda0373612             3317 main/binary-amd64/Packages
+ 9b912e58c1c5988415eafd528af990a67dd367a2b8ccc2e8608ff31095a360e14dad6f65375d84ad9429d8de9e154ff0a8df865977e9b67bd4da9038a8805b0c             1584 main/binary-amd64/Packages.gz
+ 3296c321efe885a0dcc673ba13abba20f7234db3a46adb7cf8372af24df057f96d1c3acc5e4699da5557d0008888b74bb1a7820e2bce96dc7160a57a530689f3             3317 main/binary-arm64/Packages
+ 0f5b2bbc64140197cd2de1205a9ed7b1722567b744428082e1126cb033a8d823f60c2808b37fef88bdc334c844897e9792e8891ef227d977bfea5de9a6b86ffd             1585 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQRRUlZS68RmaWxHnp3uztGaBhAfHwUCawk4LAAKCRDuztGaBhAf
+HzE5AP4xEhuObYIwgMcEGmDilflUFaBjQ4RP4tIFMWiZ83GS7QEA0CkYRkjsDY2K
+KOa6k1Tyl6vxdia2bwWmtUSy/eluEQQ=
+=PbX5
+-----END PGP SIGNATURE-----
