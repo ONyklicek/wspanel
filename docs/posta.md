@@ -188,6 +188,9 @@ serveru a místo omezuje jen velikost schránky tady (až 1 TB) a disk.
    - **Stahovat poštu z externí schránky**: protokol (IMAP doporučeno, POP3
      také), server poskytovatele, přihlašovací jméno a heslo u poskytovatele.
      Spojení je vždy šifrované a certifikát poskytovatele se ověřuje.
+     Server musí být na internetu (ne tento server ani místní síť) a port
+     standardní (993, 995); jiný port nebo server v místní síti nastaví
+     jen správce.
    - **Smazat u poskytovatele po (počet dní)**: stažená pošta zůstane
      u poskytovatele ještě tolik dní jako pojistka (výchozí 7), pak se tam
      smaže a jeho limit se nezaplní. 0 = smazat hned po stažení.
@@ -197,6 +200,9 @@ serveru a místo omezuje jen velikost schránky tady (až 1 TB) a disk.
      ve složce Odeslané tady. Přihlášení musí u poskytovatele smět odesílat
      za tuto adresu (obvykle je to účet té adresy). Bez toho odchází pošta
      přímo z tohoto serveru, pak patří do SPF domény i tento server.
+     Přes poskytovatele odchází jen pošta, kterou schránka poslala po
+     přihlášení (port 587 nebo 465). Přeposlaná pošta ani zpráva, která
+     se za schránku jen vydává, jeho přihlášení nikdy nepoužije.
    - **Vyzkoušet spojení** ověří přihlášení k oběma službám bez uložení.
 3. Pošta se stahuje **každé 2 minuty** (první stažení hned po uložení).
    Doručuje se jako jakákoli jiná: platí kvóta, seznamy odesílatelů domény,

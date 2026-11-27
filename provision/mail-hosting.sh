@@ -533,7 +533,7 @@ postconf -P -e \
   "submission/inet/smtpd_relay_restrictions=permit_sasl_authenticated,reject" \
   "submission/inet/smtpd_recipient_restrictions=permit_sasl_authenticated,reject" \
   "submission/inet/smtpd_sender_login_maps=hash:/etc/postfix/wspanel_mailbox_senders" \
-  "submission/inet/smtpd_sender_restrictions=reject_sender_login_mismatch"
+  "submission/inet/smtpd_sender_restrictions=reject_sender_login_mismatch,check_sender_access,hash:/etc/postfix/wspanel_sender_transport"
 postconf -M -e "smtps/inet=smtps inet n - y - - smtpd"
 postconf -P -e \
   "smtps/inet/syslog_name=postfix/smtps" \
@@ -548,18 +548,21 @@ postconf -P -e \
   "smtps/inet/smtpd_relay_restrictions=permit_sasl_authenticated,reject" \
   "smtps/inet/smtpd_recipient_restrictions=permit_sasl_authenticated,reject" \
   "smtps/inet/smtpd_sender_login_maps=hash:/etc/postfix/wspanel_mailbox_senders" \
-  "smtps/inet/smtpd_sender_restrictions=reject_sender_login_mismatch"
+  "smtps/inet/smtpd_sender_restrictions=reject_sender_login_mismatch,check_sender_access,hash:/etc/postfix/wspanel_sender_transport"
 
 # External mailboxes (agent: mailfetch.go): a mailbox may send through its
 # provider's SMTP with its own login. The agent writes which mailbox goes
-# where (by the envelope sender) and the logins (root only). The provider's
+# where and the logins (root only). The route is taken only by mail the
+# mailbox sent after logging in on 587/465 (an access map read after
+# reject_sender_login_mismatch, answering FILTER), never by mail that just
+# carries its address (forwarded, or forged from outside). The provider's
 # certificate is verified: the password is never sent to anyone else.
 for f in wspanel_sender_transport wspanel_sender_sasl; do
   [[ -f /etc/postfix/$f ]] || install -m 0600 /dev/null /etc/postfix/$f
   postmap /etc/postfix/$f
 done
 chmod 0644 /etc/postfix/wspanel_sender_transport /etc/postfix/wspanel_sender_transport.db
-postconf -e "sender_dependent_default_transport_maps=hash:/etc/postfix/wspanel_sender_transport"
+postconf -X sender_dependent_default_transport_maps
 for t in wspanel-relay wspanel-relays; do
   postconf -M -e "$t/unix=$t unix - - n - - smtp"
   postconf -P -e \

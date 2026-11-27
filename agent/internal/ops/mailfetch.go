@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"wspanel/agent/internal/fsx"
@@ -63,7 +64,7 @@ var (
 	extPasswordRe = regexp.MustCompile(`^[^\x00-\x1f\x7f]{1,256}$`)
 )
 
-func (f *extFetch) validate() error {
+func (f *extFetch) validate(env *Env, allowPrivate bool) error {
 	switch f.Protocol {
 	case "imap", "pop3":
 	default:
@@ -84,11 +85,13 @@ func (f *extFetch) validate() error {
 		return protocol.Invalid("fetch.password: up to 256 characters, no line breaks")
 	case f.KeepDays < 0 || f.KeepDays > 365:
 		return protocol.Invalid("fetch.keep_days: 0-365")
+	case !allowPrivate && f.Port != map[string]int{"imap": 993, "pop3": 995}[f.Protocol]:
+		return protocol.Invalid("fetch.port: 993 for IMAP, 995 for POP3")
 	}
-	return nil
+	return checkPublicHost(env, "fetch.host", f.Host, allowPrivate)
 }
 
-func (r *extRelay) validate() error {
+func (r *extRelay) validate(env *Env, allowPrivate bool) error {
 	if r.Port == 0 {
 		r.Port = 587
 	}
@@ -103,13 +106,85 @@ func (r *extRelay) validate() error {
 	case r.Password != "" && !extPasswordRe.MatchString(r.Password):
 		return protocol.Invalid("relay.password: up to 256 characters, no line breaks")
 	}
+	return checkPublicHost(env, "relay.host", r.Host, allowPrivate)
+}
+
+// A provider is somewhere on the internet. Whoever may edit a mailbox (a
+// client) must not point it at this server or the network behind it: the
+// test and getmail would probe services that are not theirs. Only the
+// administrator (allow_private) may name a server in the local network.
+func checkPublicHost(env *Env, field, host string, allowPrivate bool) error {
+	if allowPrivate {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if internalIP(ip) {
+			return protocol.Invalid(field + ": a server on the internet (not this server or the local network)")
+		}
+		return nil
+	}
+	if env.Cfg.DryRun {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return protocol.Invalid(field + ": " + host + " does not resolve")
+	}
+	for _, a := range addrs {
+		if internalIP(a.IP) {
+			return protocol.Invalid(field + ": a server on the internet (not this server or the local network)")
+		}
+	}
 	return nil
 }
 
+var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// internalIP: loopback, private, link-local, unspecified, multicast,
+// carrier-grade NAT, or one of this server's own addresses.
+func internalIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || cgnat.Contains(ip) {
+		return true
+	}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// publicDialer refuses, at connect time, an address that turned internal
+// since it was checked (DNS rebinding).
+func publicDialer(allowPrivate bool) *net.Dialer {
+	d := &net.Dialer{}
+	if !allowPrivate {
+		d.Control = func(_, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			if ip := net.ParseIP(host); ip == nil || internalIP(ip) {
+				return errors.New("the server's address is in the local network")
+			}
+			return nil
+		}
+	}
+	return d
+}
+
 type extParams struct {
-	Address string    `json:"address"`
-	Fetch   *extFetch `json:"fetch"` // nil = no downloading
-	Relay   *extRelay `json:"relay"` // nil = sends from this server
+	Address string `json:"address"`
+	// AllowPrivate: the administrator asks; a server in the local network
+	// and any port are fine (the panel sets it, never a client).
+	AllowPrivate bool      `json:"allow_private"`
+	Fetch        *extFetch `json:"fetch"` // nil = no downloading
+	Relay        *extRelay `json:"relay"` // nil = sends from this server
 }
 
 // normalize validates p and fills the passwords left empty (= keep) from
@@ -118,10 +193,10 @@ type extParams struct {
 // for (someone who may edit the mailbox could otherwise point it at their
 // own server and collect it, also through the test). A relay with the
 // fetch's login takes the fetch's password only when it was typed now.
-func (p *extParams) normalize(mb mailbox) error {
+func (p *extParams) normalize(env *Env, mb mailbox) error {
 	fetchTyped := false
 	if p.Fetch != nil {
-		if err := p.Fetch.validate(); err != nil {
+		if err := p.Fetch.validate(env, p.AllowPrivate); err != nil {
 			return err
 		}
 		fetchTyped = p.Fetch.Password != ""
@@ -133,7 +208,7 @@ func (p *extParams) normalize(mb mailbox) error {
 		}
 	}
 	if p.Relay != nil {
-		if err := p.Relay.validate(); err != nil {
+		if err := p.Relay.validate(env, p.AllowPrivate); err != nil {
 			return err
 		}
 		if old := mb.Relay; p.Relay.Password == "" && old != nil && old.Host == p.Relay.Host && old.Port == p.Relay.Port && old.User == p.Relay.User {
@@ -168,7 +243,7 @@ func mailMailboxExternal(ctx context.Context, env *Env, raw json.RawMessage) (an
 		return nil, protocol.NotFound("mailbox " + lp + "@" + d + " does not exist")
 	}
 	mb := st.Domains[d].Mailboxes[lp]
-	if err := p.normalize(mb); err != nil {
+	if err := p.normalize(env, mb); err != nil {
 		return nil, err
 	}
 	if p.Fetch != nil {
@@ -215,7 +290,7 @@ func mailExternalTest(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 			mb = st.Domains[d].Mailboxes[lp]
 		}
 	}
-	if err := p.normalize(mb); err != nil {
+	if err := p.normalize(env, mb); err != nil {
 		return nil, err
 	}
 	out := map[string]any{}
@@ -226,19 +301,19 @@ func mailExternalTest(ctx context.Context, env *Env, raw json.RawMessage) (any, 
 		return map[string]any{"ok": true}
 	}
 	if p.Fetch != nil {
-		out["fetch"] = answer(testFetchLogin(ctx, *p.Fetch))
+		out["fetch"] = answer(testFetchLogin(ctx, *p.Fetch, p.AllowPrivate))
 	}
 	if p.Relay != nil {
-		out["relay"] = answer(testRelayLogin(ctx, env, *p.Relay))
+		out["relay"] = answer(testRelayLogin(ctx, env, *p.Relay, p.AllowPrivate))
 	}
 	return out, nil
 }
 
 // testFetchLogin signs in to the provider's IMAP or POP3 (over TLS) and out.
-func testFetchLogin(ctx context.Context, f extFetch) error {
+func testFetchLogin(ctx context.Context, f extFetch, allowPrivate bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	d := tls.Dialer{NetDialer: &net.Dialer{}, Config: &tls.Config{ServerName: f.Host, MinVersion: tls.VersionTLS12}}
+	d := tls.Dialer{NetDialer: publicDialer(allowPrivate), Config: &tls.Config{ServerName: f.Host, MinVersion: tls.VersionTLS12}}
 	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(f.Host, strconv.Itoa(f.Port)))
 	if err != nil {
 		return fmt.Errorf("the server does not answer over TLS: %w", err)
@@ -319,7 +394,7 @@ func testFetchLogin(ctx context.Context, f extFetch) error {
 }
 
 // testRelayLogin signs in to the provider's SMTP (TLS on 465, STARTTLS on 587).
-func testRelayLogin(ctx context.Context, env *Env, r extRelay) error {
+func testRelayLogin(ctx context.Context, env *Env, r extRelay, allowPrivate bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	addr := net.JoinHostPort(r.Host, strconv.Itoa(r.Port))
@@ -327,10 +402,10 @@ func testRelayLogin(ctx context.Context, env *Env, r extRelay) error {
 	var conn net.Conn
 	var err error
 	if r.Port == 465 {
-		d := tls.Dialer{NetDialer: &net.Dialer{}, Config: tc}
+		d := tls.Dialer{NetDialer: publicDialer(allowPrivate), Config: tc}
 		conn, err = d.DialContext(ctx, "tcp", addr)
 	} else {
-		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+		conn, err = publicDialer(allowPrivate).DialContext(ctx, "tcp", addr)
 	}
 	if err != nil {
 		return fmt.Errorf("the SMTP server does not answer: %w", err)
@@ -362,9 +437,12 @@ func testRelayLogin(ctx context.Context, env *Env, r extRelay) error {
 	return nil
 }
 
-// writeSenderRelays renders which mailboxes send through their provider:
-// Postfix's sender-dependent transport (wspanel-relay = STARTTLS on 587,
-// wspanel-relays = TLS on 465; both refuse plain text) and the logins.
+// writeSenderRelays renders which mailboxes send through their provider and
+// the logins. The route is an access map the submission ports (587, 465)
+// consult after reject_sender_login_mismatch, so only mail the mailbox
+// itself sent after logging in goes there; mail that merely carries its
+// address (forwarded, forged from outside) never uses its provider login.
+// wspanel-relay = STARTTLS on 587, wspanel-relays = TLS on 465.
 func writeSenderRelays(ctx context.Context, env *Env, st *mailState) error {
 	var transport, sasl bytes.Buffer
 	transport.WriteString("# Managed by WSPanel agent (mail.json).\n")
@@ -380,7 +458,7 @@ func writeSenderRelays(ctx context.Context, env *Env, st *mailState) error {
 			if r.Port == 465 {
 				via = "wspanel-relays"
 			}
-			fmt.Fprintf(&transport, "%s@%s %s:[%s]:%d\n", lp, d, via, r.Host, r.Port)
+			fmt.Fprintf(&transport, "%s@%s FILTER %s:[%s]:%d\n", lp, d, via, r.Host, r.Port)
 			fmt.Fprintf(&sasl, "%s@%s %s:%s\n", lp, d, r.User, r.Password)
 		}
 	}

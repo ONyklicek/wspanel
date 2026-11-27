@@ -411,14 +411,16 @@ class ManageMailHosting
      * after keep_days), what it sends going out through the provider's SMTP.
      * Null = not. An empty password keeps the stored one; a relay with the
      * fetch's login uses its password. Run in the background (the first
-     * downloading mailbox installs getmail).
+     * downloading mailbox installs getmail). Only the administrator may name
+     * a server in the local network or a port other than 993/995
+     * ($allowPrivate, decided where the request is, not in the worker).
      *
      * @param  array{protocol: string, host: string, port?: int|null, user: string, password?: string|null, keep_days: int}|null  $fetch
      * @param  array{host: string, port: int, user: string, password?: string|null}|null  $relay
      *
      * @throws AgentException
      */
-    public function setExternal(Mailbox $mailbox, ?array $fetch, ?array $relay): array
+    public function setExternal(Mailbox $mailbox, ?array $fetch, ?array $relay, bool $allowPrivate = false): array
     {
         $fetch = $fetch === null ? null : [
             'protocol' => $fetch['protocol'] === 'pop3' ? 'pop3' : 'imap', 'host' => strtolower(trim($fetch['host'])),
@@ -429,7 +431,7 @@ class ManageMailHosting
             'host' => strtolower(trim($relay['host'])), 'port' => (int) $relay['port'] === 465 ? 465 : 587,
             'user' => trim($relay['user']), 'password' => (string) ($relay['password'] ?? ''),
         ];
-        $this->agent->call('mail.mailbox.external', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay]);
+        $this->agent->call('mail.mailbox.external', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay, 'allow_private' => $allowPrivate]);
         $without = fn (?array $a) => $a === null ? null : array_diff_key($a, ['password' => true]);
         $mailbox->update(['external' => $fetch === null && $relay === null ? null : ['fetch' => $without($fetch), 'relay' => $without($relay)]]);
         Cache::forget('mail.fetch.'.$mailbox->mail_domain_id);
@@ -446,9 +448,9 @@ class ManageMailHosting
      *
      * @throws AgentException
      */
-    public function testExternal(Mailbox $mailbox, ?array $fetch, ?array $relay): array
+    public function testExternal(Mailbox $mailbox, ?array $fetch, ?array $relay, bool $allowPrivate = false): array
     {
-        return $this->agent->call('mail.external.test', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay]);
+        return $this->agent->call('mail.external.test', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay, 'allow_private' => $allowPrivate]);
     }
 
     /**

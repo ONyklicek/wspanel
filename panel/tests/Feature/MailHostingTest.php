@@ -524,6 +524,7 @@ class MailHostingTest extends TestCase
 
         $this->assertSame(['protocol' => 'imap', 'host' => 'imap.provider.cz', 'port' => 993, 'user' => 'alice@firma.cz', 'password' => 'tajne-heslo', 'keep_days' => 7], $sent['fetch']);
         $this->assertSame(['host' => 'smtp.provider.cz', 'port' => 587, 'user' => 'alice@firma.cz', 'password' => 'tajne-heslo'], $sent['relay'], 'the same login sends');
+        $this->assertTrue($sent['allow_private'], 'the administrator may name a server in the local network');
         $external = $alice->fresh()->external;
         $this->assertSame('imap.provider.cz', $external['fetch']['host']);
         $this->assertArrayNotHasKey('password', $external['fetch'], 'the password stays on the server, not in the panel');

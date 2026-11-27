@@ -14,6 +14,7 @@ use App\Wire\Actions\Action;
 use App\Wire\Forms\DnsGate;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Number;
 use Livewire\Component;
 use NyonCode\WireCore\Actions\ActionGroup;
@@ -227,8 +228,9 @@ class MailboxTable extends Component
                     ->default('imap')->visibleWhen('fetch_on', true)->rules(['nullable', 'in:imap,pop3']),
                 TextInput::make('host')->label(__('Server, ze kterého se stahuje'))->placeholder('imap.poskytovatel.cz')
                     ->visibleWhen('fetch_on', true)->requiredIf('fetch_on', true)->rules(['nullable', 'max:253', 'regex:/^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/']),
+                // Another port (and a server in the local network): the administrator's only.
                 TextInput::make('port')->label(__('Port'))->integer()->placeholder(fn ($get = null) => $get !== null && $get('protocol') === 'pop3' ? '995' : '993')
-                    ->visibleWhen('fetch_on', true)->rules(['nullable', 'integer', 'between:1,65535']),
+                    ->visible(fn ($get = null) => $get !== null && $get('fetch_on') && Gate::allows('admin'))->rules(['nullable', 'integer', 'between:1,65535']),
                 TextInput::make('user')->label(__('Přihlašovací jméno u poskytovatele'))
                     ->visibleWhen('fetch_on', true)->requiredIf('fetch_on', true)->rules(['nullable', 'max:256', 'regex:/^[A-Za-z0-9._@+=-]+$/']),
                 TextInput::make('password')->label(__('Heslo k účtu u poskytovatele'))->password()->revealable()
@@ -264,7 +266,7 @@ class MailboxTable extends Component
                             return;
                         }
                         try {
-                            $out = app(ManageMailHosting::class)->testExternal($record, $fetch, $relay);
+                            $out = app(ManageMailHosting::class)->testExternal($record, $fetch, $relay, Gate::allows('admin'));
                         } catch (AgentException $e) {
                             Toast::error(__('Nastavení není v pořádku'), $e->getMessage());
 
@@ -287,7 +289,7 @@ class MailboxTable extends Component
                 AgentTasks::queue('mail.external', [
                     'title' => __('Externí schránka :address', ['address' => $record->address()]),
                     'done' => $fetch !== null ? __('Pošta :address se stahuje', ['address' => $record->address()]) : __('Externí schránka :address uložena', ['address' => $record->address()]),
-                ], ManageMailHosting::class, 'setExternal', [$record, $fetch, $relay], $record);
+                ], ManageMailHosting::class, 'setExternal', [$record, $fetch, $relay, Gate::allows('admin')], $record);
             });
     }
 

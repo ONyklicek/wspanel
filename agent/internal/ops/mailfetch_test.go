@@ -96,7 +96,7 @@ func TestAnExternalMailboxSendsThroughItsProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := read2(t, env.Cfg.SenderTransport); !strings.Contains(got, "alice@firma.cz wspanel-relay:[smtp.provider.cz]:587\n") {
+	if got := read2(t, env.Cfg.SenderTransport); !strings.Contains(got, "alice@firma.cz FILTER wspanel-relay:[smtp.provider.cz]:587\n") {
 		t.Errorf("transport by sender:\n%s", got)
 	}
 	if got := read2(t, env.Cfg.SenderSASL); !strings.Contains(got, "alice@firma.cz alice@firma.cz:heslo\n") {
@@ -113,7 +113,7 @@ func TestAnExternalMailboxSendsThroughItsProvider(t *testing.T) {
 		"relay": map[string]any{"host": "smtp.provider.cz", "port": 465, "user": "alice@firma.cz", "password": "heslo"}}); err != nil {
 		t.Fatal(err)
 	}
-	if got := read2(t, env.Cfg.SenderTransport); !strings.Contains(got, "wspanel-relays:[smtp.provider.cz]:465") {
+	if got := read2(t, env.Cfg.SenderTransport); !strings.Contains(got, "FILTER wspanel-relays:[smtp.provider.cz]:465") {
 		t.Errorf("465 = TLS from the start:\n%s", got)
 	}
 	// Deleting the mailbox takes its route and login away too.
@@ -207,4 +207,29 @@ func ranCall(dr *executor.DryRun, name string, args ...string) bool {
 		}
 	}
 	return false
+}
+
+func TestAClientCannotPointAMailboxIntoTheLocalNetwork(t *testing.T) {
+	env, _ := externalTestEnv(t)
+	for name, params := range map[string]map[string]any{
+		"loopback":     {"fetch": map[string]any{"protocol": "imap", "host": "127.0.0.1", "user": "a", "password": "p"}},
+		"private":      {"fetch": map[string]any{"protocol": "imap", "host": "10.0.0.5", "user": "a", "password": "p"}},
+		"link-local":   {"relay": map[string]any{"host": "169.254.169.254", "user": "a", "password": "p"}},
+		"other port":   {"fetch": map[string]any{"protocol": "imap", "host": "imap.provider.cz", "port": 22, "user": "a", "password": "p"}},
+		"carrier NAT":  {"relay": map[string]any{"host": "100.64.1.1", "user": "a", "password": "p"}},
+		"the test too": {"fetch": map[string]any{"protocol": "pop3", "host": "192.168.1.10", "user": "a", "password": "p"}},
+	} {
+		params["address"] = "alice@firma.cz"
+		if _, err := call(t, env, mailExternalTest, params); code(err) != "invalid_params" {
+			t.Errorf("test, %s: want invalid, got %v", name, err)
+		}
+		if _, err := call(t, env, mailMailboxExternal, params); code(err) != "invalid_params" {
+			t.Errorf("save, %s: want invalid, got %v", name, err)
+		}
+	}
+	// The administrator may: a mail server in the office network.
+	if _, err := call(t, env, mailMailboxExternal, map[string]any{"address": "alice@firma.cz", "allow_private": true,
+		"fetch": map[string]any{"protocol": "imap", "host": "10.0.0.5", "port": 143, "user": "a", "password": "p", "keep_days": 7}}); err != nil {
+		t.Errorf("an administrator's local server: %v", err)
+	}
 }
