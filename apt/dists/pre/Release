@@ -1,28 +1,28 @@
 Architectures: amd64 arm64
 Codename: pre
 Components: main
-Date: Fri, 27 Nov 2026 09:08:54 +0000
+Date: Fri, 27 Nov 2026 09:44:53 +0000
 Description: WSPanel, channel pre
 Label: WSPanel
 Origin: WSPanel
 Suite: pre
 MD5Sum:
- 3dbd256a98230621f278d508d6c20ceb             3317 main/binary-amd64/Packages
- 733aa9abf236d462c6e581a8fd6a2ceb             1581 main/binary-amd64/Packages.gz
- c94aff20c7de876cb671bc35ab4105f0             3317 main/binary-arm64/Packages
- 9e4fe2461082cebd3c3ff1db4cd4d1b2             1580 main/binary-arm64/Packages.gz
+ 16ccd24b3f52e92979d4995fc243418e             3317 main/binary-amd64/Packages
+ 87504b634b5ae0ec0b476be7520d4a30             1583 main/binary-amd64/Packages.gz
+ 98b55319681e422d9410e4d868d18fdf             3317 main/binary-arm64/Packages
+ bb7e80474be604437879dc48c5b3c58f             1582 main/binary-arm64/Packages.gz
 SHA1:
- b3d3c3fb4efdf0745d030f9068a71099783e66ad             3317 main/binary-amd64/Packages
- d8b708f2b4a720a2a9847df72fc737745a126028             1581 main/binary-amd64/Packages.gz
- 76ec56336fab5a1a114ac8a20fdaf8fbff726e5c             3317 main/binary-arm64/Packages
- 5c003c638fdf070f6aafe690a455cc99ae3c4999             1580 main/binary-arm64/Packages.gz
+ d971988feb62d82787d2c655eaddecd2652a67a4             3317 main/binary-amd64/Packages
+ b85cec051c6e59d4e1ff417d1ac1efb7b02d0179             1583 main/binary-amd64/Packages.gz
+ c6084003540db7bd424700c319808c1ff73d258b             3317 main/binary-arm64/Packages
+ f3661dd1c2905b92b6dff3ab341d8ed7c188ab97             1582 main/binary-arm64/Packages.gz
 SHA256:
- fa092bf266d0b737d948296028ba365861e64d3c70bf3242f10f5a5d40ac319d             3317 main/binary-amd64/Packages
- 5ab1a1b079c0e6f897ba5ffcf7ae81ca08b717624f57279790b74a415c30b8b5             1581 main/binary-amd64/Packages.gz
- b4a2a67859882aed55e1962975d9e7bd558e300edd270b620002cf9408b17156             3317 main/binary-arm64/Packages
- e8d665b93f1938dcbc8755b24d4fe0bd5b3a3a7fe8c04069172809b8629ae322             1580 main/binary-arm64/Packages.gz
+ 1ff04a84fc10ef3c8bf4f7041c2db29c2f91925e4cffaaa2b10b1b6c57fb1b32             3317 main/binary-amd64/Packages
+ 5cd1c95ae8fb176b6a1a58850e3897b511e8883260a988b64cbd497a43663c6c             1583 main/binary-amd64/Packages.gz
+ 69764b608699562554f52eee28a3cedaf3c91ce692e94403c51d51cf4549cc3f             3317 main/binary-arm64/Packages
+ 8619927b4edc000a1b53caaa64c88c9f5f09a9edda30e99e6d1cf9222bf06d99             1582 main/binary-arm64/Packages.gz
 SHA512:
- a4ff1f5c2f49eada2f3480c6c547d074e079783ec6ede7c975d648973cead6a2d9b268b75510c35dff7f5866e82b5583f2459545763e4be9d2f1e7590689e6d6             3317 main/binary-amd64/Packages
- b10067dd0e686717b16606a53dba95747b062f763b17cb397b713c83841275b1d3dade34c90314c3602918874adea96280025910e235c996b4744e12de244c3e             1581 main/binary-amd64/Packages.gz
- a74b00d35645384cff03c8a82406ae284633cb3b64a60e2063ed9c69e4410e1de950bcc43bf84c7b5bc034e80c85b92256bf2ecbca875da9d472a6b773726f3c             3317 main/binary-arm64/Packages
- c2630939f3231a1d56f74a1c1151ddc5e4d5354ea39f4c6bfc8a116715da45f4dbda98e330a73a12aaf7aff9e6aeaae785faeea7bf3e31716a7460050b1713d3             1580 main/binary-arm64/Packages.gz
+ 97714ad584156b1ac3bf3355f48c1f1ee5b442df784478fb8c5553233cf6fc01a2e6403b14b06415b885d41f4d3a84083caaf268eddc817e645b07db309b6595             3317 main/binary-amd64/Packages
+ f5336858a54104bba7dc1dc890b4ad1f75c346ab68758095fd6ef4d81f386ff7c36eba3ee124fba2d228682efa2ded62e4b085cb4b530dcb23f64fa60702507c             1583 main/binary-amd64/Packages.gz
+ d735da234b1a5f07679ce3a2b31624c3c4fe613e9b354c0cc393ad10138fc54cfa3e568bfabf65d2b551194aa9e79db3303ae0aefff33b30b2c694f9e126837b             3317 main/binary-arm64/Packages
+ 9d78a26057282c26345dd6fc7ff94cbf9bdb962ce1698808fa004f67b9606072013fc6a05d73ef6d07eea8018b5934f2534d245a52079875dae57bc707fcbace             1582 main/binary-arm64/Packages.gz
