@@ -10,6 +10,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery;
 use Mockery\MockInterface;
@@ -83,11 +84,39 @@ class SecurityUpdatesTest extends TestCase
 
         $page = Livewire::test(UpdatesPage::class)
             ->set('selected', ['curl', 'nginx; rm'])->call('upgradeSelected')
-            ->assertSee('běží na pozadí')
+            ->assertSee('běží na pozadí')->assertSet('upgradingNames', ['curl'])
             ->call('upgradeOne', 'libssl3t64')->assertNotified(); // one upgrade at a time
 
         $page->call('pollBackgroundJobs')->assertSee('běží na pozadí')
-            ->call('pollBackgroundJobs')->assertDontSee('běží na pozadí')->assertSet('selected', []);
+            ->call('pollBackgroundJobs')->assertDontSee('běží na pozadí')->assertSet('selected', [])->assertSet('upgradingNames', []);
+    }
+
+    public function test_the_switch_of_automatic_updates_turns_while_it_runs(): void
+    {
+        Queue::fake();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('sys.updates', Mockery::any())->andReturn(['packages' => [], 'auto_security' => false]);
+
+        // Idle: the arrow only while the click's request runs.
+        $page = Livewire::test(UpdatesPage::class);
+        $button = $this->switchButton($page->html());
+        $this->assertStringContainsString('wire:loading.inline-flex', $button);
+        $this->assertDoesNotMatchRegularExpression('/\\sdisabled[\\s>]/', $button);
+
+        // Running in the background: turning and disabled until it ends.
+        $page->call('toggleAuto');
+        $button = $this->switchButton($page->html());
+        $this->assertStringNotContainsString('wire:loading.inline-flex', $button);
+        $this->assertStringContainsString('animate-spin', $button);
+        $this->assertMatchesRegularExpression('/\\sdisabled[\\s>]/', $button);
+    }
+
+    /** The markup of the button switching automatic security updates. */
+    private function switchButton(string $html): string
+    {
+        $this->assertSame(1, preg_match('/<button[^>]*wire:click="toggleAuto".*?<\/button>/s', $html, $m));
+
+        return $m[0];
     }
 
     public function test_the_fail2ban_page_lists_and_unbans_an_address(): void

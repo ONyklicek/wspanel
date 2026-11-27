@@ -48,6 +48,9 @@ class UpdatesPage extends Page
     /** @var list<string> the packages ticked in the list */
     public array $selected = [];
 
+    /** @var list<string> the packages the running upgrade installs (their buttons turn) */
+    public array $upgradingNames = [];
+
     /** Show only security updates in the list. */
     public bool $securityOnly = false;
 
@@ -76,6 +79,7 @@ class UpdatesPage extends Page
     {
         if ($key === 'sys-upgrade') {
             $this->selected = [];
+            $this->upgradingNames = [];
             // The list anew after an upgrade (apt-get update): in the background too.
             $this->refresh();
 
@@ -123,6 +127,11 @@ class UpdatesPage extends Page
         };
         try {
             $job = app(ManageUpdates::class)->upgrade($what === 'security', $what === 'packages' ? $packages : []);
+            $this->upgradingNames = match ($what) {
+                'all' => $this->upgradableNames(),
+                'security' => array_values(array_map(fn (array $p) => (string) $p['name'], array_filter($this->updates['packages'] ?? [], fn (array $p) => (bool) ($p['security'] ?? false)))),
+                default => $packages,
+            };
             $this->startBackgroundJob('sys-upgrade', $job, ['title' => $title, 'done' => __('Aktualizace nainstalovány'), 'body' => null]);
         } catch (AgentException $e) {
             Toast::error(__('Aktualizace selhala'), $e->getMessage());

@@ -8,7 +8,7 @@
         <x-wire::callout color="info" :heading="__('Restart serveru je naplánovaný')">
             <div class="flex flex-wrap items-center gap-3">
                 <span>{{ __('Server se restartuje :when.', ['when' => \App\Livewire\Pages\UpdatesPage::at($updates['reboot_scheduled'])]) }}</span>
-                <x-wire::button size="xs" color="gray" outlined wire:click="cancelReboot">{{ __('Zrušit restart') }}</x-wire::button>
+                <x-wire::button size="xs" color="gray" outlined wire:click="cancelReboot" wire:loading.attr="disabled" wire:target="cancelReboot"><x-panel.spinner target="cancelReboot" />{{ __('Zrušit restart') }}</x-wire::button>
             </div>
         </x-wire::callout>
     @endif
@@ -59,8 +59,8 @@
                         <a href="{{ $release['url'] }}" target="_blank" rel="noopener" class="font-mono font-semibold text-primary-600 hover:underline dark:text-primary-400">{{ $release['version'] }}</a>
                     </span>
                     @if ($upState !== 'running')
-                        <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="upgradePanel"
-                            wire:confirm="{{ __('Aktualizovat WSPanel na :version? Panel bude pár minut nedostupný, weby jen několik sekund. Nastavení, účty i data zůstanou; před aktualizací se uloží stav pro návrat (wspanel-rollback).', ['version' => $release['version']]) }}">{{ __('Aktualizovat na :version', ['version' => $release['version']]) }}</x-wire::button>
+                        <x-wire::button size="sm" wire:click="upgradePanel" wire:loading.attr="disabled" wire:target="upgradePanel"
+                            wire:confirm="{{ __('Aktualizovat WSPanel na :version? Panel bude pár minut nedostupný, weby jen několik sekund. Nastavení, účty i data zůstanou; před aktualizací se uloží stav pro návrat (wspanel-rollback).', ['version' => $release['version']]) }}"><x-panel.spinner target="upgradePanel" icon="outline:arrow-down-tray" />{{ __('Aktualizovat na :version', ['version' => $release['version']]) }}</x-wire::button>
                     @endif
                 @else
                     @if ($lastCheck['version'] ?? null)
@@ -68,7 +68,7 @@
                     @else
                         <span class="text-gray-500">{{ __('nové vydání zatím nezjištěno') }}</span>
                     @endif
-                    <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkRelease">{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
+                    <x-wire::button size="sm" color="gray" outlined wire:click="checkRelease" wire:loading.attr="disabled" wire:target="checkRelease"><x-panel.spinner target="checkRelease" icon="outline:arrow-path" />{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
                 @endif
             @endif
         </div>
@@ -80,8 +80,8 @@
             <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <span class="text-gray-600 dark:text-gray-300">{{ __('Testovací verze (release candidates):') }}
                     <strong>{{ \App\Support\PanelRelease::preReleases() ? __('nabízejí se') : __('ne, jen stabilní verze') }}</strong></span>
-                <x-wire::button size="xs" color="gray" outlined wire:click="togglePreReleases"
-                    :wire:confirm="\App\Support\PanelRelease::preReleases() ? null : __('Nabízet i testovací verze (release candidates)? Přinášejí nové funkce dřív, ale mohou obsahovat chyby; pro produkční server je lepší jen stabilní verze.')">{{ \App\Support\PanelRelease::preReleases() ? __('Jen stabilní') : __('Nabízet i testovací') }}</x-wire::button>
+                <x-wire::button size="xs" color="gray" outlined wire:click="togglePreReleases" wire:loading.attr="disabled" wire:target="togglePreReleases"
+                    :wire:confirm="\App\Support\PanelRelease::preReleases() ? null : __('Nabízet i testovací verze (release candidates)? Přinášejí nové funkce dřív, ale mohou obsahovat chyby; pro produkční server je lepší jen stabilní verze.')"><x-panel.spinner target="togglePreReleases" />{{ \App\Support\PanelRelease::preReleases() ? __('Jen stabilní') : __('Nabízet i testovací') }}</x-wire::button>
             </div>
             <details class="mt-2 text-xs text-gray-500">
                 <summary class="cursor-pointer">{{ __('Aktualizace z příkazové řádky') }}</summary>
@@ -95,6 +95,7 @@
     @php($shown = $this->shownPackages())
     @php($securityCount = $packages->where('security', true)->count())
     @php($busy = $this->upgrading())
+    @php($upgrading = $busy ? $this->upgradingNames : [])
     <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-gray-700">
             <div class="min-w-0 flex-1">
@@ -107,7 +108,7 @@
                     @endif
                 </p>
             </div>
-            <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="refresh" wire:loading.attr="disabled" wire:target="refresh">{{ __('Zkontrolovat znovu') }}</x-wire::button>
+            <x-wire::button size="sm" color="gray" outlined wire:click="refresh" wire:loading.attr="disabled" wire:target="refresh" :disabled="isset($backgroundJobs['updates-refresh'])"><x-panel.spinner target="refresh" icon="outline:arrow-path" :busy="isset($backgroundJobs['updates-refresh'])" />{{ __('Zkontrolovat znovu') }}</x-wire::button>
         </div>
 
         @if ($packages->isNotEmpty())
@@ -118,8 +119,8 @@
                 <span class="ms-auto text-sm text-gray-500">{{ $selected === [] ? __('Zaškrtněte balíčky, nebo aktualizujte jednotlivě.') : \App\Support\Lang::count(count($selected), 'Vybrán :count balíček', 'Vybrány :count balíčky', 'Vybráno :count balíčků') }}</span>
                 @if ($selected !== [])
                     <x-wire::button size="sm" color="gray" outlined wire:click="$set('selected', [])">{{ __('Zrušit výběr') }}</x-wire::button>
-                    <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="upgradeSelected" :disabled="$busy"
-                        wire:confirm="{{ __('Aktualizovat vybrané balíčky? Konfigurační soubory, které panel upravil, zůstanou.') }}">{{ __('Aktualizovat vybrané (:n)', ['n' => count($selected)]) }}</x-wire::button>
+                    <x-wire::button size="sm" wire:click="upgradeSelected" wire:loading.attr="disabled" wire:target="upgradeSelected" :disabled="$busy"
+                        wire:confirm="{{ __('Aktualizovat vybrané balíčky? Konfigurační soubory, které panel upravil, zůstanou.') }}"><x-panel.spinner target="upgradeSelected" icon="outline:arrow-down-tray" :busy="$busy" />{{ __('Aktualizovat vybrané (:n)', ['n' => count($selected)]) }}</x-wire::button>
                 @endif
             </div>
             <div class="overflow-x-auto">
@@ -146,7 +147,7 @@
                                     <span>{{ $p['to'] }}</span>
                                 </td>
                                 <td class="whitespace-nowrap py-2 pe-4 text-right sm:pe-6">
-                                    <x-wire::button size="xs" color="gray" outlined wire:click="upgradeOne({{ \Illuminate\Support\Js::from($p['name']) }})" :disabled="$busy">{{ __('Aktualizovat') }}</x-wire::button>
+                                    <x-wire::button size="xs" color="gray" outlined wire:click="upgradeOne({{ \Illuminate\Support\Js::from($p['name']) }})" wire:loading.attr="disabled" wire:target="upgradeOne({{ \Illuminate\Support\Js::from($p['name']) }})" :disabled="$busy"><x-panel.spinner :target="'upgradeOne('.\Illuminate\Support\Js::from($p['name']).')'" :busy="$busy && in_array($p['name'], $upgrading, true)" />{{ __('Aktualizovat') }}</x-wire::button>
                                 </td>
                             </tr>
                         @endforeach
@@ -162,7 +163,7 @@
                 <dt class="text-gray-500">{{ __('Bezpečnostní aktualizace') }}</dt>
                 <dd class="mt-1 flex items-center gap-2">
                     <x-wire::badge :color="($updates['auto_security'] ?? false) ? 'success' : 'gray'">{{ ($updates['auto_security'] ?? false) ? __('zapnuto (denně)') : __('vypnuto') }}</x-wire::badge>
-                    <x-wire::button size="xs" color="gray" outlined wire:click="toggleAuto">{{ ($updates['auto_security'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
+                    <x-wire::button size="xs" color="gray" outlined wire:click="toggleAuto" wire:loading.attr="disabled" wire:target="toggleAuto" :disabled="isset($backgroundJobs['updates-auto'])"><x-panel.spinner target="toggleAuto" :busy="isset($backgroundJobs['updates-auto'])" />{{ ($updates['auto_security'] ?? false) ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
                 </dd>
             </div>
             <div>
