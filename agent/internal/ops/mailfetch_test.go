@@ -179,7 +179,7 @@ func TestMailFetchRecordsHowEachMailboxWent(t *testing.T) {
 		t.Fatal(err)
 	}
 	dr.Responder = func(c executor.Call) (executor.Result, error) {
-		if c.Name == "setpriv" {
+		if c.Name == "setpriv" || c.Name == "systemd-run" {
 			return executor.Result{Stdout: "getmail version 6.19.07\nSimpleIMAPSSLRetriever:alice@firma.cz@imap.provider.cz:993:\n  3 messages (4521 bytes) retrieved, 0 skipped\n"}, nil
 		}
 		return executor.Result{}, nil
@@ -195,8 +195,9 @@ func TestMailFetchRecordsHowEachMailboxWent(t *testing.T) {
 	if !s.OK || s.Retrieved != 3 || s.LastMail == nil {
 		t.Errorf("status: %+v", s)
 	}
-	if !ranCall(dr, "setpriv", "--reuid=vmail") {
-		t.Error("getmail runs as vmail, never root")
+	if !ranCall(dr, "systemd-run", "--wait") || !callHas(dr, "systemd-run", "User=vmail") || !callHas(dr, "systemd-run", "BindReadOnlyPaths="+filepath.Join(env.Cfg.MailFetchDir, "alice@firma.cz", "hosts")+":/etc/hosts") ||
+		!callHas(dr, "systemd-run", "IPAddressDeny="+fetchInternalNets) {
+		t.Errorf("a public provider: getmail as vmail in its own unit, pinned addresses, no local network:\n%v", dr.Calls())
 	}
 }
 
@@ -241,7 +242,7 @@ func TestOnlyPublicUnicastAddressesAreProviders(t *testing.T) {
 		"127.0.0.1": true, "10.1.2.3": true, "172.16.5.5": true, "192.168.1.1": true, "169.254.169.254": true,
 		"100.64.0.1": true, "0.0.0.0": true, "192.0.2.1": true, "198.18.0.1": true, "198.51.100.7": true, "203.0.113.9": true,
 		"240.0.0.1": true, "224.0.0.1": true, "::1": true, "fd00::1": true, "fe80::1": true, "2001:db8::1": true,
-		"::ffff:127.0.0.1": true, "2002:7f00:1::": true, "2002:0808:0808::": false, "64:ff9b::a00:5": true, "64:ff9b::808:808": false,
+		"::ffff:127.0.0.1": true, "::7f00:1": true, "::ffff:0:7f00:1": true, "2002:7f00:1::": true, "2002:0808:0808::": false, "64:ff9b::a00:5": true, "64:ff9b::808:808": false,
 	} {
 		if got := internalIP(net.ParseIP(addr)); got != internal {
 			t.Errorf("%s: internal = %v, want %v", addr, got, internal)
@@ -254,4 +255,18 @@ func TestOnlyPublicUnicastAddressesAreProviders(t *testing.T) {
 			t.Errorf("%s: want invalid, got %v", host, err)
 		}
 	}
+}
+
+// callHas: whether a call of name had this argument.
+func callHas(dr *executor.DryRun, name, arg string) bool {
+	for _, c := range dr.Calls() {
+		if c.Name == name {
+			for _, a := range c.Args {
+				if a == arg {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

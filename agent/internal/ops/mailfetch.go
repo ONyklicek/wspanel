@@ -120,27 +120,37 @@ func checkPublicHost(env *Env, field, host string, allowPrivate bool) error {
 	if allowPrivate {
 		return nil
 	}
+	_, err := resolvePublic(env, field, host)
+	return err
+}
+
+// resolvePublic: the host's addresses, all of them public (else an error).
+// A dry run resolves nothing (IP literals are still checked).
+func resolvePublic(env *Env, field, host string) ([]net.IP, error) {
+	refuse := protocol.Invalid(field + ": a server on the internet (not this server or the local network)")
 	if ip := net.ParseIP(host); ip != nil {
 		if internalIP(ip) {
-			return protocol.Invalid(field + ": a server on the internet (not this server or the local network)")
+			return nil, refuse
 		}
-		return nil
+		return []net.IP{ip}, nil
 	}
 	if env.Cfg.DryRun {
-		return nil
+		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil || len(addrs) == 0 {
-		return protocol.Invalid(field + ": " + host + " does not resolve")
+		return nil, protocol.Invalid(field + ": " + host + " does not resolve")
 	}
+	ips := make([]net.IP, 0, len(addrs))
 	for _, a := range addrs {
 		if internalIP(a.IP) {
-			return protocol.Invalid(field + ": a server on the internet (not this server or the local network)")
+			return nil, refuse
 		}
+		ips = append(ips, a.IP)
 	}
-	return nil
+	return ips, nil
 }
 
 // specialNets: what is not a public server, beyond what netip says
@@ -159,6 +169,7 @@ var specialNets = func() []netip.Prefix {
 
 var (
 	sixToFour = netip.MustParsePrefix("2002::/16")
+	globalV6  = netip.MustParsePrefix("2000::/3")
 	nat64     = netip.MustParsePrefix("64:ff9b::/96")
 	nat64Loc  = netip.MustParsePrefix("64:ff9b:1::/48")
 )
@@ -180,6 +191,11 @@ func internalIP(ip net.IP) bool {
 		a = netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
 	}
 	if !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() {
+		return true
+	}
+	// IPv6 only from the global unicast range: every other form (IPv4-
+	// compatible ::/96, IPv4-translated, …) is not a provider.
+	if a.Is6() && !globalV6.Contains(a) {
 		return true
 	}
 	for _, n := range specialNets {
@@ -709,11 +725,14 @@ func RunMailFetch(ctx context.Context, env *Env) error {
 			}
 			addr := lp + "@" + d
 			var s fetchStatus
-			// Checked again before every run: the name may point elsewhere now.
-			if err := checkPublicHost(env, "fetch.host", md.Mailboxes[lp].Fetch.Host, md.Mailboxes[lp].Fetch.AllowPrivate); err != nil {
-				s = fetchStatus{At: time.Now().UTC(), Error: "the provider's server now points into the local network: not downloaded"}
+			f := md.Mailboxes[lp].Fetch
+			if f.AllowPrivate {
+				s = fetchOne(ctx, env, addr, f.Host, nil, false)
+			} else if ips, err := resolvePublic(env, "fetch.host", f.Host); err != nil {
+				// Resolved again before every run: the name may point elsewhere now.
+				s = fetchStatus{At: time.Now().UTC(), Error: "the provider's server does not resolve to a public address now: not downloaded"}
 			} else {
-				s = fetchOne(ctx, env, addr)
+				s = fetchOne(ctx, env, addr, f.Host, ips, true)
 			}
 			_ = withMutate(env, func() error {
 				all := loadFetchStatus(env)
@@ -735,13 +754,39 @@ func RunMailFetch(ctx context.Context, env *Env) error {
 	return nil
 }
 
-func fetchOne(ctx context.Context, env *Env, addr string) fetchStatus {
+// fetchInternalNets: where a public provider's getmail may never connect
+// (the kernel enforces it for its unit, whatever DNS says by then).
+const fetchInternalNets = "0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 198.18.0.0/15 224.0.0.0/3 ::/96 ::1/128 fc00::/7 fe80::/10 fec0::/10 ff00::/8 64:ff9b::/96"
+
+// fetchOne runs getmail once as vmail. A public provider's (pinned) runs in
+// a unit of its own whose /etc/hosts holds only the addresses just checked,
+// so the name cannot resolve elsewhere between the check and the connect
+// (TLS still verifies the name), and which cannot reach the local network.
+func fetchOne(ctx context.Context, env *Env, addr, host string, ips []net.IP, pinned bool) fetchStatus {
 	dir := filepath.Join(env.Cfg.MailFetchDir, addr)
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Minute)
 	defer cancel()
 	var out bytes.Buffer
-	args := append(userCreds("vmail"), "/usr/bin/getmail", "--getmaildir="+dir, "--rcfile="+filepath.Join(dir, "getmailrc"))
-	_, err := env.Exec.RunLog(ctx, &out, "setpriv", args...)
+	getmail := []string{"/usr/bin/getmail", "--getmaildir=" + dir, "--rcfile=" + filepath.Join(dir, "getmailrc")}
+	var err error
+	if pinned {
+		hosts := filepath.Join(dir, "hosts")
+		var b strings.Builder
+		b.WriteString("127.0.0.1 localhost\n::1 localhost\n")
+		for _, ip := range ips {
+			fmt.Fprintf(&b, "%s %s\n", ip, host)
+		}
+		if werr := env.FS.WriteFile(hosts, []byte(b.String()), 0o644, fsx.Root); werr != nil {
+			return fetchStatus{At: time.Now().UTC(), Error: werr.Error()}
+		}
+		args := []string{"--wait", "--pipe", "--quiet", "--collect", "--service-type=exec",
+			"-p", "User=vmail", "-p", "Group=vmail", "-p", "NoNewPrivileges=yes", "-p", "PrivateTmp=yes",
+			"-p", "BindReadOnlyPaths=" + hosts + ":/etc/hosts", "-p", "IPAddressDeny=" + fetchInternalNets,
+			"-p", "RuntimeMaxSec=45min", "--"}
+		_, err = env.Exec.RunLog(ctx, &out, "systemd-run", append(args, getmail...)...)
+	} else {
+		_, err = env.Exec.RunLog(ctx, &out, "setpriv", append(userCreds("vmail"), getmail...)...)
+	}
 	now := time.Now().UTC()
 	s := fetchStatus{At: now, OK: err == nil}
 	for _, m := range getmailRetrievedRe.FindAllStringSubmatch(out.String(), -1) {
