@@ -7,6 +7,7 @@ use App\Actions\Databases\SyncDatabases;
 use App\Livewire\Concerns\WatchesAgentTasks;
 use App\Models\Database;
 use App\Services\Agent\AgentException;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
@@ -50,7 +51,7 @@ class ViewDatabase extends ViewPage
     {
         return [
             ...DatabaseResource::toolActions(),
-            Action::make('backupNow')
+            Action::make('backupNow')->busyWhile(fn () => RunningTasks::has('db.backup', $this->agentTaskSubject()))
                 ->label(__('Zálohovat teď'))
                 ->icon('outline:archive-box-arrow-down')
                 ->action(function (Database $record) {

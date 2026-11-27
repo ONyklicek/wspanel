@@ -61,7 +61,7 @@ class ListFirewallRules extends ListPage
         $access = app(ManagePanelAccess::class)->current();
 
         return [
-            Action::make('add')
+            Action::make('add')->busyWhile('fw.add')
                 ->label(__('Přidat pravidlo'))
                 ->icon('outline:plus')
                 ->form([

@@ -63,9 +63,10 @@ Průvodce (textové okno, šipky a mezerník) se postupně zeptá:
 - na port SSH a jak se správci přihlašují: **heslem i klíčem** (výchozí),
   nebo **jen klíčem** (pak chce veřejný klíč pro roota, pokud ho ještě nemá);
   úplný zákaz roota přes SSH nabídne, jen když má klíč jiný správce se `sudo`,
-- které databázové servery, verze PHP a Node instalovat,
-- které moduly zapnout (klienti a balíčky, pošta se schránkami a webmailem,
-  DNS server, profilování XHProf),
+- které databázové servery, verze PHP, Node a Pythonu instalovat,
+- které moduly zapnout (klienti a balíčky, herní servery, pošta se schránkami
+  a webmailem, DNS server, profilování XHProf),
+- jaký server pro cache, fronty a session webů: **Valkey**, **Redis 8**, nebo **oba**,
 - jestli pošta z webů odchází, nebo se zachytává v Mailpitu,
 - jestli omezit panel na vybrané adresy,
 - na prvního správce: jméno, e-mail a heslo (prázdné = vygeneruje se
@@ -148,7 +149,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--games=` | `no` | `yes` = herní servery (Minecraft, Factorio) v menu; Java a hry se stáhnou až s prvním serverem; později Server → Moduly |
 | `--mail-hosting=` | `no` | `yes` = schránky, webmail a antispam (pošta pro domény); později Server → Moduly |
 | `--xhprof=` | `no` | `yes` = XHProf + XHGui, profilování zapínané u každého webu; později Server → Moduly |
-| `--redis=` | `no` | `yes` = oficiální Redis 8 (packages.redis.io) jako volba vedle Valkey u každého webu; později Server → Moduly |
+| `--kv=` | `valkey` | server pro cache, fronty a session webů: `valkey` (Debian, licence BSD), `redis` (oficiální Redis 8 z packages.redis.io, s moduly JSON, Search, TimeSeries a Bloom) nebo `both` (každý web si vybere); při upgradu zůstane, co server má; později Server → Moduly. Starší `--redis=yes` = `both` |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |
 | `--agent-bin=` | (povinné) | sestavená binárka agenta |
 | `--panel-source=` | – | adresář `panel/` (bez něj se nainstaluje jen systém) |
@@ -176,8 +177,8 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
   (jejich workery, cron a `php` v SSH používají `php-zts`, tedy totéž PHP).
   Vlastní `frankenphp.service` balíčku je zamaskovaná. Binárky z GitHubu
   (Mailpit, fnm) se ověřují otiskem sha256.
-- **MariaDB / PostgreSQL** podle `--db`, **Valkey** (Redis) pro cache a fronty;
-  s `--redis=yes` i **Redis 8** z oficiálního repozitáře (každý web si vybere).
+- **MariaDB / PostgreSQL** podle `--db`; pro cache a fronty podle `--kv` **Valkey**,
+  **Redis 8** z oficiálního repozitáře, nebo oba (každý web si vybere).
 - **Node** přes fnm v `/opt/fnm`, **Composer**, **Git**.
 - **Postfix** (jen odchozí, poslouchá na loopbacku), **OpenDKIM** a **Mailpit**.
 - **PowerDNS** (s `--dns=powerdns`).

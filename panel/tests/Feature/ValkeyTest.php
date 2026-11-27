@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Server\ManageKeyValue;
 use App\Actions\Sites\ManageValkey;
+use App\Livewire\Pages\ModulesPage;
 use App\Livewire\Sites\SiteSettings;
 use App\Livewire\Sites\ViewSite;
 use App\Models\AgentTask;
@@ -11,6 +13,7 @@ use App\Models\Package;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery;
@@ -72,6 +75,41 @@ class ValkeyTest extends TestCase
             ->andReturn([]);
 
         app(ManageValkey::class)->set($site, ['enabled' => true, 'server' => 'memcached', 'maxmemory_mb' => 64]);
+    }
+
+    public function test_a_server_with_only_redis_gives_a_site_redis(): void
+    {
+        $site = $this->site();
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('kv.status')
+            ->andReturn(['servers' => ['valkey' => ['installed' => false, 'sites' => []], 'redis' => ['installed' => true, 'sites' => []]], 'default' => 'redis']);
+        $this->agent->shouldReceive('call')->once()->with('valkey.set', Mockery::on(fn ($p) => $p['server'] === 'redis'))->andReturn([]);
+
+        app(ManageValkey::class)->set($site, ['enabled' => true, 'maxmemory_mb' => 64]);
+
+        $this->assertSame('redis', $site->fresh()->valkey['server']);
+    }
+
+    public function test_a_key_value_server_a_site_runs_is_not_taken_away(): void
+    {
+        $site = $this->site();
+        $site->update(['valkey' => ['server' => 'redis', 'maxmemory_mb' => 64]]);
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldNotReceive('call')->with('kv.uninstall', Mockery::any());
+
+        $this->expectException(AgentException::class);
+        app(ManageKeyValue::class)->uninstall('redis');
+    }
+
+    public function test_the_modules_page_offers_to_add_the_missing_one_only(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->agent->shouldReceive('call')->with('kv.status')
+            ->andReturn(['servers' => ['valkey' => ['installed' => false, 'sites' => []], 'redis' => ['installed' => true, 'sites' => ['kv.example.com']]], 'default' => 'redis', 'mail' => 'redis']);
+
+        Livewire::test(ModulesPage::class)
+            ->assertSee('Nainstalovat Valkey')->assertDontSee('Odinstalovat Redis 8')
+            ->assertSee('antispam pošty běží na Redis 8');
     }
 
     public function test_the_dialog_opens_from_the_settings_tab(): void

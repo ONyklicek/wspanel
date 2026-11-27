@@ -4,8 +4,8 @@ namespace App\Livewire\Pages;
 
 use App\Actions\Dns\ManageDnsServer;
 use App\Actions\Mail\ManageMailHosting;
+use App\Actions\Server\ManageKeyValue;
 use App\Actions\Server\ManagePython;
-use App\Actions\Server\ManageRedis;
 use App\Actions\Server\ModuleMemory;
 use App\Actions\Sites\ManageXhprof;
 use App\Enums\DatabaseEngine;
@@ -142,10 +142,10 @@ class ModulesPage extends Page
         return app(ManageXhprof::class)->installed();
     }
 
-    /** @return array{installed?: bool, version?: string, modules?: list<string>, sites?: list<string>} */
-    public function redis(): array
+    /** @return array{servers?: array<string, array{installed: bool, sites: list<string>}>, default?: string, mail?: string} */
+    public function keyValue(): array
     {
-        return app(ManageRedis::class)->status();
+        return app(ManageKeyValue::class)->status();
     }
 
     public function dnsLocal(): bool
@@ -160,7 +160,7 @@ class ModulesPage extends Page
 
     protected function backgroundJobKeys(): array
     {
-        return ['mail-install', 'python', 'xhprof', 'dns', 'redis'];
+        return ['mail-install', 'python', 'xhprof', 'dns', 'kv'];
     }
 
     /**
@@ -208,7 +208,7 @@ class ModulesPage extends Page
     private function moduleActions(): array
     {
         $list = [
-            Action::make('installMail')
+            Action::make('installMail')->busyWhile(['mail-install', 'mail.uninstall'])
                 ->label(__('Nainstalovat poštu (schránky)'))
                 ->icon('outline:inbox-stack')
                 ->visible(fn () => ! isset($this->backgroundJobs['mail-install']) && ! app(ManageMailHosting::class)->installed())
@@ -225,7 +225,7 @@ class ModulesPage extends Page
                         Toast::error(__('Instalace selhala'), $e->getMessage());
                     }
                 }),
-            Action::make('installPython')
+            Action::make('installPython')->busyWhile(['python.*'])
                 ->label(fn () => $this->pythonVersions() === [] ? __('Nainstalovat Python') : __('Přidat verzi Pythonu'))
                 ->icon('outline:command-line')
                 ->visible(fn () => $this->installablePython() !== [])
@@ -243,7 +243,7 @@ class ModulesPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
-            Action::make('upgradePython')
+            Action::make('upgradePython')->busyWhile(['python.*'])
                 ->label(__('Aktualizovat Python'))
                 ->icon('outline:arrow-path')
                 ->color('gray')
@@ -263,7 +263,7 @@ class ModulesPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
-            Action::make('installXhprof')
+            Action::make('installXhprof')->busyWhile(['xhprof.install', 'xhprof.uninstall'])
                 ->label(__('Nainstalovat XHProf + XHGui'))
                 ->icon('outline:chart-bar')
                 ->visible(fn () => ! app(ManageXhprof::class)->installed())
@@ -277,7 +277,7 @@ class ModulesPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
-            Action::make('uninstallMail')
+            Action::make('uninstallMail')->busyWhile(['mail-install', 'mail.uninstall'])
                 ->label(__('Odinstalovat poštu'))
                 ->icon('outline:trash')
                 ->color('gray')
@@ -285,14 +285,14 @@ class ModulesPage extends Page
                 ->requiresConfirmation()
                 ->modalDescription(__('Odebere Dovecot, Rspamd a webmail a zavře porty 25, 465, 587, 993, 995 a 4190. Jde jen tehdy, když nezbývá žádná poštovní doména (Pošta → Domény). Weby dál odesílají poštu přes Postfix.'))
                 ->action(fn () => $this->runModuleTask(fn () => app(ManageMailHosting::class)->uninstall(), __('Odinstalace nejde'))),
-            Action::make('installDns')
+            Action::make('installDns')->busyWhile(['dns.install', 'dns.uninstall'])
                 ->label(__('Nainstalovat DNS server'))
                 ->icon('outline:globe-alt')
                 ->visible(fn () => ! isset($this->backgroundJobs['dns']) && ! $this->dnsLocal())
                 ->requiresConfirmation()
                 ->modalDescription(__('Nainstaluje PowerDNS (jen autoritativní, žádný překlad cizích domén) a otevře port 53 (TCP i UDP). Zóny pak přidáte v menu Síť → DNS. Trvá zhruba minutu.'))
                 ->action(fn () => $this->runModuleTask(fn () => app(ManageDnsServer::class)->install(), __('Instalace selhala'))),
-            Action::make('uninstallDns')
+            Action::make('uninstallDns')->busyWhile(['dns.install', 'dns.uninstall'])
                 ->label(__('Odinstalovat DNS server'))
                 ->icon('outline:trash')
                 ->color('gray')
@@ -300,22 +300,37 @@ class ModulesPage extends Page
                 ->requiresConfirmation()
                 ->modalDescription(__('Odebere PowerDNS a zavře port 53. Jde jen tehdy, když na serveru nezbývá žádná DNS zóna (Síť → DNS); zóny v Cloudflare zůstávají.'))
                 ->action(fn () => $this->runModuleTask(fn () => app(ManageDnsServer::class)->uninstall(), __('Odinstalace nejde'))),
-            Action::make('installRedis')
-                ->label(__('Nainstalovat Redis 8'))
+            Action::make('installValkey')->busyWhile(['kv.install', 'kv.uninstall'])
+                ->label(__('Nainstalovat Valkey'))
                 ->icon('outline:bolt')
-                ->visible(fn () => ! isset($this->backgroundJobs['redis']) && ! app(ManageRedis::class)->installed())
+                ->visible(fn () => ! isset($this->backgroundJobs['kv']) && ! app(ManageKeyValue::class)->installed('valkey'))
                 ->requiresConfirmation()
-                ->modalDescription(__('Doinstaluje oficiální Redis 8 z packages.redis.io (jen programy, sdílený server zůstane vypnutý). U každého webu pak půjde místo Valkey zvolit Redis: vlastní proces pod uživatelem webu, heslo a limit paměti jako u Valkey, navíc moduly JSON, Search, TimeSeries a Bloom.'))
-                ->action(fn () => $this->runModuleTask(fn () => app(ManageRedis::class)->install(), __('Instalace selhala'))),
-            Action::make('uninstallRedis')
-                ->label(__('Odinstalovat Redis'))
+                ->modalDescription(__('Doinstaluje Valkey z Debianu (licence BSD; jen programy, sdílený server zůstane vypnutý). Weby, které ho zvolí, mají vlastní server pod svým uživatelem, s heslem a limitem paměti.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageKeyValue::class)->install('valkey'), __('Instalace selhala'))),
+            Action::make('uninstallValkey')->busyWhile(['kv.install', 'kv.uninstall'])
+                ->label(__('Odinstalovat Valkey'))
                 ->icon('outline:trash')
                 ->color('gray')
-                ->visible(fn () => ! isset($this->backgroundJobs['redis']) && app(ManageRedis::class)->installed())
+                ->visible(fn () => ! isset($this->backgroundJobs['kv']) && count(app(ManageKeyValue::class)->available()) > 1 && app(ManageKeyValue::class)->installed('valkey'))
                 ->requiresConfirmation()
-                ->modalDescription(__('Odebere Redis 8. Jde jen tehdy, když ho žádný web nepoužívá (přepněte je na Valkey).'))
-                ->action(fn () => $this->runModuleTask(fn () => app(ManageRedis::class)->uninstall(), __('Odinstalace nejde'))),
-            Action::make('uninstallXhprof')
+                ->modalDescription(__('Odebere Valkey. Jde jen tehdy, když ho žádný web nepoužívá (přepněte je na druhý server) a druhý zůstane nainstalovaný. Antispam pošty se na něj přesune a jeho statistiky se začnou učit znovu.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageKeyValue::class)->uninstall('valkey'), __('Odinstalace nejde'))),
+            Action::make('installRedis')->busyWhile(['kv.install', 'kv.uninstall'])
+                ->label(__('Nainstalovat Redis 8'))
+                ->icon('outline:bolt')
+                ->visible(fn () => ! isset($this->backgroundJobs['kv']) && ! app(ManageKeyValue::class)->installed('redis'))
+                ->requiresConfirmation()
+                ->modalDescription(__('Doinstaluje oficiální Redis 8 z packages.redis.io (jen programy, sdílený server zůstane vypnutý). Weby, které ho zvolí, mají vlastní server pod svým uživatelem, s heslem a limitem paměti, navíc moduly JSON, Search, TimeSeries a Bloom.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageKeyValue::class)->install('redis'), __('Instalace selhala'))),
+            Action::make('uninstallRedis')->busyWhile(['kv.install', 'kv.uninstall'])
+                ->label(__('Odinstalovat Redis 8'))
+                ->icon('outline:trash')
+                ->color('gray')
+                ->visible(fn () => ! isset($this->backgroundJobs['kv']) && count(app(ManageKeyValue::class)->available()) > 1 && app(ManageKeyValue::class)->installed('redis'))
+                ->requiresConfirmation()
+                ->modalDescription(__('Odebere Redis 8. Jde jen tehdy, když ho žádný web nepoužívá (přepněte je na druhý server) a druhý zůstane nainstalovaný. Antispam pošty se na něj přesune a jeho statistiky se začnou učit znovu.'))
+                ->action(fn () => $this->runModuleTask(fn () => app(ManageKeyValue::class)->uninstall('redis'), __('Odinstalace nejde'))),
+            Action::make('uninstallXhprof')->busyWhile(['xhprof.install', 'xhprof.uninstall'])
                 ->label(__('Odinstalovat XHProf'))
                 ->icon('outline:trash')
                 ->color('gray')
@@ -323,7 +338,7 @@ class ModulesPage extends Page
                 ->requiresConfirmation()
                 ->modalDescription(__('Odebere rozšíření XHProf ze všech verzí PHP a XHGui. Jde jen tehdy, když žádný web nemá profilování zapnuté.'))
                 ->action(fn () => $this->runModuleTask(fn () => app(ManageXhprof::class)->uninstall(), __('Odinstalace nejde'))),
-            Action::make('removePython')
+            Action::make('removePython')->busyWhile(['python.*'])
                 ->label(__('Odinstalovat verzi Pythonu'))
                 ->icon('outline:trash')
                 ->color('gray')

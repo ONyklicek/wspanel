@@ -35,6 +35,7 @@ func main() {
 	backup := flag.String("backup", "", "run a scheduled backup of engine/name and exit (used by backup timers)")
 	keep := flag.Int("keep", 7, "with -backup: number of backups to keep")
 	siteBackup := flag.String("site-backup", "", "run a scheduled backup of the site <domain> and exit (used by site backup timers)")
+	mailFetch := flag.String("mail-fetch", "", "download the external mailboxes (\"all\") once and exit (used by the mail fetch timer)")
 	fileopHome := flag.String("fileop", "", "internal: serve one file-manager request inside this site home (run as the site user)")
 	mountBind := flag.String("mount-bind", "", "internal: bind the staged network disk <domain>/<name> into the site (its unit's ExecStartPost)")
 	mountUnbind := flag.String("mount-unbind", "", "internal: remove the bind of the network disk <domain>/<name> (its unit's ExecStop)")
@@ -150,6 +151,13 @@ func main() {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if *mailFetch != "" {
+		if err := runMailFetchMode(*cfgPath, log); err != nil {
+			log.Error("mail fetch failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *siteBackup != "" {
 		if err := runSiteBackupMode(*cfgPath, *siteBackup, log); err != nil {
 			log.Error("site backup failed", "err", err)
@@ -274,6 +282,22 @@ func runSiteBackupMode(cfgPath, domain string, log *slog.Logger) error {
 	return err
 }
 
+// runMailFetchMode downloads the external mailboxes once (the timer).
+func runMailFetchMode(cfgPath string, log *slog.Logger) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	env := &ops.Env{Cfg: cfg, ConfigPath: cfgPath, Exec: executor.NewReal(binaries(cfg), []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}), FS: &fsx.FS{DryRun: cfg.DryRun}}
+	err = ops.RunMailFetch(context.Background(), env)
+	if err != nil {
+		// One provider down must not look like the whole timer failing for
+		// ever: the status file says which; the unit only logs it.
+		log.Warn("some mailboxes were not downloaded", "err", err)
+	}
+	return nil
+}
+
 // binaries is the executor allowlist: logical name -> absolute path.
 func binaries(cfg config.Config) map[string]string {
 	b := map[string]string{
@@ -306,11 +330,12 @@ func binaries(cfg config.Config) map[string]string {
 		"doveadm":            "/usr/bin/doveadm",  // quota get
 		"mail-hosting":       "/usr/lib/wspanel/mail-hosting.sh",
 		"xhprof":             "/usr/lib/wspanel/xhprof.sh",
-		"dns-setup":          "/usr/lib/wspanel/dns.sh",   // install|remove
-		"redis-setup":        "/usr/lib/wspanel/redis.sh", // install|--remove
-		"redis-server":       "/usr/bin/redis-server",     // --version only
-		"rsync":              "/usr/bin/rsync",            // the mirror: --server --sender (checked) and the standby's pull
-		"ssh":                "/usr/bin/ssh",              // the mirror: Windows DNS (pinned host key, one fixed account)
+		"dns-setup":          "/usr/lib/wspanel/dns.sh",    // install|remove
+		"redis-setup":        "/usr/lib/wspanel/redis.sh",  // install|--remove
+		"valkey-setup":       "/usr/lib/wspanel/valkey.sh", // install|--remove
+		"redis-server":       "/usr/bin/redis-server",      // --version only
+		"rsync":              "/usr/bin/rsync",             // the mirror: --server --sender (checked) and the standby's pull
+		"ssh":                "/usr/bin/ssh",               // the mirror: Windows DNS (pinned host key, one fixed account)
 		"ssh-keygen":         "/usr/bin/ssh-keygen",
 		"mirror-hook":        "/usr/bin/env",               // root's own scripts in /etc/wspanel/mirror/hooks (root-owned, checked)
 		"clamav":             "/usr/lib/wspanel/clamav.sh", // enable|disable

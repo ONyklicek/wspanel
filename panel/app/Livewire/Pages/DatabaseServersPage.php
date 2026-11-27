@@ -154,7 +154,7 @@ class DatabaseServersPage extends Page
             ->mapWithKeys(fn (DatabaseEngine $e) => [$e->value => $e->getLabel()]);
 
         return [
-            Action::make('createInstance')
+            Action::make('createInstance')->busyWhile('db-instance')
                 ->label(__('Vyhrazený server pro web'))
                 ->icon('outline:lock-closed')
                 ->color('gray')
@@ -182,7 +182,7 @@ class DatabaseServersPage extends Page
                         Toast::error(__('Vyhrazený server se nepodařilo založit'), $e->getMessage());
                     }
                 }),
-            Action::make('installEngine')
+            Action::make('installEngine')->busyWhile('engine-install')
                 ->label(__('Doinstalovat engine'))
                 ->icon('outline:plus-circle')
                 ->visible(fn () => $this->missingEngines() !== [] && ! isset($this->backgroundJobs['engine-install']))

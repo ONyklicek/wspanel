@@ -57,7 +57,7 @@
                 </x-wire::section>
                 <div class="flex flex-wrap gap-2">
                     <x-wire::button type="submit">{{ __('Uložit') }}</x-wire::button>
-                    <x-wire::button type="button" color="gray" outlined wire:click="saveFactorio(true)" wire:confirm="{{ __('Uložit a restartovat server? Hráči se na chvíli odpojí.') }}">{{ __('Uložit a restartovat') }}</x-wire::button>
+                    <x-wire::button type="button" color="gray" outlined wire:click="saveFactorio(true)" wire:confirm="{{ __('Uložit a restartovat server? Hráči se na chvíli odpojí.') }}" wire:loading.attr="disabled" wire:target="saveFactorio(true)" :disabled="(\App\Support\RunningTasks::has('game.restart', $this->server()))"><x-panel.spinner target="saveFactorio(true)" :busy="\App\Support\RunningTasks::has('game.restart', $this->server())" />{{ __('Uložit a restartovat') }}</x-wire::button>
                 </div>
             </form>
         @endif
@@ -108,7 +108,7 @@
 
             <div class="flex flex-wrap gap-2">
                 <x-wire::button type="submit">{{ __('Uložit') }}</x-wire::button>
-                <x-wire::button type="button" color="gray" outlined wire:click="save(true)" wire:confirm="{{ __('Uložit a restartovat server? Hráči se na chvíli odpojí.') }}">{{ __('Uložit a restartovat') }}</x-wire::button>
+                <x-wire::button type="button" color="gray" outlined wire:click="save(true)" wire:confirm="{{ __('Uložit a restartovat server? Hráči se na chvíli odpojí.') }}" wire:loading.attr="disabled" wire:target="save(true)" :disabled="(\App\Support\RunningTasks::has('game.restart', $this->server()))"><x-panel.spinner target="save(true)" :busy="\App\Support\RunningTasks::has('game.restart', $this->server())" />{{ __('Uložit a restartovat') }}</x-wire::button>
                 <span wire:loading wire:target="save" class="text-sm text-gray-500">{{ __('Ukládám…') }}</span>
             </div>
         </form>

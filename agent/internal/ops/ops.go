@@ -49,7 +49,7 @@ type Op struct {
 // the panel polls job.status.
 var asyncOps = map[string]bool{"db.backup": true, "db.restore": true, "db.instance_create": true, "db.instance_update": true, "engine.install": true, "deploy.run": true, "server.backup": true,
 	"php.extension": true, "php.install": true, "python.install": true, "python.upgrade": true, "site.backup": true, "site.restore": true,
-	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "mail.uninstall": true, "xhprof.install": true, "xhprof.uninstall": true, "dns.install": true, "dns.uninstall": true, "python.remove": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "game.mod_install": true, "game.modpack_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true, "redis.install": true, "redis.uninstall": true, "mirror.promote": true, "mirror.switchover": true}
+	"offsite.upload": true, "offsite.fetch": true, "site.set_group": true, "mail.install": true, "mail.uninstall": true, "xhprof.install": true, "xhprof.uninstall": true, "dns.install": true, "dns.uninstall": true, "python.remove": true, "sys.upgrade": true, "pkg.install": true, "pkg.remove": true, "game.create": true, "game.update": true, "game.backup": true, "game.restore": true, "game.plugin_install": true, "game.mod_install": true, "game.modpack_install": true, "site.app_install": true, "site.pack": true, "site.copy_shared": true, "db.copy": true, "site.import": true, "mail.filters.set": true, "fw.geoblock": true, "site.mount": true, "redis.install": true, "redis.uninstall": true, "kv.install": true, "kv.uninstall": true, "mirror.promote": true, "mirror.switchover": true}
 
 // Registry returns the whitelist.
 func Registry() map[string]Op {
@@ -175,6 +175,9 @@ func Registry() map[string]Op {
 		{"mail.usage", false, mailUsage},
 		{"mail.autoreply", true, mailAutoreply},
 		{"mail.forward.set", true, mailForwardSet},
+		{"mail.mailbox.external", true, mailMailboxExternal},
+		{"mail.external.test", false, mailExternalTest},
+		{"mail.fetch.status", false, mailFetchStatus},
 		{"mail.limits.set", true, mailLimitsSet},
 		{"mail.filters.set", true, mailFiltersSet},
 		{"site.mounts", false, siteMountsList},
@@ -270,6 +273,9 @@ func Registry() map[string]Op {
 		{"redis.install", true, redisInstall},
 		{"redis.uninstall", true, redisUninstall},
 		{"redis.status", false, redisStatus},
+		{"kv.install", true, kvInstall},
+		{"kv.uninstall", true, kvUninstall},
+		{"kv.status", false, kvStatus},
 		{"mirror.status", false, mirrorStatusOp},
 		{"mirror.init", true, mirrorInit},
 		{"mirror.pairing_code", true, mirrorPairingCode},

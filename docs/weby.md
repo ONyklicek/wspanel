@@ -410,10 +410,14 @@ tlačítko, které otevře její úpravu. Každá úprava má i vlastní adresu
 
 **Valkey nebo Redis.** Každý web může mít vlastní key-value server: proces pod
 uživatelem webu na `127.0.0.1` a vlastním portu, s heslem a limitem paměti.
-Výchozí je Valkey. Po instalaci modulu Redis 8 (Server → Moduly, nebo
-`install.sh --redis=yes`) jde u webu zvolit oficiální Redis 8 včetně modulů
-JSON, Search, TimeSeries a Bloom. Oba mluví stejným protokolem, `.env` se
-nemění. Při přepnutí se uložená data smažou, protože každý server zapisuje
+Který server na serveru je, se volí při instalaci (`--kv=valkey|redis|both`)
+a mění v **Server → Moduly**: jen Valkey (výchozí), jen oficiální Redis 8
+(s moduly JSON, Search, TimeSeries a Bloom), nebo oba. S jedním z nich ho
+web dostane rovnou, s oběma si vybere. Oba mluví stejným protokolem, `.env` se
+nemění. Odebrat jde jen server, který žádný web nepoužívá, a vždy zůstane
+aspoň jeden. Antispam pošty (Rspamd) běží na tom, který na serveru je; když
+jeho server odeberete, přesune se na druhý a jeho statistiky se začnou učit
+znovu. Při přepnutí se uložená data smažou, protože každý server zapisuje
 jiný formát souboru.
 
 ## Zapnutí, vypnutí, restart

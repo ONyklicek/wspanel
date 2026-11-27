@@ -127,7 +127,7 @@ final class ServiceResource implements DescribesResource, ProvidesNavigation, Pr
 
     private static function control(string $verb, string $label, string $icon, string $color): Action
     {
-        return Action::make($verb)->label($label)->icon($icon)->color($color)
+        return Action::make($verb)->busyWhile('service.'.$verb)->label($label)->icon($icon)->color($color)
             ->action(function (Service $record) use ($verb, $label) {
                 // The panel's own units at once: the queue worker would be restarting itself.
                 if (self::isPanelUnit($record)) {

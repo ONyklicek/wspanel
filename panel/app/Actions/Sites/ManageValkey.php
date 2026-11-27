@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sites;
 
+use App\Actions\Server\ManageKeyValue;
 use App\Models\Site;
 use App\Services\Agent\AgentClient;
 use App\Services\Agent\AgentException;
@@ -58,7 +59,7 @@ class ManageValkey
         }
         $settings = [
             // Not given (a worker switching it on): the server the site already runs.
-            'server' => in_array($server = (string) ($data['server'] ?? $site->valkey['server'] ?? 'valkey'), array_keys(self::SERVERS), true) ? $server : 'valkey',
+            'server' => in_array($server = (string) ($data['server'] ?? $site->valkey['server'] ?? app(ManageKeyValue::class)->default()), array_keys(self::SERVERS), true) ? $server : app(ManageKeyValue::class)->default(),
             'maxmemory_mb' => (int) ($data['maxmemory_mb'] ?? 64),
             'policy' => (string) ($data['policy'] ?? 'allkeys-lru'),
             'persist' => (bool) ($data['persist'] ?? false),

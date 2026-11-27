@@ -62,6 +62,7 @@ GAMES=no
 MAIL_HOSTING=no
 XHPROF=no
 REDIS=no
+KV="" # valkey | redis | both; empty = what this server has (upgrade), else valkey
 ACME_EMAIL=""
 AGENT_BIN=""
 PANEL_SOURCE=""
@@ -109,7 +110,8 @@ for arg in "$@"; do
     --panel-port=*) PANEL_PORT="${arg#*=}" ;;
     --clients=*) CLIENTS="${arg#*=}" ;; # yes: hosting clients with packages (Server → Moduly later)
     --games=*) GAMES="${arg#*=}" ;; # yes: game servers in the menu (Java and the games come with the first server)
-    --redis=*) REDIS="${arg#*=}" ;; # yes: Redis 8 (packages.redis.io) beside Valkey, per site
+    --redis=*) REDIS="${arg#*=}" ;; # older form of --kv=both
+    --kv=*) KV="${arg#*=}" ;; # the sites' key-value server: valkey (Debian), redis (Redis 8, packages.redis.io) or both
     --xhprof=*) XHPROF="${arg#*=}" ;; # yes: XHProf + XHGui, switchable per site (Server → Moduly later)
     --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
@@ -151,6 +153,17 @@ fi
 [[ "$MAIL_HOSTING" == yes || "$MAIL_HOSTING" == no ]] || die "--mail-hosting must be yes or no"
 [[ "$XHPROF" == yes || "$XHPROF" == no ]] || die "--xhprof must be yes or no"
 [[ "$REDIS" == yes || "$REDIS" == no ]] || die "--redis must be yes or no"
+if [[ -z $KV ]]; then
+  # Not chosen: --redis=yes (older) means both; an upgrade keeps what is here.
+  has_valkey=no; has_redis=no
+  dpkg-query -W -f='${Status}' valkey-server 2>/dev/null | grep -q "ok installed" && has_valkey=yes
+  [[ -f /etc/apt/sources.list.d/redis.sources ]] && has_redis=yes
+  if [[ $REDIS == yes || ($has_valkey == yes && $has_redis == yes) ]]; then KV=both
+  elif [[ $has_redis == yes ]]; then KV=redis
+  else KV=valkey
+  fi
+fi
+[[ "$KV" == valkey || "$KV" == redis || "$KV" == both ]] || die "--kv must be valkey, redis or both"
 # WSL is not a supported server: its kernel does not enforce the sites' port
 # rules and it shares the host's network with Windows. On Windows WSPanel runs
 # in a Linux VM (Hyper-V, docs/hyper-v.md).
@@ -299,7 +312,7 @@ apt_update() {
 log "Base packages"
 apt_update
 apt-get install -y -q --no-install-recommends \
-  ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer valkey-server ufw nftables \
+  ca-certificates curl gnupg openssl acl sqlite3 unzip git rsync composer ufw nftables \
   openssh-server fail2ban mc nano xz-utils iproute2 quota logrotate
 # Static files of the sites: nginx from Debian, run by its own unit as
 # panel-static (the package's nginx.service would take port 80 from the edge;
@@ -607,15 +620,22 @@ install -m 0644 "$HERE"/files/xhgui/*.php /usr/lib/wspanel/files/xhgui/
 install -m 0644 "$HERE"/files/xhgui/xhgui/composer.* /usr/lib/wspanel/files/xhgui/xhgui/
 install -m 0644 "$HERE"/files/xhgui/collector/composer.* /usr/lib/wspanel/files/xhgui/collector/
 rm -rf /etc/panel-web/xhgui # viewers moved onto the sites' own domains
+# The sites' key-value servers (--kv): Valkey from Debian, Redis 8 from
+# packages.redis.io, or both. Binaries only; each site runs its own. Either
+# can be added or taken away later in Server → Moduly.
+install -m 0755 "$HERE/redis.sh" /usr/lib/wspanel/redis.sh
+install -m 0755 "$HERE/valkey.sh" /usr/lib/wspanel/valkey.sh
+if [[ $KV == valkey || $KV == both ]]; then
+  log "Valkey"
+  /usr/lib/wspanel/valkey.sh install
+fi
+if [[ $KV == redis || $KV == both || -f /etc/apt/sources.list.d/redis.sources ]]; then
+  log "Redis 8"
+  /usr/lib/wspanel/redis.sh install
+fi
 if [[ $MAIL_HOSTING == yes || -f /etc/wspanel/mail/hosting ]]; then
   log "Mail hosting (Dovecot, Rspamd)"
   PANEL_DOMAIN="$PANEL_DOMAIN" PANEL_PORT="$PANEL_PORT" /usr/lib/wspanel/mail-hosting.sh "$MAIL_NAME" "$PANEL_PHP"
-fi
-# Redis 8 (optional): binaries for the sites' own servers, added later in Server → Moduly as well.
-install -m 0755 "$HERE/redis.sh" /usr/lib/wspanel/redis.sh
-if [[ $REDIS == yes || -f /etc/apt/sources.list.d/redis.sources ]]; then
-  log "Redis 8"
-  /usr/lib/wspanel/redis.sh install
 fi
 if [[ $XHPROF == yes || -f /usr/share/wspanel-xhgui/prepend.php ]]; then
   log "XHProf + XHGui"

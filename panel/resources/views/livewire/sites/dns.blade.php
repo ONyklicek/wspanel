@@ -59,7 +59,7 @@
                     <span wire:loading wire:target="recheck">{{ __('Ptám se DNS…') }}</span>
                 </x-wire::button>
                 @if ($zone && $missingInZone > 0)
-                    <x-wire::button size="sm" icon="outline:sparkles" wire:click="fillDns">{{ __('Doplnit chybějící (:n)', ['n' => $missingInZone]) }}</x-wire::button>
+                    <x-wire::button size="sm" wire:click="fillDns" wire:loading.attr="disabled" wire:target="fillDns" :disabled="(\App\Support\RunningTasks::has('dns.fill', $this->site()))"><x-panel.spinner target="fillDns" icon="outline:sparkles" :busy="\App\Support\RunningTasks::has('dns.fill', $this->site())" />{{ __('Doplnit chybějící (:n)', ['n' => $missingInZone]) }}</x-wire::button>
                 @endif
             </div>
         </div>

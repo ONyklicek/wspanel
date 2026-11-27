@@ -28,12 +28,16 @@ if [[ "${1:-}" == --remove ]]; then
   postconf -X virtual_mailbox_domains virtual_mailbox_maps virtual_alias_maps virtual_transport \
     smtpd_sasl_exceptions_networks smtpd_discard_ehlo_keyword_address_maps smtpd_helo_required disable_vrfy_command \
     smtpd_tls_cert_file smtpd_tls_key_file smtpd_tls_mandatory_protocols smtpd_tls_protocols \
-    sender_canonical_maps sender_canonical_classes recipient_canonical_maps recipient_canonical_classes transport_maps
-  for s in submission/inet smtps/inet wspanel-dmarc/unix; do
+    sender_canonical_maps sender_canonical_classes recipient_canonical_maps recipient_canonical_classes transport_maps \
+    sender_dependent_default_transport_maps
+  for s in submission/inet smtps/inet wspanel-dmarc/unix wspanel-relay/unix wspanel-relays/unix; do
     postconf -M "$s" >/dev/null 2>&1 && postconf -MX "$s"
   done
   /usr/lib/wspanel/postfix-base.sh "$MAIL_HOST"
-  rm -f /etc/postfix/wspanel_{vdomains,vmailboxes,valiases,mailbox_senders,srs_exclude,transport,loopback_sasl,loopback_ehlo}{,.db}
+  rm -f /etc/postfix/wspanel_{vdomains,vmailboxes,valiases,mailbox_senders,srs_exclude,transport,loopback_sasl,loopback_ehlo,sender_transport,sender_sasl}{,.db}
+  systemctl disable --now wspanel-mailfetch.timer >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/wspanel-mailfetch.{service,timer}
+  rm -rf /var/lib/wspanel-mailfetch
   systemctl restart postfix
   sed -i '/^MacroList[[:space:]]*daemon_name|ORIGINATING$/d' /etc/opendkim.conf
   systemctl restart opendkim
@@ -285,6 +289,12 @@ service lmtp {
     group = postfix
     mode = 0600
   }
+  # External mailboxes: getmail (as vmail) delivers what it downloads here.
+  unix_listener wspanel-fetch-lmtp { # /run/dovecot/wspanel-fetch-lmtp
+    user = vmail
+    group = vmail
+    mode = 0600
+  }
 }
 service auth {
   unix_listener /var/spool/postfix/private/auth {
@@ -357,8 +367,30 @@ rspamadm configtest >/dev/null
 chown -R _rspamd:_rspamd /var/lib/rspamd
 
 # Rspamd keeps its statistics (Bayes, learned spam/ham), reply tracking and
-# rate limits in Valkey: its own instance on a socket only Rspamd can open.
-command -v valkey-server >/dev/null || apt-get install -y -q --no-install-recommends valkey-server >/dev/null
+# rate limits in a key-value server: its own instance on a socket only Rspamd
+# can open. Valkey, or Redis on a server that has only Redis (install.sh
+# --kv=redis); what it runs on stays (the agent moves it when one of them is
+# taken away, /etc/wspanel/mail/rspamd-kv).
+real_redis() { [[ -x /usr/bin/redis-server ]] && [[ "$(readlink -f /usr/bin/redis-server)" != *valkey* ]]; }
+KV_FOR_MAIL=$(cat /etc/wspanel/mail/rspamd-kv 2>/dev/null || true)
+case "$KV_FOR_MAIL" in
+  redis) real_redis || KV_FOR_MAIL="" ;;
+  valkey) [[ -x /usr/bin/valkey-server ]] || KV_FOR_MAIL="" ;;
+  *) KV_FOR_MAIL="" ;;
+esac
+if [[ -z $KV_FOR_MAIL ]]; then
+  if [[ -x /usr/bin/valkey-server ]]; then KV_FOR_MAIL=valkey
+  elif real_redis; then KV_FOR_MAIL=redis
+  else
+    apt-get install -y -q --no-install-recommends valkey-server valkey-tools >/dev/null
+    systemctl disable --now valkey-server >/dev/null 2>&1 || true
+    systemctl mask valkey-server >/dev/null 2>&1 || true
+    KV_FOR_MAIL=valkey
+  fi
+fi
+echo "$KV_FOR_MAIL" > /etc/wspanel/mail/rspamd-kv
+KV_BIN=/usr/bin/valkey-server
+[[ $KV_FOR_MAIL == redis ]] && KV_BIN=/usr/bin/redis-server
 install -d -o _rspamd -g _rspamd -m 0700 /var/lib/rspamd/valkey
 cat >/etc/rspamd/valkey.conf <<'VALKEY'
 # Managed by WSPanel (mail-hosting.sh): Rspamd's own Valkey, no TCP.
@@ -372,7 +404,7 @@ save 900 1
 appendonly no
 VALKEY
 chown root:_rspamd /etc/rspamd/valkey.conf && chmod 0640 /etc/rspamd/valkey.conf
-cat >/etc/systemd/system/rspamd-valkey.service <<'UNIT'
+cat >/etc/systemd/system/rspamd-valkey.service <<UNIT
 # Managed by WSPanel (mail-hosting.sh).
 [Unit]
 Description=Valkey for Rspamd (WSPanel)
@@ -382,7 +414,7 @@ User=_rspamd
 Group=_rspamd
 RuntimeDirectory=rspamd-valkey
 RuntimeDirectoryMode=0700
-ExecStart=/usr/bin/valkey-server /etc/rspamd/valkey.conf --supervised systemd
+ExecStart=$KV_BIN /etc/rspamd/valkey.conf --supervised systemd
 Type=notify
 NoNewPrivileges=yes
 ProtectSystem=strict
@@ -517,6 +549,31 @@ postconf -P -e \
   "smtps/inet/smtpd_recipient_restrictions=permit_sasl_authenticated,reject" \
   "smtps/inet/smtpd_sender_login_maps=hash:/etc/postfix/wspanel_mailbox_senders" \
   "smtps/inet/smtpd_sender_restrictions=reject_sender_login_mismatch"
+
+# External mailboxes (agent: mailfetch.go): a mailbox may send through its
+# provider's SMTP with its own login. The agent writes which mailbox goes
+# where (by the envelope sender) and the logins (root only). The provider's
+# certificate is verified: the password is never sent to anyone else.
+for f in wspanel_sender_transport wspanel_sender_sasl; do
+  [[ -f /etc/postfix/$f ]] || install -m 0600 /dev/null /etc/postfix/$f
+  postmap /etc/postfix/$f
+done
+chmod 0644 /etc/postfix/wspanel_sender_transport /etc/postfix/wspanel_sender_transport.db
+postconf -e "sender_dependent_default_transport_maps=hash:/etc/postfix/wspanel_sender_transport"
+for t in wspanel-relay wspanel-relays; do
+  postconf -M -e "$t/unix=$t unix - - n - - smtp"
+  postconf -P -e \
+    "$t/unix/syslog_name=postfix/$t" \
+    "$t/unix/smtp_tls_security_level=secure" \
+    "$t/unix/smtp_tls_CApath=/etc/ssl/certs" \
+    "$t/unix/smtp_host_lookup=dns,native" \
+    "$t/unix/smtp_sasl_auth_enable=yes" \
+    "$t/unix/smtp_sasl_password_maps=hash:/etc/postfix/wspanel_sender_sasl" \
+    "$t/unix/smtp_sender_dependent_authentication=yes" \
+    "$t/unix/smtp_sasl_security_options=noanonymous" \
+    "$t/unix/smtp_sasl_tls_security_options=noanonymous"
+done
+postconf -P -e "wspanel-relays/unix/smtp_tls_wrappermode=yes"
 
 # ---------------------------------------------------------------- webmail (Roundcube)
 # One install for every mail domain: the edge serves webmail.<domain> (agent,

@@ -180,7 +180,7 @@ class SystemPage extends Page
                         ->rules([fn () => 'in:'.implode(',', $this->timezones())]),
                 ])
                 ->action($run(fn ($d) => app(ManageSystem::class)->setTimezone((string) $d['timezone']), 'Časové pásmo změněno')),
-            Action::make('swap')->label(__('Swap'))->icon('outline:arrows-right-left')->color('gray')
+            Action::make('swap')->busyWhile('system-swap')->label(__('Swap'))->icon('outline:arrows-right-left')->color('gray')
                 ->modalDescription(__('Swapový soubor na disku: když dojde paměť, jádro do něj odloží málo používané stránky místo ukončování procesů. Velikost 0 swapový soubor odstraní. Swappiness (0–200) říká, jak ochotně jádro swapuje; pro servery se hodí 10.'))
                 ->fillFormUsing(fn () => [
                     'size_mb' => (int) round(($this->settings['swap_file_size'] ?? 0) / 1048576),

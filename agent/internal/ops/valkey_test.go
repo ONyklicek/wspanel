@@ -265,3 +265,74 @@ func callContains(dr *executor.DryRun, part string) bool {
 	}
 	return false
 }
+
+func TestAServerWithOnlyRedisGivesSitesRedis(t *testing.T) {
+	env, _ := testEnv(t)
+	env.Cfg.NoValkey = true // install.sh --kv=redis
+	if _, err := call(t, env, siteCreate, map[string]string{"domain": "kv.example.com", "framework": "laravel", "php_version": "8.3"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, _ := loadSite(env, "kv.example.com"); st.Valkey.server() != kvRedis {
+		t.Errorf("not chosen: this server's only one, got %q", st.Valkey.server())
+	}
+	if _, err := call(t, env, valkeySet, map[string]any{"domain": "kv.example.com", "enabled": true, "maxmemory_mb": 64, "server": "valkey"}); code(err) != "conflict" {
+		t.Errorf("Valkey is not here: %v", err)
+	}
+	out, err := call(t, env, kvStatus, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.(map[string]any)["default"] != kvRedis {
+		t.Errorf("status: %v", out)
+	}
+}
+
+func TestTheLastKeyValueServerStaysAndTheMailFilterMoves(t *testing.T) {
+	env, _ := mailTestEnv(t)
+	if err := os.MkdirAll(env.Cfg.MailDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.Cfg.MailDir, "hosting"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Both here (dry run): Valkey goes, the mail filter moves to Redis.
+	if _, err := call(t, env, kvUninstall, map[string]any{"server": "valkey"}); err != nil {
+		t.Fatal(err)
+	}
+	if rspamdKV(env) != kvRedis {
+		t.Error("the mail filter's store moves to Redis before Valkey goes")
+	}
+	// Only Redis left: it stays.
+	env.Cfg.NoValkey = true
+	if _, err := call(t, env, kvUninstall, map[string]any{"server": "redis"}); code(err) != "conflict" {
+		t.Errorf("the last one stays: %v", err)
+	}
+	if _, err := call(t, env, kvUninstall, map[string]any{"server": "memcached"}); code(err) != "invalid_params" {
+		t.Errorf("unknown server: %v", err)
+	}
+}
+
+func TestTheKeyValueChoiceIsSavedForTheNextUpgrade(t *testing.T) {
+	env, _ := testEnv(t)
+	env.Cfg.InstallFlags = filepath.Join(t.TempDir(), "install.flags")
+	if err := os.WriteFile(env.Cfg.InstallFlags, []byte("--db=mariadb\n--redis=yes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env.Cfg.NoValkey = true
+	if err := saveKVFlag(env); err != nil {
+		t.Fatal(err)
+	}
+	if got := read2(t, env.Cfg.InstallFlags); got != "--db=mariadb\n--kv=redis\n" {
+		t.Errorf("flags:\n%s", got)
+	}
+	env.Cfg.NoValkey = false
+	if err := saveKVFlag(env); err != nil {
+		t.Fatal(err)
+	}
+	if got := read2(t, env.Cfg.InstallFlags); got != "--db=mariadb\n--kv=both\n" {
+		t.Errorf("flags:\n%s", got)
+	}
+}

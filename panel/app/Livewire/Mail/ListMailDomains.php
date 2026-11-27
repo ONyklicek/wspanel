@@ -34,7 +34,7 @@ class ListMailDomains extends ListPage
     protected function headerActions(): array
     {
         return [
-            Action::make('addDomain')
+            Action::make('addDomain')->busyWhile('mail.domain.add')
                 ->label(__('Přidat doménu'))
                 ->icon('outline:plus')
                 ->visible(fn () => app(ManageMailHosting::class)->installed())

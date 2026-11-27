@@ -7,6 +7,7 @@ use App\Actions\Sites\ManageSiteBackups;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\Lang;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Actions\HeaderAction;
@@ -170,7 +171,7 @@ class BackupList extends Component
                 Action::make('download')->label(__('Stáhnout'))->icon('outline:arrow-down-tray')->color('gray')->onlyIcon()->tooltip(__('Stáhnout'))
                     ->visible(fn ($record) => (bool) $record->local)
                     ->url(fn ($record) => route('site-backups.download', [$this->site, $record->file]), true),
-                Action::make('fetch')->label(__('Stáhnout na server'))->icon('outline:cloud-arrow-down')->color('info')
+                Action::make('fetch')->busyWhile(fn () => RunningTasks::has('offsite.fetch', $this->getSite()))->label(__('Stáhnout na server'))->icon('outline:cloud-arrow-down')->color('info')
                     ->visible(fn ($record) => ! $record->local)
                     ->modalHeading(fn ($record) => __('Stáhnout zálohu z ').$record->created_label.' na server?')
                     ->modalDescription(__('Záloha se stáhne z úložiště mimo server vedle ostatních záloh webu; pak ji můžete obnovit nebo stáhnout. Přijme se jen kopie s platným podpisem tohoto serveru.'))
@@ -182,12 +183,12 @@ class BackupList extends Component
                     ->action(fn ($record, array $data) => $this->attempt(__('Stažení na server selhalo'), function () use ($record, $data) {
                         app(ManageOffsite::class)->fetchSiteBackup($this->getSite(), $record->file, (bool) ($data['unverified'] ?? false));
                     })),
-                Action::make('upload')->label(__('Nahrát mimo server'))->icon('outline:cloud-arrow-up')->color('gray')->onlyIcon()->tooltip(__('Nahrát mimo server'))
+                Action::make('upload')->busyWhile(fn () => RunningTasks::has('offsite.upload', $this->getSite()))->label(__('Nahrát mimo server'))->icon('outline:cloud-arrow-up')->color('gray')->onlyIcon()->tooltip(__('Nahrát mimo server'))
                     ->visible(fn ($record) => $this->offsite && $this->offsiteError === null && $record->local && $record->offsite_label === 'ne')
                     ->action(fn ($record) => $this->attempt(__('Nahrání mimo server selhalo'), function () use ($record) {
                         app(ManageOffsite::class)->uploadSiteBackup($this->getSite(), $record->file);
                     })),
-                Action::make('restore')->label(__('Obnovit'))->icon('outline:arrow-uturn-left')->color('warning')
+                Action::make('restore')->busyWhile(fn () => RunningTasks::has('site.restore', $this->getSite()))->label(__('Obnovit'))->icon('outline:arrow-uturn-left')->color('warning')
                     ->visible(fn ($record) => (bool) $record->local)
                     ->modalHeading(fn ($record) => __('Obnovit zálohu z ').$record->created_label.'?')
                     ->modalDescription(__('Před obnovou se uloží záloha současného stavu. Soubory se obnoví jako nový release (dosavadní zůstane k návratu přes Deploy), současná složka shared se ponechá vedle jako shared.before-restore-…. Databáze se přepíšou obsahem zálohy.'))
@@ -221,7 +222,7 @@ class BackupList extends Component
                     })),
             ])
             ->headerActions([
-                HeaderAction::make('backupNow')->label(__('Zálohovat nyní'))->icon('outline:archive-box-arrow-down')
+                HeaderAction::make('backupNow')->busyWhile(fn () => RunningTasks::has('site.backup', $this->getSite()))->label(__('Zálohovat nyní'))->icon('outline:archive-box-arrow-down')
                     ->modalHeading(__('Zálohovat web'))
                     ->modalDescription(__('Zabalí aktuální release, složku shared a databáze webu. U velkého webu to může chvíli trvat.'))
                     ->form([

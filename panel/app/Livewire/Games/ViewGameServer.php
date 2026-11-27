@@ -12,6 +12,7 @@ use App\Models\GameServer;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
 use App\Support\PageActions;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Resources\GameServerResource;
@@ -192,7 +193,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                         Toast::error(__('Nastavení SFTP selhalo'), $e->getMessage());
                     }
                 }),
-            Action::make('upgrade')->label(__('Aktualizovat'))->icon('outline:arrow-path')->color('gray')
+            Action::make('upgrade')->busyWhile(fn () => RunningTasks::has('game.update', $this->server()))->label(__('Aktualizovat'))->icon('outline:arrow-path')->color('gray')
                 ->modalDescription(fn () => match (true) {
                     $server()->game->is('minecraft') => __('Stáhne nejnovější sestavení zvolené verze (nebo novější verzi). Server se na chvíli zastaví. Svět se na novější verzi převede a zpět už nejde: zálohu udělejte předem.'),
                     $server()->game->is('factorio') => __('Stáhne nejnovější stabilní Factorio. Server se na chvíli zastaví, mapa zůstane.'),
@@ -212,7 +213,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
                     }
                     $this->refreshStatus();
                 }),
-            Action::make('delete')->label(__('Smazat'))->icon('outline:trash')->color('danger')
+            Action::make('delete')->busyWhile(fn () => RunningTasks::has('game.delete', $this->server()))->label(__('Smazat'))->icon('outline:trash')->color('danger')
                 ->requiresConfirmation()
                 ->modalDescription(__('Server se zastaví a smaže i se světem a zálohami. Port se ve firewallu zavře.'))
                 // Stopping it (the world is saved) and removing it: in the background, the list meanwhile.

@@ -185,7 +185,7 @@ func ensureKVReplica(ctx context.Context, env *Env, st siteState, l siteLayout, 
 // valkeyCLIAt: the CLI as the site user against a socket, password on stdin.
 func valkeyCLIAt(ctx context.Context, env *Env, user, socket, password string, args ...string) (string, error) {
 	res, err := env.Exec.RunIO(ctx, strings.NewReader(password+"\n"), nil, "setpriv",
-		append(append(userCreds(user), env.Cfg.ValkeyCLIBin, "--askpass", "--no-auth-warning", "-s", socket), args...)...)
+		append(append(userCreds(user), kvCLIBin(env), "--askpass", "--no-auth-warning", "-s", socket), args...)...)
 	return res.Stdout, err
 }
 

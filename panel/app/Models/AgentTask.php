@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\RunningTasks;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,6 +24,11 @@ class AgentTask extends Model
     public const FAILED = 'failed';
 
     protected $guarded = ['id'];
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => RunningTasks::forget());
+    }
 
     protected function casts(): array
     {

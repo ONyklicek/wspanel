@@ -132,7 +132,7 @@ class OffsitePage extends Page
                 ->modalDescription(__('Tímto klíčem je zašifrovaná záloha serveru a podepsaná každá kopie mimo server. Bez něj server po havárii obnovit nejde. Panel ho nezobrazí: záloha serveru obsahuje i to, co panel číst nesmí (klíče certifikátů, DKIM, přístupy k poště). Na serveru ho jako root vypíše příkaz sudo panel-agent -recovery-key. Uložte si ho bezpečně mimo server (správce hesel). Na novém serveru ho zadáte při obnově (wspanel-restore), zálohy jiného serveru ověří po sudo panel-agent -import-recovery-key.'))
                 ->modalSubmitActionLabel(__('Rozumím'))
                 ->action(fn () => Toast::secret(__('Klíč pro obnovu vypíše na serveru'), 'sudo panel-agent -recovery-key')),
-            Action::make('configure')
+            Action::make('configure')->busyWhile('offsite-save')
                 ->label($this->status['configured'] ? __('Upravit úložiště') : __('Nastavit úložiště'))
                 ->icon('outline:cog-6-tooth')
                 ->slideOver()

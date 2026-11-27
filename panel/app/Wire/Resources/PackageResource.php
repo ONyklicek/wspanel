@@ -9,6 +9,7 @@ use App\Livewire\Clients\ListPackages;
 use App\Models\Package;
 use App\Services\Agent\SystemInfo;
 use App\Support\AgentTasks;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
@@ -147,7 +148,7 @@ final class PackageResource implements DescribesResource, ProvidesNavigation, Pr
                 TextColumn::make('clients_count')->counts('clients')->label(__('Klientů'))->sortable(),
             ])
             ->actions([
-                Action::make('edit')->label(__('Upravit'))->icon('outline:pencil-square')->onlyIcon()->tooltip(__('Upravit balíček'))
+                Action::make('edit')->busyWhile(fn (?Package $record) => $record !== null && RunningTasks::has('package-apply:'.$record->id))->label(__('Upravit'))->icon('outline:pencil-square')->onlyIcon()->tooltip(__('Upravit balíček'))
                     ->modalHeading(fn (Package $record) => __('Balíček :name', ['name' => $record->name]))
                     ->modalWidth('4xl')
                     ->fillFormUsing(fn (Package $record) => $record->only(array_merge(['name', 'description', 'offsite', 'allowed_modes', 'allowed_php'], array_keys(self::NUMERIC)))

@@ -34,10 +34,10 @@
             @if (in_array($shown, ['installing', 'failed', 'unknown'], true))
                 {{-- Nothing to start or stop until the install ends or the agent answers. --}}
             @elseif (in_array($shown, ['running', 'starting'], true) && $pending !== 'stop')
-                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="control('restart')" wire:loading.attr="disabled" wire:target="control" :disabled="$pending !== null" :wire:confirm="($players['online'] ?? 0) > 0 ? __('Restartovat server? Hráči (:n) se odpojí.', ['n' => $players['online']]) : null">{{ __('Restartovat') }}</x-wire::button>
-                <x-wire::button size="sm" color="danger" outlined icon="outline:stop" wire:click="control('stop')" wire:loading.attr="disabled" wire:target="control" wire:confirm="{{ __('Zastavit server? Hráči se odpojí a po restartu serveru se sám nespustí.') }}">{{ __('Zastavit') }}</x-wire::button>
+                <x-wire::button size="sm" color="gray" outlined wire:click="control('restart')" wire:loading.attr="disabled" wire:target="control" :disabled="($pending !== null) || ($pending === 'restart')" :wire:confirm="($players['online'] ?? 0) > 0 ? __('Restartovat server? Hráči (:n) se odpojí.', ['n' => $players['online']]) : null"><x-panel.spinner target="control" icon="outline:arrow-path" :busy="$pending === 'restart'" />{{ __('Restartovat') }}</x-wire::button>
+                <x-wire::button size="sm" color="danger" outlined wire:click="control('stop')" wire:loading.attr="disabled" wire:target="control" wire:confirm="{{ __('Zastavit server? Hráči se odpojí a po restartu serveru se sám nespustí.') }}" :disabled="($pending === 'stop')"><x-panel.spinner target="control" icon="outline:stop" :busy="$pending === 'stop'" />{{ __('Zastavit') }}</x-wire::button>
             @elseif ($shown !== 'stopping')
-                <x-wire::button size="sm" color="success" icon="outline:play" wire:click="control('start')" wire:loading.attr="disabled" wire:target="control">{{ __('Spustit') }}</x-wire::button>
+                <x-wire::button size="sm" color="success" wire:click="control('start')" wire:loading.attr="disabled" wire:target="control" :disabled="($pending === 'start')"><x-panel.spinner target="control" icon="outline:play" :busy="$pending === 'start'" />{{ __('Spustit') }}</x-wire::button>
             @endif
             <span wire:loading wire:target="control">{!! icon('outline:arrow-path', 'size-4 animate-spin text-gray-400') !!}</span>
         </div>

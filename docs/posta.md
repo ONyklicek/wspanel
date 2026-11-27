@@ -175,6 +175,42 @@ s webmailem v detailu domény), iPhone a Mac přes stažený profil. Server poš
 (`--panel-domain`); jeho certifikát je stejný jako certifikát panelu a obnovuje se
 s ním.
 
+### Externí schránka (pošta zůstává u poskytovatele, ukládá se tady)
+
+Když poskytovatel dává na schránku málo místa (třeba 1 GB), může pošta dál
+chodit k němu a server si ji od něj stahuje. Uživatelé pak čtou poštu z tohoto
+serveru a místo omezuje jen velikost schránky tady (až 1 TB) a disk.
+
+1. Založte schránku tady (stejná adresa, dostatečná velikost). MX domény
+   **nechte u poskytovatele**. Kontrolu DNS při zakládání potvrďte
+   („Založit i tak“).
+2. U schránky **⋯ → Externí schránka**:
+   - **Stahovat poštu z externí schránky**: protokol (IMAP doporučeno, POP3
+     také), server poskytovatele, přihlašovací jméno a heslo u poskytovatele.
+     Spojení je vždy šifrované a certifikát poskytovatele se ověřuje.
+   - **Smazat u poskytovatele po (počet dní)**: stažená pošta zůstane
+     u poskytovatele ještě tolik dní jako pojistka (výchozí 7), pak se tam
+     smaže a jeho limit se nezaplní. 0 = smazat hned po stažení.
+   - **Odesílat přes SMTP poskytovatele** (volitelně): pošta, kterou schránka
+     pošle z poštovního programu nebo webmailu, odejde přes SMTP poskytovatele
+     (587 STARTTLS nebo 465 TLS) s jejím přihlášením. Odeslané zprávy zůstanou
+     ve složce Odeslané tady. Přihlášení musí u poskytovatele smět odesílat
+     za tuto adresu (obvykle je to účet té adresy). Bez toho odchází pošta
+     přímo z tohoto serveru, pak patří do SPF domény i tento server.
+   - **Vyzkoušet spojení** ověří přihlášení k oběma službám bez uložení.
+3. Pošta se stahuje **každé 2 minuty** (první stažení hned po uložení).
+   Doručuje se jako jakákoli jiná: platí kvóta, seznamy odesílatelů domény,
+   antispamové třídění do Junk a automatická odpověď. Ze serveru IMAP se
+   stahuje jen Doručená pošta. Co už je stažené, se znovu nestahuje.
+
+V tabulce schránek je u každé externí schránky vidět, kdy se naposledy
+stahovalo a kdy přišla poslední pošta, nebo co se nepovedlo (třeba změněné
+heslo u poskytovatele). Stahování obstarává getmail6. Nainstaluje se sám
+s první externí schránkou a běží jako uživatel pošty (vmail), nikdy jako root.
+Hesla k poskytovateli zůstávají jen na serveru (soubory čitelné rootem,
+případně vmail), panel je neukládá. Uložené heslo se použije jen pro stejný server,
+port a přihlašovací jméno. Při jejich změně je potřeba heslo zadat znovu.
+
 ### DNS
 
 **DNS → zóna → Doplnit doporučené** přidá k doméně se schránkami `MX`

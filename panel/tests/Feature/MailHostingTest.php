@@ -505,6 +505,54 @@ class MailHostingTest extends TestCase
         $this->assertNull($alice->fresh()->forward);
     }
 
+    public function test_an_external_mailbox_is_downloaded_here_and_sends_through_its_provider(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 51200, 'enabled' => true]);
+        $sent = null;
+        $this->agent->shouldReceive('call')->once()->with('mail.mailbox.external', Mockery::on(function ($p) use (&$sent) {
+            $sent = $p;
+
+            return true;
+        }))->andReturn(['address' => 'alice@firma.cz']);
+
+        $this->tableAction(Livewire::test(MailboxTable::class, ['domain' => $domain->id]), $alice, 'external', [
+            'fetch_on' => true, 'protocol' => 'imap', 'host' => 'IMAP.Provider.cz', 'user' => 'alice@firma.cz', 'password' => 'tajne-heslo', 'keep_days' => 7,
+            'relay_on' => true, 'relay_host' => 'smtp.provider.cz', 'relay_port' => '587', 'relay_same' => true,
+        ])->assertHasNoErrors();
+
+        $this->assertSame(['protocol' => 'imap', 'host' => 'imap.provider.cz', 'port' => 993, 'user' => 'alice@firma.cz', 'password' => 'tajne-heslo', 'keep_days' => 7], $sent['fetch']);
+        $this->assertSame(['host' => 'smtp.provider.cz', 'port' => 587, 'user' => 'alice@firma.cz', 'password' => 'tajne-heslo'], $sent['relay'], 'the same login sends');
+        $external = $alice->fresh()->external;
+        $this->assertSame('imap.provider.cz', $external['fetch']['host']);
+        $this->assertArrayNotHasKey('password', $external['fetch'], 'the password stays on the server, not in the panel');
+        $this->assertArrayNotHasKey('password', $external['relay']);
+
+        $this->agent->shouldReceive('call')->with('mail.fetch.status', ['domain' => 'firma.cz'])
+            ->andReturn(['mailboxes' => ['alice@firma.cz' => ['at' => now()->subMinute()->toIso8601String(), 'ok' => false, 'error' => 'Login failed', 'retrieved' => 0]]]);
+        Livewire::test(MailboxTable::class, ['domain' => $domain->id])
+            ->assertSee('↓ imap.provider.cz')->assertSee('stažení selhalo: Login failed')->assertSee('odesílá přes smtp.provider.cz');
+    }
+
+    public function test_an_external_mailbox_is_tried_before_it_is_saved(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $domain = MailDomain::create(['domain' => 'firma.cz']);
+        $alice = Mailbox::create(['mail_domain_id' => $domain->id, 'local_part' => 'alice', 'quota_mb' => 500, 'enabled' => true]);
+        $this->agent->shouldReceive('call')->once()->with('mail.external.test', Mockery::on(fn ($p) => $p['address'] === 'alice@firma.cz'
+            && $p['fetch']['host'] === 'imap.provider.cz' && $p['relay'] === null))
+            ->andReturn(['fetch' => ['ok' => false, 'error' => 'the provider refused the login: AUTHENTICATIONFAILED']]);
+        $this->agent->shouldNotReceive('call')->with('mail.mailbox.external', Mockery::any());
+
+        $table = Livewire::test(MailboxTable::class, ['domain' => $domain->id]);
+        $table->call('openActionModal', (string) $alice->id, 'external');
+        foreach (['fetch_on' => true, 'protocol' => 'imap', 'host' => 'imap.provider.cz', 'user' => 'alice@firma.cz', 'password' => 'spatne'] as $k => $v) {
+            $table->set("tableState.modal.actions.0.data.{$k}", $v);
+        }
+        $table->call('callModalFooterAction', 'testExternal')->assertNotified();
+    }
+
     public function test_the_sites_mail_tab_manages_the_domains_mailboxes(): void
     {
         $this->actingAs(User::factory()->create());

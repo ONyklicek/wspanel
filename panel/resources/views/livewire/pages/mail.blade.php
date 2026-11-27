@@ -38,12 +38,12 @@
                             </div>
                             <div class="flex gap-2">
                                 @if ($capture)
-                                    <x-wire::button size="sm" color="gray" outlined wire:click="setMode({{ $site->id }}, 'send')">{{ __('Začít odesílat') }}</x-wire::button>
+                                    <x-wire::button size="sm" color="gray" outlined wire:click="setMode({{ $site->id }}, 'send')" wire:loading.attr="disabled" wire:target="setMode({{ $site->id }}, 'send')"><x-panel.spinner :target="'setMode('.($site->id).', \'send\')'" />{{ __('Začít odesílat') }}</x-wire::button>
                                 @else
-                                    <x-wire::button size="sm" color="gray" outlined wire:click="setMode({{ $site->id }}, 'capture')">{{ __('Zachytávat v Mailpitu') }}</x-wire::button>
+                                    <x-wire::button size="sm" color="gray" outlined wire:click="setMode({{ $site->id }}, 'capture')" wire:loading.attr="disabled" wire:target="setMode({{ $site->id }}, 'capture')"><x-panel.spinner :target="'setMode('.($site->id).', \'capture\')'" />{{ __('Zachytávat v Mailpitu') }}</x-wire::button>
                                 @endif
                                 @unless (isset($this->dkimKeys()[$site->domain]))
-                                    <x-wire::button size="sm" color="gray" outlined icon="outline:key" wire:click="createDkim('{{ $site->domain }}')">{{ __('Vytvořit DKIM klíč') }}</x-wire::button>
+                                    <x-wire::button size="sm" color="gray" outlined wire:click="createDkim('{{ $site->domain }}')" wire:loading.attr="disabled" wire:target="createDkim('{{ $site->domain }}')" :disabled="(isset($backgroundJobs['mail-dkim']))"><x-panel.spinner :target="'createDkim(\''.($site->domain).'\')'" icon="outline:key" />{{ __('Vytvořit DKIM klíč') }}</x-wire::button>
                                 @endunless
                             </div>
                         </div>
@@ -73,9 +73,9 @@
 
         <x-wire::section :heading="__('Fronta')" :description="__('Zprávy, které čekají na doručení (server příjemce je nedostupný nebo je odložil), a proč.')">
             <div class="flex flex-wrap gap-2">
-                <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="loadQueue">{{ $queue === null ? __('Načíst frontu') : 'Obnovit' }}</x-wire::button>
+                <x-wire::button size="sm" color="gray" outlined wire:click="loadQueue" wire:loading.attr="disabled" wire:target="loadQueue"><x-panel.spinner target="loadQueue" icon="outline:arrow-path" />{{ $queue === null ? __('Načíst frontu') : 'Obnovit' }}</x-wire::button>
                 @if (! empty($queue))
-                    <x-wire::button size="sm" color="gray" outlined icon="outline:paper-airplane" wire:click="flushQueue">{{ __('Odeslat znovu') }}</x-wire::button>
+                    <x-wire::button size="sm" color="gray" outlined wire:click="flushQueue" wire:loading.attr="disabled" wire:target="flushQueue"><x-panel.spinner target="flushQueue" icon="outline:paper-airplane" />{{ __('Odeslat znovu') }}</x-wire::button>
                     <x-wire::button size="sm" color="danger" outlined icon="outline:trash" wire:click="deleteQueued" wire:confirm="{{ __('Smazat všechny zprávy ve frontě? Nebudou doručeny.') }}">{{ __('Smazat vše') }}</x-wire::button>
                 @endif
             </div>
@@ -104,7 +104,7 @@
         </x-wire::section>
 
         <x-wire::section :heading="__('Log pošty')" :description="__('Doručení, odmítnutí a odložené zprávy (Postfix a OpenDKIM).')">
-            <x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="loadLog">{{ $log === '' ? __('Načíst log') : 'Obnovit' }}</x-wire::button>
+            <x-wire::button size="sm" color="gray" outlined wire:click="loadLog" wire:loading.attr="disabled" wire:target="loadLog"><x-panel.spinner target="loadLog" icon="outline:arrow-path" />{{ $log === '' ? __('Načíst log') : 'Obnovit' }}</x-wire::button>
             @if ($log !== '')
                 <pre class="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed text-gray-100">{{ $log }}</pre>
             @endif

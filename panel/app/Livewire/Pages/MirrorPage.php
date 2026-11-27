@@ -177,7 +177,7 @@ class MirrorPage extends Page
                     }
                     $this->refreshState();
                 }),
-            Action::make('join')
+            Action::make('join')->busyWhile('mirror')
                 ->label(__('Připojit jako zrcadlo'))
                 ->icon('outline:square-2-stack')
                 ->color('gray')
@@ -217,7 +217,7 @@ class MirrorPage extends Page
                 ->color('gray')
                 ->visible($role === 'standby')
                 ->action(fn () => $run(fn () => $m()->syncNow(), __('Synchronizace začala'), __('Synchronizace nejde'))),
-            Action::make('promote')
+            Action::make('promote')->busyWhile('mirror')
                 ->label(__('Povýšit na primár'))
                 ->icon('outline:arrow-up-circle')
                 ->color('danger')
@@ -235,7 +235,7 @@ class MirrorPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
-            Action::make('switchover')
+            Action::make('switchover')->busyWhile('mirror')
                 ->label(__('Plánované přepnutí'))
                 ->icon('outline:arrows-right-left')
                 ->color('warning')
@@ -251,7 +251,7 @@ class MirrorPage extends Page
                     }
                     $this->loadBackgroundJobs();
                 }),
-            Action::make('rejoin')
+            Action::make('rejoin')->busyWhile('mirror')
                 ->label(__('Připojit zpět jako zrcadlo'))
                 ->icon('outline:arrow-uturn-left')
                 ->visible($role === 'fenced')
@@ -365,14 +365,14 @@ class MirrorPage extends Page
                     }
                     $this->refreshState();
                 }),
-            Action::make('windnsTest')
+            Action::make('windnsTest')->busyWhile('mirror-windns')
                 ->label(__('Vyzkoušet Windows DNS'))
                 ->icon('outline:beaker')
                 ->color('gray')
                 ->visible(! empty($this->state['windns']['trusted']))
                 ->action(fn () => $this->queueBackgroundJob('mirror-windns', ['title' => __('Zkouška Windows DNS'), 'done' => __('Windows DNS odpovídá')],
                     ManageMirror::class, 'winDnsTestQueued')),
-            Action::make('unpair')
+            Action::make('unpair')->busyWhile('mirror')
                 ->label(__('Zrušit zrcadlo'))
                 ->icon('outline:trash')
                 ->color('gray')

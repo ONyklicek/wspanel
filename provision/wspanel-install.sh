@@ -457,7 +457,10 @@ flags+=("--php=${php:-8.4}")
 node=$(W --separate-output --checklist "Node.js pro SSR weby (Nuxt, Next):" 12 72 3 \
   22 "Node 22" ON  24 "Node 24" ON | paste -sd, -)
 flags+=("--node=${node:-none}")
-say "Databáze: ${db:-žádná}; PHP ${php:-8.4}; Node ${node:-žádný}"
+python=$(W --separate-output --checklist "Python pro Python weby (Django, Flask, FastAPI):" 13 72 3 \
+  3.12 "Python 3.12" OFF  3.13 "Python 3.13" OFF  3.14 "Python 3.14" OFF | paste -sd, -)
+flags+=("--python=${python:-none}")
+say "Databáze: ${db:-žádná}; PHP ${php:-8.4}; Node ${node:-žádný}; Python ${python:-žádný}"
 
 mods=$(W --separate-output --checklist "Moduly (mezerníkem vyberete):" 19 76 6 \
   clients "Klienti a balíčky (hosting pro víc klientů, limity, kvóty)" OFF \
@@ -472,6 +475,13 @@ grep -qx mail <<<"$mods" && { flags+=("--mail-hosting=yes"); names+=("pošta"); 
 grep -qx dns <<<"$mods" && { flags+=("--dns=powerdns"); names+=("DNS server"); }
 grep -qx xhprof <<<"$mods" && { flags+=("--xhprof=yes"); names+=("profilování"); }
 say "Moduly: $( ((${#names[@]})) && (IFS=,; echo "${names[*]}" | sed 's/,/, /g') || echo žádné)"
+
+kv=$(W --default-item valkey --menu "Server pro cache, fronty a session webů (každý web má vlastní instanci):" 14 76 3 \
+  valkey "Valkey (z Debianu, licence BSD)" \
+  redis  "Redis 8 (oficiální, moduly JSON, Search, TimeSeries)" \
+  both   "Oba, každý web si vybere") || kv=valkey
+flags+=("--kv=$kv")
+case $kv in valkey) say "Cache webů: Valkey" ;; redis) say "Cache webů: Redis 8" ;; *) say "Cache webů: Valkey i Redis 8" ;; esac
 
 mail=$(W --menu "Pošta z webů ve výchozím stavu:" 12 72 2 \
   send    "Odesílat (Postfix, DKIM)" \

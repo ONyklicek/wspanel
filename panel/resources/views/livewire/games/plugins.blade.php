@@ -19,12 +19,12 @@
         @endif
         @if ($changed)
             <x-wire::callout color="warning" :heading="__('Změny se projeví po restartu serveru')">
-                <x-wire::button size="sm" icon="outline:arrow-path" wire:click="restart" wire:confirm="{{ __('Restartovat server? Hráči se na chvíli odpojí.') }}">{{ __('Restartovat teď') }}</x-wire::button>
+                <x-wire::button size="sm" wire:click="restart" wire:confirm="{{ __('Restartovat server? Hráči se na chvíli odpojí.') }}" wire:loading.attr="disabled" wire:target="restart" :disabled="(\App\Support\RunningTasks::has('game.restart', $this->server()))"><x-panel.spinner target="restart" icon="outline:arrow-path" :busy="\App\Support\RunningTasks::has('game.restart', $this->server())" />{{ __('Restartovat teď') }}</x-wire::button>
             </x-wire::callout>
         @endif
 
         <x-wire::section :heading="__('Nainstalované')" :description="$factorio ? __('Módy ve složce data/mods. Factorio nový mód zapne sám; vypnout ho jde ve hře nebo v data/mods/mod-list.json.') : ($this->mods() ? __('Soubory .jar ve složce data/mods. U módů z panelu je vidět verze; ostatní jste nahráli sami (Soubory). Hráči potřebují stejné módy u sebe.') : __('Soubory .jar ve složce data/plugins. U pluginů z panelu je vidět zdroj a verze; ostatní jste nahráli sami (Soubory).'))">
-            <div class="mb-3"><x-wire::button size="sm" color="gray" outlined icon="outline:arrow-path" wire:click="checkUpdates">{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
+            <div class="mb-3"><x-wire::button size="sm" color="gray" outlined wire:click="checkUpdates" wire:loading.attr="disabled" wire:target="checkUpdates"><x-panel.spinner target="checkUpdates" icon="outline:arrow-path" />{{ __('Zkontrolovat aktualizace') }}</x-wire::button>
                 <span wire:loading wire:target="checkUpdates" class="text-sm text-gray-500">{{ __('Ptám se katalogů…') }}</span></div>
             @if ($installed === [])
                 <p class="text-sm text-gray-500">{{ $this->mods() ? __('Zatím žádné módy.') : __('Zatím žádné pluginy.') }}</p>
@@ -43,9 +43,9 @@
                                 <td class="py-1.5 pe-3 text-xs text-gray-500">{{ isset($p['size']) ? $size($p['size']) : '' }}</td>
                                 <td class="whitespace-nowrap py-1.5 text-right">
                                     @isset($p['update'])
-                                        <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($factorio ? 'factorio' : $p['source']) }}, {{ \Illuminate\Support\Js::from($factorio ? $p['name'] : $p['project']) }})" :disabled="$factorio && ! $account">{{ __('Aktualizovat') }}</x-wire::button>
+                                        <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($factorio ? 'factorio' : $p['source']) }}, {{ \Illuminate\Support\Js::from($factorio ? $p['name'] : $p['project']) }})" :disabled="($factorio && ! $account) || (\App\Support\RunningTasks::has(['game.plugin_install', 'game.mod_install', 'game.modpack_install'], $this->server()))" wire:loading.attr="disabled" wire:target="install({{ \Illuminate\Support\Js::from($factorio ? 'factorio' : $p['source']) }}, {{ \Illuminate\Support\Js::from($factorio ? $p['name'] : $p['project']) }})"><x-panel.spinner :target="'install('.(\Illuminate\Support\Js::from($factorio ? 'factorio' : $p['source'])).', '.(\Illuminate\Support\Js::from($factorio ? $p['name'] : $p['project'])).')'" />{{ __('Aktualizovat') }}</x-wire::button>
                                     @endisset
-                                    <x-wire::button size="xs" color="danger" outlined wire:click="remove({{ \Illuminate\Support\Js::from($p['file']) }})" wire:confirm="{{ __('Odebrat :file?', ['file' => $p['file']]) }}">{{ __('Odebrat') }}</x-wire::button>
+                                    <x-wire::button size="xs" color="danger" outlined wire:click="remove({{ \Illuminate\Support\Js::from($p['file']) }})" wire:confirm="{{ __('Odebrat :file?', ['file' => $p['file']]) }}" wire:loading.attr="disabled" wire:target="remove({{ \Illuminate\Support\Js::from($p['file']) }})"><x-panel.spinner :target="'remove('.(\Illuminate\Support\Js::from($p['file'])).')'" />{{ __('Odebrat') }}</x-wire::button>
                                 </td>
                             </tr>
                         @endforeach
@@ -87,7 +87,7 @@
                                 @if (in_array($r['project'], $have, true))
                                     <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                                 @else
-                                    <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($r['source']) }}, {{ \Illuminate\Support\Js::from($r['project']) }})" :disabled="$factorio && ! $account">{{ __('Nainstalovat') }}</x-wire::button>
+                                    <x-wire::button size="xs" wire:click="install({{ \Illuminate\Support\Js::from($r['source']) }}, {{ \Illuminate\Support\Js::from($r['project']) }})" :disabled="($factorio && ! $account) || (\App\Support\RunningTasks::has(['game.plugin_install', 'game.mod_install', 'game.modpack_install'], $this->server()))" wire:loading.attr="disabled" wire:target="install({{ \Illuminate\Support\Js::from($r['source']) }}, {{ \Illuminate\Support\Js::from($r['project']) }})"><x-panel.spinner :target="'install('.(\Illuminate\Support\Js::from($r['source'])).', '.(\Illuminate\Support\Js::from($r['project'])).')'" />{{ __('Nainstalovat') }}</x-wire::button>
                                 @endif
                             </li>
                         @endforeach
@@ -120,7 +120,7 @@
                                         <p class="truncate text-xs text-gray-600 dark:text-gray-400">{{ $r['description'] }}</p>
                                     </div>
                                     <x-wire::button size="xs" wire:click="installModpack({{ \Illuminate\Support\Js::from($r['project']) }})"
-                                        wire:confirm="{{ ($pack ? __('Nahradit pack :old packem :new?', ['old' => $pack['name'], 'new' => $r['name']]).' ' : '').__('Server se na dobu instalace zastaví.') }}">
+                                        wire:confirm="{{ ($pack ? __('Nahradit pack :old packem :new?', ['old' => $pack['name'], 'new' => $r['name']]).' ' : '').__('Server se na dobu instalace zastaví.') }}" wire:loading.attr="disabled" wire:target="installModpack({{ \Illuminate\Support\Js::from($r['project']) }})" :disabled="(\App\Support\RunningTasks::has(['game.plugin_install', 'game.mod_install', 'game.modpack_install'], $this->server()))"><x-panel.spinner :target="'installModpack('.(\Illuminate\Support\Js::from($r['project'])).')'" />
                                         {{ ($pack['project'] ?? null) === $r['project'] ? __('Aktualizovat') : __('Nainstalovat') }}</x-wire::button>
                                 </li>
                             @endforeach

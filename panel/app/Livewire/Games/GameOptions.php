@@ -3,6 +3,7 @@
 namespace App\Livewire\Games;
 
 use App\Actions\Games\ManageGameServers;
+use App\Livewire\Concerns\RefreshesWhenTasksEnd;
 use App\Models\GameServer;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
@@ -19,6 +20,8 @@ use Livewire\Component;
  */
 class GameOptions extends Component
 {
+    use RefreshesWhenTasksEnd;
+
     #[Locked]
     public int $serverId;
 

@@ -6,6 +6,7 @@ use App\Actions\Firewall\ManageFirewall;
 use App\Livewire\Server\ListFirewallRules;
 use App\Models\FirewallRule;
 use App\Support\AgentTasks;
+use App\Support\RunningTasks;
 use App\Wire\Actions\Action;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
@@ -71,7 +72,7 @@ final class FirewallRuleResource implements DescribesResource, ProvidesNavigatio
                     ->colors(['panel' => 'primary', __('systém') => 'gray']),
             ])
             ->actions([
-                Action::make('delete')
+                Action::make('delete')->busyWhile(fn () => RunningTasks::has('fw.delete'))
                     ->label(__('Smazat'))
                     ->icon('outline:trash')
                     ->color('danger')

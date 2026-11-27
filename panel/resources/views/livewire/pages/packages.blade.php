@@ -22,7 +22,7 @@
             @endif
             <div class="mt-3 flex gap-2">
                 @if ($pending['allowed'] && ($pending['install'] !== [] || $pending['remove'] !== []))
-                    <x-wire::button size="sm" :color="$pending['action'] === 'remove' ? 'danger' : 'primary'" wire:click="confirmPending">{{ $pending['action'] === 'install' ? __('Nainstalovat') : __('Odebrat') }}</x-wire::button>
+                    <x-wire::button size="sm" :color="$pending['action'] === 'remove' ? 'danger' : 'primary'" wire:click="confirmPending" wire:loading.attr="disabled" wire:target="confirmPending" :disabled="(isset($backgroundJobs['packages']))"><x-panel.spinner target="confirmPending" :busy="isset($backgroundJobs['packages'])" />{{ $pending['action'] === 'install' ? __('Nainstalovat') : __('Odebrat') }}</x-wire::button>
                 @endif
                 <x-wire::button size="sm" color="gray" outlined wire:click="cancelPending">{{ __('Zrušit') }}</x-wire::button>
                 <span wire:loading wire:target="confirmPending" class="text-sm text-gray-500">{{ __('Probíhá… může to trvat i několik minut.') }}</span>

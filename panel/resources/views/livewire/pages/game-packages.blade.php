@@ -32,10 +32,10 @@
                     </div>
                     @if ($p['origin'] !== 'builtin')
                         <div class="shrink-0">
-                            <x-wire::button size="sm" color="gray" outlined icon="outline:trash" wire:click="remove('{{ $p['id'] }}')"
-                                :disabled="($p['servers'] ?? []) !== []"
+                            <x-wire::button size="sm" color="gray" outlined wire:click="remove('{{ $p['id'] }}')"
+                                :disabled="(($p['servers'] ?? []) !== []) || (isset($backgroundJobs['game-package']))"
                                 :title="($p['servers'] ?? []) !== [] ? __('Nejdřív smažte herní servery, které ho používají.') : null"
-                                wire:confirm="{{ __('Odebrat balíček :name? Jeho hry a varianty zmizí z nabídky.', ['name' => $p['name']]) }}">{{ __('Odebrat') }}</x-wire::button>
+                                wire:confirm="{{ __('Odebrat balíček :name? Jeho hry a varianty zmizí z nabídky.', ['name' => $p['name']]) }}" wire:loading.attr="disabled" wire:target="remove('{{ $p['id'] }}')"><x-panel.spinner :target="'remove(\''.($p['id']).'\')'" icon="outline:trash" />{{ __('Odebrat') }}</x-wire::button>
                         </div>
                     @endif
                 </li>
@@ -76,9 +76,9 @@
                         </div>
                         <div class="shrink-0">
                             @if (($c['installed'] ?? '') === '')
-                                <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="install('{{ $c['id'] }}')">{{ __('Nainstalovat') }}</x-wire::button>
+                                <x-wire::button size="sm" wire:click="install('{{ $c['id'] }}')" wire:loading.attr="disabled" wire:target="install('{{ $c['id'] }}')" :disabled="(isset($backgroundJobs['game-package']))"><x-panel.spinner :target="'install(\''.($c['id']).'\')'" icon="outline:arrow-down-tray" />{{ __('Nainstalovat') }}</x-wire::button>
                             @elseif (version_compare($c['version'], $c['installed'], '>'))
-                                <x-wire::button size="sm" icon="outline:arrow-path" wire:click="install('{{ $c['id'] }}')">{{ __('Aktualizovat na :v', ['v' => $c['version']]) }}</x-wire::button>
+                                <x-wire::button size="sm" wire:click="install('{{ $c['id'] }}')" wire:loading.attr="disabled" wire:target="install('{{ $c['id'] }}')" :disabled="(isset($backgroundJobs['game-package']))"><x-panel.spinner :target="'install(\''.($c['id']).'\')'" icon="outline:arrow-path" />{{ __('Aktualizovat na :v', ['v' => $c['version']]) }}</x-wire::button>
                             @else
                                 <x-wire::badge color="success">{{ __('nainstalováno') }}</x-wire::badge>
                             @endif

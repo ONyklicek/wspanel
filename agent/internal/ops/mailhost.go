@@ -33,6 +33,10 @@ type mailbox struct {
 	// Forward: where the mailbox's incoming mail also (KeepCopy) or only goes.
 	Forward  []string `json:"forward,omitempty"`
 	KeepCopy bool     `json:"keep_copy,omitempty"`
+	// External: a provider's mailbox downloaded into this one, and its SMTP
+	// for what this one sends (mailfetch.go).
+	Fetch *extFetch `json:"fetch,omitempty"`
+	Relay *extRelay `json:"relay,omitempty"`
 }
 
 type mailDomain struct {
@@ -280,6 +284,12 @@ func renderMail(ctx context.Context, env *Env, st *mailState) error {
 		return err
 	}
 	if err := writeRspamdFilters(ctx, env, st); err != nil {
+		return err
+	}
+	if err := writeSenderRelays(ctx, env, st); err != nil {
+		return err
+	}
+	if err := writeMailFetch(ctx, env, st); err != nil {
 		return err
 	}
 	return writeMailEdge(ctx, env, st, names)

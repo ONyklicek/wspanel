@@ -130,14 +130,17 @@ func valkeySet(ctx context.Context, env *Env, raw json.RawMessage) (_ any, err e
 	if err != nil {
 		return nil, err
 	}
-	if p.Server == "" { // not given: the server the site already runs
+	if p.Server == "" { // not given: the server the site already runs, else this server's default
 		p.Server = st.Valkey.server()
+		if st.Valkey == nil {
+			p.Server = kvDefault(env)
+		}
 	}
 	if err := validate.OneOf("server", p.Server, kvServers); err != nil {
 		return nil, err
 	}
-	if p.Enabled && p.Server == kvRedis && !redisInstalled(env) {
-		return nil, protocol.Conflict("Redis is not installed (Server → Moduly)")
+	if p.Enabled && !kvInstalled(env, p.Server) {
+		return nil, protocol.Conflict(kvLabel(p.Server) + " is not installed (Server → Moduly)")
 	}
 	v := valkeyPaths(env, l)
 	for _, u := range p.Use {
@@ -418,7 +421,7 @@ func valkeyCLI(ctx context.Context, env *Env, l siteLayout, socket string, args 
 		return executor.Result{}, err
 	}
 	return env.Exec.RunIO(ctx, strings.NewReader(pw+"\n"), nil, "setpriv",
-		append(append(userCreds(l.User), env.Cfg.ValkeyCLIBin, "--askpass", "--no-auth-warning", "-s", socket), args...)...)
+		append(append(userCreds(l.User), kvCLIBin(env), "--askpass", "--no-auth-warning", "-s", socket), args...)...)
 }
 
 // removeSiteValkey is part of deleting a site.

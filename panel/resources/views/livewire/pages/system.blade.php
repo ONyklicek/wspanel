@@ -9,7 +9,7 @@
         @if ($internal && $seen['ipv4'] !== '')
             <x-wire::callout color="warning" :heading="__('Server je ve vnitřní síti (za NATem)')" class="mb-3">
                 {{ __('Záznamy by mířily na :local, ale internet server vidí z :ip. Na routeru přesměrujte porty 80 a 443 (pošta 25, 465, 587, 993; DNS 53) na tento server.', ['local' => $address['ipv4'] ?: '—', 'ip' => $seen['ipv4']]) }}
-                <div class="mt-2"><x-wire::button size="xs" wire:click="useSeenAddress" wire:loading.attr="disabled" wire:target="useSeenAddress">{{ __('Použít :ip', ['ip' => $seen['ipv4']]) }}</x-wire::button></div>
+                <div class="mt-2"><x-wire::button size="xs" wire:click="useSeenAddress" wire:loading.attr="disabled" wire:target="useSeenAddress"><x-panel.spinner target="useSeenAddress" />{{ __('Použít :ip', ['ip' => $seen['ipv4']]) }}</x-wire::button></div>
             </x-wire::callout>
         @endif
         <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -32,7 +32,7 @@
                         @else
                             <x-wire::badge color="danger">{{ __('vypnuto') }}</x-wire::badge>
                         @endif
-                        <x-wire::button size="xs" color="gray" outlined wire:click="toggleNtp">{{ $settings['ntp'] ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
+                        <x-wire::button size="xs" color="gray" outlined wire:click="toggleNtp" wire:loading.attr="disabled" wire:target="toggleNtp" :disabled="(isset($backgroundJobs['system-ntp']))"><x-panel.spinner target="toggleNtp" :busy="isset($backgroundJobs['system-ntp'])" />{{ $settings['ntp'] ? __('Vypnout') : __('Zapnout') }}</x-wire::button>
                         @unless ($settings['ntp'])
                             <span class="text-xs text-gray-500">{{ __('Bez synchronizace se hodiny rozejdou a přestanou sedět certifikáty, 2FA kódy i podpisy pošty.') }}</span>
                         @endunless
@@ -94,7 +94,7 @@
             </table>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-3">
-                <x-wire::button size="xs" color="gray" outlined wire:click="refreshDns" wire:loading.attr="disabled" wire:target="refreshDns">{{ __('Zkontrolovat znovu') }}</x-wire::button>
+                <x-wire::button size="xs" color="gray" outlined wire:click="refreshDns" wire:loading.attr="disabled" wire:target="refreshDns"><x-panel.spinner target="refreshDns" />{{ __('Zkontrolovat znovu') }}</x-wire::button>
                 @if (collect($dns)->contains(fn ($r) => $r['type'] === 'A' && str_starts_with($r['name'], 'ns1.')))
                     <span class="text-xs text-gray-500">{{ __('Nameservery ns1/ns2 leží v doméně, kterou samy obsluhují: u registrátora k nim zadejte i IP adresu (glue záznam).') }}</span>
                 @endif
@@ -140,7 +140,7 @@
                             {{ __('Instaluje se…') }} <x-panel.elapsed :since="\Illuminate\Support\Carbon::parse($backgroundJobs['packages']['started'])" />
                         </span>
                     @else
-                        <x-wire::button size="sm" icon="outline:arrow-down-tray" wire:click="installSmart" wire:loading.attr="disabled" wire:target="installSmart">{{ __('Nainstalovat') }}</x-wire::button>
+                        <x-wire::button size="sm" wire:click="installSmart" wire:loading.attr="disabled" wire:target="installSmart"><x-panel.spinner target="installSmart" icon="outline:arrow-down-tray" />{{ __('Nainstalovat') }}</x-wire::button>
                     @endif
                 </div>
             @elseif ($disks['disks'] === [] || collect($disks['disks'])->every(fn ($d) => ! $d['available']))

@@ -28,6 +28,9 @@ func mailTestEnv(t *testing.T) (*Env, *executor.DryRun) {
 	env.Cfg.WebmailTokens = filepath.Join(root, "webmail-tokens")
 	env.Cfg.WebmailUser = "root"
 	env.Cfg.DomainSieveDir = filepath.Join(root, "domain-sieve")
+	env.Cfg.MailFetchDir = filepath.Join(root, "mailfetch")
+	env.Cfg.SenderTransport = filepath.Join(root, "sender-transport")
+	env.Cfg.SenderSASL = filepath.Join(root, "sender-sasl")
 	return env, dr
 }
 

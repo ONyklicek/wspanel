@@ -12,6 +12,7 @@ use App\Services\Dns\DnsException;
 use App\Services\Dns\LocalDns;
 use App\Support\AgentTasks;
 use App\Support\PageActions;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Dns\RecordForm;
@@ -106,7 +107,7 @@ class ViewDnsZone extends ViewPage
                         Toast::error(__('Uložení selhalo'), $e->getMessage());
                     }
                 }),
-            Action::make('recommended')
+            Action::make('recommended')->busyWhile(fn () => RunningTasks::has('dns.recommended', $this->zone()))
                 ->label(__('Doplnit doporučené'))
                 ->icon('outline:sparkles')
                 ->color('gray')

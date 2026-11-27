@@ -406,6 +406,62 @@ class ManageMailHosting
         $mailbox->update(['forward' => $to === [] ? null : ['to' => $to, 'keep_copy' => $keepCopy]]);
     }
 
+    /**
+     * The mailbox's provider: its mail downloaded here (and removed there
+     * after keep_days), what it sends going out through the provider's SMTP.
+     * Null = not. An empty password keeps the stored one; a relay with the
+     * fetch's login uses its password. Run in the background (the first
+     * downloading mailbox installs getmail).
+     *
+     * @param  array{protocol: string, host: string, port?: int|null, user: string, password?: string|null, keep_days: int}|null  $fetch
+     * @param  array{host: string, port: int, user: string, password?: string|null}|null  $relay
+     *
+     * @throws AgentException
+     */
+    public function setExternal(Mailbox $mailbox, ?array $fetch, ?array $relay): array
+    {
+        $fetch = $fetch === null ? null : [
+            'protocol' => $fetch['protocol'] === 'pop3' ? 'pop3' : 'imap', 'host' => strtolower(trim($fetch['host'])),
+            'port' => (int) ($fetch['port'] ?? 0) ?: ($fetch['protocol'] === 'pop3' ? 995 : 993), 'user' => trim($fetch['user']),
+            'password' => (string) ($fetch['password'] ?? ''), 'keep_days' => (int) $fetch['keep_days'],
+        ];
+        $relay = $relay === null ? null : [
+            'host' => strtolower(trim($relay['host'])), 'port' => (int) $relay['port'] === 465 ? 465 : 587,
+            'user' => trim($relay['user']), 'password' => (string) ($relay['password'] ?? ''),
+        ];
+        $this->agent->call('mail.mailbox.external', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay]);
+        $without = fn (?array $a) => $a === null ? null : array_diff_key($a, ['password' => true]);
+        $mailbox->update(['external' => $fetch === null && $relay === null ? null : ['fetch' => $without($fetch), 'relay' => $without($relay)]]);
+        Cache::forget('mail.fetch.'.$mailbox->mail_domain_id);
+
+        return ['message' => $fetch !== null ? __('Pošta se stahuje každé 2 minuty') : __('Uloženo')];
+    }
+
+    /**
+     * Whether the provider lets the login in (nothing is stored).
+     *
+     * @param  array<string, mixed>|null  $fetch
+     * @param  array<string, mixed>|null  $relay
+     * @return array{fetch?: array{ok: bool, error?: string}, relay?: array{ok: bool, error?: string}}
+     *
+     * @throws AgentException
+     */
+    public function testExternal(Mailbox $mailbox, ?array $fetch, ?array $relay): array
+    {
+        return $this->agent->call('mail.external.test', ['address' => $mailbox->address(), 'fetch' => $fetch, 'relay' => $relay]);
+    }
+
+    /**
+     * How the last download of each external mailbox of the domain went.
+     *
+     * @return array<string, array{at: string, ok: bool, error?: string, retrieved: int, last_mail?: string}>
+     */
+    public function fetchStatus(MailDomain $domain): array
+    {
+        return Cache::remember('mail.fetch.'.$domain->id, 20, fn () => rescue(
+            fn () => (array) ($this->agent->call('mail.fetch.status', ['domain' => $domain->domain])['mailboxes'] ?? []), [], report: false));
+    }
+
     /** Refreshes the used storage of the domain's mailboxes. */
     public function refreshUsage(MailDomain $domain): void
     {

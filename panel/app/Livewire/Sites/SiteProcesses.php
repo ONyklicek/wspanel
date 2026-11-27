@@ -8,6 +8,7 @@ use App\Models\Service;
 use App\Models\Site;
 use App\Services\Agent\AgentException;
 use App\Support\AgentTasks;
+use App\Support\RunningTasks;
 use App\Wire\Actions\Action;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
@@ -113,6 +114,7 @@ class SiteProcesses extends Component
     private function control(string $verb, string|\Closure $label, string $icon, string $color): Action
     {
         return Action::make($verb)
+            ->busyWhile(fn () => RunningTasks::has('site.'.$verb, $this->getSite()))
             ->label($label)
             ->tooltip($label)
             ->onlyIcon()

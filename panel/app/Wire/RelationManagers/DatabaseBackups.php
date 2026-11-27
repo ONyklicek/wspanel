@@ -5,6 +5,7 @@ namespace App\Wire\RelationManagers;
 use App\Actions\Databases\ManageDatabases;
 use App\Models\Backup;
 use App\Services\Agent\AgentException;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use Illuminate\Support\Number;
@@ -38,7 +39,7 @@ class DatabaseBackups extends RelationManager
             ->actions([
                 Action::make('download')->label(__('Stáhnout'))->icon('outline:arrow-down-tray')->color('gray')
                     ->url(fn (Backup $record) => route('backups.download', $record)),
-                Action::make('restore')
+                Action::make('restore')->busyWhile(fn () => RunningTasks::has('db.restore', $this->ownerRecord))
                     ->label(__('Obnovit'))
                     ->icon('outline:arrow-uturn-left')
                     ->color('warning')

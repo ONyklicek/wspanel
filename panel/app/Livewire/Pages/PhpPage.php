@@ -89,7 +89,7 @@ class PhpPage extends Page
         $installable = $this->status['installable'] ?? [];
 
         return [
-            Action::make('installVersion')
+            Action::make('installVersion')->busyWhile('php')
                 ->label(__('Doinstalovat verzi PHP'))
                 ->icon('outline:plus')
                 ->visible($installable !== [])

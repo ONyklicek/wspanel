@@ -4,6 +4,7 @@ namespace App\Livewire\Sites;
 
 use App\Actions\Sites\InstallApp;
 use App\Exceptions\LimitReachedException;
+use App\Livewire\Concerns\RefreshesWhenTasksEnd;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Services\Agent\SystemInfo;
@@ -19,6 +20,7 @@ use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListSites extends ListPage
 {
+    use RefreshesWhenTasksEnd;
     use TranslatesPageText;
 
     protected static ?string $resource = SiteResource::class;

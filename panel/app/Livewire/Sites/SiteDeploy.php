@@ -24,6 +24,7 @@ use App\Support\AgentTasks;
 use App\Support\ConsoleText;
 use App\Support\Lang;
 use App\Support\PublicAddress;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use App\Wire\Forms\Options;
@@ -423,7 +424,7 @@ class SiteDeploy extends ViewPage
     {
         $site = $this->site();
 
-        return Action::make('settings')
+        return Action::make('settings')->busyWhile(fn () => RunningTasks::has('site.opcache', $this->site()))
             ->label(__('Nastavení'))
             ->icon('outline:cog-6-tooth')
             ->color('gray')
@@ -652,7 +653,7 @@ class SiteDeploy extends ViewPage
 
     private function rollbackAction(): Action
     {
-        return Action::make('rollback')
+        return Action::make('rollback')->busyWhile(fn () => RunningTasks::has('deploy.rollback', $this->site()))
             ->label(__('Rollback'))
             ->icon('outline:arrow-uturn-left')
             ->color('warning')

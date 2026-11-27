@@ -194,7 +194,7 @@ final class GameServerResource implements DescribesResource, ProvidesNavigation,
 
     private static function control(string $verb, string $label, string $icon, string $color): Action
     {
-        return Action::make($verb)->label($label)->icon($icon)->color($color)->onlyIcon()->tooltip($label)
+        return Action::make($verb)->busyWhile('game.'.$verb)->label($label)->icon($icon)->color($color)->onlyIcon()->tooltip($label)
             ->action(fn (GameServer $record) => AgentTasks::queue('game.'.$verb, GameServerStatus::controlText($record->name, $verb),
                 ManageGameServers::class, 'control', [$record, $verb], $record));
     }

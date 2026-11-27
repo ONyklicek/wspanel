@@ -5,7 +5,7 @@ namespace App\Wire\Sites;
 use App\Actions\Clients\ManageClients;
 use App\Actions\Databases\ManageDatabases;
 use App\Actions\Databases\ManageDatabaseServers;
-use App\Actions\Server\ManageRedis;
+use App\Actions\Server\ManageKeyValue;
 use App\Actions\Sites\ChangeRuntime;
 use App\Actions\Sites\CheckSiteHealth;
 use App\Actions\Sites\ControlSite;
@@ -35,6 +35,7 @@ use App\Support\AgentTasks;
 use App\Support\Domains;
 use App\Support\Lang;
 use App\Support\Limits;
+use App\Support\RunningTasks;
 use App\Support\Toast;
 use App\Support\WebRules\RulesConverter;
 use App\Wire\Actions\Action;
@@ -135,7 +136,7 @@ final class SiteActions
 
     public static function restart(): Action
     {
-        return Action::make('restart')
+        return Action::make('restart')->busyWhile('site.restart')
             ->label(__('Restartovat'))
             ->icon('outline:arrow-path')
             ->color('gray')
@@ -155,7 +156,7 @@ final class SiteActions
 
     public static function disable(): Action
     {
-        return Action::make('disable')
+        return Action::make('disable')->busyWhile('site.disable')
             ->label(__('Vypnout web'))
             ->icon('outline:power')
             ->color('danger')
@@ -173,7 +174,7 @@ final class SiteActions
 
     public static function enable(): Action
     {
-        return Action::make('enable')
+        return Action::make('enable')->busyWhile('site.enable')
             ->label(__('Zapnout web'))
             ->icon('outline:play')
             ->color('success')
@@ -186,7 +187,7 @@ final class SiteActions
 
     public static function switchMode(): Action
     {
-        return Action::make('switchMode')
+        return Action::make('switchMode')->busyWhile('site.switch_mode')
             ->label(__('Změnit režim'))
             ->icon('outline:arrows-right-left')
             ->visible(fn (Site $record) => $record->isOperational())
@@ -199,7 +200,7 @@ final class SiteActions
 
     public static function setVersion(): Action
     {
-        return Action::make('setVersion')
+        return Action::make('setVersion')->busyWhile('site.set_version')
             ->label(__('Změnit verzi'))
             ->icon('outline:adjustments-horizontal')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode !== SiteMode::Worker)
@@ -350,7 +351,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function tls(): Action
     {
-        return Action::make('tls')
+        return Action::make('tls')->busyWhile('site.tls')
             ->label(__('HTTPS / certifikát'))
             ->icon('outline:lock-closed')
             ->visible(fn (Site $record) => $record->isOperational())
@@ -392,7 +393,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function addWorker(): Action
     {
-        return Action::make('addWorker')
+        return Action::make('addWorker')->busyWhile('worker.create')
             ->label(__('Přidat worker'))
             ->icon('outline:cpu-chip')
             ->visible(fn (Site $record) => $record->isOperational()
@@ -432,7 +433,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function delete(): Action
     {
-        return Action::make('delete')
+        return Action::make('delete')->busyWhile(fn (?Site $record) => $record !== null && RunningTasks::has('site-delete:'.$record->id))
             ->label(__('Smazat web'))
             ->icon('outline:trash')
             ->color('danger')
@@ -470,7 +471,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->placeholder(__('výchozí (').($options[$f[$key][1]] ?? $f[$key][1]).')')->rules([Options::rule()]);
         $onOff = ['on' => __('zapnuto'), 'off' => __('vypnuto')];
 
-        return Action::make('phpSettings')
+        return Action::make('phpSettings')->busyWhile('site.php')
             ->label(__('PHP nastavení'))
             ->icon('outline:adjustments-horizontal')
             ->visible(fn (Site $record) => $record->isOperational() && ! $record->mode->isApp())
@@ -680,15 +681,15 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** The site's own Valkey (Redis-compatible) server. */
     public static function valkey(): Action
     {
-        return Action::make('valkey')
+        return Action::make('valkey')->busyWhile('valkey.set')
             ->label(__('Valkey / Redis'))
             ->icon('outline:bolt')
             ->visible(fn (Site $record) => $record->isOperational())
             ->modalHeading(fn (Site $record) => "Valkey / Redis pro {$record->domain}")
-            ->modalDescription(__('Vlastní Valkey server webu (kompatibilní s Redisem): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).'))
+            ->modalDescription(__('Vlastní server webu (Valkey nebo Redis): běží pod uživatelem webu na 127.0.0.1 a vlastním portu, chráněný heslem, takže ho žádný jiný web nepoužije. Host, port a heslo se zapíšou do .env (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD).'))
             ->fillFormUsing(fn (Site $record) => [
                 'enabled' => $record->valkey !== null,
-                'server' => $record->valkey['server'] ?? 'valkey',
+                'server' => $record->valkey['server'] ?? app(ManageKeyValue::class)->default(),
                 'maxmemory_mb' => $record->valkey['maxmemory_mb'] ?? 64,
                 'policy' => $record->valkey['policy'] ?? 'allkeys-lru',
                 'persist' => $record->valkey['persist'] ?? false,
@@ -699,9 +700,9 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
             ->form(fn (Site $record) => [
                 Toggle::make('enabled')->label(__('Zapnout Valkey / Redis pro tento web'))->live(),
                 Radio::make('server')->label(__('Server'))
-                    ->options(Lang::values(ManageValkey::SERVERS))
+                    ->options(fn () => Lang::values(array_intersect_key(ManageValkey::SERVERS, app(ManageKeyValue::class)->available())))
                     ->rules(['in:valkey,redis'])
-                    ->visible(fn ($get) => $get('enabled') && app(ManageRedis::class)->installed())
+                    ->visible(fn ($get) => $get('enabled') && count(app(ManageKeyValue::class)->available()) > 1)
                     ->helperText(__('Oba mluví stejným protokolem, .env se nemění. Při přepnutí se uložená data smažou (každý zapisuje jiný formát souboru).')),
                 TextInput::make('maxmemory_mb')->label(__('Paměť (MB)'))->integer()->minValue(8)->maxValue(65536)
                     ->rules(['integer', 'between:8,65536'])->visibleWhen('enabled', true)->requiredIf('enabled', true),
@@ -722,7 +723,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** Moving a site in: a cPanel backup or an archive of its files. */
     public static function import(): Action
     {
-        return Action::make('import')
+        return Action::make('import')->busyWhile('site.import')
             ->label(__('Importovat web (cPanel, archiv)'))
             ->icon('outline:arrow-down-on-square')
             ->visible(fn (Site $record) => $record->isOperational() && $record->framework->value === 'php')
@@ -739,7 +740,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** A staging copy of the site (staging.<domain>), and back to production. */
     public static function staging(): Action
     {
-        return Action::make('staging')
+        return Action::make('staging')->busyWhile(['staging.push', 'staging.create'])
             ->label(fn (Site $record) => $record->staging_of ? __('Nasadit staging na produkci') : __('Vytvořit staging'))
             ->icon('outline:beaker')
             ->visible(fn (Site $record) => $record->isOperational() && ($record->staging_of !== null || ! Site::query()->where('staging_of', $record->id)->exists()))
@@ -776,7 +777,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** Connects a network disk (SMB, FTP, SFTP) into the site's mounts/ (administrators). */
     public static function mountAdd(): Action
     {
-        return Action::make('mountAdd')
+        return Action::make('mountAdd')->busyWhile('site.mount')
             ->label(__('Připojit disk'))
             ->icon('outline:server-stack')
             ->visible(fn (Site $record) => Gate::allows('admin') && $record->isOperational())
@@ -839,7 +840,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function mountRemove(): Action
     {
-        return Action::make('mountRemove')
+        return Action::make('mountRemove')->busyWhile('site.mount')
             ->label(__('Odpojit disk'))
             ->icon('outline:x-circle')
             ->color('gray')
@@ -857,7 +858,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function mountRemount(): Action
     {
-        return Action::make('mountRemount')
+        return Action::make('mountRemount')->busyWhile('site.mount')
             ->label(__('Připojit znovu'))
             ->icon('outline:arrow-path')
             ->color('gray')
@@ -875,7 +876,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** XHProf profiling into the site's own XHGui (classic sites). */
     public static function xhprof(): Action
     {
-        return Action::make('xhprof')
+        return Action::make('xhprof')->busyWhile('site.xhprof')
             ->label(__('Profilování (XHProf)'))
             ->icon('outline:chart-bar')
             ->visible(fn (Site $record) => $record->isOperational() && $record->mode === SiteMode::Classic && app(ManageXhprof::class)->installed())
@@ -925,7 +926,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
 
     public static function valkeyRestart(): Action
     {
-        return Action::make('valkeyRestart')
+        return Action::make('valkeyRestart')->busyWhile('valkey.restart')
             ->label(__('Restartovat Valkey'))
             ->icon('outline:arrow-path')
             ->color('gray')
@@ -940,7 +941,7 @@ Heslo (zobrazí se jen teď): :generated', ['login' => $login, 'generated' => $g
     /** Move the site (with its databases and DNS zone) to a client or back to the administrator. */
     public static function assignClient(): Action
     {
-        return Action::make('assignClient')
+        return Action::make('assignClient')->busyWhile('site.assign')
             ->label(__('Přiřadit klientovi'))
             ->icon('outline:user-group')
             ->visible(fn () => Gate::allows('clients') && Client::query()->exists())

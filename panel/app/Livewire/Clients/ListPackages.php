@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Clients;
 
+use App\Livewire\Concerns\RefreshesWhenTasksEnd;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Models\Package;
 use App\Support\Toast;
@@ -11,6 +12,7 @@ use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListPackages extends ListPage
 {
+    use RefreshesWhenTasksEnd;
     use TranslatesPageText;
 
     protected static ?string $resource = PackageResource::class;

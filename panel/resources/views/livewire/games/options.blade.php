@@ -51,6 +51,6 @@
     </x-wire::section>
     <div class="flex flex-wrap items-center gap-2">
         <x-wire::button type="submit" wire:loading.attr="disabled" wire:target="save">{{ __('Uložit') }}</x-wire::button>
-        <x-wire::button type="button" color="gray" outlined icon="outline:arrow-path" wire:click="save(true)" wire:loading.attr="disabled" wire:target="save">{{ __('Uložit a restartovat') }}</x-wire::button>
+        <x-wire::button type="button" color="gray" outlined wire:click="save(true)" wire:loading.attr="disabled" wire:target="save" :disabled="(\App\Support\RunningTasks::has('game.restart', $this->server()))"><x-panel.spinner target="save" icon="outline:arrow-path" :busy="\App\Support\RunningTasks::has('game.restart', $this->server())" />{{ __('Uložit a restartovat') }}</x-wire::button>
     </div>
 </form>

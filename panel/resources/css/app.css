@@ -107,3 +107,7 @@ pre.whitespace-pre-wrap { overflow-wrap: anywhere; }
 /* A grid's items never grow past their column: on a phone (one column) a
    long word in them would otherwise widen the page. */
 .grid > * { min-width: 0; }
+
+/* An action whose task runs in the background (ShowsRunningTask): its
+   icon turns until the task ends. */
+[data-busy] svg { @apply animate-spin; }

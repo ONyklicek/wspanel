@@ -3,6 +3,7 @@
 namespace App\Livewire\Server;
 
 use App\Actions\Services\SyncServices;
+use App\Livewire\Concerns\RefreshesWhenTasksEnd;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Toast;
@@ -12,6 +13,7 @@ use NyonCode\WirePanels\Resources\Pages\ListPage;
 
 class ListServices extends ListPage
 {
+    use RefreshesWhenTasksEnd;
     use TranslatesPageText;
 
     protected static ?string $resource = ServiceResource::class;

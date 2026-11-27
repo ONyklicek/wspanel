@@ -66,7 +66,13 @@ type Config struct {
 	ValkeyServerBin string `json:"valkey_server_bin"`
 	ValkeyCLIBin    string `json:"valkey_cli_bin"`
 	// Redis 8 (optional module, packages.redis.io): per-site servers like Valkey.
-	RedisServerBin  string `json:"redis_server_bin"`
+	RedisServerBin string `json:"redis_server_bin"`
+	RedisCLIBin    string `json:"redis_cli_bin"`
+	// The mail filter's own key-value server (mail-hosting.sh): its unit and data.
+	RspamdKVUnit string `json:"rspamd_kv_unit"`
+	RspamdKVData string `json:"rspamd_kv_data"`
+	// NoValkey: dry runs only, a server without Valkey (tests).
+	NoValkey        bool   `json:"-"`
 	RedisModulesDir string `json:"redis_modules_dir"`
 	TmpfilesDir     string `json:"tmpfiles_dir"`
 	ProxyGroup      string `json:"proxy_group"`   // group of the edge proxy, owns site socket dirs
@@ -175,6 +181,12 @@ type Config struct {
 	WebmailTokens   string `json:"webmail_tokens"`   // one-time sign-in tokens for Roundcube
 	DomainSieveDir  string `json:"domain_sieve_dir"` // per mail domain: sender lists, spam into Junk
 	LoginSenders    string `json:"login_senders"`    // Postfix: Unix login -> senders allowed with sendmail -f
+	// External mailboxes: a mailbox that downloads a provider's mailbox
+	// (getmail as vmail, into Dovecot over LMTP) and sends through its SMTP.
+	MailFetchDir    string `json:"mail_fetch_dir"`   // per mailbox: getmailrc, the password, getmail's state
+	MailFetchLMTP   string `json:"mail_fetch_lmtp"`  // Dovecot's LMTP listener for vmail
+	SenderTransport string `json:"sender_transport"` // Postfix: mailbox -> wspanel-relay:[provider]:587
+	SenderSASL      string `json:"sender_sasl"`      // Postfix: mailbox -> the provider's login (root only)
 
 	// Local authoritative DNS (PowerDNS API on loopback); empty = not installed.
 	PowerDNSAPI string `json:"powerdns_api"`
@@ -234,6 +246,9 @@ func Defaults() Config {
 		ValkeyServerBin: "/usr/bin/valkey-server",
 		ValkeyCLIBin:    "/usr/bin/valkey-cli",
 		RedisServerBin:  "/usr/bin/redis-server",
+		RedisCLIBin:     "/usr/bin/redis-cli",
+		RspamdKVUnit:    "/etc/systemd/system/rspamd-valkey.service",
+		RspamdKVData:    "/var/lib/rspamd/valkey",
 		RedisModulesDir: "/usr/lib/redis/modules",
 		TmpfilesDir:     "/etc/tmpfiles.d",
 		ProxyGroup:      "panel-proxy",
@@ -316,6 +331,10 @@ func Defaults() Config {
 		WebmailTokens:     "/run/wspanel-webmail",
 		DomainSieveDir:    "/var/mail/vmail/.wspanel-domains",
 		LoginSenders:      "/etc/postfix/wspanel_login_senders",
+		MailFetchDir:      "/var/lib/wspanel-mailfetch",
+		MailFetchLMTP:     "/run/dovecot/wspanel-fetch-lmtp",
+		SenderTransport:   "/etc/postfix/wspanel_sender_transport",
+		SenderSASL:        "/etc/postfix/wspanel_sender_sasl",
 	}
 }
 
