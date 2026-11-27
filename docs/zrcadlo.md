@@ -25,9 +25,9 @@ zrcadla.
 | MariaDB | GTID replikace, zrcadlo je jen pro čtení | průběžně (sekundy) |
 | PostgreSQL | streaming replikace se slotem (hot standby) | průběžně |
 | MongoDB, vyhrazené DB servery | výpisy jednotlivých databází | každých 5 minut |
-| Valkey / Redis každého webu | replika pod uživatelem webu | průběžně |
+| Valkey / Redis každého webu | replika pod uživatelem webu (týž server jako na primáru) | průběžně |
 
-Software, který primár používá (DB enginy, verze PHP a Pythonu, Redis,
+Software, který primár používá (DB enginy, verze PHP a Pythonu, Valkey, Redis,
 poštovní hosting), si zrcadlo doinstaluje samo. Herní servery se
 nekopírují.
 

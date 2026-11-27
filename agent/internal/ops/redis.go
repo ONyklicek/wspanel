@@ -335,3 +335,5 @@ func redisStatus(ctx context.Context, env *Env, raw json.RawMessage) (any, error
 func removeKVData(ctx context.Context, env *Env, user string, v valkeyLayout) error {
 	return asUser(ctx, env, user, "/usr/bin/rm", "-f", "--", filepath.Join(v.DataDir, "dump.rdb"))
 }
+
+func boolPtr(b bool) *bool { return &b }

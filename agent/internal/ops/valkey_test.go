@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,5 +335,23 @@ func TestTheKeyValueChoiceIsSavedForTheNextUpgrade(t *testing.T) {
 	}
 	if got := read2(t, env.Cfg.InstallFlags); got != "--db=mariadb\n--kv=both\n" {
 		t.Errorf("flags:\n%s", got)
+	}
+}
+
+func TestTheMirrorInstallsTheKeyValueServersThePrimaryHas(t *testing.T) {
+	env, _ := testEnv(t)
+	env.Cfg.NoValkey = true // this standby was installed with --kv=redis
+	no := false
+	prepareStandby(context.Background(), env, &helloInfo{Valkey: &no})
+	if d := mirrorRuntime.snapshot()["layers"].(map[string]layerStatus)["software"].Detail; strings.Contains(d, "Valkey") {
+		t.Errorf("a primary without Valkey needs none here: %q", d)
+	}
+	prepareStandby(context.Background(), env, &helloInfo{}) // a primary before 1.14.2: always had Valkey
+	if d := mirrorRuntime.snapshot()["layers"].(map[string]layerStatus)["software"].Detail; !strings.Contains(d, "Valkey") {
+		t.Errorf("the primary's Valkey is installed here too: %q", d)
+	}
+	out := localHello(env)
+	if out.Valkey == nil || *out.Valkey {
+		t.Errorf("this node says it has no Valkey: %+v", out.Valkey)
 	}
 }

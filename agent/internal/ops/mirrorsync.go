@@ -322,7 +322,7 @@ func rejoinBackupDir(env *Env) string {
 }
 
 // prepareStandby installs here what the primary runs and this node lacks:
-// database engines, PHP and Python versions, Redis, mail hosting. Each is
+// database engines, PHP and Python versions, Valkey and Redis, mail hosting. Each is
 // the same install the panel would start.
 func prepareStandby(ctx context.Context, env *Env, peer *helloInfo) {
 	var missing, failed []string
@@ -347,6 +347,9 @@ func prepareStandby(ctx context.Context, env *Env, peer *helloInfo) {
 		if !slices.Contains(have, v) {
 			try("Python "+v, func() error { _, err := pythonInstall(ctx, env, mustJSON(map[string]any{"version": v})); return err })
 		}
+	}
+	if (peer.Valkey == nil || *peer.Valkey) && !valkeyInstalled(env) {
+		try("Valkey", func() error { _, err := kvInstallServer(ctx, env, kvValkey); return err })
 	}
 	if peer.Redis && !redisInstalled(env) {
 		try("Redis", func() error { _, err := redisInstall(ctx, env, mustJSON(map[string]any{})); return err })

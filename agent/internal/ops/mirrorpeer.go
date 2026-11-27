@@ -353,7 +353,9 @@ type helloInfo struct {
 	PHP        []string  `json:"php"`
 	Python     []string  `json:"python,omitempty"`
 	Redis      bool      `json:"redis"`
-	Mail       bool      `json:"mail"`
+	// Valkey: nil from a primary before 1.14.2, which always had it.
+	Valkey *bool `json:"valkey,omitempty"`
+	Mail   bool  `json:"mail"`
 }
 
 func localHello(env *Env) helloInfo {
@@ -362,7 +364,7 @@ func localHello(env *Env) helloInfo {
 		NodeID: st.NodeID, Name: st.Name, Role: st.Role, Epoch: st.Epoch, Version: Version, Time: time.Now().UTC(),
 		LANAddress: st.LANAddress, PublicIPv4: st.PublicIPv4, Fenced: st.Fenced, Sites: len(allSiteStates(env.Cfg)),
 		DBEngines: env.Cfg.DBEngines, PHP: env.Cfg.PHPVersions, Python: pythonMinors(env.Cfg),
-		Redis: !env.Cfg.DryRun && redisInstalled(env), Mail: mailHostingOn(env),
+		Redis: !env.Cfg.DryRun && redisInstalled(env), Valkey: boolPtr(valkeyInstalled(env)), Mail: mailHostingOn(env),
 	}
 }
 
