@@ -10,6 +10,7 @@ use App\Services\Agent\AgentException;
 use App\Support\Toast;
 use App\Wire\Actions\Action;
 use Illuminate\Support\Carbon;
+use NyonCode\WireForms\Components\Select;
 use NyonCode\WireForms\Components\Tags;
 use NyonCode\WireForms\Components\TextInput;
 use NyonCode\WireForms\Components\Toggle;
@@ -90,6 +91,14 @@ class MirrorPage extends Page
             'fenced' => 'danger',
             default => 'gray',
         };
+    }
+
+    /** The other node answered with another WSPanel version. */
+    public function versionsDiffer(): bool
+    {
+        $peer = (string) ($this->runtime()['peer']['version'] ?? '');
+
+        return $peer !== '' && $peer !== (string) ($this->state['version'] ?? '');
     }
 
     public function paired(): bool
@@ -226,10 +235,13 @@ class MirrorPage extends Page
                 ->modalDescription(__('Když primár odpovídá, proběhne plánované přepnutí: primár přestane přijímat zápisy, zrcadlo ho dožene a převezme provoz bez ztráty dat. Když neodpovídá, zrcadlo převezme provoz s tím, co má (změny od poslední synchronizace se mohou ztratit) a starý primár se po návratu sám odstaví. Pro potvrzení opište ID tohoto serveru.'))
                 ->form([
                     TextInput::make('confirm')->label(__('ID tohoto serveru: :id', ['id' => $id]))->required()->rules(['required', 'in:'.$id]),
+                    Toggle::make('allow_version_mismatch')->label(__('Povýšit i přes jinou verzi WSPanelu'))
+                        ->helperText(__('Primár má jinou verzi (:peer, tento server :own). Stav novější verze nemusí starší kód správně převzít: nejdřív raději sjednoťte verze.', ['peer' => (string) ($this->runtime()['peer']['version'] ?? '?'), 'own' => (string) ($this->state['version'] ?? '?')]))
+                        ->visible(fn () => $this->versionsDiffer()),
                 ])
-                ->action(function () use ($m, $id) {
+                ->action(function (array $data) use ($m, $id) {
                     try {
-                        $m()->promote($id);
+                        $m()->promote($id, (bool) ($data['allow_version_mismatch'] ?? false));
                     } catch (AgentException $e) {
                         Toast::error(__('Povýšení nejde'), $e->getMessage());
                     }
@@ -297,20 +309,58 @@ class MirrorPage extends Page
                 ])
                 ->action(function (array $data) use ($m) {
                     try {
+                        // One request: the agent checks the result as a whole
+                        // (no automatic failover without a witness).
                         $m()->settings([
                             'witness' => array_values(array_filter(array_map('trim', (array) ($data['witness'] ?? [])))),
                             'failover_after' => (int) $data['failover_after'],
                             'sync_every' => (int) $data['sync_every'],
                             'lan_address' => (string) $data['lan_address'],
                             'public_ipv4' => (string) ($data['public_ipv4'] ?? ''),
+                            'auto_failover' => (bool) ($data['auto_failover'] ?? false),
                         ]);
-                        $m()->settings(['auto_failover' => (bool) ($data['auto_failover'] ?? false)]);
                         Toast::success(__('Uloženo'));
                     } catch (AgentException $e) {
                         Toast::error(__('Nastavení se nepodařilo uložit'), $e->getMessage());
                     }
                     $this->refreshState();
                 }),
+            Action::make('vip')
+                ->label(__('Plovoucí IP'))
+                ->icon('outline:signal')
+                ->color('gray')
+                ->visible($role !== '')
+                ->slideOver()
+                ->modalHeading(__('Plovoucí IP'))
+                ->modalDescription(__('Jedna volná adresa v LAN, kterou drží vždy ten server, který obsluhuje weby. DNS i přesměrování portů na routeru na ni míří natrvalo, takže se při přepnutí nic nepřepisuje: zrcadlo adresu převezme a oznámí (ARP) do pár sekund. Nastavte stejnou adresu na obou serverech. Panel ji před uložením ověří: když ji drží jiné zařízení, odmítne ji.'))
+                ->fillFormUsing(fn () => [
+                    'address' => (string) ($this->state['vip']['address'] ?? ''),
+                    'interface' => (string) ($this->state['vip']['interface'] ?? ''),
+                ])
+                ->form([
+                    TextInput::make('address')->label(__('Adresa'))->required()->placeholder('192.168.1.30')->rules(['required', 'ipv4'])
+                        ->helperText(__('Volná adresa ve stejné síti jako oba servery, mimo rozsah DHCP.')),
+                    Select::make('interface')->label(__('Síťové rozhraní tohoto serveru'))
+                        ->options(fn () => $m()->interfaces())
+                        ->placeholder(__('podle adresy (rozhraní, v jehož síti je)')),
+                ])
+                ->action(function (array $data) use ($m) {
+                    try {
+                        $m()->vipSet(['address' => (string) $data['address'], 'interface' => (string) ($data['interface'] ?? '')]);
+                        Toast::success(__('Plovoucí IP uložena'));
+                    } catch (AgentException $e) {
+                        Toast::error(__('Plovoucí IP se nepodařilo uložit'), $e->getMessage());
+                    }
+                    $this->refreshState();
+                }),
+            Action::make('vipRemove')
+                ->label(__('Odebrat plovoucí IP'))
+                ->icon('outline:x-mark')
+                ->color('gray')
+                ->visible(! empty($this->state['vip']))
+                ->requiresConfirmation()
+                ->modalDescription(__('Tento server adresu přestane používat (drží-li ji, uvolní ji). Klienti, kteří na ni míří, se k webům nedostanou: nejdřív přesměrujte DNS a router na adresu serveru. Odeberte ji na obou serverech.'))
+                ->action(fn () => $run(fn () => $m()->vipRemove(), __('Plovoucí IP odebrána'), __('Nejde'))),
             Action::make('windns')
                 ->label(__('Windows DNS'))
                 ->icon('outline:globe-alt')
@@ -377,7 +427,7 @@ class MirrorPage extends Page
                 ->icon('outline:trash')
                 ->color('gray')
                 ->visible($role !== '')
-                ->modalDescription(__('Tento server opustí zrcadlo. Nic se nesmaže: zrcadlo si nechá kopie (replikace se zastaví, databáze začnou přijímat zápisy), primár dál obsluhuje weby. Pro potvrzení opište ID tohoto serveru.'))
+                ->modalDescription(__('Tento server opustí zrcadlo a uvolní plovoucí IP, drží-li ji. Nic se nesmaže: zrcadlo si nechá kopie (replikace se zastaví, databáze začnou přijímat zápisy), primár dál obsluhuje weby. Pro potvrzení opište ID tohoto serveru.'))
                 ->form([
                     TextInput::make('confirm')->label(__('ID tohoto serveru: :id', ['id' => $id]))->required()->rules(['required', 'in:'.$id]),
                 ])

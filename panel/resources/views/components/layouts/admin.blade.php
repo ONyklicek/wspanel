@@ -21,5 +21,17 @@
         </div>
     @endif
 
+    {{-- A mirror's standby (or a fenced old primary): its panel manages the
+         server itself; the sites are managed where they are served. --}}
+    @php($activePanel = auth()->check() && \Illuminate\Support\Facades\Gate::allows('admin') ? app(\App\Actions\Server\ManageMirror::class)->activePanelUrl() : null)
+    @if ($activePanel !== null)
+        <div data-wire="mirror-standby-banner" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100">
+            <span>{{ __('Tento server je zrcadlo. Spravujete tu server samotný (aktualizace, moduly, služby, zrcadlo). Weby, databáze a poštu spravujete na aktivním serveru: co by vzniklo tady, se při převzetí přepíše.') }}</span>
+            @if ($activePanel !== '')
+                <a href="{{ $activePanel }}" class="rounded-md bg-sky-600 px-3 py-1.5 font-medium text-white hover:bg-sky-700">{{ __('Otevřít panel aktivního serveru') }}</a>
+            @endif
+        </div>
+    @endif
+
     {{ $slot }}
 </x-wire-admin::layout>

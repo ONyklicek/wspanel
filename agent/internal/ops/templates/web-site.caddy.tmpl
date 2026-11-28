@@ -1,6 +1,6 @@
 # Managed by WSPanel agent. Do not edit: changes are overwritten by the panel.
 # site: {{.Domain}}  mode: classic  php: {{.PHPVersion}}  framework: {{.Framework}}
-http://{{.Domain}} {
+{{.WebHosts}} {
 	root * {{.Home}}/current/public
 
 	@hidden {

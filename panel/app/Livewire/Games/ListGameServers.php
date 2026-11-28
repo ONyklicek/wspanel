@@ -3,6 +3,7 @@
 namespace App\Livewire\Games;
 
 use App\Actions\Games\ManageGameServers;
+use App\Actions\Server\ManageMirror;
 use App\Livewire\Concerns\TranslatesPageText;
 use App\Services\Agent\AgentException;
 use App\Support\Limits;
@@ -22,6 +23,14 @@ class ListGameServers extends ListPage
     use TranslatesPageText;
 
     protected static ?string $resource = GameServerResource::class;
+
+    /** In a mirror the game servers are this node's own: the heading says so. */
+    public function getTitle(): ?string
+    {
+        $title = parent::getTitle();
+
+        return app(ManageMirror::class)->role() !== '' ? $title.' · '.__('jen na tomto serveru (zrcadlo je nekopíruje)') : $title;
+    }
 
     protected ?string $title = 'Herní servery';
 

@@ -304,6 +304,36 @@ aplikací, takže to funguje pro každý typ webu.
 Konfiguraci před použitím ověří Caddy; neplatná se nepoužije a zůstane
 předchozí stav.
 
+### Jeden web na více doménách (Laravel `Route::domain`)
+
+Další domény webu (ne přesměrované) obslouží tatáž aplikace a ta vidí, na
+jakou doménu přišel požadavek. Například web `aaa.example.cc` s další doménou
+`bbb.example.cc`:
+
+```php
+Route::domain('aaa.example.cc')->group(base_path('routes/aaa.php'));
+Route::domain('bbb.example.cc')->group(base_path('routes/bbb.php'));
+```
+
+- Aplikace dostane původní hlavičku `Host` (`request()->getHost()`), HTTPS
+  (`request()->isSecure()` je `true`) a skutečnou IP návštěvníka
+  (`request()->ip()`). Hlavičky `X-Forwarded-For`, `X-Forwarded-Host`
+  a `X-Forwarded-Proto` od návštěvníka proxy zahodí, takže je nejde podvrhnout.
+  `TrustProxies` v aplikaci nastavovat netřeba.
+- `url()` a odkazy na běžné routy vznikají na doméně, na kterou návštěvník
+  přišel. `route()` u routy s `Route::domain()` vytvoří adresu její domény
+  (z `aaa` se dá odkázat na `bbb`).
+- Route jedné domény na druhé neodpoví (404).
+- `APP_URL` je jedna (hlavní doména). Použije se tam, kde žádný požadavek
+  není: fronty, plánovač, e-maily z konzole.
+- Přihlášení (cookie session) platí pro každou doménu zvlášť. Má-li platit pro
+  všechny subdomény jedné domény, nastavte v Prostředí `SESSION_DOMAIN=.example.cc`
+  (a u SPA se Sanctum i `SANCTUM_STATEFUL_DOMAINS`).
+- Platí to pro klasický režim (PHP-FPM) i pro worker (FrankenPHP/Octane) a pro
+  Node a Python weby. V zrcadle doména následuje aktivní server jako ostatní.
+- Další doména musí mířit na server (u zón v panelu záznam přidá sám) a dostane
+  vlastní certifikát. Doménu jiného webu nebo jiného klienta panel odmítne.
+
 ## PHP nastavení webu
 
 Detail webu → **Nastavení → Běh a PHP → PHP nastavení**. Prázdné pole = výchozí hodnota PHP.

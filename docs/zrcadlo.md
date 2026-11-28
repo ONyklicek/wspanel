@@ -6,6 +6,77 @@ servery s Debianem 13: fyzické, nebo virtuální (na Windows ve virtuálním
 stroji [Hyper-V](hyper-v.md)). Oba jsou ve stejné síti a vidí na sebe.
 Stránka v panelu: **Server → Zrcadlo**.
 
+## Správa: každý server má vlastní panel
+
+Jako u Proxmoxu nebo VMware jsou oddělené dvě vrstvy:
+
+- **Správa serveru:** každý server má vlastní panel na vlastní doméně (např.
+  `srv1.firma.local` a `srv2.firma.local`), dostupný vždy, i na zrcadle.
+  Spravujete v něm stroj samotný: aktualizace, moduly, služby, síť a zrcadlo.
+- **Správa služby:** weby, databáze, pošta, DNS zóny a klienti se spravují
+  na serveru, který obsluhuje weby. Zrcadlo drží jeho kopii, kterou při převzetí
+  přepíše. Proto na zrcadle (i na odstaveném serveru) agent odmítne **každou
+  změnu** webů, databází, pošty, DNS zón, klientů, deploye, cronu a workerů,
+  i jejich zálohy: smazání databáze na replice by rozbilo replikaci, zapnutý
+  web by spustil plánovač a fronty vedle primáru. Panel zrcadla ukáže
+  správcům pruh s odkazem na panel aktivního serveru.
+
+Při převzetí si každý server nechá svou doménu panelu (`APP_URL`, volby
+instalace, Caddyfile panelu) a svou certifikační autoritu (`--local-certs`):
+převezme jen data a nastavení webů.
+
+Celé zrcadlo je „všechno, nebo nic“: kopírují se všechny weby, pošta
+a databáze. Co nemá mít vysokou dostupnost, patří na samostatný server.
+
+### Herní servery patří svému serveru
+
+Herní servery se **nikdy nekopírují a nikdy nepřepisují**: každý server má své,
+spravuje je ve svém panelu a běží i na zrcadle nebo na odstaveném serveru.
+
+- Do kopie pro zrcadlo nejde jejich stav, účty (`wsg_*`), jednotky ani data.
+- Při převzetí si server ponechá v panelu své herní servery a herní servery
+  druhého serveru se v něm neobjeví. Klienta her přiřadí podle linuxové skupiny
+  klienta, která je na obou serverech stejná.
+- Zálohy her mimo server jdou v zrcadle do `games/<id uzlu>/<id>`, takže se
+  zálohy obou serverů nemíchají. Zálohy z doby před spárováním zůstávají
+  v `games/<id>`.
+- Hráči se k serveru připojují jeho vlastní adresou (ne plovoucí IP): hra
+  s přepnutím webů nikam nejde.
+
+### Poštovní server
+
+Když zrcadlo drží i poštu, musí mít oba servery **stejné jméno poštovního
+serveru** (`--mail-host=mail.firma.cz` při instalaci) a to jméno musí mířit
+na plovoucí IP. Jinak by se po převzetí poštovní jméno a jeho certifikát
+rozešly s MX a s nastavením klientů. Stránka Zrcadlo ukazuje rozdíl
+ve vrstvě „Nastavení obou serverů“.
+
+## Přepnutí v LAN: plovoucí IP
+
+Když jsou oba servery ve stejné síti, je nejjednodušší **plovoucí IP**:
+jedna volná adresa v LAN (např. `192.168.1.30`), kterou drží vždy server,
+který obsluhuje weby.
+
+- DNS (Windows DNS, PowerDNS, `hosts`) a přesměrování portů na routeru míří
+  **natrvalo na plovoucí IP**. Při přepnutí se nic nepřepisuje, do Active
+  Directory se nesahá a nečeká se na TTL.
+- O tom, kdo adresu drží, rozhoduje agent zrcadla (epocha, svědci, odstavení),
+  žádná druhá volba typu VRRP, která by se s ním mohla rozejít. Adresa se
+  přidá k rozhraní serveru jako druhá adresa (vlastní MAC, takže v Hyper-V
+  není potřeba MAC spoofing) a oznámí se gratuitním ARP. Přepínače a klienti
+  se přesunou během jedné až dvou sekund.
+- Odstavený server a zrcadlo ji uvolní hned. Po restartu ji server nemá: vezme
+  si ji, jen když je aktivní, a primár, kterému zrcadlo ještě nepotvrdilo, že
+  je zrcadlem, jen když na ni v LAN nikdo jiný neodpovídá.
+- Nastavení: na **obou** serverech Zrcadlo → **Plovoucí IP**, stejná adresa.
+  Panel ji před uložením ověří (ARP): když ji drží jiné zařízení, odmítne ji.
+  Vyberte adresu mimo rozsah DHCP.
+- Vlastní adresy serverů (`192.168.1.10`, `.20`) zůstávají: zrcadlo se
+  spojuje přes ně a panel každého serveru běží na nich.
+
+Kde servery nejsou ve stejné síti, přepíná se DNS (Windows DNS níže,
+Cloudflare) a háky.
+
 Návod pro nejčastější sestavu (Linux server, druhý server jako VM v Hyper-V,
 DNS ve Windows a Active Directory) je níže:
 [Linux server + VM v Hyper-V + Windows DNS](#návod-linux-server--vm-v-hyper-v--windows-dns).
@@ -20,7 +91,7 @@ zrcadla.
 |---|---|---|
 | Stav a konfigurace (panel, weby, certifikáty, DKIM, účty) | archiv jako záloha serveru, šifrovaný klíčem pro obnovu primáru | každý cyklus (60 s) a hned po změně na primáru |
 | Uživatelé a skupiny webů | se stejnými UID/GID | každý cyklus |
-| Soubory webů | rsync přes spojení zrcadla (bez `tmp/` a dat Valkey) | každý cyklus a hned po deployi |
+| Soubory webů | rsync přes spojení zrcadla (složky `tmp/` bez obsahu, bez dat Valkey) | každý cyklus a hned po deployi |
 | Pošta (Maildiry) | rsync | každý cyklus |
 | MariaDB | GTID replikace, zrcadlo je jen pro čtení | průběžně (sekundy) |
 | PostgreSQL | streaming replikace se slotem (hot standby) | průběžně |
@@ -29,7 +100,23 @@ zrcadla.
 
 Software, který primár používá (DB enginy, verze PHP a Pythonu, Valkey, Redis,
 poštovní hosting), si zrcadlo doinstaluje samo. Herní servery se
-nekopírují.
+nekopírují (viz výše).
+
+Kopie se chrání před chybou na primáru: když ve složce webů nebo pošty
+primáru chybí víc než polovina toho, co zrcadlo už má a co stav primáru
+uvádí (nepřipojený disk, smazání), synchronizace té vrstvy neproběhne
+a zrcadlo nic nesmaže. Vrstva hlásí chybu, dokud se složka nevrátí.
+
+Složka `tmp/` každého webu se kopíruje prázdná, s vlastníkem a právy: PHP-FPM
+v ní má `TMPDIR`, nahrávané soubory i sessions, takže je po převzetí hned
+k dispozici. Její obsah (rozpracované nahrávání, sessions) se nekopíruje.
+
+**Zápis na zrcadle mimo replikaci.** MariaDB nemá `super_read_only`, takže root
+(správce, skript v cronu) může zapisovat i do repliky na zrcadle. Taková
+transakce by při další změně na primáru zastavila replikaci. Agent zrcadla ji
+pozná (GTID s vlastním `server_id` v `gtid_binlog_state`), ohlásí ji a repliku
+znovu naplní z primáru. Co na zrcadle bylo, se předtím uloží do
+`/var/backups/wspanel/mirror/mariadb-before-seed-…sql.gz`.
 
 ## Návod: Linux server + VM v Hyper-V + Windows DNS
 
@@ -42,7 +129,8 @@ Příklad, ze kterého návod vychází (adresy si nahraďte svými):
 | Zrcadlo, Debian 13 ve VM na `dc1` | `wspanel-vm` | `192.168.1.20` |
 | Brána LAN | | `192.168.1.1` |
 | Doména AD a zóna DNS | `firma.local` | |
-| Panel | `panel.firma.local` | |
+| Panel primáru / zrcadla | `srv1.firma.local` / `wspanel-vm.firma.local` | jejich vlastní adresy |
+| Plovoucí IP (weby) | | `192.168.1.30` |
 
 ### 1. Předpoklady
 
@@ -51,10 +139,10 @@ Příklad, ze kterého návod vychází (adresy si nahraďte svými):
   DHCP).
 - Oba servery budou mít **pevné adresy**: nastavené v Debianu, nebo
   rezervované v DHCP.
-- Na obou poběží **stejná verze WSPanelu** se **stejnou doménou panelu**
-  a stejnými DB enginy.
-- V zóně je A záznam `panel.firma.local → 192.168.1.10`. Po spárování ho
-  bude spravovat zrcadlo (krok 6).
+- Na obou poběží **stejná verze WSPanelu** a stejné DB enginy. Doména panelu
+  je každému serveru vlastní: `srv1.firma.local` a `wspanel-vm.firma.local`
+  (A záznamy na jejich vlastní adresy).
+- Plovoucí IP `192.168.1.30` je volná (mimo rozsah DHCP). Weby v DNS míří na ni.
 
 ### 2. Primár
 
@@ -62,7 +150,7 @@ Na `srv1` je WSPanel nainstalovaný běžně ([Instalace](instalace.md)), např�
 
 ```bash
 curl -fsSL https://github.com/onyklicek/wspanel/releases/latest/download/get.sh | sudo bash -s -- \
-  --yes --panel-domain=panel.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
+  --yes --panel-domain=srv1.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
 ```
 
 `--local-certs`: interní doména `.local` nemá certifikát od Let's Encrypt.
@@ -84,16 +172,17 @@ Nebo ručně v Hyper-V Manageru. Oba postupy a co dodržet, když je hostitelem
 
 V konzoli VM nainstalujte Debian 13 (jen „SSH server“ a „standard system
 utilities“) s adresou `192.168.1.20`. Pak ve VM nainstalujte WSPanel **se
-stejnými volbami jako primár** a žádný web nezakládejte:
+stejnými volbami jako primár, jen s vlastní doménou panelu**, a žádný web
+nezakládejte:
 
 ```bash
 curl -fsSL https://github.com/onyklicek/wspanel/releases/latest/download/get.sh | sudo bash -s -- \
-  --yes --panel-domain=panel.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
+  --yes --panel-domain=wspanel-vm.firma.local --local-certs --db=mariadb,postgres --admin-email=admin@firma.local
 ```
 
-Panel zrcadla je na stejné doméně, ale ta zatím míří na primár. Do panelu
-zrcadla se proto dostanete přes dočasný záznam v souboru `hosts` svého
-počítače (`192.168.1.20 panel.firma.local`). Po spárování ho smažte.
+S `--local-certs` má každý server vlastní certifikační autoritu (po převzetí
+používá zrcadlo autoritu primáru). Klientům proto rozdejte kořenové
+certifikáty obou serverů (GPO → Důvěryhodné kořenové certifikační autority).
 
 ### 4. Spárování
 
@@ -101,7 +190,7 @@ počítače (`192.168.1.20 panel.firma.local`). Po spárování ho smažte.
    - Adresa tohoto serveru: `192.168.1.10`.
    - Adresa zrcadla: `192.168.1.20`.
    - Panel ukáže **párovací kód**. Platí hodinu a jen jednou.
-2. **Panel zrcadla** (`wspanel-vm`, přes `hosts`): Server → Zrcadlo →
+2. **Panel zrcadla** (`https://wspanel-vm.firma.local`): Server → Zrcadlo →
    **Připojit jako zrcadlo**.
    - Adresa primáru: `192.168.1.10`.
    - Kód z primáru.
@@ -118,7 +207,20 @@ Na **obou** serverech Zrcadlo → **Nastavení**:
   a většina svědků ano. Odříznuté zrcadlo se tak nikdy nepovýší.
 - **Automatické přepnutí:** zapnout, doba 60 s.
 
-### 6. Windows DNS
+### 6. Plovoucí IP
+
+Na **obou** serverech Zrcadlo → **Plovoucí IP**: adresa `192.168.1.30`,
+rozhraní podle adresy. Na primáru se adresa hned objeví (Zrcadlo → Přepnutí:
+„drží tento server“), na zrcadle „drží druhý server“.
+
+Ve Windows DNS nasměrujte domény webů jednou ručně na `192.168.1.30`
+(např. `intranet.firma.local → 192.168.1.30`). Router přesměruje porty 80/443
+na `192.168.1.30`. Krok 6b pak nepotřebujete.
+
+### 6b. Windows DNS (místo plovoucí IP)
+
+Jen když plovoucí IP použít nejde (servery v různých sítích). Je-li plovoucí
+IP nastavená, panel do Windows DNS zapisuje ji, takže se záznamy nemění.
 
 Aktivní server drží A záznamy svých webů v zóně `firma.local` na své IP: na
 `192.168.1.10`, po převzetí na `192.168.1.20`. Patří k nim domény webů,
@@ -127,7 +229,8 @@ přepnutí do TTL (60 s) chodí na nový primár.
 
 1. Na **každém** serveru: Zrcadlo → **Windows DNS**:
    - server: `192.168.1.5`, port 22, účet: `wspanel-dns@firma.local`,
-   - zóny: `firma.local`, další jména: `panel.firma.local`,
+   - zóny: `firma.local`, další jména: jen to, co má následovat aktivní server
+     (panely ne, ty mají každý svou adresu),
    - panel ukáže **veřejný klíč** tohoto serveru, oba si zkopírujte.
 2. Na `dc1` jako správce domény (`provision/files/windows/`):
    ```powershell
@@ -165,8 +268,9 @@ a chyby kopií posílá zrcadlo.
 
 1. **Plánované přepnutí** (panel primáru, Zrcadlo → Plánované přepnutí):
    zrcadlo převezme provoz bez ztráty dat a `srv1` se stane jeho zrcadlem.
-   Ověřte weby z počítače v LAN (`nslookup web.firma.local` vrátí
-   `192.168.1.20`). Pak stejným tlačítkem na `wspanel-vm` přepněte zpět.
+   Ověřte weby z počítače v LAN: s plovoucí IP běží dál na `192.168.1.30`
+   (Zrcadlo → Přepnutí: „drží tento server“ na `wspanel-vm`), s Windows DNS
+   `nslookup web.firma.local` vrátí `192.168.1.20`. Pak stejným tlačítkem na `wspanel-vm` přepněte zpět.
 2. **Výpadek** (v klidné době): vypněte `srv1`. Zrcadlo se po 60 s povýší
    a přepne DNS. Po zapnutí se `srv1` sám odstaví (uvidí novější epochu).
    V jeho panelu zvolte **Připojit zpět jako zrcadlo** a až se dosynchronizuje,
@@ -192,7 +296,9 @@ a chyby kopií posílá zrcadlo.
 - **Různé veřejné IP serverů:** u obou serverů vyplňte veřejnou IPv4 (Zrcadlo →
   Nastavení). Aktivní server pak každou minutu přepíše A záznamy v zónách
   **Cloudflare**, které míří na druhý server, na sebe (proxy a TTL zůstanou).
-- **Jedna veřejná IP za routerem** (běžné u firmy): přepnout se musí
+- **Jedna veřejná IP za routerem s plovoucí IP:** přesměrujte porty jednou
+  na plovoucí IP. Při přepnutí se nic nemění.
+- **Jedna veřejná IP za routerem bez plovoucí IP:** přepnout se musí
   přesměrování portů. Na to slouží **háky**: spustitelné soubory roota
   v `/etc/wspanel/mirror/hooks/promote.d/` se spustí po povýšení s argumenty
   `promote <id uzlu> <IP v LAN> <veřejná IP>`. Například volání API routeru
@@ -205,20 +311,49 @@ a chyby kopií posílá zrcadlo.
 | **Primár vypadne** (server, síť, napájení) | Po nastavené době, pokud odpovídá svědek, se samo povýší: databáze přijmou zápisy, aplikuje stav primáru, spustí weby, přepne DNS a spustí háky | – |
 | **Vypadne jen panel nebo agent primáru**, weby běží | Nepřepíná (HTTPS primáru odpovídá), hlásí chybu spojení | Weby běží dál |
 | **Zrcadlo je odříznuté** (nevidí primár ani svědka) | Nikdy se samo nepovýší | Běží dál |
-| **Primár je odříznutý** (nevidí zrcadlo ani svědka) | Po plné době se povýší | Po polovině doby se **sám odstaví**: weby z edge, zastaví poštu, databáze jen pro čtení. Když se spojení vrátí a zrcadlo nepřevzalo provoz, sám se vrátí |
-| **Starý primár naběhne** po povýšení zrcadla | – | Uvidí novější epochu a odstaví se. Pak **Připojit zpět jako zrcadlo** |
+| **Primár je odříznutý** (nevidí zrcadlo ani svědka) | Po plné době se povýší | Po polovině doby se **sám odstaví**: uvolní plovoucí IP, weby z edge, zastaví poštu, databáze jen pro čtení. Když se spojení vrátí a zrcadlo nepřevzalo provoz, sám se vrátí |
+| **Servery se nevidí, ale oba vidí svědka** (firewall, vadná VLAN, zaseknutý agent i web primáru) | Neodpovídá-li primár, ale jeho stroj v LAN odpovídá na ARP, **automaticky se nepovýší**: hlásí to a převzetí je na správci (Povýšit na primár) | Běží dál |
+| **Dvě zařízení drží plovoucí IP** | Server, který adresu převzal naposledy, si ji nechá a znovu ji oznámí | Starší držitel, který na adrese uvidí druhý server, se odstaví. Cizí zařízení na adrese se jen hlásí |
+| **Servery mají jinou verzi WSPanelu** | Automaticky se nepovýší, ruční povýšení chce potvrzení | – |
+| **Plánované přepnutí nedoběhne** (dohánění selže, agent zrcadla se restartuje) | – | Po 2 minutách, kdy zrcadlo nepřebírá provoz, **sám znovu obsluhuje** weby |
+| **Starý primár naběhne** po povýšení zrcadla | – | Brána po startu ho drží odstavený (viz níže), od zrcadla se dozví novější epochu a zůstane odstavený. Pak **Připojit zpět jako zrcadlo** |
+| **Primár se restartuje** (pád, údržba), zrcadlo provoz nepřevzalo | – | Po startu neobsluhuje, dokud zrcadlo nepotvrdí, že je zrcadlem (obvykle do sekundy). Pak obsluhuje jako dřív |
+| **Výpadek proudu u obou**, vrátí se jen primár | – | Po startu čeká po dobu přepnutí. Když zrcadlo mlčí, svědek odpovídá a plovoucí IP nikdo nedrží, začne obsluhovat |
 | **Údržba primáru** | – | **Plánované přepnutí**: primár přestane přijímat zápisy, zrcadlo ho dožene a převezme provoz **bez ztráty dat**, primár se stane zrcadlem |
 | **Panel zrcadla nejde otevřít** | `sudo panel-agent -mirror-status`, `sudo panel-agent -mirror-promote` | – |
 
-**Epocha** je čítač zvyšovaný s každým povýšením. Když se potkají dva
-primáry, ten se starší epochou se odstaví. Dva primáry tak nikdy neběží
-souběžně.
+**Epocha** je čítač zvyšovaný s každým povýšením. Zrcadlo ji uloží hned na
+začátku povýšení a primár, který o novější epoše uslyší (i od zrcadla, které
+se teprve povyšuje), se odstaví. Těsně předtím, než nový primár začne
+obsluhovat, starému primáru odstavení zopakuje. Dva primáry tak neběží
+souběžně, ani když se starý primár vrátí uprostřed povýšení.
+
+**Brána po startu.** Primár, který startuje (restart stroje, pád, výpadek
+proudu), neví, jestli zrcadlo mezitím nepřevzalo provoz. Proto po startu
+stroje nejdřív neobsluhuje: weby nejsou na edge, databáze jsou jen pro čtení,
+jednotky webů stojí (stav **odstavený – po startu**). Bránu spustí už edge před
+svým startem (`ExecStartPre` služby `panel-proxy`), takže weby z minulého běhu
+nenačte, i když agent ještě neběží. Obsluhovat začne, jakmile:
+
+- zrcadlo odpoví jako zrcadlo bez novější epochy (běžný restart, do sekundy), nebo
+- zrcadlo mlčí celou dobu přepnutí, svědek odpovídá (je-li nastavený) a
+  plovoucí IP nikdo nedrží (výpadek proudu u obou).
+
+Když druhý server mezitím převzal provoz, primár zůstane odstavený. Restart
+samotného agenta (aktualizace) bránou neprochází: server obsluhuje dál.
+Obsluhující primár navíc každých 5 s hlídá, že jeho MariaDB a PostgreSQL
+přijímají zápisy, a jinak je vrátí do zápisu a ohlásí to.
 
 **Návrat zpět** (Připojit zpět jako zrcadlo): odstavený server se stane
-zrcadlem nového primáru. Jeho databáze se znovu naplní, ale co měl jen on
-(zápisy po výpadku spojení), se nejdřív uloží do
-`/var/backups/wspanel/mirror/`. Soubory, které se při první synchronizaci
-přepíšou, se uloží tamtéž. Potom lze plánovaně přepnout zpět.
+zrcadlem nového primáru. Co měl jen on (zápisy po výpadku spojení), se
+nejdřív uloží do `/var/backups/wspanel/mirror/rejoin-…`: celý jeho stav
+včetně databáze panelu, výpisy MariaDB a soubory a pošta, které první
+synchronizace přepíše nebo smaže. Data PostgreSQL zůstanou vedle clusteru
+jako `….before-rejoin-<čas>`. Potom lze plánovaně přepnout zpět.
+
+**Smazané weby se nevracejí:** při povýšení se konfigurace webů, které primár
+mezitím smazal, přesune do `/var/backups/wspanel/mirror/stale-sites-…`
+(soubory webů zůstanou na místě).
 
 ## Co nepřežije výpadek
 
@@ -232,9 +367,15 @@ přepíšou, se uloží tamtéž. Potom lze plánovaně přepnout zpět.
 
 ## Omezení
 
-- Oba servery musí mít **stejnou verzi WSPanelu** (panel na to upozorní).
-  Aktualizujte nejdřív zrcadlo, pak primár.
+- Oba servery musí mít **stejnou verzi WSPanelu** (panel na to upozorní,
+  automatické přepnutí do té doby neproběhne). Aktualizujte nejdřív zrcadlo,
+  pak primár.
+- Automatické přepnutí, jeho doba a plovoucí IP musí být na obou serverech
+  stejné: vrstva „Nastavení obou serverů“ ukáže rozdíl.
+- **Cloudflare:** aktivní server přepisuje jen A záznamy domén svých webů
+  (a „Dalších jmen“), a jen když mu to agent dovolí (stejná kontrola jako
+  u Windows DNS). Panel druhého serveru a jiná jména na jeho adrese zůstanou.
 - PostgreSQL musí mít na obou serverech stejnou hlavní verzi (Debian 13 = 17).
-- Provoz se přepíná přes DNS (Windows DNS, Cloudflare) a háky, ne plovoucí IP.
-  Klienti, kteří si záznam drží déle než TTL, se na nový primár dostanou
-  později.
+- Plovoucí IP je jen IPv4 a jen v jedné síti (L2) s oběma servery. Jinak se
+  provoz přepíná přes DNS (Windows DNS, Cloudflare) a háky. Klienti, kteří si
+  záznam drží déle než TTL, se pak na nový primár dostanou později.

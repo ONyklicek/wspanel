@@ -167,7 +167,7 @@ func TestARestoreWritesOnlyWhereWSPanelKeepsItsFiles(t *testing.T) {
 	_ = os.WriteFile(outside, []byte("root:x:0:0::/root:/bin/bash\n"), 0o644)
 	plain := filepath.Join(t.TempDir(), "plain.tar.gz")
 	man := serverManifest{Format: serverBackupFormat}
-	if err := writeServerArchive(env, plain, &man, []string{outside}, nil, time.Now()); err != nil {
+	if err := writeServerArchive(env, plain, &man, []string{outside}, nil, time.Now(), func(p string) bool { return skipServerPath(env, p) }, nil); err != nil {
 		t.Fatal(err)
 	}
 	enc := filepath.Join(t.TempDir(), "server-20260101T000000Z.wspbak")

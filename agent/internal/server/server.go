@@ -181,6 +181,12 @@ func (s *Server) Dispatch(ctx context.Context, req protocol.Request, peer int64)
 	if req.Op == "job.status" {
 		return s.jobStatus(req.Params)
 	}
+	// A mirror's standby keeps the primary's copy: nothing new on it.
+	if op, ok := s.ops[req.Op]; ok {
+		if err := ops.StandbyRefuses(s.Env, req.Op, op.Mutating); err != nil {
+			return fail(err)
+		}
+	}
 	if op, ok := s.ops[req.Op]; ok && op.Async {
 		return s.startJob(ctx, op, req, peer)
 	}

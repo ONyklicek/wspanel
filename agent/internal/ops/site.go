@@ -75,11 +75,17 @@ type siteLayout struct {
 	DisplayErrors bool
 
 	// Edge settings, ready for the template.
-	Edge         edgeSettings
-	Directives   string // custom rules, indented for the edge route
-	HookID       string // deploy webhook through the site's domain (empty = no such route)
-	Maintenance  string // bypass secret while a maintenance page is up
-	EdgeHosts    string // the site block's addresses: domain + aliases
+	Edge        edgeSettings
+	Directives  string // custom rules, indented for the edge route
+	HookID      string // deploy webhook through the site's domain (empty = no such route)
+	Maintenance string // bypass secret while a maintenance page is up
+	EdgeHosts   string // the site block's addresses: domain + aliases
+	// WebHosts: the web tier's addresses of the site (http://, the edge
+	// terminates TLS): domain + aliases. The edge passes the Host header on
+	// unchanged, so the application sees the domain it was called on (a
+	// Laravel Route::domain); a host the web tier has no block for would get
+	// Caddy's empty 200.
+	WebHosts     string
 	AuthMatcher  string // basic_auth matcher ("*" = whole site)
 	AllowMatcher string // path the IP allowlist guards
 	TLSInternal  bool   // redirect-only hosts get the local CA too
@@ -197,10 +203,12 @@ func layout(cfg config.Config, st siteState) (siteLayout, error) {
 		l.WorkerMaxReq = n
 	}
 	l.EdgeHosts = st.Domain
+	l.WebHosts = "http://" + st.Domain
 	if st.Edge != nil {
 		l.Edge = *st.Edge
 		if len(st.Edge.Aliases) > 0 {
 			l.EdgeHosts += ", " + strings.Join(st.Edge.Aliases, ", ")
+			l.WebHosts += ", http://" + strings.Join(st.Edge.Aliases, ", http://")
 		}
 		l.AuthMatcher = edgePathMatcher(st.Edge.AuthPath)
 		l.AllowMatcher = edgePathMatcher(st.Edge.AllowPath)

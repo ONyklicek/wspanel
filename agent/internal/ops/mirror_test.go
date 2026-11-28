@@ -173,6 +173,10 @@ func TestRsyncServerArgs(t *testing.T) {
 	if _, err := rsyncServerArgs(cfg, []string{"rsync", "--server", "--sender", "-a", "--backup", "--backup-dir", "/var/backups/wspanel/mirror/rejoin-x/sites", ".", "sites/"}); err != nil {
 		t.Errorf("a rejoin's backup dir: %v", err)
 	}
+	// The standby's check that the primary's folder is whole: a listing.
+	if _, err := rsyncServerArgs(cfg, []string{"rsync", "--server", "--sender", "-de.LsfxCIvu", "--list-only", ".", "sites/"}); err != nil {
+		t.Errorf("a top-level listing: %v", err)
+	}
 	for _, bad := range [][]string{
 		{"rsync", "--server", "--sender", "-a", "--backup-dir", "../x;y", ".", "sites/"},
 		{"rsync", "--server", "-a", ".", "sites/"},                                      // receiving: would write here

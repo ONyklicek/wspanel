@@ -104,6 +104,7 @@ type mirrorState struct {
 	Since         time.Time      `json:"since"`            // of the current role
 	PromotedAt    time.Time      `json:"promoted_at,omitzero"`
 	WinDNS        *winDNSConfig  `json:"windns,omitempty"`
+	VIP           *mirrorVIP     `json:"vip,omitempty"` // the floating IP the serving node holds
 }
 
 var mirrorMu sync.Mutex // the state file
@@ -481,12 +482,13 @@ func mirrorSettings(_ context.Context, env *Env, raw json.RawMessage) (any, erro
 			st.PublicIPv4 = *p.PublicIPv4
 		}
 		if p.Auto != nil {
-			// Without a witness a standby cannot tell "the primary is down"
-			// from "I am cut off": no automatic failover then.
-			if *p.Auto && len(st.Witness) == 0 {
-				return protocol.Conflict("automatic failover needs a witness (the LAN's gateway or another server both nodes see)")
-			}
 			st.Auto = *p.Auto
+		}
+		// Without a witness a standby cannot tell "the primary is down"
+		// from "I am cut off": no automatic failover then. Checked on the
+		// result, whichever fields this request changed.
+		if st.Auto && len(st.Witness) == 0 {
+			return protocol.Conflict("automatic failover needs a witness (the LAN's gateway or another server both nodes see): turn it off before removing the last witness")
 		}
 		return nil
 	})
@@ -511,6 +513,9 @@ func mirrorPublic(st *mirrorState) map[string]any {
 	if st.WinDNS != nil {
 		out["windns"] = st.WinDNS.public()
 	}
+	if st.VIP != nil {
+		out["vip"] = map[string]any{"address": st.VIP.Address, "prefix": st.VIP.Prefix, "interface": st.VIP.Interface, "held": vipHeld(st.VIP)}
+	}
 	return out
 }
 
@@ -522,6 +527,15 @@ func mirrorStatusOp(_ context.Context, env *Env, raw json.RawMessage) (any, erro
 	out := mirrorPublic(st)
 	out["status"] = mirrorRuntime.snapshot()
 	out["version"] = Version
+	out["panel_url"] = panelURL(env)
+	// For the panel's public DNS (Cloudflare): the same guard as Windows
+	// DNS, and only the names that follow the serving node.
+	out["may_point_dns"] = st.Role == rolePrimary && mayPointDNS(st)
+	var extra []string
+	if st.WinDNS != nil {
+		extra = st.WinDNS.Extra
+	}
+	out["dns_hosts"] = servedHosts(env, extra)
 	return out, nil
 }
 
@@ -544,6 +558,13 @@ func mirrorUnpair(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 	if st.Role == roleStandby {
 		stopReplication(ctx, env)
 	}
+	// Outside a mirror nobody would hand the floating IP on: it goes. The
+	// loop must not take it again before the state is gone.
+	vipMu.Lock()
+	defer vipMu.Unlock()
+	if err := releaseVIP(ctx, env, st.VIP); err != nil {
+		return nil, err
+	}
 	if st.Role == roleFenced {
 		_ = unfenceLocal(ctx, env)
 	}
@@ -562,18 +583,31 @@ func mirrorUnpair(ctx context.Context, env *Env, raw json.RawMessage) (any, erro
 
 // mirrorFirewall opens (or closes) the mirror's port for the peer only.
 func mirrorFirewall(ctx context.Context, env *Env, peer string, port int, open bool) error {
+	ips := []string{peer}
 	if net.ParseIP(peer) == nil {
-		return nil // a host name: UFW wants addresses; the TLS certificate still guards the port
+		// A host name: UFW wants addresses (the TLS certificate still
+		// guards the port).
+		lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		addrs, err := net.DefaultResolver.LookupHost(lctx, peer)
+		cancel()
+		if err != nil || len(addrs) == 0 {
+			if !open {
+				return nil
+			}
+			return fmt.Errorf("%s does not resolve, so the mirror's port cannot be opened for it: use its IP address", peer)
+		}
+		ips = addrs
 	}
-	args := []string{"allow", "from", peer, "to", "any", "port", strconv.Itoa(port), "proto", "tcp", "comment", "wspanel mirror"}
-	if !open {
-		args = append([]string{"delete"}, args...)
+	for _, ip := range ips {
+		args := []string{"allow", "from", ip, "to", "any", "port", strconv.Itoa(port), "proto", "tcp", "comment", "wspanel mirror"}
+		if !open {
+			args = append([]string{"delete"}, args...)
+		}
+		if _, err := env.Exec.Run(ctx, "ufw", args...); err != nil && open {
+			return err
+		}
 	}
-	_, err := env.Exec.Run(ctx, "ufw", args...)
-	if err != nil && !open {
-		return nil
-	}
-	return err
+	return nil
 }
 
 // mirrorSyncNow: the standby syncs at once (the panel's button).

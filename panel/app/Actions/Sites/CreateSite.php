@@ -3,6 +3,7 @@
 namespace App\Actions\Sites;
 
 use App\Actions\Clients\ManageClients;
+use App\Actions\Server\ManageMirror;
 use App\Enums\SiteStatus;
 use App\Exceptions\LimitReachedException;
 use App\Models\Client;
@@ -50,6 +51,7 @@ class CreateSite
      */
     public function register(array $data): Site
     {
+        app(ManageMirror::class)->assertServes();
         $data['mode'] ??= 'classic';
         $owner = Client::find(CurrentClient::id() ?? ($data['client_id'] ?? null));
         // A client's site never lands in (or above) another owner's domain.

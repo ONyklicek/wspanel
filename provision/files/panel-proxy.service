@@ -9,6 +9,9 @@ User=panel-proxy
 Group=panel-proxy
 # Membership in panel-web grants access to the web tier's socket directory.
 SupplementaryGroups=panel-web
+# At a boot, a mirror's primary keeps its sites off the edge until the agent
+# hears from the standby (root, files only; never blocks the start: "-").
+ExecStartPre=-+/usr/sbin/panel-agent -mirror-boot-gate
 ExecStart=/usr/bin/frankenphp run --config /etc/panel-proxy/Caddyfile --adapter caddyfile
 ExecReload=/usr/bin/frankenphp reload --config /etc/panel-proxy/Caddyfile --adapter caddyfile --address unix//run/panel-proxy/admin.sock --force
 Restart=on-failure

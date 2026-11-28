@@ -238,6 +238,13 @@ func siteEdge(ctx context.Context, env *Env, raw json.RawMessage) (any, error) {
 			rollback.run()
 		}
 	}()
+	// The web tier first: it must know a new alias before the edge sends
+	// it requests for it (classic sites; the other modes take any host).
+	if l.WebFile != "" && st.Mode == "classic" {
+		if err = writeCaddyBlock(ctx, env, "web-site.caddy.tmpl", l, l.WebFile, env.Cfg.WebUnit, validateWeb, &rollback); err != nil {
+			return nil, err
+		}
+	}
 	if err = writeEdge(ctx, env, l, &rollback); err != nil {
 		return nil, err
 	}

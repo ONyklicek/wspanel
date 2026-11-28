@@ -64,7 +64,9 @@ func peerSend(conn net.Conn, op string, params any, out any) (*bufio.Reader, err
 	// Quick requests answer at once; a promotion or the preparation of the
 	// databases (a restart) takes its time.
 	wait := 30 * time.Second
-	if op == "promote" || op == "repl_prepare" || op == "snapshot" {
+	// A fence stops every site's units before it answers (a queue worker
+	// may take its time): it must not time out half done.
+	if op == "promote" || op == "repl_prepare" || op == "snapshot" || op == "fence" {
 		wait = 30 * time.Minute
 	}
 	_ = conn.SetDeadline(time.Now().Add(wait))
@@ -356,6 +358,18 @@ type helloInfo struct {
 	// Valkey: nil from a primary before 1.14.2, which always had it.
 	Valkey *bool `json:"valkey,omitempty"`
 	Mail   bool  `json:"mail"`
+	// PanelURL: this node's own panel (each node may have its own domain).
+	PanelURL string `json:"panel_url,omitempty"`
+	// VIP: the floating IP this node holds now ("" none).
+	VIP string `json:"vip,omitempty"`
+	// Action: a change of role running here (promoting, switchover): such a
+	// node is about to serve, never "just a standby".
+	Action string `json:"action,omitempty"`
+	// The settings both nodes must agree on.
+	Auto          bool   `json:"auto_failover"`
+	FailoverAfter int    `json:"failover_after,omitempty"`
+	VIPConfig     string `json:"vip_config,omitempty"`
+	MailHost      string `json:"mail_host,omitempty"`
 }
 
 func localHello(env *Env) helloInfo {
@@ -365,6 +379,8 @@ func localHello(env *Env) helloInfo {
 		LANAddress: st.LANAddress, PublicIPv4: st.PublicIPv4, Fenced: st.Fenced, Sites: len(allSiteStates(env.Cfg)),
 		DBEngines: env.Cfg.DBEngines, PHP: env.Cfg.PHPVersions, Python: pythonMinors(env.Cfg),
 		Redis: !env.Cfg.DryRun && redisInstalled(env), Valkey: boolPtr(valkeyInstalled(env)), Mail: mailHostingOn(env),
+		PanelURL: panelURL(env), VIP: heldVIP(st), Action: mirrorRuntime.currentAction(),
+		Auto: st.Auto, FailoverAfter: st.FailoverAfter, VIPConfig: vipConfigured(st), MailHost: mailHostName(env),
 	}
 }
 
@@ -410,7 +426,8 @@ var (
 	rsyncShortRe = regexp.MustCompile(`^-[A-Za-z]+(\.[A-Za-z]*)?$`)
 	rsyncLong    = []string{"--delete", "--delete-delay", "--delete-after", "--delete-excluded", "--partial", "--inplace",
 		"--ignore-errors", "--force", "--numeric-ids", "--hard-links", "--acls", "--xattrs", "--sparse", "--whole-file", "--no-inc-recursive", "--safe-links",
-		"--backup"} // the receiver's own (a rejoin keeps what it alone had); the sender ignores it
+		"--backup",    // the receiver's own (a rejoin keeps what it alone had); the sender ignores it
+		"--list-only"} // a listing of the module's top level (the standby's check that the source is whole)
 	rsyncBackupDirRe = regexp.MustCompile(`^/[A-Za-z0-9/._-]*$`)
 	rsyncLongValueRe = regexp.MustCompile(`^--(compress-choice|checksum-choice|compress-level|log-format|out-format|timeout|bwlimit)=[A-Za-z0-9%.:_-]*$|^--backup-dir=/[A-Za-z0-9/._-]*$`)
 )

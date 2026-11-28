@@ -246,12 +246,15 @@ func makeServerBackup(ctx context.Context, env *Env) (backupInfo, error) {
 	if err := env.FS.MkdirAll(dir, 0o700, fsx.Root); err != nil {
 		return backupInfo{}, err
 	}
-	return makeServerArchive(ctx, env, dir, "server-")
+	return makeServerArchive(ctx, env, dir, "server-", false)
 }
 
 // makeServerArchive: the encrypted archive in dir (a server backup, or the
 // mirror's snapshot for the standby).
-func makeServerArchive(ctx context.Context, env *Env, dir, prefix string) (backupInfo, error) {
+// makeServerArchive: a server backup's archive. forMirror: the mirror's
+// snapshot, without what belongs to this node only (its game servers:
+// their state, accounts and units are never applied on the other node).
+func makeServerArchive(ctx context.Context, env *Env, dir, prefix string, forMirror bool) (backupInfo, error) {
 	key, err := signingKey(env)
 	if err != nil {
 		return backupInfo{}, err
@@ -288,6 +291,9 @@ func makeServerArchive(ctx context.Context, env *Env, dir, prefix string) (backu
 	}
 	slices.Sort(man.Sites)
 	for _, g := range allGames(env) {
+		if forMirror {
+			break
+		}
 		man.Games = append(man.Games, g.ID)
 		users[g.user()] = true
 		if g.Group != "" {
@@ -366,7 +372,26 @@ func makeServerArchive(ctx context.Context, env *Env, dir, prefix string) (backu
 	}
 
 	plain := filepath.Join(work, "plain.tar.gz")
-	if err := writeServerArchive(env, plain, &man, serverPaths(env), extra, now); err != nil {
+	skip := func(path string) bool { return skipServerPath(env, path) }
+	paths := serverPaths(env)
+	var remap map[string]string
+	// A primary fenced for a planned switchover has put its sites' edge
+	// blocks aside: the standby's last snapshot (taken after the fence) must
+	// still carry them, under their own place, or the new primary would
+	// serve nothing (or old blocks of its own).
+	if st := currentMirror(env); forMirror && st.Role == roleFenced && st.Fenced == "switchover" {
+		if files, _ := filepath.Glob(filepath.Join(fencedEdgeDir(env), "*.caddy")); len(files) > 0 {
+			paths = append(paths, fencedEdgeDir(env))
+			remap = map[string]string{fencedEdgeDir(env): env.Cfg.ProxySitesDir}
+		}
+	}
+	if forMirror {
+		games := gameStateDir(env)
+		skip = func(path string) bool {
+			return skipServerPath(env, path) || path == games || strings.HasPrefix(path, games+"/")
+		}
+	}
+	if err := writeServerArchive(env, plain, &man, paths, extra, now, skip, remap); err != nil {
 		return backupInfo{}, err
 	}
 	in, err := os.Open(plain)
@@ -493,7 +518,9 @@ func enabledUnits(env *Env) []string {
 
 // writeServerArchive: the manifest, then each path (files, folders,
 // symlinks; owners and modes kept) under fs/, then the extra files.
-func writeServerArchive(env *Env, dst string, man *serverManifest, paths []string, extra map[string]string, now time.Time) error {
+// writeServerArchive: remap (may be nil) archives a folder under another
+// folder's name (source → name in the archive).
+func writeServerArchive(env *Env, dst string, man *serverManifest, paths []string, extra map[string]string, now time.Time, skip func(string) bool, remap map[string]string) error {
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
@@ -505,14 +532,14 @@ func writeServerArchive(env *Env, dst string, man *serverManifest, paths []strin
 	count := 0
 	accounts := accountNames()
 	for _, root := range paths {
-		if root == "" || !fsx.Exists(root) || skipServerPath(env, root) {
+		if root == "" || !fsx.Exists(root) || skip(root) {
 			continue
 		}
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil // unreadable: left out
 			}
-			if skipServerPath(env, path) {
+			if skip(path) {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
@@ -526,8 +553,16 @@ func writeServerArchive(env *Env, dst string, man *serverManifest, paths []strin
 			if !mode.IsRegular() && !mode.IsDir() && mode&os.ModeSymlink == 0 {
 				return nil // sockets, fifos
 			}
-			p := path
-			entries = append(entries, func() error { return tarPath(tw, p, fi, accounts) })
+			p, name := path, path
+			for from, to := range remap {
+				if path == from {
+					return nil // the folder itself keeps its place's own mode (sites-fenced is 0700)
+				}
+				if strings.HasPrefix(path, from+"/") {
+					name = to + strings.TrimPrefix(path, from)
+				}
+			}
+			entries = append(entries, func() error { return tarPathAs(tw, p, name, fi, accounts) })
 			count++
 			return nil
 		})
@@ -565,6 +600,11 @@ func writeServerArchive(env *Env, dst string, man *serverManifest, paths []strin
 }
 
 func tarPath(tw *tar.Writer, path string, fi os.FileInfo, names idNames) error {
+	return tarPathAs(tw, path, path, fi, names)
+}
+
+// tarPathAs: path's file under name in the archive.
+func tarPathAs(tw *tar.Writer, path, name string, fi os.FileInfo, names idNames) error {
 	link := ""
 	if fi.Mode()&os.ModeSymlink != 0 {
 		link, _ = os.Readlink(path)
@@ -573,7 +613,7 @@ func tarPath(tw *tar.Writer, path string, fi os.FileInfo, names idNames) error {
 	if err != nil {
 		return err
 	}
-	hdr.Name = "fs" + path
+	hdr.Name = "fs" + name
 	if fi.IsDir() {
 		hdr.Name += "/"
 	}

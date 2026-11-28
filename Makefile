@@ -9,7 +9,7 @@ PHP     ?= 8.3,8.4
 LDFLAGS := -s -w -X wspanel/agent/internal/ops.Version=$(VERSION)
 DEV     := docker compose -f dev/compose.yaml
 
-.PHONY: release-smoke dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
+.PHONY: mirror-e2e release-smoke dev-demo test agent-test panel-test agent-build cli-build bundle agent-dry dev-up dev-provision dev-e2e dev-shell dev-logs dev-down
 
 test: agent-test panel-test
 
@@ -70,6 +70,10 @@ dev-demo:
 	$(DEV) exec devserver /opt/wspanel/dev/demo.sh
 
 ## Full end-to-end test inside the dev container (after dev-provision).
+## The mirror end to end (Docker; about an hour): make mirror-e2e ARGS="--only=failover-and-back --reuse"
+mirror-e2e: agent-build
+	dev/mirror-e2e/run.sh $(ARGS)
+
 dev-e2e:
 	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o ../build/dev-fake-s3-linux-$(ARCH) ./cmd/dev-fake-s3
 	$(DEV) exec devserver /opt/wspanel/dev/e2e.sh

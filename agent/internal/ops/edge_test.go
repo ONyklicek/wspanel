@@ -68,6 +68,16 @@ func TestEdgeSettingsRender(t *testing.T) {
 			t.Errorf("edge missing %q:\n%s", want, edge)
 		}
 	}
+	// The web tier answers the alias too (the edge passes the Host on: the
+	// app routes by the domain it was called on); a redirect host stays at
+	// the edge.
+	web, _ := os.ReadFile(l.WebFile)
+	if !strings.Contains(string(web), "http://shop.example.com, http://shop.example.net {") {
+		t.Errorf("the web tier's block lacks the alias:\n%s", web)
+	}
+	if strings.Contains(string(web), "www.shop.example.com") {
+		t.Errorf("a redirect host belongs to the edge only:\n%s", web)
+	}
 	// Protection comes before the app inside the route block.
 	if strings.Index(string(edge), "basic_auth") > strings.LastIndex(string(edge), "reverse_proxy") {
 		t.Fatal("basic_auth after reverse_proxy")

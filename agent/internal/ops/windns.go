@@ -286,6 +286,9 @@ func winDesired(env *Env, st *mirrorState) []winRecord {
 	if addr == "" {
 		addr = st.Address
 	}
+	if st.VIP != nil {
+		addr = st.VIP.Address // the floating IP: the records never change
+	}
 	ip := net.ParseIP(addr)
 	if ip == nil {
 		return nil
@@ -294,6 +297,19 @@ func winDesired(env *Env, st *mirrorState) []winRecord {
 	if ip.To4() == nil {
 		typ = "AAAA"
 	}
+	hosts := servedHosts(env, c.Extra)
+	var out []winRecord
+	for _, h := range hosts {
+		if zone, name, ok := zoneOf(c.Zones, strings.ToLower(h)); ok {
+			out = append(out, winRecord{Zone: zone, Name: name, Type: typ, TTL: c.TTL, Values: []string{ip.String()}})
+		}
+	}
+	return out
+}
+
+// servedHosts: the names that follow the serving node (the sites'
+// domains, aliases and redirected hosts, plus extra), lower case, sorted.
+func servedHosts(env *Env, extra []string) []string {
 	var hosts []string
 	for _, s := range allSiteStates(env.Cfg) {
 		hosts = append(hosts, s.Domain)
@@ -302,16 +318,12 @@ func winDesired(env *Env, st *mirrorState) []winRecord {
 			hosts = append(hosts, s.Edge.RedirectHosts...)
 		}
 	}
-	hosts = append(hosts, c.Extra...)
-	slices.Sort(hosts)
-	hosts = slices.Compact(hosts)
-	var out []winRecord
-	for _, h := range hosts {
-		if zone, name, ok := zoneOf(c.Zones, strings.ToLower(h)); ok {
-			out = append(out, winRecord{Zone: zone, Name: name, Type: typ, TTL: c.TTL, Values: []string{ip.String()}})
-		}
+	hosts = append(hosts, extra...)
+	for i, h := range hosts {
+		hosts[i] = strings.ToLower(strings.TrimSuffix(h, "."))
 	}
-	return out
+	slices.Sort(hosts)
+	return slices.Compact(hosts)
 }
 
 // promotedEpoch: the epoch this agent promoted its node to (0: none, or the
@@ -323,7 +335,7 @@ var promotedEpoch atomic.Int64
 
 // mayPointDNS: this primary may write its records now.
 func mayPointDNS(st *mirrorState) bool {
-	if st.Peer == nil || peerConfirmsStandby() {
+	if st.Peer == nil || peerConfirmsNotServing(st.Epoch) {
 		return true
 	}
 	if e := promotedEpoch.Load(); e == 0 || e != st.Epoch {

@@ -2,11 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Sites\CreateSite;
 use App\Enums\DnsProvider;
 use App\Livewire\Pages\MirrorPage;
+use App\Models\Client;
 use App\Models\DnsZone;
+use App\Models\GameServer;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\Agent\AgentClient;
+use App\Services\Agent\AgentException;
 use App\Services\Notify\Alerts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -99,6 +104,46 @@ class MirrorTest extends TestCase
         $this->get('/mirror')->assertOk()->assertSee('Primár neodpovídá')->assertSee('MariaDB (replikace)')->assertSee('GTID 0-1-42');
     }
 
+    public function test_the_floating_ip_is_saved(): void
+    {
+        $this->state('primary');
+        $this->agent->shouldReceive('call')->with('mirror.interfaces')->andReturn([['name' => 'eth0', 'addresses' => ['192.168.1.10/24']]]);
+        $this->agent->shouldReceive('call')->once()->with('mirror.vip_set', ['address' => '192.168.1.30', 'interface' => 'eth0'])->andReturn([]);
+
+        $this->pageAction(Livewire::test(MirrorPage::class), 'vip', ['address' => '192.168.1.30', 'interface' => 'eth0'])
+            ->assertHasNoErrors()->assertNotified('Plovoucí IP uložena');
+    }
+
+    public function test_the_floating_ip_needs_an_ipv4_address(): void
+    {
+        $this->state('primary');
+        $this->agent->shouldNotReceive('call')->with('mirror.vip_set', Mockery::any());
+
+        $this->pageAction(Livewire::test(MirrorPage::class), 'vip', ['address' => 'fe80::1'])->assertHasErrors();
+    }
+
+    public function test_the_page_shows_who_holds_the_floating_ip(): void
+    {
+        $this->state('standby', ['vip' => ['address' => '192.168.1.30', 'prefix' => 24, 'interface' => 'eth0', 'held' => false],
+            'status' => ['peer' => ['vip' => '192.168.1.30', 'panel_url' => 'https://ldc1.firma.local']]]);
+
+        $this->get('/mirror')->assertOk()->assertSee('192.168.1.30/24')->assertSee('drží druhý server')->assertSee('https://ldc1.firma.local');
+    }
+
+    public function test_a_standby_says_where_the_sites_are_managed(): void
+    {
+        $this->state('standby', ['status' => ['peer' => ['panel_url' => 'https://ldc1.firma.local']]]);
+
+        $this->get('/mirror')->assertOk()->assertSee('Tento server je zrcadlo.')->assertSee('Otevřít panel aktivního serveru')->assertSee('https://ldc1.firma.local');
+    }
+
+    public function test_the_serving_node_shows_no_standby_banner(): void
+    {
+        $this->state('primary');
+
+        $this->get('/mirror')->assertOk()->assertDontSee('Tento server je zrcadlo.');
+    }
+
     public function test_alerts_report_the_mirror(): void
     {
         $this->state('standby', ['status' => ['peer_up' => false, 'peer_error' => 'timeout',
@@ -113,19 +158,83 @@ class MirrorTest extends TestCase
 
     public function test_the_active_node_repoints_cloudflare(): void
     {
-        $this->state('primary', ['public_ipv4' => '203.0.113.20', 'peer' => ['public_ipv4' => '203.0.113.10']]);
+        $this->state('primary', ['public_ipv4' => '203.0.113.20', 'peer' => ['public_ipv4' => '203.0.113.10'],
+            'may_point_dns' => true, 'dns_hosts' => ['example.com', 'www.example.com']]);
+        $this->fakeCloudflare();
+
+        $this->artisan('panel:mirror-dns')->assertSuccessful();
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_ends_with($r->url(), '/dns_records/r2') && $r['content'] === '203.0.113.20');
+        // The other node's own panel stays where it is.
+        Http::assertNotSent(fn (Request $r) => $r->method() === 'PATCH' && str_ends_with($r->url(), '/dns_records/r3'));
+    }
+
+    public function test_a_primary_the_agent_does_not_confirm_leaves_cloudflare_alone(): void
+    {
+        $this->state('primary', ['public_ipv4' => '203.0.113.20', 'peer' => ['public_ipv4' => '203.0.113.10'],
+            'may_point_dns' => false, 'dns_hosts' => ['example.com', 'www.example.com']]);
+        $this->fakeCloudflare();
+
+        $this->artisan('panel:mirror-dns')->assertSuccessful();
+
+        Http::assertNothingSent();
+    }
+
+    private function fakeCloudflare(): void
+    {
         DnsZone::acrossClients()->create(['domain' => 'example.com', 'provider' => DnsProvider::Cloudflare, 'cloudflare_zone_id' => 'z1', 'cloudflare_token' => 't']);
         Http::fake([
             'api.cloudflare.com/client/v4/zones/z1/dns_records?*' => Http::response(['success' => true, 'result' => [
                 ['id' => 'r1', 'name' => 'example.com', 'type' => 'A', 'content' => '203.0.113.10'],
                 ['id' => 'r2', 'name' => 'www.example.com', 'type' => 'A', 'content' => '203.0.113.10'],
+                ['id' => 'r3', 'name' => 'srv1.example.com', 'type' => 'A', 'content' => '203.0.113.10'],
             ]]),
             'api.cloudflare.com/client/v4/zones/z1/dns_records/*' => Http::response(['success' => true, 'result' => []]),
         ]);
+    }
 
-        $this->artisan('panel:mirror-dns')->assertSuccessful();
+    public function test_settings_go_to_the_agent_in_one_request(): void
+    {
+        $this->state('primary');
+        $this->agent->shouldReceive('call')->once()->with('mirror.settings', Mockery::on(fn (array $p) => $p['auto_failover'] === false && $p['witness'] === []))->andReturn([]);
 
-        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_ends_with($r->url(), '/dns_records/r2') && $r['content'] === '203.0.113.20');
+        $this->pageAction(Livewire::test(MirrorPage::class), 'settings', ['witness' => [], 'auto_failover' => false, 'failover_after' => 60, 'sync_every' => 60, 'lan_address' => '192.168.1.10'])
+            ->assertHasNoErrors()->assertNotified('Uloženo');
+    }
+
+    public function test_a_standby_refuses_a_new_site_before_storing_it(): void
+    {
+        $this->state('standby', ['status' => ['peer' => ['panel_url' => 'https://ldc1.firma.local']]]);
+        $this->agent->shouldNotReceive('call')->with('site.create', Mockery::any());
+
+        try {
+            app(CreateSite::class)->register(['domain' => 'shop.firma.local', 'framework' => 'laravel']);
+            $this->fail('a standby stored a site');
+        } catch (AgentException $e) {
+            $this->assertStringContainsString('https://ldc1.firma.local', $e->getMessage());
+        }
+        $this->assertSame(0, Site::query()->count());
+    }
+
+    public function test_a_promotion_keeps_this_nodes_game_servers(): void
+    {
+        $client = Client::factory()->create(['linux_group' => 'cl_acme']);
+        GameServer::query()->forceCreate(['id' => 7, 'client_id' => $client->id, 'name' => 'Local', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'port' => 25565, 'memory_mb' => 2048, 'status' => 'active']);
+        $file = tempnam(sys_get_temp_dir(), 'node-local');
+        $this->artisan('panel:mirror-node-local', ['action' => 'export', 'path' => $file])->assertSuccessful();
+
+        // The primary's database arrives: its own game server, its client ids.
+        GameServer::query()->delete();
+        Client::query()->delete();
+        $primaryClient = Client::factory()->create(['linux_group' => 'cl_acme']);
+        GameServer::query()->forceCreate(['id' => 3, 'name' => 'Primary', 'game' => 'minecraft', 'flavor' => 'paper', 'version' => '1.21.10', 'port' => 25566, 'memory_mb' => 2048, 'status' => 'active']);
+
+        $this->artisan('panel:mirror-node-local', ['action' => 'import', 'path' => $file])->assertSuccessful();
+
+        $this->assertSame(['Local'], GameServer::query()->pluck('name')->all());
+        $this->assertSame(7, GameServer::query()->value('id'));
+        $this->assertSame($primaryClient->id, GameServer::query()->value('client_id'));
+        @unlink($file);
     }
 
     public function test_a_standby_never_touches_cloudflare(): void

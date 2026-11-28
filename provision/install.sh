@@ -60,6 +60,7 @@ PANEL_PORT=443
 CLIENTS=no
 GAMES=no
 MAIL_HOSTING=no
+MAIL_HOST_ARG=""
 XHPROF=no
 REDIS=no
 KV="" # valkey | redis | both; empty = what this server has (upgrade), else valkey
@@ -114,6 +115,7 @@ for arg in "$@"; do
     --kv=*) KV="${arg#*=}" ;; # the sites' key-value server: valkey (Debian), redis (Redis 8, packages.redis.io) or both
     --xhprof=*) XHPROF="${arg#*=}" ;; # yes: XHProf + XHGui, switchable per site (Server → Moduly later)
     --mail-hosting=*) MAIL_HOSTING="${arg#*=}" ;; # yes: mailboxes, IMAP/POP3, antispam (Server → Moduly later)
+    --mail-host=*) MAIL_HOST_ARG="${arg#*=}" ;; # the mail server's name (MX, IMAP, SMTP); default: the panel domain. A mirror: the same on both nodes
     --acme-email=*) ACME_EMAIL="${arg#*=}" ;;
     --agent-bin=*) AGENT_BIN="${arg#*=}" ;;
     --panel-source=*) PANEL_SOURCE="${arg#*=}" ;;
@@ -196,6 +198,11 @@ MAIL_NAME="$PANEL_DOMAIN"
 # Host names are case-insensitive; mail and DNS take them in lower case
 # (VPS images name servers like "NyonVps").
 [[ $PANEL_IS_IP -eq 1 ]] && MAIL_NAME="$(hostname -f 2>/dev/null || hostname)" && MAIL_NAME="${MAIL_NAME,,}"
+if [[ -n "${MAIL_HOST_ARG:-}" ]]; then
+  # One shared name for a mirror's two nodes (each has a panel domain of its own).
+  [[ "$MAIL_HOST_ARG" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$ ]] || die "--mail-host must be a host name (mail.example.com)"
+  MAIL_NAME="${MAIL_HOST_ARG,,}"
+fi
 [[ -n "$AGENT_BIN" && -x "$AGENT_BIN" ]] || die "--agent-bin must point to the built panel-agent binary"
 [[ "$SSH_PORT" =~ ^[0-9]+$ && $SSH_PORT -ge 1 && $SSH_PORT -le 65535 ]] || die "invalid --ssh-port"
 [[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="admin@${MAIL_NAME}"

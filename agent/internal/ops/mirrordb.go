@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"wspanel/agent/internal/fsx"
@@ -291,6 +292,36 @@ func mariadbSlaveStatus(ctx context.Context, env *Env) (replicaStatus, error) {
 	return rs, nil
 }
 
+// mariadbErrantGTIDs: the GTIDs of the binary log written by this server
+// itself ("" none). On a replica (log_slave_updates keeps the primary's
+// server id) only a local write has this node's id. gtid_binlog_state, not
+// _pos: it keeps the last GTID of every server, so a local write stays
+// visible after newer events of the primary.
+func mariadbErrantGTIDs(ctx context.Context, env *Env) (string, error) {
+	out, err := (mariadb{}).sql(ctx, env, "SELECT @@server_id, @@gtid_binlog_state")
+	if err != nil {
+		return "", err
+	}
+	return errantGTIDs(strings.TrimSpace(out)), nil
+}
+
+// errantGTIDs: from "<server_id>\t<domain-server-seq,...>", the entries of
+// that server id.
+func errantGTIDs(row string) string {
+	id, pos, ok := strings.Cut(row, "\t")
+	if !ok || id == "" {
+		return ""
+	}
+	var own []string
+	for _, g := range strings.Split(pos, ",") {
+		parts := strings.Split(strings.TrimSpace(g), "-")
+		if len(parts) == 3 && parts[1] == id {
+			own = append(own, strings.TrimSpace(g))
+		}
+	}
+	return strings.Join(own, ",")
+}
+
 func mariadbReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, string, error) {
 	if err := stillStandby(env); err != nil {
 		return nil, "", err
@@ -301,6 +332,17 @@ func mariadbReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, s
 	rs, err := mariadbSlaveStatus(ctx, env)
 	if err != nil {
 		return nil, "", err
+	}
+	// A write made on the replica itself (a root session: MariaDB's
+	// read_only does not bind it, and it has no super_read_only) is a
+	// GTID of this node's own server id: the next event of the primary
+	// would stop replication (strict mode). The replica is seeded again;
+	// what it had goes into a dump first, as at every seed.
+	if fsx.Exists(seededMark(env, "mariadb")) && rs["Master_Host"] != "" {
+		if errant, err := mariadbErrantGTIDs(ctx, env); err == nil && errant != "" {
+			mirrorRuntime.event("danger", "MariaDB: na zrcadle někdo zapisoval mimo replikaci (GTID %s, nejspíš jako root): replika se znovu naplní z primáru, lokální data jsou uložena ve výpisu", errant)
+			_ = os.Remove(seededMark(env, "mariadb"))
+		}
 	}
 	if !fsx.Exists(seededMark(env, "mariadb")) || rs["Master_Host"] == "" {
 		mirrorRuntime.event("info", "MariaDB: plnění repliky z primáru")
@@ -465,6 +507,60 @@ func postgresReplica(ctx context.Context, env *Env, st *mirrorState) (*float64, 
 	return lag, "streaming", nil
 }
 
+// moveAside: data's contents go to aside, data is left empty. A rename when
+// it can; when it cannot (data is a mount point of its own, another disk,
+// an overlay's lower layer: EXDEV, EBUSY) the contents are copied (rsync,
+// owners, modes, links and ACLs kept) and removed from data, which itself
+// stays (a mount point must). copied: which of the two happened.
+func moveAside(ctx context.Context, env *Env, data, aside string) (copied bool, err error) {
+	if err := os.Rename(data, aside); err == nil {
+		return false, nil
+	} else if !errors.Is(err, syscall.EXDEV) && !errors.Is(err, syscall.EBUSY) {
+		return false, err
+	}
+	if err := env.FS.MkdirAll(aside, 0o700, fsx.Root); err != nil {
+		return false, err
+	}
+	if _, err := env.Exec.RunIO(ctx, nil, nil, "rsync", "-aHAX", "--numeric-ids", data+"/", aside+"/"); err != nil {
+		_ = os.RemoveAll(aside)
+		return false, fmt.Errorf("copying %s aside: %w", data, err)
+	}
+	if err := clearDir(data); err != nil {
+		return true, fmt.Errorf("emptying %s (its copy is in %s): %w", data, aside, err)
+	}
+	return true, nil
+}
+
+// putBack undoes moveAside.
+func putBack(ctx context.Context, env *Env, data, aside string, copied bool) {
+	if !fsx.Exists(aside) {
+		return
+	}
+	if !copied {
+		_ = os.RemoveAll(data)
+		_ = os.Rename(aside, data)
+		return
+	}
+	_ = clearDir(data)
+	if _, err := env.Exec.RunIO(ctx, nil, nil, "rsync", "-aHAX", "--numeric-ids", aside+"/", data+"/"); err == nil {
+		_ = os.RemoveAll(aside)
+	}
+}
+
+// clearDir removes what is inside dir, not dir itself.
+func clearDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // seedPostgres: the cluster becomes a base backup of the source; the old
 // data directory is kept aside (the newest only).
 func seedPostgres(ctx context.Context, env *Env, st *mirrorState, confDir string) error {
@@ -489,11 +585,21 @@ func seedPostgres(ctx context.Context, env *Env, st *mirrorState, confDir string
 		return err
 	}
 	aside := data + ".before-mirror"
+	rejoined := fsx.Exists(mirrorFile(env, "rejoin-db"))
+	if rejoined {
+		// A rejoined old primary: its data may hold writes nobody else has;
+		// kept under its own name, never removed by a later seed.
+		aside = data + ".before-rejoin-" + time.Now().UTC().Format("20060102T150405Z")
+		mirrorRuntime.event("info", "PostgreSQL: data tohoto serveru před připojením zpět jsou uložena v %s", aside)
+	}
 	_ = os.RemoveAll(aside)
+	copied := false
 	if fsx.Exists(data) {
-		if err := os.Rename(data, aside); err != nil {
+		c, err := moveAside(ctx, env, data, aside)
+		if err != nil {
 			return err
 		}
+		copied = c
 	}
 	conninfo := fmt.Sprintf("host=127.0.0.1 port=%d user=%s passfile=%s application_name=%s", tunnelPortPostgres, replUser, pass, st.NodeID)
 	bctx, cancel := context.WithTimeout(ctx, 6*time.Hour)
@@ -502,15 +608,15 @@ func seedPostgres(ctx context.Context, env *Env, st *mirrorState, confDir string
 		"/usr/lib/postgresql/"+ver+"/bin/pg_basebackup", "-d", conninfo, "-D", data, "-X", "stream", "-S", pgSlot, "-R", "-c", "fast")
 	if err != nil {
 		// Back to what was there: the cluster must start again.
-		_ = os.RemoveAll(data)
-		if fsx.Exists(aside) {
-			_ = os.Rename(aside, data)
-		}
+		putBack(ctx, env, data, aside, copied)
 		_, _ = env.Exec.Run(ctx, "systemctl", "start", unit)
 		return err
 	}
 	if _, err := env.Exec.Run(ctx, "systemctl", "start", unit); err != nil {
 		return err
+	}
+	if rejoined {
+		_ = os.Remove(mirrorFile(env, "rejoin-db"))
 	}
 	return writeMirrorFile(env, "seeded-postgresql", []byte(time.Now().UTC().Format(time.RFC3339)+"\n"))
 }

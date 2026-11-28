@@ -3,10 +3,12 @@ package ops
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,7 +46,8 @@ type mirrorRuntimeState struct {
 	Witness          map[string]bool         `json:"witness,omitempty"`
 	WitnessOK        bool                    `json:"witness_ok"`
 	Layers           map[string]*layerStatus `json:"layers"`
-	Action           string                  `json:"action,omitempty"` // a running promotion, rejoin, switchover
+	Action           string                  `json:"action,omitempty"`    // a running promotion, rejoin, switchover
+	Switching        bool                    `json:"switching,omitempty"` // a planned switchover's catch-up (the sync still runs)
 	Syncing          bool                    `json:"syncing"`
 	LastSync         time.Time               `json:"last_sync,omitzero"`
 	Events           []mirrorEvent           `json:"events"`
@@ -94,6 +97,19 @@ func (m *mirrorRuntimeState) event(level, format string, args ...any) {
 	if n := len(m.Events); n > 100 {
 		m.Events = m.Events[n-100:]
 	}
+}
+
+// currentAction: a promotion or switchover running here ("" none).
+func (m *mirrorRuntimeState) currentAction() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Action != "" {
+		return m.Action
+	}
+	if m.Switching {
+		return "switchover"
+	}
+	return ""
 }
 
 func (m *mirrorRuntimeState) setAction(a string) bool {
@@ -173,6 +189,9 @@ func MirrorRun(ctx context.Context, env *Env, logf func(string, ...any)) {
 		case roleFenced:
 			fencedTick(ctx, env, st, logf)
 		}
+		if st.VIP != nil {
+			reconcileVIP(ctx, env)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -188,13 +207,15 @@ func MirrorRun(ctx context.Context, env *Env, logf func(string, ...any)) {
 	}
 }
 
-// peerConfirmsStandby: the other node answered in the last half minute and
-// is a standby.
-func peerConfirmsStandby() bool {
+// peerConfirmsNotServing: the other node answered in the last half minute,
+// does not serve (a standby, or fenced), is not taking over (no promotion
+// or switchover running) and has no newer epoch than this node's.
+func peerConfirmsNotServing(epoch int64) bool {
 	m := mirrorRuntime
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.PeerUp && m.Peer != nil && m.Peer.Role == roleStandby && time.Since(m.PeerSeen) < 30*time.Second
+	return m.PeerUp && m.Peer != nil && (m.Peer.Role == roleStandby || m.Peer.Role == roleFenced) &&
+		m.Peer.Action == "" && m.Peer.Epoch <= epoch && time.Since(m.PeerSeen) < 30*time.Second
 }
 
 // helloPeer: one hello both ways (this node's state goes along).
@@ -232,9 +253,11 @@ func standbyTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 	them, err := helloPeer(ctx, env)
 	recordPeer(them, err)
 	if err == nil {
+		hostAliveLogged = false
 		mirrorRuntime.mu.Lock()
 		mirrorRuntime.PrimaryDownSince, mirrorRuntime.Probes = time.Time{}, nil
 		mirrorRuntime.mu.Unlock()
+		checkPairSettings(env, st, them)
 		return them.Role == rolePrimary
 	}
 	// The link failed: is the primary down, or only its agent?
@@ -264,6 +287,21 @@ func standbyTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 			mirrorRuntime.event("warning", "primár neodpovídá, ale ani žádný svědek: tento server je možná odříznutý, automatické přepnutí neproběhne")
 			return false
 		}
+		// The primary's host still answers ARP in this LAN: it is alive and
+		// only unreachable above (a firewall, a hung agent and web server,
+		// a broken VLAN path). Taking over would make two primaries; that
+		// is the administrator's decision, not this watch's.
+		if mac := peerHostAnswers(st); mac != "" {
+			if !hostAliveLogged {
+				hostAliveLogged = true
+				mirrorRuntime.event("danger", "primár neodpovídá na spojení zrcadla ani HTTPS/HTTP, ale jeho stroj v LAN odpovídá (ARP, %s): automatické přepnutí neproběhne. Zkontrolujte primár; převzít provoz lze ručně (Povýšit na primár), až bude jisté, že neobsluhuje.", mac)
+			}
+			return false
+		}
+		if v := peerVersionMismatch(); v != "" {
+			mirrorRuntime.event("danger", "automatické přepnutí neproběhne: %s", v)
+			return false
+		}
 		go func() {
 			logf("mirror: the primary has been down for %s, promoting this node", down.Round(time.Second))
 			if _, err := promoteLocal(context.WithoutCancel(ctx), env, "automatické přepnutí: primár neodpovídal "+down.Round(time.Second).String(), true); err != nil {
@@ -280,6 +318,7 @@ func primaryTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 	if st.Peer == nil {
 		return
 	}
+	keepServing(ctx, env)
 	them, err := helloPeer(ctx, env)
 	recordPeer(them, err)
 	m := mirrorRuntime
@@ -287,6 +326,7 @@ func primaryTick(ctx context.Context, env *Env, st *mirrorState, logf func(strin
 		m.mu.Lock()
 		m.IsolatedSince = time.Time{}
 		m.mu.Unlock()
+		checkPairSettings(env, st, them)
 		return
 	}
 	if !st.Auto {
@@ -322,6 +362,25 @@ func fencedTick(ctx context.Context, env *Env, st *mirrorState, logf func(string
 	keepFenced(ctx, env)
 	them, err := helloPeer(ctx, env)
 	recordPeer(them, err)
+	if st.Fenced == reasonStarting {
+		if err != nil {
+			them = nil
+		}
+		startingTick(ctx, env, st, them, logf)
+		return
+	}
+	if err == nil && st.Fenced == "switchover" && them.Role == roleStandby && them.Action == "" && them.Epoch <= st.Epoch &&
+		time.Since(st.Since) > switchoverGrace {
+		// A planned switchover that did not finish (the catch-up failed, the
+		// standby's agent restarted): the standby never took over, so this
+		// node serves again rather than leave nobody serving.
+		logf("mirror: the switchover did not complete: serving again")
+		mirrorRuntime.event("warning", "plánované přepnutí nedoběhlo (zrcadlo provoz nepřevzalo): tento server znovu obsluhuje weby")
+		if err := unfenceToPrimary(context.WithoutCancel(ctx), env); err != nil {
+			logf("mirror: unfencing failed: %v", err)
+		}
+		return
+	}
 	if err != nil || st.Fenced != "isolated" {
 		return
 	}
@@ -331,6 +390,82 @@ func fencedTick(ctx context.Context, env *Env, st *mirrorState, logf func(string
 			logf("mirror: unfencing failed: %v", err)
 		}
 	}
+}
+
+// switchoverGrace: how long a node fenced for a switchover waits for the
+// standby to take over before it serves again.
+const switchoverGrace = 2 * time.Minute
+
+// hostAliveLogged: the "host answers ARP" warning once per outage.
+var hostAliveLogged bool
+
+// peerHostAnswers: the MAC of the other node's host when it answers ARP
+// for its own address (it is up at the link level), "" when it does not or
+// it is not in a LAN of this node (routed: no ARP to ask).
+func peerHostAnswers(st *mirrorState) string {
+	if st.Peer == nil {
+		return ""
+	}
+	ip := net.ParseIP(st.Peer.Address).To4()
+	if ip == nil {
+		return ""
+	}
+	iface, _, err := vipIface("", ip)
+	if err != nil {
+		return ""
+	}
+	mac, err := arpProbe(iface, ip)
+	if err != nil {
+		return ""
+	}
+	return mac
+}
+
+// peerVersionMismatch: why the two nodes' versions do not match ("" they do,
+// or the other node was not heard yet).
+func peerVersionMismatch() string {
+	m := mirrorRuntime
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Peer != nil && m.Peer.Version != "" && m.Peer.Version != Version {
+		return fmt.Sprintf("primár má WSPanel %s, tento server %s (nejdřív sjednoťte verze, nebo povyšte ručně)", m.Peer.Version, Version)
+	}
+	return ""
+}
+
+// checkPairSettings: what both nodes must agree on, as the "settings" layer.
+func checkPairSettings(env *Env, st *mirrorState, them *helloInfo) {
+	if them == nil {
+		return
+	}
+	var diff []string
+	if them.Auto != st.Auto {
+		diff = append(diff, "automatické přepnutí")
+	}
+	if them.FailoverAfter != 0 && them.FailoverAfter != st.FailoverAfter {
+		diff = append(diff, fmt.Sprintf("doba přepnutí (%d s / %d s)", st.FailoverAfter, them.FailoverAfter))
+	}
+	if them.VIPConfig != vipConfigured(st) {
+		diff = append(diff, "plovoucí IP ("+orDash(vipConfigured(st))+" / "+orDash(them.VIPConfig)+")")
+	}
+	if them.MailHost != "" && mailHostingOn(env) && them.MailHost != mailHostName(env) {
+		diff = append(diff, "poštovní server ("+mailHostName(env)+" / "+them.MailHost+")")
+	}
+	if them.Version != "" && them.Version != Version {
+		diff = append(diff, "verze WSPanelu ("+Version+" / "+them.Version+")")
+	}
+	if len(diff) == 0 {
+		mirrorRuntime.layer("settings", nil, "oba servery mají stejné nastavení", nil)
+		return
+	}
+	mirrorRuntime.layer("settings", errors.New("servery se liší: "+strings.Join(diff, ", ")+"; nastavte je na obou stejně"), "", nil)
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
 }
 
 // settleEpoch: a primary that hears of a newer primary stops being one.
@@ -345,6 +480,14 @@ func settleEpoch(env *Env, them helloInfo) {
 	newer := them.Epoch > st.Epoch || (them.Epoch == st.Epoch && them.NodeID > st.NodeID)
 	if them.Role == rolePrimary && st.Role == rolePrimary && newer {
 		mirrorRuntime.event("danger", "druhý server je primár s novější epochou (%d): tento server se odstavuje", them.Epoch)
+		go func() { _ = fenceLocal(context.Background(), env, "replaced") }()
+		return
+	}
+	// A newer epoch from a node that is not primary yet: it is being
+	// promoted (the epoch is saved first). This node steps down now, not
+	// when that promotion ends.
+	if st.Role == rolePrimary && (them.Epoch > st.Epoch || them.Action == "promoting") {
+		mirrorRuntime.event("danger", "druhý server přebírá provoz (epocha %d): tento server se odstavuje", them.Epoch)
 		go func() { _ = fenceLocal(context.Background(), env, "replaced") }()
 		return
 	}

@@ -148,6 +148,7 @@ ho znovu s novou verzí agenta a panelu. Data, weby ani nastavení se nemažou.
 | `--clients=` | `no` | `yes` = klienti a balíčky (hostování pro víc klientů); později Server → Moduly |
 | `--games=` | `no` | `yes` = herní servery (Minecraft, Factorio) v menu; Java a hry se stáhnou až s prvním serverem; později Server → Moduly |
 | `--mail-hosting=` | `no` | `yes` = schránky, webmail a antispam (pošta pro domény); později Server → Moduly |
+| `--mail-host=` | doména panelu | jméno poštovního serveru (MX, IMAP, SMTP), např. `mail.example.com`; u [zrcadla](zrcadlo.md) stejné na obou serverech |
 | `--xhprof=` | `no` | `yes` = XHProf + XHGui, profilování zapínané u každého webu; později Server → Moduly |
 | `--kv=` | `valkey` | server pro cache, fronty a session webů: `valkey` (Debian, licence BSD), `redis` (oficiální Redis 8 z packages.redis.io, s moduly JSON, Search, TimeSeries a Bloom) nebo `both` (každý web si vybere); při upgradu zůstane, co server má; později Server → Moduly. Starší `--redis=yes` = `both` |
 | `--acme-email=` | `admin@<panel>` | e-mail pro Let's Encrypt |

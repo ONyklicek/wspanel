@@ -47,19 +47,27 @@ class CloudflareDns implements DnsZoneProvider
     }
 
     /**
-     * The mirror: every A record of the zone that points at $from points at
-     * $to (proxy and TTL kept).
+     * The mirror: the A records of the zone that point at $from point at
+     * $to (proxy and TTL kept); with $only, just those names.
      *
+     * @param  list<string>|null  $only
      * @return list<string> the names that changed
      */
-    public function repointA(string $from, string $to): array
+    public function repointA(string $from, string $to, ?array $only = null): array
     {
         $http = self::client($this->token);
         $res = $http->get("/zones/{$this->zoneId}/dns_records", ['type' => 'A', 'content' => $from, 'per_page' => 5000]);
         self::check($res);
+        $names = $only === null ? null : array_flip(array_map(fn (string $n) => strtolower(rtrim($n, '.')), $only));
         $changed = [];
         foreach ($res->json('result', []) as $r) {
             if (($r['content'] ?? '') !== $from) {
+                continue;
+            }
+            // Only the names that follow the serving node (the sites'): the
+            // other node's own panel, its mail host and anything else at its
+            // address stay where they are.
+            if ($names !== null && ! isset($names[strtolower(rtrim((string) ($r['name'] ?? ''), '.'))])) {
                 continue;
             }
             self::check($http->patch("/zones/{$this->zoneId}/dns_records/{$r['id']}", ['content' => $to]));

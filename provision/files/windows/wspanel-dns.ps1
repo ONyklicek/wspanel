@@ -8,7 +8,9 @@
   It changes only A and AAAA records, only in the zones listed in
   C:\ProgramData\WSPanel\dns.json, and only the names it is asked about.
   A name that holds a CNAME (or anything but A/AAAA of that type) is left
-  alone and reported. Nothing is ever deleted except the old values of a
+  alone and reported, and so is anything of the domain controllers: the
+  Active Directory domain's apex, a DC's name, a record holding a DC's
+  address. Nothing is ever deleted except the old values of a
   record that is being set.
 #>
 $ErrorActionPreference = 'Stop'
@@ -36,6 +38,41 @@ function Assert-Zone([string]$zone) {
     $z = $zone.ToLowerInvariant()
     if ($zones -notcontains $z) { throw "zone $zone is not allowed for WSPanel" }
     return $z
+}
+
+# The domain controllers' own records are never WSPanel's: the zone apex of
+# the Active Directory domain (SYSVOL, DFS, Group Policy resolve it to the
+# DCs), a DC's host name, and any record that holds a DC's address. A site
+# or an extra name that collides with one of them is refused, not applied.
+$script:dcIPs = $null
+$script:dcNames = @()
+$script:adZone = ''
+function Read-DomainControllers {
+    if ($null -ne $script:dcIPs) { return }
+    $d = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+    $script:adZone = $d.Name.ToLowerInvariant()
+    $ips = @()
+    $names = @()
+    foreach ($dc in $d.DomainControllers) {
+        $names += $dc.Name.ToLowerInvariant()
+        foreach ($a in [System.Net.Dns]::GetHostAddresses($dc.Name)) { $ips += $a.IPAddressToString }
+        if ($dc.IPAddress) { $ips += [string]$dc.IPAddress }
+    }
+    $script:dcNames = $names
+    $script:dcIPs = @($ips | Sort-Object -Unique)
+}
+
+function Assert-NotDomainController([string]$zone, [string]$name, $have) {
+    Read-DomainControllers
+    $fqdn = if ($name -eq '@') { $zone } else { "$name.$zone" }
+    $fqdn = $fqdn.ToLowerInvariant()
+    if ($fqdn -eq $script:adZone -or $fqdn.EndsWith("._msdcs.$($script:adZone)") -or $fqdn -eq "_msdcs.$($script:adZone)") {
+        throw "$fqdn belongs to the Active Directory domain: left alone"
+    }
+    if ($script:dcNames -contains $fqdn) { throw "$fqdn is a domain controller: left alone" }
+    foreach ($v in @($have)) {
+        if ($script:dcIPs -contains $v) { throw "$fqdn points at a domain controller ($v): left alone" }
+    }
 }
 
 function Get-Values($zone, $name, $type) {
@@ -84,6 +121,7 @@ switch ($req.action) {
                 $cname = Get-DnsServerResourceRecord -ComputerName $server -ZoneName $zone -Name $name -RRType CName -ErrorAction SilentlyContinue
                 if ($cname) { throw "$name.$zone is a CNAME: left alone" }
                 $have = Get-Values $zone $name $type
+                Assert-NotDomainController $zone $name $have
                 $existing = Get-DnsServerResourceRecord -ComputerName $server -ZoneName $zone -Name $name -RRType $type -ErrorAction SilentlyContinue
                 $ttlOk = $true
                 foreach ($r in @($existing)) { if ([int]$r.TimeToLive.TotalSeconds -ne $ttl) { $ttlOk = $false } }

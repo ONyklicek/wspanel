@@ -1703,9 +1703,17 @@ var gameBackupExcludes = map[string][]string{
 // off-site pruning orders by); the first test builds wrote 20060102-150405.
 var gameBackupRe = regexp.MustCompile(`^game-(\d+)-(\d{8}T\d{6}Z|\d{8}-\d{6})\.tar\.gz$`)
 
-// gameTarget: where a game server's backups go off-site (games/<id>).
+// gameTarget: where a game server's backups go off-site (games/<id>). In a
+// mirror both nodes share the off-site storage (its settings travel with
+// the state) and each has game servers of its own with their own ids, so
+// there it is games/<node id>/<id>: one node's backups never mix with, or
+// prune, the other's. (Backups made before the pairing stay under games/<id>.)
 func gameTarget(env *Env, id int) offsiteTarget {
-	return offsiteTarget{dir: "games/" + strconv.Itoa(id), local: gameBackupDir(env, id), match: func(f string) bool {
+	dir := "games/" + strconv.Itoa(id)
+	if st := currentMirror(env); st.Role != roleNone && st.NodeID != "" {
+		dir = "games/" + st.NodeID + "/" + strconv.Itoa(id)
+	}
+	return offsiteTarget{dir: dir, local: gameBackupDir(env, id), match: func(f string) bool {
 		m := gameBackupRe.FindStringSubmatch(f)
 		return m != nil && m[1] == strconv.Itoa(id)
 	}}

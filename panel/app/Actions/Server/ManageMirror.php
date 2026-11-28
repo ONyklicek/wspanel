@@ -27,6 +27,8 @@ class ManageMirror
         'postgresql' => 'PostgreSQL (replikace)',
         'dumps' => 'MongoDB a vyhrazené DB (výpisy)',
         'kv' => 'Valkey / Redis (repliky)',
+        'settings' => 'Nastavení obou serverů',
+        'vip' => 'Plovoucí IP',
         'windns' => 'Windows DNS',
     ];
 
@@ -38,6 +40,8 @@ class ManageMirror
     ];
 
     private const CACHE = 'mirror.status';
+
+    private const CACHE_FAILED = 'mirror.status.failed';
 
     public function __construct(private readonly AgentClient $agent) {}
 
@@ -54,15 +58,47 @@ class ManageMirror
         return $status;
     }
 
-    /** The last known state (alerts, DNS follow-up): never throws. */
+    /**
+     * The last known state (alerts, DNS follow-up, the banner on every page):
+     * never throws. A failed read is remembered for half a minute too, so an
+     * unreachable agent costs one attempt, not one per page.
+     */
     public function cached(): array
     {
-        return Cache::get(self::CACHE) ?? rescue(fn () => $this->status(), [], report: false);
+        $state = Cache::get(self::CACHE);
+        if (is_array($state)) {
+            return $state;
+        }
+        if (Cache::has(self::CACHE_FAILED)) {
+            return [];
+        }
+        try {
+            return $this->status();
+        } catch (\Throwable) {
+            Cache::put(self::CACHE_FAILED, true, 30);
+
+            return [];
+        }
     }
 
     public function role(): string
     {
         return (string) ($this->cached()['role'] ?? '');
+    }
+
+    /**
+     * Sites, databases and mail are created where they are served: on a
+     * mirror's standby (or a fenced node) the agent refuses them anyway, and
+     * this says so before the panel stores anything.
+     *
+     * @throws AgentException
+     */
+    public function assertServes(): void
+    {
+        if (in_array($this->role(), ['standby', 'fenced'], true)) {
+            $url = $this->activePanelUrl();
+            throw new AgentException('conflict', __('Tento server je zrcadlo: weby, databáze a poštu zakládejte na aktivním serveru:').' '.($url ?: __('v jeho panelu')), 'panel');
+        }
     }
 
     /**
@@ -103,9 +139,9 @@ class ManageMirror
     }
 
     /** @throws AgentException */
-    public function promote(string $nodeId): AgentTask
+    public function promote(string $nodeId, bool $allowVersionMismatch = false): AgentTask
     {
-        $job = $this->agent->call('mirror.promote', ['confirm' => $nodeId]);
+        $job = $this->agent->call('mirror.promote', ['confirm' => $nodeId] + ($allowVersionMismatch ? ['allow_version_mismatch' => true] : []));
 
         return AgentTasks::start($job, 'mirror.promote', [
             'title' => __('Povýšení na primár'),
@@ -202,6 +238,56 @@ class ManageMirror
         return ['message' => __('Windows DNS odpovídá'), 'body' => __('Zóna :zone: :n záznamů A/AAAA', ['zone' => $out['zone'], 'n' => count($out['records'] ?? [])])];
     }
 
+    /**
+     * The floating IP the serving node holds (the same on both servers).
+     *
+     * @param  array{address: string, interface?: string}  $data
+     *
+     * @throws AgentException
+     */
+    public function vipSet(array $data): array
+    {
+        return $this->forget($this->agent->call('mirror.vip_set', array_filter($data, fn ($v) => $v !== null && $v !== '')));
+    }
+
+    /** @throws AgentException */
+    public function vipRemove(): array
+    {
+        return $this->forget($this->agent->call('mirror.vip_remove'));
+    }
+
+    /**
+     * This server's interfaces with IPv4 networks: name => "eth0 (192.168.1.10/24)".
+     *
+     * @return array<string, string>
+     */
+    public function interfaces(): array
+    {
+        $out = [];
+        foreach ((array) rescue(fn () => $this->agent->call('mirror.interfaces'), [], report: false) as $i) {
+            $out[(string) $i['name']] = $i['name'].' ('.implode(', ', (array) ($i['addresses'] ?? [])).')';
+        }
+
+        return $out;
+    }
+
+    /**
+     * The serving node's panel, seen from a node that does not serve (its
+     * pages say where the sites are managed). Null when this node serves.
+     */
+    public function activePanelUrl(): ?string
+    {
+        $state = $this->cached();
+        if (! in_array($state['role'] ?? '', ['standby', 'fenced'], true)) {
+            return null;
+        }
+        $peer = (array) ($state['status']['peer'] ?? []);
+        $url = (string) ($peer['panel_url'] ?? '');
+
+        // Only an https address from the other node goes into a link.
+        return ($peer['role'] ?? '') === 'primary' && str_starts_with($url, 'https://') && filter_var($url, FILTER_VALIDATE_URL) ? $url : '';
+    }
+
     /** @throws AgentException */
     public function winDnsRemove(): array
     {
@@ -223,6 +309,7 @@ class ManageMirror
     private function forget(mixed $out): mixed
     {
         Cache::forget(self::CACHE);
+        Cache::forget(self::CACHE_FAILED);
 
         return $out;
     }

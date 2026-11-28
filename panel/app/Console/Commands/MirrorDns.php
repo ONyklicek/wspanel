@@ -36,15 +36,18 @@ class MirrorDns extends Command
         }
         $own = (string) ($st['public_ipv4'] ?? '');
         $other = (string) ($st['peer']['public_ipv4'] ?? '');
-        if (($st['role'] ?? '') !== 'primary' || $own === '' || $other === '' || $own === $other) {
+        // The agent's own guard, as for Windows DNS: a primary that came back
+        // after an outage, or whose standby is taking over, points nothing here.
+        if (($st['role'] ?? '') !== 'primary' || ! ($st['may_point_dns'] ?? false) || $own === '' || $other === '' || $own === $other) {
             return self::SUCCESS;
         }
+        $hosts = array_values(array_map('strval', (array) ($st['dns_hosts'] ?? [])));
         $changed = [];
         foreach (DnsZone::acrossClients()->where('provider', DnsProvider::Cloudflare)->get() as $zone) {
             try {
                 $api = $zone->api();
                 if ($api instanceof CloudflareDns) {
-                    $changed = [...$changed, ...$api->repointA($other, $own)];
+                    $changed = [...$changed, ...$api->repointA($other, $own, $hosts)];
                 }
             } catch (DnsException|ConnectionException $e) {
                 $this->warn($zone->domain.': '.$e->getMessage());

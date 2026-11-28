@@ -36,12 +36,36 @@ Certifikáty vydává interní CA Caddy. Prohlížeč jednou zobrazí varování
 
 ## Zrcadlo se dvěma kontejnery
 
-`dev/mirror-e2e.sh` (po `make agent-build`) vyzkouší zrcadlo na tomto stroji.
-Spustí dva servery v Dockeru a náhradu Windows DNS (sshd se stejným
-protokolem jako `wspanel-dns.ps1`). Projde párování, replikaci všech
-vrstev, výpadek primáru s automatickým povýšením, odstavení starého primáru,
-jeho návrat a plánované přepnutí zpět. Trvá asi půl hodiny.
-`MIRROR_KEEP=1` kontejnery po testu nechá.
+`make mirror-e2e` (nebo `dev/mirror-e2e/run.sh` po `make agent-build`)
+vyzkouší zrcadlo na tomto stroji: dva servery s Debianem 13 nainstalované
+`provision/install.sh` (každý s vlastní doménou panelu) a třetí stroj, který
+hraje Windows DNS (sshd se stejným protokolem jako `wspanel-dns.ps1`), svědka
+a klienta v LAN. Celá sada má 28 scénářů (`--list`) a trvá asi hodinu,
+instalace z toho 15 minut.
+
+- **Scénáře:** párování, kopie všech vrstev, pojistka na zrcadle, plovoucí IP,
+  Windows DNS, shoda nastavení, ochrana kopie, rozdělená síť, výpadek svědka,
+  výpadek zrcadla, kolísající síť, restart agenta a stroje, přepnutí a výpadek
+  pod zátěží, převzetí a návrat, odstavený server po restartu, výpadek proudu,
+  odříznutý primár, návrat uprostřed povýšení, nedokončené přepnutí, pět
+  přepnutí za sebou, zápis jako root na zrcadle, smazaný web, herní servery,
+  jiná verze, zrušení zrcadla.
+- **Každý scénář** začíná z ověřeného výchozího stavu (primár obsluhuje, drží
+  plovoucí IP, jeho databáze přijímají zápisy, zrcadlo je synchronizované).
+- **Monitor** po celou dobu zhruba každou sekundu zapisuje role, držitele
+  plovoucí IP a odpověď webu přes plovoucí IP i přímo na adrese každého serveru.
+  Po každém scénáři ověří, že weby nikdy neobsluhovaly dva servery najednou
+  a plovoucí IP nikdy nedržely dva stroje, a měří výpadek.
+- **Zátěž:** zapisovač ukládá každých 100 ms řádek do MariaDB (jako uživatel webu)
+  i PostgreSQL. Při plánovaném přepnutí se nesmí ztratit žádný potvrzený zápis.
+- **Shoda dat:** kontrolní součty tabulek, stromu souborů, vlastníků a práv.
+
+Volby: `--only=a,b` (vybrané scénáře), `--keep` (kontejnery zůstanou),
+`--reuse` (nainstalované servery se uloží jako image a další běh začne z nich;
+znovu se instaluje, jen když se změní agent, `provision/` nebo `panel/`).
+Výsledky: `var/mirror-e2e/<čas>/` (`junit.xml`, logy instalace, `monitor.tsv`
+a u každého neúspěšného scénáře stav obou serverů, journal agentů, síť,
+jednotky a záznamy DNS). Spouštěč si ověří, že má Docker aspoň 25 GB místa.
 
 ## Struktura repozitáře
 

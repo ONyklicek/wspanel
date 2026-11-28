@@ -109,6 +109,7 @@ func RestoreServerState(ctx context.Context, env *Env, path string, recoveryKey 
 // restoreOpts: what a mirror's promotion leaves as it is.
 type restoreOpts struct {
 	skipPaths      []string // files of this node (its installer's choices)
+	skipUnder      []string // folders of this node (its certificate authority)
 	skipAccountsOf []string // engines whose accounts came with replication
 }
 
@@ -134,6 +135,11 @@ func restoreServerStateWith(ctx context.Context, env *Env, path string, recovery
 		if target, ok := configPath(hdr.Name); ok {
 			if slices.Contains(opt.skipPaths, target) {
 				return false, nil
+			}
+			for _, d := range opt.skipUnder {
+				if target == d || strings.HasPrefix(target, d+"/") {
+					return false, nil
+				}
 			}
 			if !restoreAllowed(env, target) {
 				rep.problem("left out (not WSPanel's): %s", target)

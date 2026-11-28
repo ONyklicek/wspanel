@@ -49,11 +49,23 @@ func main() {
 	mirrorPipe := flag.Bool("mirror-pipe", false, "internal: rsync's transport to the mirror's primary (rsync -e)")
 	mirrorPromote := flag.Bool("mirror-promote", false, "promote this standby to the mirror's primary now (when its panel is not reachable) and exit; root only")
 	mirrorStatus := flag.Bool("mirror-status", false, "print the mirror's state as JSON and exit")
+	mirrorBootGate := flag.Bool("mirror-boot-gate", false, "internal: the edge's ExecStartPre at a boot: a mirror's primary keeps its sites off until the agent hears from the standby")
 	tuneDB := flag.Bool("tune-db", false, "size the shared database servers' memory for this server's RAM, print the units to restart, and exit (install.sh)")
 	flag.Parse()
 	if *mirrorPipe {
 		if err := ops.RunMirrorPipe(*cfgPath, flag.Args()); err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *mirrorBootGate {
+		cfg, err := config.Load(*cfgPath)
+		if err == nil {
+			err = ops.MirrorBootGate(&ops.Env{Cfg: cfg, FS: &fsx.FS{DryRun: cfg.DryRun}})
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mirror boot gate:", err)
 			os.Exit(1)
 		}
 		return
@@ -225,6 +237,9 @@ func run(cfgPath string, log *slog.Logger) error {
 	defer stop()
 	go ops.MigrateLegacyWorkers(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderMailOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
+	// First of all: a mirror's primary that starts serves nothing until it
+	// knows the standby did not take over meanwhile.
+	ops.MirrorStartGate(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderEdgesOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.RenderGameUnitsOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
 	go ops.ApplySiteGuardOnStart(ctx, env, func(format string, args ...any) { log.Info(fmt.Sprintf(format, args...)) })
@@ -370,7 +385,7 @@ func binaries(cfg config.Config) map[string]string {
 		"swapoff":            "/usr/sbin/swapoff",
 		"du":                 "/usr/bin/du",        // disk usage by directory (-x, never follows links)
 		"smartctl":           "/usr/sbin/smartctl", // disk health, read only (-i -H -A)
-		"ip":                 "/usr/sbin/ip",       // -j addr/route show, read only
+		"ip":                 "/usr/sbin/ip",       // -j addr/route show; addr add/del of the mirror's floating IP only
 		"ufw":                cfg.UFWBinary,
 		"frankenphp":         cfg.FrankenPHPBin,
 	}

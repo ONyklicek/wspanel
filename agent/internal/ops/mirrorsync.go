@@ -34,7 +34,7 @@ func makeMirrorSnapshot(ctx context.Context, env *Env) (string, int64, error) {
 	if err := env.FS.MkdirAll(dir, 0o700, fsx.Root); err != nil {
 		return "", 0, err
 	}
-	b, err := makeServerArchive(ctx, env, dir, "snapshot-")
+	b, err := makeServerArchive(ctx, env, dir, "snapshot-", true)
 	if err != nil {
 		return "", 0, err
 	}
@@ -235,16 +235,26 @@ func syncCycle(ctx context.Context, env *Env) error {
 	prepareStandby(ctx, env, peer)
 
 	// 3. Files and mail.
-	err = rsyncFrom(ctx, env, "sites/", env.Cfg.SitesRoot+"/", []string{"/.trash/", "/*/tmp/", "/*/valkey/"})
-	mirrorRuntime.layer("sites", err, fmt.Sprintf("%d sites", len(man.Sites)), nil)
+	sitesErr := sourceLooksWhole(ctx, env, "sites/", env.Cfg.SitesRoot, man.Sites)
+	if sitesErr == nil {
+		sitesErr = rsyncFrom(ctx, env, "sites/", env.Cfg.SitesRoot+"/", siteSyncExcludes)
+	}
+	mirrorRuntime.layer("sites", sitesErr, fmt.Sprintf("%d sites", len(man.Sites)), nil)
+	var mailErr error
 	if peer.Mail && env.Cfg.VmailRoot != "" {
-		if err := env.FS.MkdirAll(env.Cfg.VmailRoot, 0o750, fsx.Root); err == nil {
-			err = rsyncFrom(ctx, env, "mail/", env.Cfg.VmailRoot+"/", nil)
+		mailErr = env.FS.MkdirAll(env.Cfg.VmailRoot, 0o750, fsx.Root)
+		if mailErr == nil {
+			mailErr = sourceLooksWhole(ctx, env, "mail/", env.Cfg.VmailRoot, man.MailDomains)
 		}
-		mirrorRuntime.layer("mail", err, fmt.Sprintf("%d domains", len(man.MailDomains)), nil)
+		if mailErr == nil {
+			mailErr = rsyncFrom(ctx, env, "mail/", env.Cfg.VmailRoot+"/", nil)
+		}
+		mirrorRuntime.layer("mail", mailErr, fmt.Sprintf("%d domains", len(man.MailDomains)), nil)
 	}
 
-	if err == nil && rejoinBackupDir(env) != "" {
+	// What only a rejoined node had is set aside by these copies: the
+	// marker goes only when every one of them succeeded.
+	if sitesErr == nil && mailErr == nil && rejoinBackupDir(env) != "" {
 		_ = os.Remove(mirrorFile(env, "rejoin-backup")) // one full cycle done
 	}
 
@@ -310,6 +320,58 @@ func rsyncFrom(ctx context.Context, env *Env, module, dst string, exclude []stri
 		}
 	}
 	return err
+}
+
+// siteSyncExcludes: what the copy of the sites leaves out. A site's tmp/
+// itself is copied (with its owner and mode: PHP-FPM's TMPDIR, uploads and
+// sessions live there, so a promoted node must have it), its contents are
+// not; valkey/ is the site's own server's data (the standby keeps a
+// replica of its own).
+var siteSyncExcludes = []string{"/.trash/", "/*/tmp/*", "/*/valkey/"}
+
+// sourceLooksWhole: the primary's folder of a module still holds (at least
+// half of) what its state lists and this node already has a copy of (the
+// sites' domains, the mail domains). A folder that lost them (a mount that
+// failed, a wipe) would make the copy delete everything here within a
+// cycle: that copy is refused instead and the standby keeps what it has.
+func sourceLooksWhole(ctx context.Context, env *Env, module, local string, listed []string) error {
+	var want []string
+	for _, n := range listed {
+		if fi, err := os.Stat(filepath.Join(local, n)); err == nil && fi.IsDir() {
+			want = append(want, n)
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	res, err := env.Exec.RunIO(lctx, nil, nil, "rsync", "--list-only", "-d", "-e", env.Cfg.AgentBinary+" -mirror-pipe", "peer:"+module)
+	if err != nil {
+		// A primary older than this check (an upgrade in progress, the
+		// standby first) refuses the listing: copy as before.
+		if strings.Contains(err.Error(), `"--list-only" is not allowed`) {
+			return nil
+		}
+		return fmt.Errorf("listing the primary's %s: %w", strings.TrimSuffix(module, "/"), err)
+	}
+	have := map[string]bool{}
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 5 {
+			have[f[len(f)-1]] = true
+		}
+	}
+	missing := 0
+	for _, w := range want {
+		if !have[w] {
+			missing++
+		}
+	}
+	if env.Cfg.DryRun || missing*2 <= len(want) {
+		return nil
+	}
+	return fmt.Errorf("the primary's %s folder lacks %d of %d (unmounted or wiped?): not copied, nothing deleted here", strings.TrimSuffix(module, "/"), missing, len(want))
 }
 
 // rejoinBackupDir: set by a rejoin until the first full cycle is done.

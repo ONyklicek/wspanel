@@ -11,7 +11,7 @@
         @if ($this->role() === 'fenced')
             <x-wire::callout color="danger" icon="outline:shield-exclamation" :heading="__('Tento server je odstavený')">
                 {{ __('Neobsluhuje weby ani poštu a databáze jsou jen pro čtení. Důvod:') }}
-                <strong>{{ match ($state['fenced'] ?? '') { 'isolated' => __('ztratil spojení se zrcadlem i se svědky (sám se vrátí, když zrcadlo nepřevzalo provoz)'), 'replaced' => __('druhý server převzal provoz'), 'switchover' => __('plánované přepnutí'), default => $state['fenced'] ?? '' } }}</strong>.
+                <strong>{{ match ($state['fenced'] ?? '') { 'isolated' => __('ztratil spojení se zrcadlem i se svědky (sám se vrátí, když zrcadlo nepřevzalo provoz)'), 'replaced' => __('druhý server převzal provoz'), 'switchover' => __('plánované přepnutí'), 'starting' => __('po startu čeká na potvrzení zrcadla (sám začne obsluhovat, jakmile zrcadlo odpoví, nebo po době přepnutí, když zrcadlo mlčí, svědek odpovídá a plovoucí IP nikdo nedrží)'), default => $state['fenced'] ?? '' } }}</strong>.
                 {{ __('Když je druhý server primár, připojte tento zpět jako jeho zrcadlo.') }}
             </x-wire::callout>
         @elseif ($this->role() === 'standby' && ! empty($rt['primary_down_since']) && ! str_starts_with($rt['primary_down_since'], '0001'))
@@ -53,6 +53,10 @@
                             <dt class="text-gray-500">{{ __('Role') }}</dt><dd><x-wire::badge :color="$this->roleColor($ph['role'] ?? '')">{{ $this->roleLabel($ph['role'] ?? '') }}</x-wire::badge></dd>
                             <dt class="text-gray-500">{{ __('Verze') }}</dt><dd>{{ $ph['version'] ?? '?' }}</dd>
                             <dt class="text-gray-500">{{ __('Webů') }}</dt><dd>{{ $ph['sites'] ?? 0 }}</dd>
+                            @if (str_starts_with((string) ($ph['panel_url'] ?? ''), 'https://'))
+                                <dt class="text-gray-500">{{ __('Panel') }}</dt>
+                                <dd class="break-all"><a href="{{ $ph['panel_url'] }}" target="_blank" rel="noopener" class="text-primary-600 hover:underline">{{ $ph['panel_url'] }}</a></dd>
+                            @endif
                         @endif
                         <dt class="text-gray-500">{{ __('Naposledy') }}</dt><dd>{{ $this->ago($rt['peer_seen'] ?? null) }}</dd>
                     </dl>
@@ -84,6 +88,15 @@
                         @empty
                             <span class="text-gray-500">{{ __('žádný') }}</span>
                         @endforelse
+                    </dd>
+                    <dt class="text-gray-500">{{ __('Plovoucí IP') }}</dt>
+                    <dd>
+                        @if (! empty($state['vip']))
+                            <span class="font-mono text-xs">{{ $state['vip']['address'] }}/{{ $state['vip']['prefix'] }}</span>
+                            <x-wire::badge size="xs" :color="$state['vip']['held'] ? 'success' : 'gray'">{{ $state['vip']['held'] ? __('drží tento server') : (($rt['peer']['vip'] ?? '') === $state['vip']['address'] ? __('drží druhý server') : __('nedrží ji nikdo z páru')) }}</x-wire::badge>
+                        @else
+                            <span class="text-gray-500">{{ __('nenastavena') }}</span>
+                        @endif
                     </dd>
                     <dt class="text-gray-500">{{ __('Windows DNS') }}</dt>
                     <dd>
@@ -125,10 +138,11 @@
         @if ($this->role() === '')
             <x-wire::section :heading="__('Jak zrcadlo funguje')">
                 <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                    <p>{{ __('Dva servery: primár obsluhuje weby, zrcadlo (standby) drží jeho kopii a při výpadku převezme provoz. Zrcadlo může běžet i v Dockeru na Windows.') }}</p>
+                    <p>{{ __('Dva servery: primár obsluhuje weby, zrcadlo (standby) drží jeho kopii a při výpadku převezme provoz. Zrcadlo může běžet i ve VM v Hyper-V na Windows.') }}</p>
                     <p>{{ __('Zrcadlo se připojuje k primáru jedním šifrovaným spojením (vzájemné TLS) a stahuje: stav a konfiguraci, soubory webů a poštu (rsync), MariaDB a PostgreSQL průběžnou replikací, MongoDB a vyhrazené databáze výpisy každých 5 minut a repliku Valkey/Redis každého webu.') }}</p>
                     <p>{{ __('O přepnutí rozhoduje agent zrcadla sám, takže funguje i tehdy, když vypadne panel primáru. Automaticky jen se svědkem (brána LAN, řadič domény): odříznuté zrcadlo se nikdy samo nepovýší. Primár, který ztratí spojení se zrcadlem i se svědky, se sám odstaví. Když se oba vrátí, rozhodne epocha, který je primár.') }}</p>
-                    <p>{{ __('Po přepnutí aktivní server přepíše A záznamy svých webů ve Windows DNS (a v Cloudflare, mají-li servery různé veřejné IP). Pro přesměrování portů na routeru jsou háky v /etc/wspanel/mirror/hooks/promote.d.') }}</p>
+                    <p>{{ __('Ve stejné LAN je nejjednodušší plovoucí IP: jedna volná adresa, kterou drží vždy aktivní server. DNS i router na ni míří natrvalo a při přepnutí se nic nepřepisuje. Jinak aktivní server přepíše A záznamy svých webů ve Windows DNS (a v Cloudflare, mají-li servery různé veřejné IP); pro přesměrování portů na routeru jsou háky v /etc/wspanel/mirror/hooks/promote.d.') }}</p>
+                    <p>{{ __('Každý server má vlastní panel (vlastní doménu): na zrcadle spravujete server samotný (aktualizace, moduly, služby, zrcadlo), weby, databáze a poštu na aktivním serveru.') }}</p>
                 </div>
             </x-wire::section>
         @endif

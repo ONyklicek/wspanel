@@ -27,7 +27,8 @@ ProtectKernelLogs=yes
 ProtectClock=yes
 LockPersonality=yes
 RestrictRealtime=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# AF_PACKET: the mirror's floating IP (gratuitous ARP, the check that nobody else holds it).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
 
 [Install]
 WantedBy=multi-user.target
